@@ -99,20 +99,21 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dra
       sourceWays: new Map(graph.sources.flatMap((s: { id: string; legacyNetIndex?: number }) => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]])) as Map<string, number> };
     return { pack, index, ctx, design, coveredStretches, derivedStretch, rebuildCommand };
   };
-  /** where our earthworks cover the old road, with its station 389–395 m (since cost model 41 our bridge there runs
-   * 10 m further, its end's fill clear of the old road, and the old road's stretch would start at 363 m with an Auto
-   * bend before the R 104 m corner: pinned to keep these about that corner) */
-  const pinned = <T extends { s0: number; s1: number }>(covered: T[]) => [...covered.filter(c => c.s1 < 380), { ...covered[0], s0: 389, s1: 395 }];
+  /** where our earthworks cover the old road, pinned where they did at cost model 40: its stations 361–363 m (the corner
+   * of our fill) and 389–395 m (since cost model 41 our bridge there runs 10 m further, its end's fill clear of the old
+   * road, and the old road's stretch would start at 363 m with an Auto bend before the R 104 m corner; since model 42
+   * a further 30 m, its end a cone rather than an 11.4 m wall, and covers none of it): these keep the stretches about
+   * that corner */
+  const pinned = (index: { transportData: string }, sourceId: string) => [361, 389].map((s0, k) => ({ transportData: index.transportData, sourceId, s0, s1: k ? 395 : 363, by: 'our road' }));
   // The playtest of these fixes: the road grabbed 80 m further on (its stretch converted from there) and dragged
   // 40 px took the old corner with it, which, built anew, merged with the next bend into one curve too sharp for
   // 70 km/h. The bend the converting drag moves is fitted on release as one it places (core/bend-fit.ts), also
   // where two curves merge too sharp.
   it('one drag of it leaves no curve too sharp', async () => {
-    const { index, ctx, design, coveredStretches, derivedStretch, rebuildCommand } = await d11();
+    const { index, ctx, design, derivedStretch, rebuildCommand } = await d11();
     const { fitPlacedBend } = await import('../src/core/bend-fit');
-    const ours = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes[design.routes[0].id].legacy!;
     const id = 'osm:way:236292102';
-    const command = rebuildCommand(index, derivedStretch(index, id, 620, pinned(coveredStretches(index, id, [{ ...ours, name: 'our road' }])))!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
+    const command = rebuildCommand(index, derivedStretch(index, id, 620, pinned(index, id))!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
     const q = edited.routes[1]; if (q.alignment.kind !== 'pi' || q.specification.kind !== 'road' || q.specification.crossSection === 'existing') throw new Error('converted');
     // (the drag took the old corner, bend 1, 29 m east: built anew, Auto's curve, merged with bend 2)
@@ -125,12 +126,12 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dra
     expect(sharp(evaluateProject(ctx, { epoch: 'e', revision: 3, design: edited }))).toEqual([]);
   }, 120_000);
   it("keeps the old road's own curve only where it still lies on the old road", async () => {
-    const { pack, index, ctx, design, coveredStretches, derivedStretch, rebuildCommand } = await d11();
+    const { pack, index, ctx, design, derivedStretch, rebuildCommand } = await d11();
     const ours = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes[design.routes[0].id].legacy!;
     const id = 'osm:way:236292102', length = index.source(id)!.stations.at(-1)!;
     let at = 0, best = Infinity;
     for (let s = 0; s <= length; s += 5) { const p = index.position(id, s)!, k = Math.round(2320 / ours.ds), d = Math.hypot(p.x - ours.x[k], p.y - ours.y[k]); if (d < best) { best = d; at = s; } }
-    const command = rebuildCommand(index, derivedStretch(index, id, at, pinned(coveredStretches(index, id, [{ ...ours, name: 'our road' }])))!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
+    const command = rebuildCommand(index, derivedStretch(index, id, at, pinned(index, id))!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
     const q = edited.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
     expect(q.alignment.pis).toMatchObject([{ r: 104, mapped: true }]);

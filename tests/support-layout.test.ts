@@ -34,7 +34,7 @@ describe('automatic bridge support remedies', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('an end whose cone would cover a road goes on (Auto) or is a wall (the player’s bridge); no pier on a cone', () => {
+  it('an end whose cone would cover a road goes on (Auto), is a wall up to 10 m, or the cone stands; no pier on a cone', () => {
     const reach = CONE.berm + CONE.slope * 13, r = { ...route(), coneReachAt: () => reach };
     const auto = remedyBridgeSupports(r, terrain(), roadAt(207)), run = auto.runs[0];
     expect(run.s0).toBeLessThan(95);
@@ -44,16 +44,39 @@ describe('automatic bridge support remedies', () => {
     expect(auto.diagnostics).toEqual([]);
     const mask = new Int8Array(r.n).fill(-1);
     mask[12] = KIND.bridge;
+    // the player's bridge on a fill of 13 m: too high for a wall, the cone stands (what it covers is the footprint
+    // screen's problem)
     const mine = remedyBridgeSupports(r, terrain(), roadAt(207), mask);
     expect(mine.runs[0].s0).toBe(95);
-    expect(mine.runs[0].closedEnds).toEqual([true, false]);
-    expect(mine.runs[0].coneReach).toEqual([0, reach]);
+    expect(mine.runs[0].closedEnds).toBeUndefined();
+    expect(mine.runs[0].coneReach).toEqual([reach, reach]);
     expect(mine.diagnostics).toEqual([]);
-    // a road beside the axis, under the quarter cone round the crest's corner (15 m off, 5–15 m into the bridge): a wall
-    // there (Auto's bridge goes on only for what lies on the axis: longer, it may need spans no style reaches)
+    // on a fill of 8 m: a closed end, its wall billed
+    const low = { ...route(), grade: new Float64Array(41).fill(110), coneReachAt: () => CONE.berm + CONE.slope * 8 };
+    const walled = remedyBridgeSupports(low, terrain(), roadAt(207), mask).runs[0];
+    expect(walled.closedEnds).toEqual([true, false]);
+    expect(walled.coneReach![0]).toBe(0);
+    expect(walled.endWalls![0].height).toBe(8);
+    expect(walled.endWalls![0].cost).toBeGreaterThan(0);
+    expect(walled.endWalls![1]).toEqual({ height: 0, cost: 0 });
+    // a minor way the footprint screen may move aside (a strict set given, without it): the cone stands over it
+    const memo = new Map<string, number>();
+    const moved = remedyBridgeSupports(r, terrain(), roadAt(207), undefined, memo, new Set()).runs[0];
+    expect(moved.s0).toBe(95);
+    expect(moved.closedEnds).toBeUndefined();
+    // (and the screen of every road, sharing its memo, still counts that way: the keys of an empty strict set are apart)
+    expect(remedyBridgeSupports(r, terrain(), roadAt(207), undefined, memo).runs[0].s0).toBeLessThan(95);
+    // an abutment standing on a road, its fill low: Auto's end goes on past the road, and on to where its cone
+    // (higher there) covers neither that road nor the next
+    const blockedLow = { ...route(), grade: Float64Array.from({ length: 41 }, (_, i) => i <= 10 ? 100 + 2 * (10 - i) + 12 : 112), coneReachAt: () => reach };
+    const past = remedyBridgeSupports(blockedLow, terrain(), new RoadNet({ cls: ['secondary', 'secondary'], ways: [[0, 195, 50, 195, 150], [1, 165, 50, 165, 150]] })).runs[0];
+    expect(past.s0).toBeLessThan(65 - 20); // (the second road at s = 65; the first clear end without the cone rule: s = 85)
+    expect(past.closedEnds?.[0] ?? false).toBe(false);
+    // a road beside the axis, under the quarter cone round the crest's corner (15 m off, 5–15 m into the bridge): the
+    // same rule as on the axis, Auto's bridge goes on
     const beside = remedyBridgeSupports(r, terrain(), new RoadNet({ cls: ['secondary'], ways: [[0, 200, 115, 210, 115]] })).runs[0];
-    expect(beside.s0).toBe(95);
-    expect(beside.closedEnds).toEqual([true, false]);
+    expect(beside.s0).toBeLessThan(95);
+    expect(beside.closedEnds).toBeUndefined();
   });
 
   it('preserves manual runs and earth paint, with a measured clear-endpoint proposal', () => {

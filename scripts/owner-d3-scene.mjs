@@ -95,15 +95,14 @@ try {
     await p.mouse.move(q.x, q.y); await p.mouse.down();
     const cold = !(await p.evaluate(() => window.trapla.transportLoaded()));
     await p.mouse.move(q.x + 40, q.y, { steps: 10 });
-    await p.waitForFunction(() => window.trapla.transportLoaded(), null, { timeout: 20000 });
     await p.mouse.move(q.x + 42, q.y); await p.mouse.up();
     await p.evaluate(() => window.trapla.whenIdle());
     const after = await p.evaluate(() => window.trapla.cameraTarget());
     const rebuilt = (await p.evaluate(() => window.trapla.getProject())).routes.find(r => r.source);
-    if (!rebuilt) console.log('not rebuilt; card:', await p.locator('#inspector').textContent(), 'early:', cold);
-    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `a drag next to our bridge does not pan the map (${JSON.stringify([pose, after])})`);
-    assert.equal(rebuilt?.source.intervals[0].sourceId, grab.id, 'a drag next to our bridge rebuilds III/1057');
-    console.log('fresh page, crossing card open: a drag on III/1057 25 m from our bridge rebuilt it, the map did not move');
+    // (a road not selected is the map's: a click selects it first, the owner's review 2026-11-17)
+    assert(Math.hypot(after.x - pose.x, after.y - pose.y) > 0.5, `a drag on a road not selected moves the map (${JSON.stringify([pose, after])}, early: ${cold})`);
+    assert.equal(rebuilt, undefined, 'a drag on III/1057 not selected rebuilds nothing');
+    console.log('fresh page, crossing card open: a drag on III/1057 25 m from our bridge moved the map, rebuilt nothing');
     await c.close();
   }
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 800, 0, 62), [grab.x, grab.y]); await idle();

@@ -27,6 +27,8 @@ export interface HudEventContext {
   legacyFacade(): boolean;
   takeProfile(d: Design): void;
   select(next: Sel | null, fly?: boolean): void;
+  /** the active road itself selected: a drag on it bends it (ui/selection.ts) */
+  selectRoad(): void;
   switchRoute(id: RouteId, created?: boolean, oneDirection?: boolean): boolean;
   joinStretch(id: string): void;
 }
@@ -55,16 +57,16 @@ export function hudEvents(app: HudEventContext): HudEvents {
       const route = app.store.route, corridor = route ? corridorOfRoute(app.projectStore.snapshot.design, route.id) : undefined;
       if (!corridor || app.projectStore.inTransaction) return;
       if (which === 'both') {
-        if (corridor.mode !== 'independent') { app.select(null); app.switchRoute(corridor.children.forward, false, false); return; }
+        if (corridor.mode !== 'independent') { app.select(null); app.switchRoute(corridor.children.forward, false, false); app.selectRoad(); return; }
         app.select(null);
         app.store.editProject(d => { Object.assign(d, rejoinCorridor(d, corridor.id)); });
-        app.switchRoute(corridor.children.forward);
+        app.switchRoute(corridor.children.forward); app.selectRoad();
         toast(DIRECTIONS_TEXT.join, 'Undo', () => app.store.undo());
         return;
       }
       // choosing a direction only chooses what a drag moves: the design changes with the first edit
       app.select(null);
-      app.switchRoute(corridor.children[which], false, corridor.mode === 'paired');
+      app.switchRoute(corridor.children[which], false, corridor.mode === 'paired'); app.selectRoad();
     },
     onLoadBest: () => { if (app.store.best) { app.store.loadBest(); toast('Loaded your best design.', 'Undo', () => app.store.undo()); } },
     onViolation: (k) => {
@@ -113,7 +115,10 @@ export function hudEvents(app: HudEventContext): HudEvents {
     app.select(t);
     const i = stationIndex(r, (v.s0 + v.s1) / 2);
     app.view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
-    app.profile.focus(v.s0, v.s1);
+    // the player's height pins it is about: close enough in that each has its own handle
+    const pins = app.store.design.profileMode === 'manual' ? (v.target?.heightPins ?? []).map(k => r.vpis[k]?.s).filter((s): s is number => s !== undefined) : [];
+    if (pins.length) app.profile.focus(Math.min(v.s0, ...pins), Math.max(v.s1, ...pins), 0);
+    else app.profile.focus(v.s0, v.s1);
   };
   return events;
 }

@@ -60,11 +60,35 @@ describe('review regressions', () => {
     expect(ROAD_CHECKS.vertical(p, speedNorms(90), 0.06).some((v) => v.kind === 'vcOverlap')).toBe(true);
   });
 
-  it('a too steep grade says which height point to move and by how much, and that is enough', () => {
+  it('two height pins too close By hand: named, and the move it offers (along the slope behind) fixes it', () => {
+    const pts = [{ s: 0, z: 0, r: null }, { s: 1000, z: 20, r: null }, { s: 1030, z: 19.7, r: null }, { s: 2000, z: 30, r: null }];
+    const overlap = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06, false, undefined, true).filter((v) => v.kind === 'vcOverlap');
+    const [v] = overlap(pts);
+    expect(v).toMatchObject({ title: 'Two height pins too close', s0: 1000, s1: 1030, target: { heightPins: [1, 2] } });
+    expect(v.fix).toMatch(/^Move your height pin at km 1\.0[03] at least \d+ m away from the one at km 1\.0[03], or delete one$/);
+    const { k, s, z } = v.target!.movePin!;
+    pts[k] = { s, z, r: null };
+    expect(overlap(pts)).toEqual([]);
+  });
+
+  it('the move offered for two height pins too close leaves their curves whole, also where the slope between them changes', () => {
+    // review case: grades 2 %, 4 %, 5 %, a 20,000 m radius at the second pin: the first move asked for is not enough
+    const norms = speedNorms(90), pts = [{ s: 0, z: 0, r: null }, { s: 80, z: 1.6, r: null }, { s: 160, z: 4.8, r: 20000 as number | null }, { s: 1160, z: 54.8, r: null }];
+    const overlap = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, norms.minCrestRadius, norms.minSagRadius), norms, 0.06, false, undefined, true).filter((v) => v.kind === 'vcOverlap');
+    const [v] = overlap(pts);
+    expect(v).toBeDefined();
+    const move = v.target?.movePin;
+    if (move) {
+      pts[move.k] = { ...pts[move.k], s: move.s, z: move.z };
+      expect(overlap(pts)).toEqual([]);
+    }
+  });
+
+  it('a too steep grade By hand says which height pin to move and by how much, and that is enough', () => {
     const pts = [{ s: 0, z: 0, r: null }, { s: 500, z: 40, r: null }, { s: 1000, z: 45, r: null }];
-    const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06).filter((v) => v.kind === 'gradient');
+    const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06, false, undefined, true).filter((v) => v.kind === 'gradient');
     const [v] = grades(pts);
-    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower the height point at km 0.50 by 10.0 m' });
+    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower your height pin at km 0.50 by 10.0 m' });
     pts[1].z -= 10;
     expect(grades(pts)).toEqual([]);
   });

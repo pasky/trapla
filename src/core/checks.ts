@@ -8,7 +8,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
 import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type HorizontalRules, type PI, type Vec2 } from './horizontal';
-import { gradeLimitOf, type GradeLimit, type Profile } from './vertical';
+import { buildProfile, gradeLimitOf, type GradeLimit, type Profile, type VCurve, type VPI } from './vertical';
 import { RAIL_MAX_GRADIENT } from './data/railway';
 import { acos, sin, tan } from './detmath';
 
@@ -78,6 +78,12 @@ export interface ViolationTarget {
   hairpin?: { pi: number; speed: number };
   /** bends whose radius set by hand, back to Auto, fixes it */
   auto?: number[];
+  /** By hand: the player's height pins (profile point indices, the ends excluded) it is about */
+  heightPins?: number[];
+  /** By hand: a height pin moved to this chainage fixes it */
+  movePin?: { k: number; s: number; z: number };
+  /** By hand: the height pin whose radius back to the smallest fixes it */
+  smallest?: number;
 }
 
 /** one-line form for logs and scripts */
@@ -89,7 +95,7 @@ export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: Categ
 
 export interface CheckFamily {
   horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
-  vertical(p: Profile, norms: SpeedNorms, maxGradient: GradeLimit, rail?: boolean, stretch?: StretchNorms): Violation[];
+  vertical(p: Profile, norms: SpeedNorms, maxGradient: GradeLimit, rail?: boolean, stretch?: StretchNorms, byHand?: boolean): Violation[];
 }
 
 const fmt = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -469,13 +475,21 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 /** Norms that vary along the road: a stretch's own design speed at a chainage (M4) */
 export type StretchNorms = (s: number) => SpeedNorms;
 
-export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt: GradeLimit, rail = false, stretch?: StretchNorms): Violation[] {
+/**
+ * The grade line's problems. `byHand`: its height points are the player's (By hand, drawn as ◆ pins in the
+ * profile): the messages name them and offer to move or delete one. On Auto the points are the game's and not
+ * drawn: the messages name only places (km) and what the player can change there.
+ */
+export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt: GradeLimit, rail = false, stretch?: StretchNorms, byHand = false): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
-  // "the height point at km …": the points carry no numbers in the profile, the station finds them
-  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `the height point at km ${fmt(p.pts[k].s / 1000, 2)}`);
+  const line = rail ? 'track' : 'road';
+  const at = (k: number) => `km ${fmt(p.pts[k].s / 1000, 2)}`;
+  // By hand: "your height pin at km …" (the ends are fixed, not pins)
+  const pin = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `your height pin at ${at(k)}`);
   // track grades in per mille, road grades in per cent
   const G = (g: number) => rail ? `${fmt(Math.abs(g) * 1000, 1)} ‰` : `${fmt(Math.abs(g) * 100, 1)} %`;
+  const signed = (g: number) => `${g < 0 ? '−' : ''}${G(g)}`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
   const gradeRule = (maxGradient: number) => rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
     : rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
@@ -502,12 +516,22 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
     const h = Math.ceil(dz * 10 - 1e-6) / 10;
     const needL = Math.abs(b.z - a.z) / maxGradient;
     const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${G(maxGradient)}; it has ${fmt(L)} m.`;
+    const title = `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`;
+    if (!byHand) {
+      // Auto's own line: it found no gentler one (the ends, the player's pins or what it must clear)
+      out.push({
+        kind: 'gradient', s0: a.s, s1: b.s, title, size: h,
+        fix: `Make the route longer between km ${fmt(a.s / 1000, 2)} and km ${fmt(b.s / 1000, 2)}`,
+        detail: `The ${line} ${rise ? 'climbs' : 'falls'} ${G(g)} here; the limit is ${G(maxGradient)}. ${lengthen} Auto keeps the ${line} within the limit when it can; here the ends, your height pins or what it must clear leave it no room.`,
+        basis: 'norm', rule: gradeRule(maxGradient),
+      });
+      continue;
+    }
     out.push({
-      kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
-      title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
-      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : 'Pin a lower / higher height here, or make the route longer',
-      detail: `Between ${vpi(i)} and ${vpi(i + 1)} the road ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Automatic road height stays within the limit when it can.`,
-      basis: 'norm', rule: gradeRule(maxGradient),
+      kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i, title,
+      fix: cands.length ? `${cands[0].verb} ${pin(cands[0].k)} by ${fmt(h, 1)} m` : 'Make the route longer',
+      detail: `Between ${pin(i)} and ${pin(i + 1)} the ${line} ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${pin(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''}`,
+      basis: 'norm', rule: gradeRule(maxGradient), size: h,
     });
   }
   const reported = new Set<string>();
@@ -522,10 +546,11 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
       out.push({
         kind: c.type, ...where,
         title: `${word} too sharp`,
-        fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
-        detail: `Its radius is ${fmt(c.r)} m; ${n.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
-        basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
+        fix: byHand ? `Set the radius at ${pin(c.index)} to at least ${fmt(min)} m` : `Drag the route a little here: Auto could not round this ${crest ? 'hilltop' : 'dip'} at ${at(c.index)}`,
+        detail: `Its radius is ${fmt(c.r)} m; at ${n.speed} km/h the ${line} needs at least ${fmt(min)} m${rail ? ' for the passengers' : crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
+        basis: byHand ? 'norm' : 'engine', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
           : `${n.verticalNorm ?? n.norm ?? 'ČSN 73 6101'}: ${crest ? 'crest' : 'sag'} curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m`,
+        ...(byHand ? { target: { heightPins: [c.index], smallest: c.index } } : {}),
       });
     }
     if (c.lenEff < c.len - 1e-3) {
@@ -534,7 +559,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
       const side = (dir: -1 | 1) => {
         const nb = p.curves[k + dir], j = c.index + dir;
         const space = Math.abs(p.pts[j].s - c.s);
-        return { j, nb, short: c.len / 2 + (nb ? nb.len / 2 : 0) - space };
+        return { j, nb, short: c.len / 2 + (nb ? nb.len / 2 : 0) - space, dir };
       };
       const l = side(-1), r = side(1);
       const w = l.short >= r.short ? l : r;
@@ -542,24 +567,71 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
       if (reported.has(key)) continue;
       reported.add(key);
       const both = !!w.nb && w.nb.type !== 'none' && w.nb.len > 0;
+      const gap = Math.abs(p.pts[w.j].s - c.s), pair = { s0: Math.min(c.s, p.pts[w.j].s), s1: Math.max(c.s, p.pts[w.j].s) };
+      const rule = `Game rule: the ${line} changes from one slope to the next along a curve of at least the smallest radius; the curves of two height pins must fit between them`;
+      if (!byHand) {
+        // Never Auto's own result (scripts/vc-overlap-audit.ts): said as the engine's limit, in places only.
+        out.push({
+          kind: 'vcOverlap', ...where, ...pair, size: up(w.short),
+          title: `Auto could not fit a change of slope at ${at(c.index)}`,
+          fix: 'Drag the route a little here, or pin the height here',
+          detail: `Two changes of slope ${fmt(gap)} m apart need ${fmt(c.len / 2 + (both ? w.nb!.len / 2 : 0))} m between them.`,
+          basis: 'engine', rule: 'Engine limitation: Auto placed two changes of slope too close together',
+        });
+        continue;
+      }
+      // the pin to move: c, away from its neighbour along the slope behind it (that slope stays, the one between
+      // them becomes a mix of the two), as far as the curves then need (they change with that slope), and only if
+      // that leaves every curve around it whole
+      const { more, move } = pinMove(p, c, w.j, w.dir, up(w.short), stretch ?? (() => norms));
+      const g = both ? (w.dir > 0 ? [c.g1, c.g2, w.nb!.g2] : [w.nb!.g1, c.g1, c.g2]) : [c.g1, c.g2];
+      const slopes = `${signed(g[0])} to ${signed(g[1])}${both ? ` and on to ${signed(g[2])}` : ''}`;
+      const nbName = w.j === 0 || w.j === last ? pin(w.j) : `your height pin at ${at(w.j)}`;
       out.push({
-        kind: 'vcOverlap', ...where,
-        title: both ? 'Two roundings of the road height overlap' : 'Rounding of the road height does not fit',
-        fix: `Move ${vpi(c.index)} at least ${fmt(up(w.short))} m further from ${vpi(w.j)}`,
-        detail: `The ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} needs ${fmt(c.len)} m (radius × change of slope)${both ? ` and the one at ${vpi(w.j)} ${fmt(w.nb!.len)} m; half of each must fit between the two points` : `; half of it must fit before ${vpi(w.j)}`}, but they are only ${fmt(Math.abs(p.pts[w.j].s - c.s))} m apart. A smaller radius (not below the minimum) or a smaller change of slope also helps.`,
-        basis: 'game', rule: 'Game rule: every rounding (vertical curve) must fit whole between its neighbours — a squeezed one would be sharper than its radius says',
+        kind: 'vcOverlap', ...where, ...pair, size: more,
+        title: both ? 'Two height pins too close' : `Height pin too close to ${w.j === 0 ? 'the start' : w.j === last ? 'the end' : 'the next one'}`,
+        fix: both ? `Move ${pin(c.index)} at least ${fmt(more)} m away from the one at ${at(w.j)}, or delete one`
+          : `Move ${pin(c.index)} at least ${fmt(more)} m further from ${nbName}`,
+        detail: `The ${line} cannot bend from ${slopes} in ${fmt(gap)} m: at ${both ? 'their radii' : 'its radius'} that takes ${fmt(c.len / 2 + (both ? w.nb!.len / 2 : 0))} m${both ? ', half of each change of slope on either side of its pin' : ''}. Pins more in line (a smaller change of slope) also help.`,
+        basis: 'game', rule,
+        target: { heightPins: both ? [c.index, w.j] : [c.index], ...(move ? { movePin: move } : {}) },
       });
     }
   }
   return out;
 }
 
+/** Pin k of a By-hand line moved `more` m away from its neighbour j (dir: +1 j after it) along the slope behind
+ * it, more where the curves then still overlap (up to five tries): the distance and the move, if one leaves the
+ * curves of k, j and k's other neighbour whole. */
+function pinMove(p: Profile, c: Profile['curves'][number], j: number, dir: -1 | 1, more: number, at: StretchNorms) {
+  const last = p.pts.length - 1, behind = c.index - dir;
+  if (c.index <= 0 || c.index >= last) return { more };
+  // the points with their radii: a curve at the smallest radius for its kind stays so (null), as the player set it
+  const min = (k: number, crest: boolean) => crest ? at(p.pts[k].s).minCrestRadius : at(p.pts[k].s).minSagRadius;
+  const vpis: VPI[] = p.pts.map((q, k) => {
+    const v = p.curves[k - 1];
+    return { s: q.s, z: q.z, r: !v || v.type === 'none' || Math.abs(v.r - min(k, v.type === 'crest')) < 1e-6 ? null : v.r };
+  });
+  for (let i = 0; i < 5; i++) {
+    const s = c.s - dir * more;
+    if ((dir > 0 ? s - p.pts[behind].s : p.pts[behind].s - s) < 20) return { more };
+    const moved = vpis.map((q, k) => k === c.index ? { ...q, s, z: c.z - dir * more * (dir > 0 ? c.g1 : c.g2) } : q);
+    const q = buildProfile(moved, (x) => at(x).minCrestRadius, (x) => at(x).minSagRadius);
+    const near = [behind, c.index, j].map(k => q.curves[k - 1]).filter((v): v is VCurve => !!v);
+    if (near.every(v => v.lenEff >= v.len - 1e-3)) return { more, move: { k: c.index, s, z: moved[c.index].z } };
+    const a = q.curves[c.index - 1], b = q.curves[j - 1];
+    more += Math.max(1, up(a.len / 2 + (b ? b.len / 2 : 0) - Math.abs(p.pts[j].s - s)));
+  }
+  return { more };
+}
+
 export const ROAD_CHECKS: CheckFamily = {
   horizontal(al, norms, input) {
     return horizontalViolations(al, norms.speed, input);
   },
-  vertical(p, norms, maxGradient, rail, stretch) {
-    return verticalViolations(p, norms, maxGradient, rail, stretch);
+  vertical(p, norms, maxGradient, rail, stretch, byHand) {
+    return verticalViolations(p, norms, maxGradient, rail, stretch, byHand);
   },
 };
 
@@ -658,7 +730,7 @@ export function profileViolation(length: number, maxGradient: number, rail = fal
     kind: 'profile', s0: 0, s1: length,
     title: 'Auto found no legal road height',
     fix: 'Climb more gently (longer route), or set heights by hand',
-    detail: `None of the road heights it tried stays within ${rail ? `${fmt(maxGradient * 1000, 1)} ‰` : `${fmt(maxGradient * 100, 0)} %`} with the minimum hilltop and dip roundings and the required clearances. The other messages show where it fails.`,
+    detail: `None of the road heights it tried stays within ${rail ? `${fmt(maxGradient * 1000, 1)} ‰` : `${fmt(maxGradient * 100, 0)} %`} with hilltops and dips curved at the smallest allowed radius and the required clearances. The other messages show where it fails.`,
     basis: 'engine', rule: 'Engine limitation: Automatic tries a limited set of road heights; a legal one may still exist',
   };
 }

@@ -980,7 +980,55 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   sky-coloured sliver beside the cone). Left: random-12 / random-19 (already invalid) bury a track / street that
   cannot be moved aside on the 30 m rule's new line (steep ground, a side road it would cut off).
 
-### Protected nature areas; tunnels at most 3 % (cost model 42, 2026-11-17)
+### Bridge ends: one rule (cost model 42, 2026-11-17)
+
+Owner's review of the Královec railway (shots /tmp/owner-shots, the QA's repro `qa3/bridge-ends.ts`): some ends stood on
+cones, others were closed by vertical walls up to 28 m (km 5.61: 24.9 m, km 5.70: 16.1 m, km 10.27: 28.4 m; an 80 m fill
+between km 5.61 and 5.70 boxed in by walls at both ends), unbilled. The end-closing check counted any way under the
+cone's flanks, field tracks included, and never looked at `CONE.closedMax`; the search that lengthens Auto's bridge
+looked at the cone's axis only and spared minor ways; and a memo shared one key between the screen of every road and
+that of the strict ways (an empty strict set), so a check could read the other's answer.
+
+- **One rule** (`support-layout.ts` `coneBuries`, both for Auto's ends and the final check): what the cone would cover
+  that nothing moves aside, on the ground it covers (`abutment-cone.ts` `coneGround`: rows of 4 m from the abutment,
+  each out to where the cone's surface meets the ground on either side, a cross slope included; the same ground the
+  footprint screen sees and the bill's cone fills). A minor way the footprint screen may move aside is not counted: the
+  cone's ground is screened as an abutment's (`footprint.ts`), so the way is moved aside by the existing remedy; if that
+  fails it is a strict way on the retry and counts (not the stream retry's bridging, which is for what lies under the
+  earthworks). A covered end is a closed abutment only on a fill of at most 10 m, read at the abutment itself
+  (`bridgeEnd`); above it Auto's bridge goes on to an end that is clear or low enough for a wall (also where the
+  abutment itself is blocked: it had stopped at the first free abutment, its cone over the road); where none is within
+  reach, and on the player's bridge, the cone stands and what it covers is a footprint problem ("A bridge end stands
+  on …").
+- **The wall is billed** as what is drawn (the concrete end cap across the fill's end section): `closedEndWall`, a
+  cantilever retaining wall at its height across the crest and falling with the side slopes, `retainingAssembly`
+  prices (OTSKP, research/18; shape PROVISIONAL, research/68 §4.5); with the bridge (a 10 m wall on a 9.5 m crest
+  ≈ 4.2 M CZK). The bridge card: "One end is a wall 7 m high down to the ground, so the fill does not cover what lies
+  below: 2.0 M CZK." Drag previews keep the closed ends and walls of bridges outside the edited stretch.
+- **A fill between two bridges closed off by a wall** is bridged where its deck costs less than the fill, its walls,
+  its cones and the two abutments one bridge saves (`structures.ts` `wallGapsToBridge`, after the support layout, Auto's
+  gaps only and none Auto ruled out for its piers; undone if the joined bridge's piers find no place). None tips on the
+  packs (decks 1.15–3.4 × the fill); the Královec fills at km 5.61–5.70 and 10.17–10.24 became parts of one bridge each
+  because their walls would be over 10 m.
+- **Results.** Every bridge end of every pack's straight start, saved designs and presets (1,216 ends): a cone or a
+  wall of at most 10 m, and each result's bridges line equals its decks, abutments, regrading, cones' paving and walls
+  exactly (`scripts/bridge-ends-audit.ts`, a full gate; `tests/bridge-ends.test.ts` for D11 and Nová Paka; the town
+  test takes the bill apart the same way). Before: 254 closed ends, 127 of them on fills over 10 m (up to 28 m), none
+  billed; now 236, all ≤ 10 m (the cone's whole ground screened finds more under it than the two rectangles did).
+  Validity unchanged everywhere. Frozen D11 (M CZK): straight 8,847.9 → 8,770.3 (walls over 10 m gone, ends moved:
+  bridges −128, bought fill −44, crossings +32, excavation +26), best 3,694.6 → 3,721.6 (+25 bridges), best-drag
+  3,681.2 → 3,671.3, best-pin 3,713.2 → 3,739.0, best-structures 3,782.9 → 3,807.7, best-manual 3,689.7 → 3,716.8,
+  demo 4,248.3 → 4,251.7, direct-80 4,232.2 → 4,281.3, direct-90 5,421.8 → 5,437.9, town-centre 9,384.9 → 9,331.6
+  and town-controls 9,393.7 → 9,340.4 (the viaduct at km 3.84–5.05 starts 20 m earlier, its piers stand elsewhere: nine
+  houses its piers had stood on stay under the deck, −221 buildings, +230 noise buyouts). Starters (route bills, bn): Královec railway 10.595 → 10.694, d3-full 37.865 →
+  38.077, d3-0301 5.154 → 5.163, d3-0302 7.045 → 7.051, d3-0303 5.599 → 5.634, d3-0304 10.133 → 10.195, d3-0305
+  9.559 → 9.583, d3 3.927 → 3.973, d3 motorway 14.465 → 14.636, d35-full 32.380 → 32.738, d35 motorway 19.093 →
+  19.246, d35 road 6.561 → 6.590, Nová Paka 1.223 (unchanged). Shots 390–393 (`scripts/abutment-ends-shots.mjs`).
+- **Open:** the wall's shape is a study allowance (no Czech height rule for closed abutments was found, research/68
+  §1.4); the structure choice still weighs a cone at every end (a closed end's wall is known only after the support
+  layout); houses under a cone are not screened (the building screen sees the earthworks and the piers).
+
+### Protected nature areas; tunnels at most 3 % (cost model 44, 2026-11-17)
 
 Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Act). Code: `pipeline/fetch_protected.py`,
 `build_protected.py` (a pack's `protected.json`), `data/protected.ts`, `protected-areas.ts`, `nature-works.ts`,
@@ -1014,7 +1062,7 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
 - **The real D35** (research/73): Auto's stage-1 motorway now builds a 3,159 m tunnel under Pod skálou at 2.6–3.0 %,
   out of the protected forest, and 740 m of bridges (real: 3,983 m, ≈ 700 m): 20,029 M. The real-portal line bills
   21,155 M (+6 %).
-- **Bills** (model 41 → 42): D11 frozen fixtures and the Královec railway unchanged; D11 starter (QA tests) 8,978 →
+- **Bills** (model 43 → 44): D11 frozen fixtures and the Královec railway unchanged; D11 starter (QA tests) 8,978 →
   9,052 M; d35 stage-1 19,050 → 20,029, d35 road 6,561 → 9,468 (a 3.1 km tunnel and its escape tunnel where its line
   ended in the monument), d35-full 32,380 → 34,177, D3 motorway 14,284 → 15,017 (the Sázava viaduct 820 → 929 m, its
   piers out of the Natura 2000 river), d3-0302 7,045 → 7,026, d3-0304 10,133 → 10,112, d3-full 37,865 → 36,378 (its
@@ -1735,3 +1783,22 @@ steep for a bridge over our cutting (the "0.1 m" was the text's floor; Auto now 
 way nothing else could carry). The drag: VALID 10.88 bn; the starter 10.55 → 10.59 bn; road bills unchanged.
 `scripts/edit-locality.ts` has a railway suite (reach p90 7.4 km, nothing beyond 10 km).
 Known issues: some random railway edits still leave a problem in the edited stretch itself (research/57 "Left").
+
+## Auto's own changes of slope never squeezed; grade problems in the player's words (cost model 43, 2026-11-17)
+
+Owner's rail-6 shot: after a drag of the Královec railway, "Two roundings of the road height overlap — move the
+height point at km 2.03 at least 32 m further from the height point at km 2.04", on Auto, where no height point is
+drawn. Cause: a support lift that cannot be met within its block of the grade solve is retried with the block
+widened by `LIFT_CLUSTER`; `liftAutoProfile` puts a vertex at each end of the stretch it may move and judged only
+the problems within the lifted cluster's range, so the new turn at the widened end could squeeze the curve of a
+point just beyond it (6–44 m apart). Now a lift fails if the line it returns (its free-end vertices that do not
+turn removed) has a problem outside the range that the line before it did not; the grade solve's retry places its
+points instead. Gate `scripts/vc-overlap-audit.ts` (saved designs, starters, QA repros, seeded drags of every pack
+and the railway; five railway repros found on main). Frozen bills unchanged; some drags' bill and validity move.
+
+Texts (`verticalViolations(…, byHand)`): By hand the ◆ points are "your height pins" (the By-hand handle's name
+everywhere), a problem names them, the card offers *Move pin to km …* (along the slope behind it), *Delete pin*,
+*Smallest radius*, and clicking it zooms the profile until both pins have handles (a By-hand pin is ≥ 20 m from
+the next, `MIN_VPI_GAP`). On Auto no message names a point: a too steep stretch says where and how much longer it
+must be; an overlap would be an engine limit at a km (never shown: the gate). Railways say "track". "Rounding" and
+"height point" are JARGON. Auto's pins are drawn (screenshot 403); Auto's height points are not, by design.

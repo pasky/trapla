@@ -117,12 +117,21 @@
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
  * 4,935 → 7,045 M.
- * 42: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
+ * 42: bridge ends, one rule (owner's review of the Královec railway: walls up to 28 m): what a cone would cover that
+ * nothing moves aside, anywhere on its ground, closes the end with a wall only on a fill up to 10 m, billed as the wall it
+ * is (abutment-cone.ts closedEndWall); above it Auto's bridge goes on, else the cone stands and what it covers is a
+ * problem; a minor way under a cone is moved aside by the footprint screen; a fill between two bridges closed off by a
+ * wall is bridged where the deck costs less. D11 frozen −78 … +49 M (PLAN.md "Bridge ends: one rule").
+ * 43: Auto never squeezes two of its own changes of slope into each other: a support lift whose widened block end
+ * would (profile-remedies.ts) fails and the grade solve places its points there instead. Some drags change bill and
+ * validity (the owner's Královec drag: NOT VALID → VALID, 9.15 bn); frozen bills, saved designs unchanged
+ * (scripts/vc-overlap-audit.ts).
+ * 44: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
  * sites, national parks and CHKO zones I–II (over them on a bridge with no supports inside, under them mined);
  * tunnels kept to 3 %, never steeper than 5 % (NV 264/2009, research/73). D11 frozen unchanged; d35 stage-1
  * 19,050 → 20,029 M (a 3.2 km tunnel under Pod skálou), d35 road 6,561 → 9,468, d35-full 32,380 → 34,177, D3
  * motorway 14,284 → 15,017 (the Sázava bridge's piers out of the Natura 2000 river), d3-full 37,865 → 36,378. */
-export const COST_MODEL_VERSION = 42;
+export const COST_MODEL_VERSION = 44;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

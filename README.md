@@ -35,6 +35,7 @@ Other commands:
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
 | `npm run smoke` | interaction smoke test with real mouse events (empty clicks add nothing, drag the road to add a bend, drag / delete / double-click bends, the inspector's stretch choices and keys, By hand, undo, persistence) |
 | `node scripts/playtest.mjs [--docs] [--size=1280x800]` | three players' sessions with real mouse / keyboard: a first-time player (intro, harmless clicks, drag the road, where the money goes, inspect pieces), one fixing violations (fix buttons, the house cross-section, noise view) and a power user (bridge from the map, walls, keep a house, crossing, pin by dragging the line, undo / redo, Start over); a screenshot per step into `/tmp/trapla-playtest`; `--docs` writes the gallery 60–71 |
+| `node scripts/select-shots.mjs [--gpu] [--docs]` | select before drag with the real mouse: a road not selected (ours, a mapped one) says *click to select* and a drag on it moves the map; a click selects it, then a drag bends / rebuilds it; `--docs` writes 380–385 |
 | `node scripts/any-road-scene.mjs [--gpu] [--docs]` | editing any road with the real mouse (D11 by default, `SCENARIO=d3`): select a mapped road, drag it to rebuild its stretch, one Undo, end handles, its traffic, the road list, reload, Build → Road (free end, joining our road, roundabout), priced rebuilt stretch, photo with mapped roads; `--docs` writes 100–105 |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `PACK=/path/to/d11 npx tsx scripts/footprint-audit.ts --straight scripts/*-design.json` | automatic footprint remedies, measured wall/road works, remaining violations and bill reconciliation; `DETAIL=1` adds individual diagnostics |
@@ -60,18 +61,26 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 
 ## How to play
 
-One rule for the whole interface: **drag the road to bend it, click anything to inspect it.** What you click
+One rule for the whole interface: **click anything to inspect (select) it; drag the selected road to bend it.** A
+drag that starts on a road not selected moves the map like one on open ground. What you click
 opens one card under the score (the *inspector*) that says what it is, what the game decided and why, what it
 costs, and offers the alternatives as buttons. The map and the profile always show the same selection.
 Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/interface-rethink.md).
 
-- **Reshape a reroute:** drag the new road of a crossed road that was cut and rerouted — a bend point appears
+- **Reshape a reroute:** click the crossed road that was cut and rerouted, then drag its new road — a bend point appears
   under the mouse and follows it, like bending our road. Drag a bend point to move it, click it for *Remove
   bend point*; *Automatic path* in the crossing's card takes the shape back. The game checks it (off our
   earthworks, not too steep, not across a motorway, railway, water or house) and prices it as drawn.
-- **Bend the road:** drag the orange road on the map — a new bend appears under the mouse and follows it
-  (the cursor turns into a hand over the road). Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
-  or *Delete* in its card removes it. **Double-click** the ground adds a bend there (for big detours). A click
+- **Bend the road:** click the orange road to select it (its numbered bends show), then drag it — a new bend
+  appears under the mouse and follows it (the cursor turns into a hand over the selected road; over one not
+  selected it says *click to select*). <kbd>Esc</kbd> or a click on open ground lets go of it. A first-time player
+  (the intro is up) finds our road already selected, so the first drag does what the intro says
+  ([not selected](docs/screenshots/381-select-road-not-selected.png),
+  [selected](docs/screenshots/382-select-road-selected.png), [bent](docs/screenshots/383-select-road-bent.png),
+  [a mapped road not selected](docs/screenshots/384-select-mapped-not-selected.png) and
+  [selected](docs/screenshots/385-select-mapped-selected.png), [the intro](docs/screenshots/380-select-intro.png)).
+  Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
+  or *Delete* in its card removes it. **Double-click** the ground adds a bend to the selected road there (for big detours). A click
   on empty ground only deselects — nothing is ever added by a single click.
 - **Inspect anything** — on the map or in the profile: the **road** (selects the piece under the mouse: a
   bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road** (anything its crossing built
@@ -95,7 +104,7 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
     its noise source, the wall or cut edge, the house floor by floor in its own noise colour with each floor's
     level (and what it was without the wall), the sightline and the wall's shadow. Hovering a wall height redraws
     both ([a house that hears the road through a junction's gap](docs/screenshots/72-house-noise-plan-junction-gap.png)).
-  - pinned height (Auto) / height point (By hand): its height, typed or dragged, *Unpin* / *Delete*.
+  - pinned height (Auto) / height pin (By hand): its height, typed or dragged, *Unpin* / *Delete*.
 - **The score** (top right, sticky): total cost (struck through while not valid), ✓ VALID / ✗ NOT VALID, **the
   change the last edit made** (a drag counts once), travel time against the goal, the violations chip (click:
   selects the first one), your best valid design (*Load*; a position half-way through a drag never counts) and
@@ -432,6 +441,11 @@ was 284 M dearer)](docs/screenshots/290-d11-one-bend-70-keeps-90-geometry.png),
 [D3-0302: no 62 m cut and no 41 / 47 m fills, one 1,678 m bridge](docs/screenshots/299-d3-0302-no-deep-cut-one-long-bridge.png),
 [a D11 line whose cut would be 67 m deep: Auto's tunnel, the open cut's price on its Earthwork button](docs/screenshots/300-d11-deep-cut-tunnel-open-cut-price.png),
 [a bridge end whose fill would cover the road below it: a wall down to the ground](docs/screenshots/301-d11-bridge-end-wall-beside-the-road-below.png).
+Bridge ends under one rule (cost model 42, `node scripts/abutment-ends-shots.mjs`): [the Královec railway at km 10.27, once
+a 28 m wall, under one bridge with the one before it](docs/screenshots/390-rail-kralovec-km-10-27-under-one-bridge.png), [its fill
+at km 5.61–5.70, once boxed in by walls of 25 and 16 m, part of one bridge](docs/screenshots/391-rail-kralovec-km-5-6-one-bridge-no-boxed-fill.png),
+[D11 km 2.42, once an 11.4 m wall beside road III/3012, on a cone](docs/screenshots/392-d11-km-2-42-end-on-a-cone-beside-the-road.png),
+[a closed end on an 8.5 m fill, its wall's height and price on the bridge card](docs/screenshots/393-d11-km-3-49-wall-within-10-m-billed.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses
@@ -464,8 +478,15 @@ demo|starter] [--only km,…]`.)
 [D3 5 × 3 m buried bridge](docs/screenshots/337-culvert-d3-buried-bridge-5x3.png),
 [D35 box](docs/screenshots/338-culvert-d35-box-end.png),
 [Královec railway buried bridge](docs/screenshots/339-culvert-kralovec-railway-buried-bridge.png).
+Reproduce with `node scripts/crossing-shots.mjs`.
 
-Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
+Grade line problems in the player's words (`node scripts/vc-text-shots.mjs`): on Auto the height points are
+the game's and never drawn, so no message names one, and Auto never squeezes two of its changes of slope into
+each other ([the owner's Královec drag, now valid](docs/screenshots/400-rail-owner-drag-auto-no-overlap.png);
+`scripts/vc-overlap-audit.ts`); By hand the ◆ points are your height pins:
+[two 30 m apart, named, both drawn, Move / Delete](docs/screenshots/401-rail-by-hand-two-pins-too-close.png),
+[moved as offered](docs/screenshots/402-rail-by-hand-pin-moved.png),
+[an Auto pin drawn in the profile](docs/screenshots/403-rail-auto-pin-drawn.png). Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall
 openings use the same masks for rendering, billing and acoustic checks. The existing worst-station noise
@@ -475,7 +496,7 @@ alternatives when a provisional crossing is infeasible. Approach fill/cut beyond
 redesign rather than presented as a normal local road. The 1.2 m decks and abutments remain study-stage
 representations, not structural designs for long spans.
 
-**Protected nature** (cost model 42, research/75): nature reserves, monuments, Natura 2000 sites and national park
+**Protected nature** (cost model 44, research/75): nature reserves, monuments, Natura 2000 sites and national park
 zones are drawn as green borders; Auto keeps its works out of them (over on a bridge with no supports inside, under
 in a mined tunnel), and tunnels stay within 3 %.
 

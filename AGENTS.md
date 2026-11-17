@@ -16,8 +16,8 @@ scenarios), `research/` (sources for every number).
   unsolvable cases and for the player's own overrides. Overrides may create violations; that's allowed.
 - **Powerful but simple.** Every realistic decision can be overridden by the player, but the interface stays
   simple: map-first, click anything to inspect it, one card with what it is / what Auto chose and why / cost /
-  alternatives as buttons; map and profile selection always in sync; drag the road to bend it; no hidden
-  gestures or modifier keys. See `docs/interface-rethink.md`.
+  alternatives as buttons; map and profile selection always in sync; click a road to select it, drag it to
+  bend it (a drag on a road not selected moves the map); no hidden gestures or modifier keys. See `docs/interface-rethink.md`.
 - **Few, plain words.** Default to deleting text. No internal terms, codes or IDs in player text. One
   vocabulary: `src/core/terms.ts`; guard: `tests/player-text.test.ts`. Each violation: short title, one
   concrete computed fix, optional "why", basis tag (norm / game rule / engine limit). If something is an engine
@@ -42,7 +42,8 @@ the whole route's on the 177 exact cases) for anything touching the crossing eng
 broken visuals and jargon before.
 
 One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
-built in; `list` shows the gates; `--no-browser`, `--only`, `--skip`). A change meant to preserve behaviour
+built in; `list` shows the gates; `--no-browser`, `--only`, `--skip`, `--jobs`). Full runs drag-perf first and alone,
+then vitest alone, the other Node gates nproc/2 at a time, then smoke / playtest / toolbar together (all but drag-perf: 13.5 min serial → 10 min with the host at load ≈ 60 from other agents). A change meant to preserve behaviour
 (refactor, performance): `npx tsx scripts/exact.ts --out /tmp/before.json` on the base, then
 `scripts/gates.sh full --exact /tmp/before.json` (every whole result of every pack identical). Structure,
 findings and the refactoring plan: `docs/architecture-review.md`.
@@ -101,9 +102,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Playtest sweep 3 realism (cost model 41, PLAN.md "Playtest sweep 3: slowed stretches, deep cuts, cones …"): Auto
   cuts no road or motorway deeper than 30 m (a tunnel), cuts rock by its kind (the Královec railway now tunnels its
   54 m cut in Carboniferous interbeds: 9.1 → 10.6 bn), and stands bridge ends in fills on cones; where a cone would
-  cover what lies under the bridge the end is a wall (fill ≤ 10 m) or Auto's bridge goes on. Open: the cones' fill
-  is not in the structure choice's earth balance (it pins blocks at the top fill value and over-bridges); a wall
-  abutment is not priced apart; no arch inside a viaduct over 3.3 × its arch; the grade search can take a dearer line
+  cover what nothing moves aside the end is a wall (fill ≤ 10 m, billed: cost model 42, PLAN.md "Bridge ends: one
+  rule"; `scripts/bridge-ends-audit.ts` is a gate) or Auto's bridge goes on; a minor way under a cone is moved aside.
+  Open: houses under a cone are not screened (the building screen sees earthworks and piers only); the cones' fill is not in the structure choice's earth balance (it pins blocks at the top fill value and
+  over-bridges); no arch inside a viaduct over 3.3 × its arch; the grade search can take a dearer line
   when a price tips it (direct-90 with presplit: 391 M dearer than holding its old line). Two roads of a project whose
   earthworks come within the working strip: the later one keeps clear behind a wall (project-ledger.ts, evaluateProject).
 - Junction approaches on class I–III roads are not ramp-capped.
@@ -114,7 +116,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   (short spans / long spans / arch, Auto the cheapest that fits; cost model 35, PLAN.md "Bridge styles"); a
   style or method chosen on Auto's structure leaves it Auto's (`StructureOverride.auto`); painting a structure
   as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
-  later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 42, research/75): no
+  later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 44, research/75): no
   works of ours in reserves, monuments, Natura 2000 sites, national parks, CHKO zones I–II (protection zones: a note);
   Auto bridges over them (no supports inside) or mines under them; tunnels kept to 3 %, never above 5 %. The real D35
   layout is now Auto's (3.2 km tunnel under Pod skálou, research/73 §6). Not taken: T-8.0 tube width, rock cover,
