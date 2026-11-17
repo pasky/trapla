@@ -9,7 +9,7 @@ import type { RoadNet } from './roadnet';
 import { findRuns, KIND, type Run } from './structures';
 import { bridgeEnd, closedEndWall, CONE, coneGround, type BridgeEnd } from './abutment-cone';
 import type { Terrain } from './terrain';
-import { protectedRasterCells } from './protected-raster';
+import { natureCells, protectedRasterCells } from './protected-raster';
 import { waterWidth } from './watercourses';
 
 /** Provisional automatic-search envelope, not a norm-proven span feasibility limit. Clear
@@ -37,6 +37,8 @@ export interface SupportRoute {
   /** how far the cone of fill in front of a bridge end in end cell i reaches into the bridge (`into`: the direction
    * into it), m; 0 where there is no fill (abutment-cone.ts). Without it (a preview), no cones. */
   coneReachAt?: (i: number, into: number) => number;
+  /** Our road is a motorway (a protected landscape area takes no motorway's supports, research/75). */
+  motorway?: boolean;
 }
 export interface SupportDiagnostic {
   s: number;
@@ -69,7 +71,7 @@ function cellAt(r: SupportRoute, s: number, along: number, width: number): Footp
 export type OwnTrack = (x: number, y: number, i: number) => boolean;
 /** Same support envelopes and raster uncertainty as structureFootprints/footprintConflicts.
  * Returns the highest required deck elevation over a protected feature, or -Infinity. */
-function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, relocatable?: ReadonlySet<number>, ownTrack?: OwnTrack): number {
+function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, relocatable?: ReadonlySet<number>, ownTrack?: OwnTrack, motorway = false): number {
   let height = -Infinity;
   roads?.nearSegments(cellBounds(c, 14), segment => {
     if (relocatable && !ROAD_CLASSES[segment.cls].separable && !relocatable.has(segment.way)) return;
@@ -91,6 +93,8 @@ function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, rel
     if (feature === 'railway' && ownTrack?.(x, y, c.i)) return;
     height = Math.max(height, terrain.heightAt(x, y) + (feature === 'railway' ? R.railClearance : R.riverClearance));
   });
+  // a protected area that takes no works (research/75): no support stands in it; a deck passes over its ground
+  natureCells(terrain, c, motorway, ({ x, y, level }) => { if (level === 'ban') height = Math.max(height, terrain.heightAt(x, y)); });
   return height;
 }
 
@@ -133,10 +137,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   // (an empty strict set must not share the keys of a screen without one: those count every road)
   const strictKey = strictWays ? `strict:${[...strictWays].join()}` : 'all';
   const obstacle = (cell: FootprintCell, relocatable?: ReadonlySet<number>) => {
-    if (!memo) return obstacleHeight(cell, terrain, roads, relocatable, ownTrack);
+    if (!memo) return obstacleHeight(cell, terrain, roads, relocatable, ownTrack, r.motorway);
     const key = `${cell.s.toFixed(3)}/${cell.tx.toFixed(4)}/${cell.ty.toFixed(4)}/${cell.along.toFixed(3)}/${cell.left}/${cell.right}/${relocatable ? strictKey : ''}`;
     let height = memo.get(key);
-    if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable, ownTrack); memo.set(key, height); }
+    if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable, ownTrack, r.motorway); memo.set(key, height); }
     return height;
   };
   /** the bridge being laid out: no pier on the cones in front of its abutments (abutment-cone.ts), 0.5 m clear */

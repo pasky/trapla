@@ -9,6 +9,7 @@ import { crossingOutcome } from './terms';
 import type { OurLine } from './terms';
 import { KIND } from './structures';
 import type { Violation } from './checks';
+import type { LinkObstacle } from './link-route';
 import type { RoadCrossing } from './roadnet';
 
 export const CROSSING_CHOICES = ['junction', 'bridge', 'overbridge', 'reconnection', 'underpass'] as const;
@@ -496,7 +497,7 @@ export interface CrossingRoute {
   /** Urban share per station (≥ 0.5: urban SPK price rows for side-road regrades). */
   urban?: ArrayLike<number>;
   /** What blocks a new road of this half-width from a to b on the ground (a player's reroute shape). */
-  obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => 'railway' | 'water' | 'building' | 'works' | null;
+  obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => LinkObstacle | null;
   /** Houses still standing under a new road from a to b, and what buying one out costs. */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
   /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */

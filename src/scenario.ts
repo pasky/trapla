@@ -9,6 +9,7 @@ import type { EndpointJunctionKind } from './core/data/urban';
 import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
 import { validTrafficCensus, type TrafficCensus } from './core/traffic-census';
+import { validProtectedData, type ProtectedData } from './core/data/protected';
 import { objectDataKey } from './core/build-controls';
 
 /** `junction`: scenario-declared connection to retained roads (legacy net way indices). */
@@ -116,6 +117,17 @@ async function transportSidecar(base: string): Promise<TransportMeta | null> {
   return await r.json() as TransportMeta;
 }
 
+/** The pack's nature protection areas (`protected.json`, pipeline/build_protected.py): null when it ships none. */
+async function protectedSidecar(base: string): Promise<ProtectedData | null> {
+  const r = await fetch(`${base}/protected.json`);
+  // Vite returns its HTML shell for an absent optional sidecar.
+  if (r.status === 404 || r.headers.get('content-type')?.includes('text/html')) return null;
+  if (!r.ok) throw new Error(`Protected areas: HTTP ${r.status}`);
+  const data: unknown = await r.json();
+  if (!validProtectedData(data)) throw new Error('Unsupported protected areas file');
+  return data;
+}
+
 export async function loadPack(base: string, progress?: (msg: string) => void): Promise<Pack> {
   progress?.('loading scenario…');
   const metaResponse = await fetch(`${base}/meta.json`);
@@ -125,7 +137,7 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   if (transportMeta && (transportMeta.version !== 1 || !/^[a-zA-Z0-9_.-]+$/.test(transportMeta.file)))
     throw new Error('Unsupported transport map');
   progress?.('loading terrain (DMR 5G, 5 m)…');
-  const [hb, lb, overlays, vectorData, gb, wb] = await Promise.all([
+  const [hb, lb, overlays, vectorData, gb, wb, protectedAreas] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
@@ -135,6 +147,7 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
       : Promise.resolve(null),
     meta.ground ? gunzip(`${base}/${meta.ground.file}`) : Promise.resolve(null),
     meta.watercourses ? gunzip(`${base}/${meta.watercourses.file}`) : Promise.resolve(null),
+    protectedSidecar(base),
   ]);
   const vectors = vectorData ? parseVectorPack(vectorData) : null;
   let bytes: Promise<ArrayBuffer | null> | null = null, graph: Promise<TransportGraphData | null> | null = null;
@@ -166,6 +179,6 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
     ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
-    watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined });
+    watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined, protectedAreas: protectedAreas ?? undefined });
   return { base, meta, terrain, q, lc, overlays, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic };
 }

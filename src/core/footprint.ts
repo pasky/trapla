@@ -12,6 +12,7 @@ import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
 import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
+import { natureHits, natureProblems } from './nature-works';
 import type { RoadNet, RoadSegment } from './roadnet';
 import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, waterCoverFits, type WaterCrossing, type WaterSegment } from './watercourses';
 import { realignmentReason, roadRemedyDetail, roadRemedySource } from './terms';
@@ -19,7 +20,7 @@ import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type Footpri
 
 export interface FootprintConflict {
   id: string;
-  feature: 'road' | 'railway' | 'water' | 'stream' | 'building';
+  feature: 'road' | 'railway' | 'water' | 'stream' | 'building' | 'nature';
   action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked' | 'junction';
   /** junction only: a rebuilt stretch joining its own old road, not a new junction */
   continuation?: boolean;
@@ -64,6 +65,10 @@ export interface FootprintRoute {
   railOurs?: Uint8Array;
   /** Railway rebuilding mapped stretches: whether a point lies on old track it takes up. */
   railRetired?: (x: number, y: number) => boolean;
+  /** Our road is a motorway (a protected landscape area takes none, research/75). */
+  motorway?: boolean;
+  /** 1 = a tunnel cell built cut and cover, in an open pit (structures.ts cutCoverMask) */
+  cutCover?: ArrayLike<number>;
 }
 export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string;
   /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean }
@@ -531,6 +536,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         structure ? 'engine' : 'game');
     }
   }
+  // Nature protection areas that take no works (research/75): our earthworks, supports, tunnel entrances and
+  // pits there are against the law; a deck over the area or a mined tunnel under it take nothing.
+  violations.push(...natureProblems(terrain, natureHits(r, terrain, !!r.motorway), !!r.motorway, length));
   conflicts.sort((a, b) => a.s0 - b.s0 || a.id.localeCompare(b.id));
   return { conflicts, violations };
 }

@@ -1,6 +1,7 @@
 // Bounded AUTO relocation on real network topology. No invented old-road extensions, and no
 // ownership of source intervals already engineered by a crossing or another relocation.
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossings';
+import { natureCells } from './protected-raster';
 import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { LINK_MAX_SUPPORT as MAX_SUPPORT, retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
@@ -550,6 +551,8 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
           const p = { x: (x + 0.5) * terrain.cell, y: (y + 0.5) * terrain.cell };
           if (insideFootprint(p, cell, terrain.cell * Math.SQRT1_2) && protectedCover(terrain.cover(p.x, p.y))) problems.add('path intersects water/rail');
         }
+      // a nature reserve, monument or other area that takes no works (research/75) is no place for the rebuilt road
+      if (terrain.protectedAreas) natureCells(terrain, cell, false, c => { if (c.level === 'ban') problems.add('path enters a protected nature area'); });
     };
     for (let i = 1; i < path.length; i++) {
       if (i === gap) continue;

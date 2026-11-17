@@ -8,7 +8,7 @@ import { STRUCTURE_RULES } from './data/prices';
 import { retainingAssembly, RETAINING_RULES as R } from './data/remedies';
 import { sideSection, slopeSurfaceAt, slopeSurfaceFn, type Sections, type SideResult } from './sections';
 import type { Terrain } from './terrain';
-import { protectedRasterCells } from './protected-raster';
+import { natureCells, protectedRasterCells, type NatureCell } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
 import { subtract, type FootprintConflict } from './footprint';
 import { KIND } from './structures';
@@ -19,13 +19,15 @@ import { capsuleTest, type KeepClear } from './keep-clear';
 export interface RetainingWall {
   i: number; s0: number; s1: number; side: 'L' | 'R'; offset: number;
   height: number; top: number; bottom: number; cost: number; x: number; y: number;
-  feature: 'road' | 'railway' | 'water' | 'stream' | 'building';
+  feature: 'road' | 'railway' | 'water' | 'stream' | 'building' | 'nature';
   area: number; perM2: number;
   constrained?: boolean; watertight?: boolean;
 }
 export interface RetainingRoute extends Sections {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
   tx: ArrayLike<number>; ty: ArrayLike<number>; grade: ArrayLike<number>; crownWidth: number;
+  /** Our road is a motorway (a protected landscape area takes none, research/75). */
+  motorway?: boolean;
 }
 export interface RetainingPlan {
   walls: RetainingWall[]; perCell: Float64Array; landPerCell: Float64Array; forcedBridge: Uint8Array; forcedTunnel: Uint8Array;
@@ -46,7 +48,9 @@ export interface WalledBuilding { j: number; s0: number; s1: number; side: 'L' |
   /** the wall's estimated price and what demolishing the building would have cost, CZK */
   wall: number; demolition: number; kept: boolean }
 export type RetainingFeatureCache = Map<number, { left: number; right: number; roads: RoadSegment[]; water: WaterSegment[];
-  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memos?: StationMemo[];
+  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[];
+  /** cells of protected areas that take no works (research/75) */
+  nature: NatureCell[]; memos?: StationMemo[];
   /** which barrels the station reads: '' none (no water near it), 'S' all (a raster stream), else those
    * connected to these reaches (its water candidates') */
   reads?: string }>;
@@ -80,7 +84,7 @@ type ClearanceRequest = { i: number; z: number; id?: number };
 type BridgeRequest = { i: number; id?: number };
 /** OSM motorway ways represent one carriageway of the D27.5 divided road. */
 const roadHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
-const protectionRank = { building: -1, road: 0, railway: 1, stream: 2, water: 3 };
+const protectionRank = { building: -1, road: 0, railway: 1, stream: 2, water: 3, nature: 4 };
 
 /** Contiguous wall faces are one bill/profile fact, not a fresh conflict at every station. */
 export function retainingConflicts(walls: readonly RetainingWall[]): FootprintConflict[] {
@@ -96,7 +100,7 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
     group.conflict.s1 = wall.s1; group.conflict.length += wall.s1 - wall.s0; group.conflict.cost += wall.cost;
     group.conflict.allocations!.push({ i: wall.i, cost: wall.cost });
     group.area += wall.area; group.height = Math.max(group.height, wall.height);
-    const what = wall.feature === 'road' ? 'road' : wall.feature === 'railway' ? 'railway' : wall.feature === 'water' ? 'water' : wall.feature === 'building' ? 'building' : 'stream';
+    const what = wall.feature === 'road' ? 'road' : wall.feature === 'railway' ? 'railway' : wall.feature === 'water' ? 'water' : wall.feature === 'building' ? 'building' : wall.feature === 'nature' ? 'protected nature area' : 'stream';
     group.conflict.detail = `A concrete wall on the ${wall.side === 'L' ? 'left' : 'right'}, up to ${group.height.toFixed(1)} m high (${group.area.toFixed(0)} m² of wall), ends our slope ${wall.feature === 'building' ? `${BUILDING_RULES.clearance} m or more short of the building, so the works keep clear of it` : `before it covers the ${what}`}${wall.watertight ? '; it is sealed against the water behind it' : ''}.`;
     group.conflict.source = `Height-dependent concrete wall with foundation (OTSKP 327325 + 327365 + 13173 + 17411)${wall.watertight ? ', waterproofing and cutoff (711122 + 711519)' : ', rear drain and filter (212625 + 214613)'}`; // research/18
   }
@@ -196,6 +200,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     }
     if (limit < w) {
       if (crossing === 2) return; // severed/diverted by its crossing remedy, never bridged for
+      // a protected area under our crown: the grade search and the structure choice take it over or under (evaluate)
+      if (feature === 'nature') return;
       const clearance = feature === 'railway' ? STRUCTURE_RULES.railClearance : feature === 'road' ? 6 : STRUCTURE_RULES.riverClearance;
       if (id !== undefined) apply([3, id]);
       if (feature !== 'road') apply([1, { i, z: terrain.heightAt(gx, gy) + clearance, id }]);
@@ -295,10 +301,11 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     let candidates = cache?.get(i);
     if (!candidates || candidates.left < c.left || candidates.right < c.right) {
       const query = { ...c, left: c.left + (cache ? 20 : 0), right: c.right + (cache ? 20 : 0) };
-      candidates = { left: query.left, right: query.right, roads: [], water: [], raster: [] };
+      candidates = { left: query.left, right: query.right, roads: [], water: [], raster: [], nature: [] };
       roads?.nearSegments(cellBounds(query, 14), seg => candidates!.roads.push(seg));
       terrain.watercourses?.nearSegments(cellBounds(query, terrain.watercourses.maxHalfWidth), seg => candidates!.water.push(seg));
       protectedRasterCells(terrain, query, p => candidates!.raster.push(p));
+      natureCells(terrain, query, !!r.motorway, p => { if (p.level === 'ban') candidates!.nature.push(p); });
       cache?.set(i, candidates);
       // what any record holds of this station was made of the earlier candidates
       if (held) for (const x of held.records) if (x.grade.length === n) x.grade[i] = NaN;
@@ -340,6 +347,12 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         // Crown pixels become grade/structure constraints, never a wall through traffic.
         propose(c, off, step / 2, feature, x, y);
       }
+    // a protected area beside us: a wall keeps our slope out of it (under the crown: evaluate's grade limits)
+    for (const { x, y } of candidates.nature) {
+      const dx = x - c.x, dy = y - c.y, along = dx * c.tx + dy * c.ty, off = -dx * c.ty + dy * c.tx;
+      if (Math.abs(along) > c.along + step / 2 || off < -c.right - step / 2 || off > c.left + step / 2) continue;
+      propose(c, off, step / 2, 'nature', x, y);
+    }
     recording = null;
     if (cache) {
       const ways: number[] = [], memos = candidates.memos ??= [];
@@ -494,7 +507,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         else if (!crossing && ground(0) - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth) forcedTunnel[i] = 1;
         // our bank would run into water below us that no wall can hold back: a short bridge carries the road
         // past it (its deck clear of the bank below; the bill checks its height at its ends)
-        else if (fill && (feature === 'water' || feature === 'stream')) forcedBridge[i] = 1;
+        else if (fill && (feature === 'water' || feature === 'stream' || feature === 'nature')) forcedBridge[i] = 1;
       }
       break;
     }

@@ -11,7 +11,8 @@
 // class I–III road, motorway, junction, bridge, tunnel, cutting, embankment, slope, earthworks, ramp,
 // retaining wall, culvert, stream, underpass, rerouted, reconnected, moved aside, closed, turning area,
 // height pin (By hand: a ◆ point the player drags; on Auto the points are the game's and never named), pin, bend,
-// km, m, %. Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
+// km, m, %; nature reserve, nature monument, protection zone, Natura 2000 site, national park, protected landscape
+// area (research/75). Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
 // where a requirement or a price cites its source: a violation's `rule` line and the bill's pricing
 // tooltips.
 import type { CrossingResult } from './crossings';
@@ -248,7 +249,7 @@ export const BRIDGE_STYLE_TEXT: readonly ['short' | 'long' | 'arch', string, str
 
 /** Footprint outcomes (things our earthworks cover beside the road). */
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
-  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : 'stream';
+  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : c.feature === 'nature' ? 'protected nature area' : 'stream';
   switch (c.action) {
     case 'relocation': return c.closed && !c.closed.detour
       ? { tag: 'removed', label: `${what}: ${m(c.closed.length)} m removed (a dead end under our earthworks)`,
@@ -283,6 +284,7 @@ export function realignmentReason(problems: readonly string[]): string {
         : /intersects an unhandled road|grade-separated/.test(p) ? 'it would have to cross another road on a ramp'
           : /sever/.test(p) ? 'it would cut off a side road'
             : /water\/rail/.test(p) ? 'it would run into water or a railway'
+              : /protected nature/.test(p) ? 'it would run through a protected nature area'
               : /turnaround/.test(p) ? 'there is no room for a turning area at its cut end'
                 : /terrain data/.test(p) ? 'it would leave the map'
                   : /no surviving branch/.test(p) ? 'none of it would remain outside our earthworks'

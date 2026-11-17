@@ -3,6 +3,8 @@
 
 import { WaterNet, type WaterData } from './watercourses';
 import { UNKNOWN_GROUND, type GroundData, type GroundProfile } from './ground';
+import { ProtectedAreas } from './protected-areas';
+import type { ProtectedData } from './data/protected';
 
 export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6, stream: 7 } as const;
 export const OOB_BIT = 128;
@@ -25,6 +27,8 @@ export interface TerrainData {
   lc: Uint8Array;
   ground?: GroundData;
   watercourses?: WaterData;
+  /** nature protection areas (a pack's protected.json, research/75) */
+  protectedAreas?: ProtectedData;
 }
 
 export class Terrain {
@@ -39,6 +43,10 @@ export class Terrain {
   readonly lc: Uint8Array;
   readonly ground: GroundData | undefined;
   readonly watercourses: WaterNet | undefined;
+  /** nature protection areas on the grid (protected-areas.ts); undefined for a pack without them */
+  readonly protectedAreas: ProtectedAreas | undefined;
+  /** the pack's protected.json as loaded (handed on to the evaluation workers) */
+  readonly protectedData: ProtectedData | undefined;
 
   constructor(d: TerrainData) {
     this.nx = d.nx;
@@ -52,6 +60,8 @@ export class Terrain {
     this.height = d.ny * d.cell;
     this.ground = d.ground;
     this.watercourses = d.watercourses ? new WaterNet(d.watercourses) : undefined;
+    this.protectedData = d.protectedAreas;
+    this.protectedAreas = d.protectedAreas?.sites.length ? new ProtectedAreas(d.protectedAreas, d.nx, d.ny, d.cell) : undefined;
     if (d.ground) {
       const g = d.ground;
       if (g.nx * g.cell !== this.width || g.ny * g.cell !== this.height || g.ids.length !== g.nx * g.ny

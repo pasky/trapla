@@ -48,6 +48,13 @@ const ROAD: RGB = [252, 247, 235], CASING: RGB = [128, 116, 104];
 const casing = (layer: string, width: number, minPx: number): Pass =>
   ({ layer, kind: 'line', color: CASING, alpha: 0.85, width, minPx, extra: 0.45, extraPx: 0.55, maxRes: 2.5 });
 
+const NATURE_GREEN: RGB = [38, 128, 62];
+export const NATURE_PASSES: Pass[] = [
+  { layer: 'nature-band', kind: 'line', color: [126, 196, 120], alpha: 0.5, width: 9, minPx: 3 },
+  { layer: 'nature-ban', kind: 'line', color: NATURE_GREEN, alpha: 0.95, width: 1.6, minPx: 1.4 },
+  { layer: 'nature-zone', kind: 'line', color: NATURE_GREEN, alpha: 0.9, width: 1.2, minPx: 1.2, dash: [14, 0.6] },
+  { layer: 'nature-info', kind: 'line', color: [104, 128, 52], alpha: 0.85, width: 1.2, minPx: 1.2, dash: [7, 0.35] },
+];
 /** draw order: later passes overwrite earlier ones */
 const PASSES: Pass[] = [
   { layer: 'farmland', kind: 'poly', color: [222, 208, 150], alpha: 0.38 },
@@ -69,6 +76,9 @@ const PASSES: Pass[] = [
   { layer: 'primary', kind: 'line', color: [250, 226, 150], alpha: 0.95, width: 9, minPx: 2.0 },
   { layer: 'motorway', kind: 'line', color: [240, 176, 128], alpha: 0.95, width: 11, minPx: 2.6 },
   { layer: 'buildings', kind: 'poly', color: BUILDING_COLOR, alpha: 1 },
+  // nature protection areas (render/nature.ts): where no works may go a soft band with a solid edge, a
+  // protection zone dashed, an area that allows works dotted
+  ...NATURE_PASSES,
   // what the route takes (setPlots): a demolished building's footprint becomes a cleared plot (pale
   // ground, dark hatch, dashed edge) in its own shape; a bought-out one keeps its roof inside a dashed ring
   { layer: 'plots', kind: 'poly', color: [214, 206, 190], alpha: 0.92, hatch: { color: [92, 96, 104], period: 2.4, duty: 0.24 } },
@@ -575,7 +585,8 @@ export class LandCover {
       geos.set(l.name, finish(buildLineGeos(l, this.vectors.chunk, CAPPED.has(l.name), this.sourceCuts.get(l.name), this.mapped(l.name))));
     const scene = new THREE.Scene();
     for (const [layer, list] of this.plotGeos()) geos.set(layer, list);
-    this.net = { scene, passes: this.makePasses([...NET_PASSES, ...this.plotPasses()], geos, scene) };
+    for (const pass of NATURE_PASSES) { const l = this.vectors.lines.find(v => v.name === pass.layer); if (l) geos.set(pass.layer, finish(buildLineGeos(l, this.vectors.chunk, false))); }
+    this.net = { scene, passes: this.makePasses([...NET_PASSES, ...this.plotPasses(), ...NATURE_PASSES], geos, scene) };
   }
   /** composite the network overlay of the slot window c (texels) over what the level holds there */
   private overlayNetwork(rt: THREE.WebGLRenderTarget, c: Rect, t: number, pieces: [number, number, number, number, number, number][], mips: boolean) {

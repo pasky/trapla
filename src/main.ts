@@ -46,6 +46,7 @@ import { installMapWindow } from './ui/map-window';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
 import { radiusNotes } from './ui/radius-notes';
+import { natureNotes } from './ui/nature-notes';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
@@ -71,11 +72,15 @@ async function main() {
   if (scenario.ports) { meta.A = { ...scenario.ports.a }; meta.B = { ...scenario.ports.b }; }
   if (scenario.mode === 'railway') meta.official = { ...meta.official, xy: [], kinds: [] };
   const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
-  document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
+  /** the map's sources (the photo's while it is on) */
+  const attribution = (photo: boolean) => [...meta.attribution, ...pack.terrain.protectedAreas ? ['© AOPK ČR (protected areas), CC BY 4.0'] : [],
+    ...(photo && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
+  document.getElementById('attrib')!.innerHTML = attribution(false);
   document.getElementById('attrib')!.title = [document.getElementById('attrib')!.textContent,
     meta.baselineNote].filter(Boolean).join(' · ');
   document.getElementById('legend-official')!.textContent = scenario.labels.official;
   document.getElementById('legend-official')!.parentElement!.hidden = meta.official.xy.length < 2;
+  document.querySelector<HTMLElement>('#legend i.nature')!.parentElement!.hidden = !pack.terrain.protectedAreas;
 
   const presetId = scenario.presetId ?? scenario.id;
   const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
@@ -147,7 +152,7 @@ async function main() {
   const photoNote = scenario.photoNote ? document.createElement('div') : null;
   if (photoNote) { photoNote.id = 'photo-note'; photoNote.textContent = scenario.photoNote!; photoNote.hidden = true; document.getElementById('view')!.appendChild(photoNote); }
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, scenario.photoNote, (on) => {
-    document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
+    document.getElementById('attrib')!.innerHTML = attribution(on);
     if (photoNote) photoNote.hidden = !on;
   }, noise, () => frameRoute());
   // ---- the active line on the map: its ends as drawn, bringing it into view (ui/active-line.ts) ----
@@ -164,6 +169,7 @@ async function main() {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
     radiusNote: (i, r) => radiusNotes.get(store.activeRouteId, i, r),
+    natureNotes: (r, d, s0, s1) => natureNotes(pack.terrain, r, d, s0, s1),
     together: (j) => {
       const receiver = session.projectFull?.complete ? session.projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
       if (!receiver) return null;

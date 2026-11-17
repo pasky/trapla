@@ -496,6 +496,20 @@ alternatives when a provisional crossing is infeasible. Approach fill/cut beyond
 redesign rather than presented as a normal local road. The 1.2 m decks and abutments remain study-stage
 representations, not structural designs for long spans.
 
+**Protected nature** (cost model 45, research/75): nature reserves, monuments, Natura 2000 sites and national park
+zones are drawn as green borders; Auto keeps its works out of them (over on a bridge with no supports inside, under
+in a mined tunnel), and tunnels stay within 3 %.
+
+| D35: Auto's 3.2 km tunnel under Pod skálou, out of its forest | The player's earthworks in the monument: a problem under the Act |
+|---|---|
+| ![D35 tunnel under the monument](docs/screenshots/340-protected-d35-tunnel-under-pod-skalou.png) | ![earthworks in the monument](docs/screenshots/342-protected-d35-earthworks-in-monument-problem.png) |
+
+[The tunnel's east end beyond the protected forest](docs/screenshots/341-protected-d35-tunnel-portal-beyond-forest.png),
+[a tunnel the player made 3.9 % steep: the card's note](docs/screenshots/343-protected-d35-steep-tunnel-note.png),
+[the D35 road's tunnel end in the monument's protection zone: a note](docs/screenshots/344-protected-d35-road-tunnel-zone-note.png),
+[D3: the Sázava viaduct's piers out of the Natura 2000 river](docs/screenshots/345-protected-d3-sazava-bridge-piers-clear.png).
+Reproduce with `node scripts/realism-shots.mjs` (SCENARIO, PRESET).
+
 ## Contributing notes
 
 - **Player-facing text is plain words.** Every violation (title, one concrete fix, why, basis tag), crossing

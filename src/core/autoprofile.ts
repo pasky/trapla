@@ -102,6 +102,11 @@ export interface AutoProfileOptions {
    * has a tunnel mode (the cost function then answers kinds PROFILE_KIND.open / .inTunnel), else a tunnel is
    * priced station by station. */
   portalDepth?: number;
+  /** With `portalDepth`: the steepest grade of a line in a tunnel (deeper than its portal), as a fraction (NV 264/2009
+   * annex 2.2 asks for extra safety measures above 3 %; Auto keeps under it). Undefined: the road's own limit. */
+  tunnelMaxGrade?: number;
+  /** …and the steepest a line in a tunnel may be at all (NV 264/2009: 5 %): no line in the tunnel mode is steeper */
+  tunnelHardGrade?: number;
   /** optional upper h bound (manual tunnel cover); NaN = none */
   maxH?: ArrayLike<number>;
   /** search for the material value that balances cut and fill (see BalanceSearch) */
@@ -115,6 +120,9 @@ export interface AutoProfileOptions {
   clearancePenalty?: number;
   /** Per-station penalty instead of `clearancePenalty` (indexed by station). */
   clearancePenaltyAt?: ArrayLike<number>;
+  /** 1 = a station whose clearance the law demands (a protected area under our crown, research/75): a
+   * boundary's corridor or the normal band that misses one is not taken while a wider search meets it. */
+  hardClearance?: ArrayLike<number>;
   knotSpacing?: number;
   /** penalty per grade change, CZK (keeps the line calm) */
   vpiPenalty?: number;
@@ -241,6 +249,10 @@ export const PROFILE_KINDS = 6;
 export const PROFILE_KIND = { open: 3, inTunnel: 4 } as const;
 /** CZK per required-clearance station that is not met */
 export const CLEARANCE_PENALTY = 1e8;
+/** CZK per metre of a line in a tunnel for each 0.1 % it is steeper than `tunnelMaxGrade` (PROVISIONAL weight, no
+ * price: the extra safety measures are not costed in any source): 0.1 % over pays 1 M CZK per metre, about a twin
+ * tube's own price, so Auto keeps to the limit wherever its grid and the heights fixed around a block allow. */
+const TUNNEL_STEEP_PENALTY = 1e6;
 /** extra clearance asked of the polyline grade: vertical curves later shave up to ~1 m off crests */
 export const CLEARANCE_MARGIN = 1.0;
 /** the DP evaluates the cost on every k-th station only (≈ 20 m) */
@@ -509,11 +521,36 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   type Range = typeof ALL;
   /** Whether a line misses a clearance it is asked for within range `r` (as the DP judges it: the
    * polyline at the clearance's own chainage, CLEARANCE_MARGIN inside the bound). */
-  const missesClearance = (x: Solved, r: Range) => {
+  const hard = opt.hardClearance;
+  const missesClearance = (x: Solved, r: Range, onlyHard = false) => {
     for (let k = r.ka; k < r.kb; k++) for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
+      if (onlyHard && !hard![clrIdx[q]]) continue;
       const i = clrIdx[q], h = x.z[k] + (x.z[k + 1] - x.z[k]) * (clrX[q] - knotS[k]) / Dk(k) - g[i];
       if ((minH && h < minH[i] + CLEARANCE_MARGIN) || (maxH && h > maxH[i] - CLEARANCE_MARGIN)
         || (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN)) return true;
+    }
+    return false;
+  };
+  /** Whether a line misses a clearance the law demands (`hardClearance`) within range `r`. */
+  const missesHard = (x: Solved, r: Range) => !!hard && missesClearance(x, r, true);
+  const hardIn = (r: Range) => {
+    if (!hard) return false;
+    for (let q = clrStart[r.ka]; q < clrStart[r.kb]; q++) if (hard[clrIdx[q]]) return true;
+    return false;
+  };
+  /** Whether a line runs in a tunnel on an interval steeper than the tunnel limit (it pays the penalty), and
+   * whether such an interval's knot lies at the band's floor `floorPad` m under the ground envelope. */
+  const steepTunnel = (x: Solved, r: Range, floorPad = NaN) => {
+    const cap = opt.tunnelMaxGrade, portal = opt.portalDepth;
+    if (cap === undefined || portal === undefined) return false;
+    for (let k = r.ka; k < r.kb; k++) {
+      const slope = (x.z[k + 1] - x.z[k]) / Dk(k);
+      if (Math.abs(slope) <= cap + 1e-9 || costStart[k + 1] === costStart[k]) continue;
+      let deep = false;
+      for (let q = costStart[k]; q < costStart[k + 1] && !deep; q++) if (x.z[k] + slope * (cS[q] - knotS[k]) - cG[q] <= -portal) deep = true;
+      if (!deep) continue;
+      if (Number.isNaN(floorPad)) return true;
+      for (const kk of [k, k + 1]) if (!r.fixed.has(kk) && x.z[kk] <= gmin[kk] - floorPad + 2 * coarseGrid) return true;
     }
     return false;
   };
@@ -525,23 +562,43 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * clearance is weighed against the wide band's: the band only bounds the search, it must not decide
    * that a stream is left in a cutting where a deeper tunnel clears it for less. (Roads keep the normal
    * band: there the wide one also lands on the other side of near-ties, e.g. D35 stage 1 −1.1 bn and the
-   * whole D35 +0.4 bn, a search question of its own.)
+   * whole D35 +0.4 bn, a search question of its own. Exceptions, model 45: a road's line whose tunnel pays for being
+   * steeper than the tunnel limit at the band's floor, and a range holding a protected area's hard clearance that
+   * the normal band misses, take the wide band too.)
    */
   const coarse = (lut: CostLut, r: Range = ALL): Solved | null => {
     // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
     const passes = [[coarseGrid, pad], [coarseGrid, pad * 5], [fineGrid, pad]];
     if (hasPins) passes.push([0.5, pad]);
     const check = r === ALL ? okAll : ok;
+    // Where the law demands a clearance in the range (a protected area, `hardClearance`), a line that misses it is
+    // only a fallback while a wider band or the finer grid may meet it (its grade steps are half as large, which
+    // matters at the tunnel grade limit).
+    const lawful = hardIn(r);
+    let fallback: Solved | null = null;
     for (const [u, pd] of passes) {
       const x = solve(lut, opt.maxGradient, u, pd, null, r);
       if (!check(x)) continue;
+      if (lawful && missesHard(x, r)) { fallback ??= x; continue; }
+      // A line in a tunnel under the tunnel grade limit: a tunnel kept to it may run deeper than the normal band
+      // (the wide band's line is taken where it is cheaper), and the coarse grid's grade steps (twice the fine
+      // one's) may just miss the limit's line (the fine grid's line near it, where cheaper).
+      // (only where its tunnel pays for being steeper than the limit; the wide band only where that tunnel runs at
+      // the band's floor: there the band, not the price, held it up)
+      if (x.tunnelled && steepTunnel(x, r)) {
+        let best = x;
+        const better = (y: Solved | null) => { if (y && check(y) && y.cost < best.cost && !(lawful && missesHard(y, r))) best = y; };
+        if (pd === pad && steepTunnel(x, r, pd)) better(solve(lut, opt.maxGradient, u, pad * 5, null, r));
+        if (u > fineGrid && best.tunnelled && steepTunnel(best, r)) better(solve(lut, opt.maxGradient, fineGrid, FINE_BAND, best.z, r));
+        if (best !== x) return best;
+      }
       if (gentle && pd === pad && missesClearance(x, r)) {
         const wide = solve(lut, opt.maxGradient, u, pad * 5, null, r);
         if (check(wide) && wide.cost < x.cost) return wide;
       }
       return x;
     }
-    return null;
+    return fallback;
   };
   /** fine pass around a coarse line; keeps the coarse line if the fine one is not compliant */
   const refine = (lut: CostLut, c: Solved, r: Range = ALL): Solved => {
@@ -658,7 +715,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     for (const x of extra) add(x);
     add(r.ka); add(r.kb);
     for (const [k, v] of [...r.fixed].sort((a, b) => a[0] - b[0])) { add(k); add(v); }
-    add(zA); add(zB); add(L); add(nK); add(corrFrom); add(opt.maxGradient); add(opt.minCrest); add(opt.minSag); add(opt.vpiPenalty ?? NaN); add(pad);
+    add(zA); add(zB); add(L); add(nK); add(corrFrom); add(opt.maxGradient); add(opt.minCrest); add(opt.minSag); add(opt.vpiPenalty ?? NaN); add(pad); add(opt.portalDepth ?? NaN);
     // limits that vary along the road: their values on this range's knots
     for (let k = r.ka; k <= r.kb; k++) {
       if (opt.gradeAt && k < r.kb) add(opt.gradeAt(knotS[k], knotS[k + 1]));
@@ -675,8 +732,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     for (let q = clrStart[r.ka]; q < clrStart[r.kb]; q++) {
       const i = clrIdx[q];
       add(clrX[q]); add(g[i]); add(minH?.[i] ?? NaN); add(maxH?.[i] ?? NaN); add(opt.eitherH?.above[i] ?? NaN); add(opt.eitherH?.below[i] ?? NaN);
-      add(penaltyAt ? penaltyAt[i] : clearancePenalty);
+      add(penaltyAt ? penaltyAt[i] : clearancePenalty); add(hard?.[i] ?? 0);
     }
+    add(opt.tunnelMaxGrade ?? NaN); add(opt.tunnelHardGrade ?? NaN);
     return `${tag}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}:${count}`;
   }
 
@@ -706,8 +764,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       let pins = key ? memo!.get(key) as number[] | null | undefined : undefined;
       if (pins === undefined) {
         // a narrower band first (it only fixes the corridor), the full passes where that finds nothing
-        const w = gentle ? null : solve(pre, opt.maxGradient, coarseGrid, WINDOW_PAD, null, r, 2);
-        const c = w && ok(w) ? w : coarse(pre, r);
+        // (not where the law demands a clearance in the window: a protected area's tunnel lies deeper than the corridor)
+        const w = gentle || hardIn(r) ? null : solve(pre, opt.maxGradient, coarseGrid, WINDOW_PAD, null, r, 2);
+        const c = w && ok(w) && !missesHard(w, r) ? w : coarse(pre, r);
         // the corridor pass suffices: its heights are on the fine grid too
         pins = c ? [c.z[K - 1], c.z[K], c.z[K + 1]] : null;
         if (key) memo!.set(key, pins);
@@ -794,7 +853,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step = 1): Solved | null {
     const plain = solveIn(table, gmax, u, padM, around, range, step, false);
     if (!plain?.tunnel) return plain;
-    return solveIn(table, gmax, u, padM, around, range, step, true) ?? plain;
+    const t = solveIn(table, gmax, u, padM, around, range, step, true);
+    return t ? Object.assign(t, { tunnelled: true }) : plain;
   }
   function solveIn(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step: number, tunnelMode: boolean): Solved | null {
     const { ka, kb, fixed } = range;
@@ -923,6 +983,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     for (let t = 0; t < layers; t++) for (let zi = 0; zi <= zhi[ka] - zlo[ka]; zi++) cur[t * layerSize(ka) + zi * ndAt(ka) + dzMaxK[ka]] = 0;
     const parents: Int32Array[] = [];
     const seg = new Float64Array(ndMax), segIn = tunnelMode ? new Float64Array(ndMax) : seg;
+    // (in a tunnel mode with a tunnel grade limit: whether a grade's line runs in a tunnel anywhere in the interval,
+    // and whether it leaves it anywhere: the preference (Hessen Mobil 2006: any tunnel) holds for the first, the
+    // hard limit for intervals wholly in a tunnel, as only a long one has those (NV 264/2009: tunnels over 500 m))
+    const tunnelGrade = tunnelMode ? opt.tunnelMaxGrade : undefined, deepIn = new Uint8Array(ndMax), openIn = new Uint8Array(ndMax);
+    const deepX = (H_MAX - (opt.portalDepth ?? 0)) / H_STEP;
     const slopes = new Float64Array(ndMax);
     for (let k = ka; k < kb; k++) {
       const NDin = ndAt(k), ND = ndAt(k + 1), dzMax = dzMaxK[k], dzMaxIn = dzMaxK[Math.max(ka, k - 1)];
@@ -964,6 +1029,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         seg.fill(Infinity);
         for (let d2 = d2lo; d2 <= d2hi; d2++) seg[d2] = 0;
         if (tunnelMode) { segIn.fill(Infinity); for (let d2 = d2lo; d2 <= d2hi; d2++) segIn[d2] = 0; }
+        if (tunnelGrade !== undefined) { deepIn.fill(0); openIn.fill(0); }
         for (let q = c0; q < c1; q += step) {
           const dsq = cS[q] - sk, gi = cG[q] - cIn - cSlope * dsq, weight = step === 1 || q + 1 >= c1 ? cW[q] : cW[q] + cW[q + 1];
           const values = lut[oOpen[q]];
@@ -982,6 +1048,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
               const j = x | 0;
               const a = j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j);
               seg[d2] += a * weight;
+              if (tunnelGrade !== undefined) { if (x > deepX) openIn[d2] = 1; else deepIn[d2] = 1; }
               segIn[d2] += (inside === values ? a : j >= lutMax ? inside[lutMax] : inside[j] + (inside[j + 1] - inside[j]) * (x - j)) * weight;
             }
           }
@@ -1003,7 +1070,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             if (Math.abs(actual - p.z) > GRADE_PIN_TOLERANCE + 1e-9) { c = ci = Infinity; break; }
           }
           seg[d2] = c;
-          if (tunnelMode) segIn[d2] = ci;
+          // a line in a tunnel steeper than the tunnel limit pays for each 0.1 % over it per metre (a penalty, not a
+          // ban: the coarse grid's grade steps, or heights fixed at a block's ends, may leave no line exactly at it)
+          if (tunnelMode) segIn[d2] = tunnelGrade === undefined || !deepIn[d2] || Math.abs(slope) <= tunnelGrade + 1e-9 ? ci
+            : !openIn[d2] && opt.tunnelHardGrade !== undefined && Math.abs(slope) > opt.tunnelHardGrade + 1e-9 ? Infinity
+              : ci + (Math.abs(slope) - tunnelGrade) * 1000 * TUNNEL_STEEP_PENALTY * d;
         }
         // a line may enter or leave a tunnel here where the ground is shallower than a portal
         const free = tunnelMode && gKnot - (zm + cIn) < portalDepth;
@@ -1100,4 +1171,5 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
 }
 
 /** a DP solution: the VPIs, the objective and the elevation at every knot (NaN outside its range) */
-interface Solved { vpis: VPI[]; cost: number; z: Float64Array; /** a station-by-station line that takes a tunnel */ tunnel?: boolean }
+interface Solved { vpis: VPI[]; cost: number; z: Float64Array; /** a station-by-station line that takes a tunnel */ tunnel?: boolean;
+  /** found by the tunnel mode */ tunnelled?: boolean }

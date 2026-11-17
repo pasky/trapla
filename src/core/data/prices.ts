@@ -136,10 +136,16 @@
  * direct-80 −25, direct-90 −125, town-centre −100 (tracks whose parts still reach the network closed instead of
  * rerouted, tracks beside a bridge led under it; the straight design's junction approach over the Trutnov level
  * crossing cleared by the grade).
- * 45: a piece of a cut way that is only a short stub serving nothing (≤ 100 m over the network, no house within 30 m:
+ * 45: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
+ * sites, national parks and CHKO zones I–II (over them on a bridge with no supports inside, under them mined);
+ * tunnels kept to 3 %, never steeper than 5 % (NV 264/2009, research/73). D11 frozen unchanged; d35 stage-1
+ * 19,203 → 20,084 M (a 3.2 km tunnel under Pod skálou), d35 road 6,590 → 9,468, d35-full 32,738 → 34,414, D3
+ * motorway 14,446 → 15,248 (the Sázava bridge's piers out of the Natura 2000 river), d3-full 38,077 → 36,530.
+ * 46: a piece of a cut way that is only a short stub serving nothing (≤ 100 m over the network, no house within 30 m:
  * PROVISIONAL) is left as it is instead of given a new road; fill faces drawn as billed (sections.ts face samples).
- * D11 frozen −5 … +12 M (best +12: the grade solve takes another near-tie). */
-export const COST_MODEL_VERSION = 45;
+ * A crossing other cut ways are led to is never closed or led under our bridge itself (it carries them). D11 frozen
+ * 0 … +10 M. */
+export const COST_MODEL_VERSION = 46;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -232,6 +238,15 @@ export const TUNNEL_RULES = {
    * at 1.8 km with the equipment share held): 0.957 at 1 km, 0.935 at 2 km. Beyond 2 km no data (ventilation and
    * control-centre steps from 3 km): held at `min` (research/64). */
   lengthFactor: { a: 0.913, b: 43.7, min: 0.92 },
+  /** NV 264/2009 Sb. annex 2.2 (EU Directive 2004/54/EC annex I §2.2): "V nových tunelech nesmí být podélný sklon
+   * větší než 5 %, kromě případů, kde prostorové podmínky neumožňují jiné řešení"; "V tunelech o sklonu větším než
+   * 3 % se na základě analýzy rizik musí přijmout dodatečná nebo zesílená opatření ke zvýšení bezpečnosti". Hessen
+   * Mobil 2006 §3.1.6: "das Längsgefälle sollte 3 % nicht überschreiten" (research/73 §3). Auto keeps its tunnels
+   * within `autoMaxGrade`; above it a note, above `maxGrade` a problem. */
+  autoMaxGrade: 0.03,
+  maxGrade: 0.05,
+  /** NV 264/2009 is the act on tunnels longer than 500 m: the note and the problem are for those, m */
+  gradeFromLength: 500,
 };
 
 /**

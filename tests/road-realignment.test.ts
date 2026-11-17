@@ -161,6 +161,22 @@ describe('bounded real road relocation', () => {
     expect(planRoadRealignment(input).problems).toContain('path intersects water/rail'); // unchanged XY is not unchanged railway clearance
   });
 
+  it('does not rebuild a road through a nature monument (research/75), but may through its protection zone', () => {
+    const input = setup();
+    input.cells = [{ x: 500, y: 250, i: 40, s: 400, tx: 1, ty: 0, along: 20, left: 20, right: 20 }];
+    input.grid = new FootprintGrid(input.cells);
+    input.hit = { a: 458, b: 502, i: 40, j: 40 };
+    const ground = (x: number) => 100 + Math.max(0, Math.min(12, (x - 480) * 0.6));
+    const base = syntheticTerrain(260, 100, 5, ground);
+    assertClear(planRoadRealignment({ ...input, terrain: base }), input.cells);
+    const rect = (x0: number, y0: number, x1: number, y1: number) => [x0, y0, x1, y0, x1, y1, x0, y1];
+    const withArea = (kind: 'PP' | 'OP') => new Terrain({ nx: base.nx, ny: base.ny, cell: base.cell, base: 0, scale: 0.01,
+      q: Uint16Array.from({ length: base.nx * base.ny }, (_, k) => Math.round(ground(((k % base.nx) + 0.5) * base.cell) / 0.01)), lc: new Uint8Array(base.nx * base.ny),
+      protectedAreas: { version: 1, source: 'test', sites: [{ kind, of: kind === 'OP' ? 'PP' : undefined, name: 'Mon', rings: [rect(380, 255, 620, 300)] }] } });
+    expect(planRoadRealignment({ ...input, terrain: withArea('PP') }).problems).toContain('path enters a protected nature area');
+    expect(planRoadRealignment({ ...input, terrain: withArea('OP') }).problems).not.toContain('path enters a protected nature area');
+  });
+
   it('prices a distinct T-arm into a complete outside-grid crossing ramp and preserves its engineered elevation', () => {
     const input = setup([[0, 500, 260, 700, 310], [0, 500, 100, 500, 400]]);
     input.hit = { a: 0, b: 50, i: 40, j: 42 };

@@ -98,7 +98,7 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
     if (m.role === 'preview' && m.port) m.port.onmessage = (e: MessageEvent<Result[]>) => {
       if (ctx) for (const r of e.data) adoptFull(ctx.terrain, r);
     };
-    const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc, ground: m.ground, watercourses: m.watercourses });
+    const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc, ground: m.ground, watercourses: m.watercourses, protectedAreas: m.protectedAreas });
     ctx = {
       terrain, scenario: m.scenario, a: m.a, b: m.b, buildings: new BuildingIndex(m.buildings, m.binfo),
       roads: m.net ? new RoadNet(m.net) : undefined, ...(m.junctions?.length ? { junctions: m.junctions } : {}),

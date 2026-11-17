@@ -20,7 +20,7 @@ import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls
 import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
-import { KIND } from '../core/structures';
+import { KIND, TUNNEL_TOO_STEEP, tunnelGrade } from '../core/structures';
 import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
@@ -145,6 +145,8 @@ export class Inspector {
     maxRadius: (i: number) => number | null;
     /** a radius the editor lowered to fit during a drag (ui/radius-notes.ts): what was set */
     radiusNote?: (i: number, r: number | null) => { from: number; to: number } | null;
+    /** notes where our works on km s0…s1 stand in a protected area that allows them on conditions (ui/nature-notes.ts) */
+    natureNotes?: (r: Result, d: Design, s0: number, s1: number) => string[];
     /** a house heard by two or more roads and decided once for the project: its project receiver and the
      * roads' names (null: decided by one road alone, or the project is not priced) */
     together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
@@ -382,7 +384,12 @@ export class Inspector {
       const cc = tunnel.cutCoverM ?? 0, mined = Math.max(0, tunnel.length - cc);
       const how = [mined > 0 ? `mined ${m0(mined)}` : '', cc > 0 ? `cut and cover ${m0(cc)}${mined > 0 ? ' at its ends' : ''}` : '',
         (tunnel.tubes ?? 1) >= 2 ? 'two tubes (heavy traffic)' : (tunnel.tubes ?? 1) > 1 ? 'with an escape tunnel beside it' : ''].filter(Boolean).join(' · ');
-      method = `<div class="sub">${cap(how)}</div><div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
+      const steep = tunnel.length > TUNNEL_RULES.gradeFromLength ? tunnelGrade(tunnel, r.grade, r.ds) : 0;
+      const steepNote = steep > TUNNEL_RULES.maxGrade + 1e-6 && !r.violations.some((v) => v.s0 === tunnel.s0 && v.title === TUNNEL_TOO_STEEP)
+        ? `<div class="sub">Up to ${(steep * 100).toFixed(1)} % steep: a tunnel steeper than ${TUNNEL_RULES.maxGrade * 100} % is allowed only where the ground leaves no other way, with extra safety measures.</div>`
+        : steep > TUNNEL_RULES.autoMaxGrade + 1e-6 && steep <= TUNNEL_RULES.maxGrade + 1e-6
+          ? `<div class="sub">Up to ${(steep * 100).toFixed(1)} % steep: a tunnel steeper than ${TUNNEL_RULES.autoMaxGrade * 100} % needs extra safety measures after a risk study.</div>` : '';
+      method = `<div class="sub">${cap(how)}</div>${steepNote}<div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
     }
     // a bridge: its style as a choice, each with its price against this one
     const bridge = sel.piece === 'bridge' ? r.runs.find((q) => q.kind === KIND.bridge && q.s1 > s0 && q.s0 < s1) : undefined;
@@ -407,7 +414,7 @@ export class Inspector {
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
-      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
+      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', this.structureOptions(r, sel.piece, s0, s1, mine), active)}
       ${method}

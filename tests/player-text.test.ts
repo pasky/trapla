@@ -31,7 +31,7 @@ describe('player-facing text', () => {
     expect(crossingOutcome({ type: 'diversion', cls: 'track', linkLength: 412, targetS: 2310 }).label)
       .toBe('Rerouted to the nearest crossing at km 2.31 (+412 m of new track)');
     for (const action of ['relocation', 'retaining-wall', 'culvert', 'channel-relocation', 'blocked'] as const)
-      for (const feature of ['road', 'railway', 'water', 'stream'] as const) {
+      for (const feature of ['road', 'railway', 'water', 'stream', 'nature'] as const) {
         const o = footprintOutcome({ feature, action, cls: 'service', length: 50, affectedLength: 20 });
         for (const text of [o.tag, o.label, o.explain]) check(`footprint ${action}/${feature}`, text);
       }
