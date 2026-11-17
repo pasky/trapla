@@ -134,7 +134,11 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable, ownTrack); memo.set(key, height); }
     return height;
   };
-  const blocked = (s: number, pier = false) => obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
+  /** the bridge being laid out: no pier on the cones in front of its abutments (abutment-cone.ts), 0.5 m clear */
+  let cones: { s0: number; s1: number; reach: [number, number] } | undefined;
+  const onCone = (s: number) => !!cones && (s < cones.s0 + cones.reach[0] + 0.5 || s > cones.s1 - cones.reach[1] - 0.5);
+  const blocked = (s: number, pier = false) => (pier && onCone(s))
+    || obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
   const heldRun = (run: { i0: number; i1: number }) => {
     if (!held) return false;
     for (let i = run.i0; i <= run.i1; i++) if (!held[i]) return false;
@@ -356,6 +360,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   };
   for (const run of runs) {
     if (run.kind !== KIND.bridge || heldRun(run)) continue;
+    cones = run.coneReach && (run.coneReach[0] > 0 || run.coneReach[1] > 0) ? { s0: run.s0, s1: run.s1, reach: run.coneReach } : undefined;
     const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
     // The player chooses a bridge, not its piers: only a given support arrangement stays fixed.
     const fixedSupports = isManual && run.pierStations !== undefined;
@@ -526,6 +531,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         detail: 'To keep its supports off the roads, railways or water below, this bridge has a long span; a long span needs a deeper deck, which eats into the clearance.' });
     }
   }
+  cones = undefined;
   return { kind, runs, diagnostics, violations,
     clearanceRequirements: Array.from(requiredElevations, ([s, z]) => ({ s, z })) };
 }

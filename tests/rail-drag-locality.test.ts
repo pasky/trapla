@@ -23,8 +23,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // the plan moved from km 4.4 on; up to km 1.75 the grade is the starter's (beyond it, the cut before the
     // tunnel of km 1.98–4.5 and that tunnel follow its far end, which the drag moved: one structure)
     for (let s = 0; s <= 1750; s += 50) expect(Math.abs(at(r, s) - at(r0, s))).toBeLessThan(0.1);
-    // the track at km 6.29, too steep for a bridge over our cutting or a reroute, passes under our bridge
+    // the track at km 6.29, too steep for a bridge over our cutting or a reroute, passes under our railway: under
+    // our bridge, or (since cost model 39, the bridge's ends on fills with their cones) through a box in our embankment
     const track = r.crossings.find(c => c.roadId === 3637);
-    expect(track?.type).toBe('bridge');
+    expect(['bridge', 'underpass']).toContain(track?.type);
   }, 120_000);
 });

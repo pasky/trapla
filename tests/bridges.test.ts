@@ -52,6 +52,19 @@ describe('geometry-priced bridges', () => {
     }
   });
 
+  it('builds no open cut deeper than designers cut (a tunnel, whatever the price); the player may paint one', () => {
+    const n = 40, h = Float64Array.from({ length: n }, (_, i) => -40 * Math.sin(Math.PI * i / (n - 1)));
+    const input = { ds: 10, h, earthPerM: new Float64Array(n).fill(100), bridgePerM: 1e6, tunnelPerM: 1e6, deepCut: 30 };
+    const runs = chooseStructures(input).runs;
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ kind: KIND.tunnel, forced: true });
+    expect(runs[0].deepCut?.depth).toBeCloseTo(-Math.min(...h), 6);
+    expect(chooseStructures({ ...input, deepCut: undefined }).runs).toEqual([]);
+    const paint = chooseStructures({ ...input, overrides: new Int8Array(n).fill(KIND.earth) });
+    expect(paint.runs).toEqual([]);
+    expect(paint.violations).toEqual([]);
+  });
+
   it('rejects a locally cheap but fixed-cost-expensive run, while preserving forced and painted bridges', () => {
     const n = 13, input = { ds: 10, h: new Float64Array(n).fill(20),
       earthPerM: new Float64Array(n).fill(200), bridgePerM: 100, tunnelPerM: 1e6,

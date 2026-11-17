@@ -26,6 +26,19 @@ describe('side slopes (research/48)', () => {
     expect(sideSection(-15, 4.75, tpl, () => 0).rockFace).toBe(0); // unmapped ground: no rock assumed
   });
 
+  it('rock by its kind (research/67 §3): fast-weathering rock like soil, phyllite / interbeds 5:4, Cretaceous sandstone 2:1, the rest 4:1', () => {
+    const at = (key: string) => sideSection(-15, 4.75, tpl, () => 0, { key, classIto: 1, classIIto: 3 });
+    // claystone / siltstone: the soil slope all the way, no rock face (no presplit, no net)
+    expect(at('perm_fine').day).toBeCloseTo(4.75 + 1.75 * 15 + 2, 6);
+    expect(at('perm_fine').rockFace).toBe(0);
+    // interbedded claystone sequence: 5:4 faces, too flat to net
+    expect(at('carb_mixed').day).toBeCloseTo(4.75 + 0.8 * 12 + 2 + 1.75 * 3, 6);
+    expect(at('carb_mixed').rockFace).toBe(0);
+    // Cretaceous sandstone 2:1, netted and presplit
+    expect(at('cret_sand').rockFace).toBeCloseTo(12 * Math.hypot(1, 0.5), 6);
+    expect(at('gneiss').day).toBeCloseTo(4.75 + 0.25 * 12 + 2 + 1.75 * 3, 6);
+  });
+
   it('a slope stopped short (a wall) reports its own surface there', () => {
     const s = sideSection(10, 4.75, tpl, () => 0, undefined, 4.75 + 9);
     expect(s.zSlope).toBeCloseTo(10 - 4 - 3 / 1.75, 6); // a 10 m fill: 1:1.5 down to 6 m, then 1:1.75

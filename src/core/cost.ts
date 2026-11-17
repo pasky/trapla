@@ -206,6 +206,11 @@ export interface StationCostInput {
   extraRoadPerM?: ArrayLike<number>;
   /** 1 = a tunnel cell built cut and cover (structures.ts cutCoverMask) */
   cutCover?: ArrayLike<number>;
+  /** The cones of fill in front of the abutments (abutment-cone.ts): their fill, m³, in the earth cell beside each
+   * bridge end (it is the end of that embankment), and their paving and toe sill, CZK, in the bridge's end cell
+   * (the bridge object, as a bill of quantities has it). */
+  coneFill?: ArrayLike<number>;
+  conePaving?: ArrayLike<number>;
 }
 
 /**
@@ -234,6 +239,7 @@ export function costParts(inp: StationCostInput): CostParts {
       if (r.regradeM3) { parts.bridges[r.i0] += r.regradeM3[0] * EXCAVATION_BY_CLASS.II; parts.bridges[r.i1] += r.regradeM3[1] * EXCAVATION_BY_CLASS.II; }
     }
   }
+  if (inp.conePaving) for (let i = 0; i < n; i++) parts.bridges[i] += inp.conePaving[i];
   // volumes per cell
   const cutV = new Float64Array(n), fillV = new Float64Array(n);
   let cut = 0, fill = 0;
@@ -241,7 +247,7 @@ export function costParts(inp: StationCostInput): CostParts {
     if (inp.kind[i] !== KIND.earth) continue;
     const len = cellLength(i, n, ds);
     cutV[i] = (inp.cutI[i] + inp.cutII[i] + inp.cutIII[i]) * len;
-    fillV[i] = inp.fill[i] * len;
+    fillV[i] = inp.fill[i] * len + (inp.coneFill?.[i] ?? 0);
     cut += cutV[i]; fill += fillV[i];
   }
   const h = inp.haul;

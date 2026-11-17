@@ -50,6 +50,7 @@ import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from '
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { planPis, planSpeeds } from './plan-speeds';
+import { abutmentCone, CONE, coneReach, conePavingCost, type AbutmentCone } from './abutment-cone';
 import { carryCrossingPrices, keptOwnHeights, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { LOWERING_RULES } from './data/remedies';
@@ -211,6 +212,8 @@ export interface Result {
   /** Slowed bends whose curve is a faster speed's, where that fits (plan-speeds.ts): that speed, per bend (null:
    * its own); absent where none. */
   planSpeeds?: (number | null)[];
+  /** the cones of fill in front of the abutments of bridges ending in a fill (abutment-cone.ts): drawn, billed */
+  cones?: AbutmentCone[];
 }
 
 export interface EvalOptions {
@@ -911,7 +914,9 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   mustBridge.sort((a, b) => a.s - b.s);
   lap('stations');
   const widen = hairpinWidening(al, d.pis, d.category, st.s); // a hairpin's widened lanes
-  return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, win, al, maxGradient, st, n, ds,
+  // (Auto's deepest open cut: roads and motorways, STRUCTURE_RULES.deepCut)
+  const deepCut = cat.mode === 'railway' ? undefined : STRUCTURE_RULES.deepCut;
+  return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, win, al, maxGradient, st, n, ds, deepCut,
     manualStructures, cutMethod, bridgeStyle, heldDeck, choiceDeck, crossingOverrides, ground, groundIds, groundProfiles, groundPackIds,
     groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
     mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
@@ -929,7 +934,7 @@ interface BalanceSamples {
 function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
   const { cat, scenario, costClasses, water, waterGround, blocks, ds, terrain, groundPackIds, groundProfiles, al,
     roadX, mustBridge, fullAlignment, sideHits, rawRoadX, crossingOverrides, vlim, crossingCost, forceWater,
-    forceParallelWater, roadG, tunnelWater } = setup;
+    forceParallelWater, roadG, tunnelWater, deepCut } = setup;
   const mk = cat.markup;
   /** a tunnel's tubes and escape provision for its length (NV 264/2009) */
   const tunnelFactor = (length: number) => tunnelTubeFactor(cat, length, scenario.traffic);
@@ -1045,6 +1050,9 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
       const underWater = waterPrice.tunnel ? -h >= STRUCTURE_RULES.tunnelMinDepth ? tunnel : cutCoverPerM(h, !!town) : 0;
       if (waterPrice.tunnel) earth = underWater + 1e7;
       if (kind === KIND.earth) return earth;
+      // deeper than designers cut (STRUCTURE_RULES.deepCut): no open line for Auto, a tunnel (the search keeps
+      // CLEARANCE_MARGIN inside the limit, as inside a clearance: its samples and curves are not the stations')
+      if (deepCut !== undefined && -h > deepCut - CLEARANCE_MARGIN) earth = tunnel + 1e7;
       // (an open line under a stream that needs a tunnel: the earthwork's price, unavailable)
       if (waterPrice.tunnel && kind !== PROFILE_KIND.open) return underWater;
       if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return bridgeCost;
@@ -1138,7 +1146,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
         else must[k] = 1;
       });
     }
-    const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, tunnelRate, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
+    const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, tunnelRate, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides, deepCut,
       bridgeRunCost: equalSpanRunCost(bridge, hh, bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i]))) };
     const firstChoice = chooseStructures(input);
     forceWater(must, S, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
@@ -1474,7 +1482,7 @@ function routeCaches(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
 function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>) {
   const { timing, st, water, terrain, n, preview, manualStructures, lap, w, ds, ground, waterAt,
     crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG,
-    crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod, bridgeStyle, choiceDeck } = setup;
+    crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod, bridgeStyle, choiceDeck, deepCut } = setup;
   const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, tunnelFactor, tunnelRate, surT, roadS, balanceTolerance,
     usable } = prices;
   const { sectionMemo, work, wideHitL, wideHitR, wideHits, hitsAt, retainingMemo, wallable, coverLeft, coverRight,
@@ -1649,7 +1657,26 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
   // a cutting whose side slope never reaches the top of the hillside (sections.ts `open`) cannot be dug: a tunnel
   for (let i = 0; i < n; i++) if (sec.open[i] && -h[i] >= STRUCTURE_RULES.portalDepth) forcedTunnel[i] = 1;
-  const priceRun = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width), runCost = equalSpanRunCost(bridge, h, priceRun);
+  const priceRun = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width), spanCost = equalSpanRunCost(bridge, h, priceRun);
+  // A bridge end in a fill: the cone in front of its abutment (abutment-cone.ts). How far it reaches into the
+  // bridge from the outer edge of end cell j (`into`: the direction into the bridge), on the stations' ground.
+  const groundAlong = (x: number) => { const f = Math.max(0, Math.min(n - 1 - 1e-9, x / ds)), k = Math.floor(f); return ground[k] + (ground[Math.min(n - 1, k + 1)] - ground[k]) * (f - k); };
+  const coneReachAt = (j: number, into: number) => {
+    const edge = st.s[j] - into * ds / 2, top = grade[j] - CONE.deckDepth;
+    return top - groundAlong(edge) < 0.5 ? 0 : coneReach(top, u => groundAlong(edge + into * u), al.length);
+  };
+  /** what the structure choice weighs for a run's cones: their fill on level ground (a 1:1.5 prism across the crest
+   * and two quarter cones, research/68 §4) at the starting fill value, and their paving, CZK */
+  const coneFillPrice = blockDecision(MATERIAL_VALUE.start).fillPerM3 * (1 + surE(0));
+  const coneEnd = (j: number, into: number) => {
+    const k = j - into, hh = grade[j] - CONE.deckDepth - groundAlong(st.s[j] - into * ds / 2);
+    if (k < 0 || k >= n || hh < 0.5) return 0;
+    const width = cat.crownWidth + 2 * CONE.paveMargin;
+    return (0.75 * cat.crownWidth * hh * hh + Math.PI / 12 * (CONE.slope * hh) ** 2 * hh * 2) * coneFillPrice
+      + conePavingCost({ paved: width * Math.hypot(CONE.slope * hh, hh), sill: width }) * (1 + surB(0));
+  };
+  const coneEstimate = (i0: number, i1: number) => coneEnd(i0, 1) + coneEnd(i1, -1);
+  const runCost = (i0: number, i1: number, length: number) => spanCost(i0, i1, length) + (preview ? 0 : coneEstimate(i0, i1));
   const styles = { asked: bridgeStyle, price: priceRun as BridgePrice, arch: !preview,
     mayPay: (top: number, length: number, layout: BridgeLayout) => longMayPay(bridge, top, length, layout) };
   const widths = Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]);
@@ -1670,7 +1697,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
         + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
     }
     const forcedAt = forced.slice();
-    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, cutCoverExtraPerM, tunnelFactor, tunnelRate, cutMethod, forced: forcedAt, forcedTunnel, overrides: selectionOverrides, ...(heldDeck ? { held: heldDeck } : {}),
+    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, cutCoverExtraPerM, tunnelFactor, tunnelRate, cutMethod, forced: forcedAt, forcedTunnel, overrides: selectionOverrides, ...(heldDeck ? { held: heldDeck } : {}), deepCut,
       bridgeRunCost: noBridgeAny ? (i0: number, i1: number, length: number) => noBridge.subarray(i0, i1 + 1).some(Boolean) && !forcedAt.subarray(i0, i1 + 1).some(Boolean) ? Infinity : runCost(i0, i1, length) : runCost };
     let chosen = chooseStructures(input);
     // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
@@ -1680,6 +1707,34 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
       const before = forcedAt.slice();
       forceWater(forcedAt, st.s, h, widths, chosen.kind);
       if (pass && forcedAt.every((v, i) => v === before[i])) break;
+      chosen = chooseStructures(input);
+    }
+    // An abutment whose cone would reach past the longest end span (CONE.maxEndSpan) stands further out, where the
+    // fill is lower: the bridge goes on (Auto's ends only).
+    if (!preview) for (let pass = 0; pass < 4; pass++) {
+      let more = false;
+      for (const r of chosen.runs) if (r.kind === KIND.bridge) for (const [end, out] of [[r.i0, -1], [r.i1, 1]] as const) {
+        let j = end;
+        while (j + out > 0 && j + out < n - 1 && manualStructures[j + out] < 0 && h[j + out] > 0 && coneReachAt(j, -out) > CONE.maxEndSpan) { j += out; forcedAt[j] = 1; more = true; }
+      }
+      if (!more) break;
+      chosen = chooseStructures(input);
+    }
+    // Between two bridges, an embankment that costs more than bridging the gap, its two cones counted, is not built:
+    // one bridge (Auto's gaps only).
+    if (!preview) for (let pass = 0; pass < 3; pass++) {
+      let more = false;
+      const bridges = chosen.runs.filter(r => r.kind === KIND.bridge);
+      for (let q = 1; q < bridges.length; q++) {
+        const a = bridges[q - 1].i1, z = bridges[q].i0;
+        let earth = coneEnd(a, -1) + coneEnd(z, 1), deck = 0, open = z > a + 1;
+        for (let k = a + 1; k < z && open; k++) {
+          if (chosen.kind[k] !== KIND.earth || manualStructures[k] >= 0 || h[k] <= 0) open = false;
+          earth += earthPerM[k] * cellLength(k, n, ds); deck += bridgePerM[k] * cellLength(k, n, ds);
+        }
+        if (open && deck < earth) { for (let k = a + 1; k < z; k++) forcedAt[k] = 1; more = true; }
+      }
+      if (!more) break;
       chosen = chooseStructures(input);
     }
     const balances = new Array<number>(nbS).fill(0);
@@ -1724,7 +1779,12 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   let settled = settle(), selection = settled.selection;
   work('selection', selectionStart);
   let supportStart = performance.now();
-  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+  // (the cones in front of the abutments: no pier on them, support-layout)
+  const withCones = (sel: ReturnType<typeof chooseStructures>) => {
+    if (!preview) for (const r of sel.runs) if (r.kind === KIND.bridge) r.coneReach = [coneReachAt(r.i0, 1), coneReachAt(r.i1, -1)];
+    return sel;
+  };
+  let supported = remedyBridgeSupports({ ...st, grade, ground, ...withCones(selection), crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
   work('support', supportStart);
   // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
   // within the limit reaches past them) is no option there: choose again without it.
@@ -1739,7 +1799,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     settled = settle(); selection = settled.selection;
     work('selection', again);
     supportStart = performance.now();
-    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+    supported = remedyBridgeSupports({ ...st, grade, ground, ...withCones(selection), crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
   const unlifted = choiceDeckOf(opts, choiceDeck);
@@ -1753,6 +1813,13 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     // Deck above ground; the abutment cell itself may stand in a shallow cut (support-layout).
     const abutment = Math.round((issue.targetS + (issue.targetS < issue.s ? ds : -ds) / 2) / ds);
     for (let i = a; i <= b; i++) supportHeights.push({ s: st.s[i], z: ground[i] + 0.15 - (i === abutment ? SUPPORT_LIMITS.abutmentCutM : 0) });
+  }
+  // A cut just past Auto's deepest (STRUCTURE_RULES.deepCut) over a ridge narrower than the grade search's samples
+  // (it could not see it): the line is lifted there rather than tunnelled.
+  if (deepCut !== undefined) for (const run of supported.runs) if (run.kind === KIND.tunnel && run.deepCut) {
+    const deep: number[] = [];
+    for (let i = run.i0; i <= run.i1; i++) if (-h[i] > deepCut && manualStructures[i] < 0) deep.push(i);
+    if (deep.length && (deep[deep.length - 1] - deep[0]) * ds < DEEP_RIDGE) for (const i of deep) supportHeights.push({ s: st.s[i], z: ground[i] - deepCut + 0.05 });
   }
   work('engineering', engineeringStart);
   return { prof, grade, waterZ, sec, retention,
@@ -1908,7 +1975,7 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
  * earth, width and land cover per station, earthworks (volumes, mass haul, cut classes). */
 function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setup: ReturnType<typeof routeSetup>, lifting: ReturnType<typeof routeLift>, caches: ReturnType<typeof routeCaches>, prices: ReturnType<typeof routePrices>) {
   const { engineering, liftShared, oob } = lifted;
-  const { preview, cat, maxGradient, ds, al, n, lap, cutMethod } = setup;
+  const { preview, cat, maxGradient, ds, al, n, lap, cutMethod, heldDeck, fullAlignment, win } = setup;
   const { lift } = lifting;
   const { urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre } = caches;
   const { b, usable } = prices;
@@ -1955,8 +2022,21 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   }
   lap('structures');
 
+  // --- the cones of fill in front of the abutments (abutment-cone.ts): their fill joins the embankment beside
+  // each bridge end (and the mass balance), their paving the bridge ---
+  const cones: AbutmentCone[] = [];
+  const coneFill = new Float64Array(n), conePaving = new Float64Array(n);
+  if (!preview) for (const r of runs) if (r.kind === KIND.bridge && !(heldDeck && heldDeck[r.i0] && heldDeck[r.i1])) for (const [i, into, s] of [[r.i0, 1, r.s0], [r.i1, -1, r.s1]] as const) {
+    const earthCell = i - into;
+    if (earthCell < 0 || earthCell >= n || kind[earthCell] !== KIND.earth) continue;
+    const p = pointAt(fullAlignment, s + (win?.s0 ?? 0)), zf = elevations(prof, [s])[0];
+    const c = abutmentCone(setup.terrain, { s, x: p.x, y: p.y, tx: p.tx * into, ty: p.ty * into, i, earthCell }, zf, cat.crownWidth / 2, b / 2);
+    if (!c) continue;
+    cones.push(c); coneFill[earthCell] += c.volume; conePaving[i] += conePavingCost(c);
+  }
   // --- earthworks ---
   const vol = volumes(ds, sec.cut, sec.fill, kind, usable);
+  for (const c of cones) { vol.fill += c.volume; for (let k = c.earthCell; k < n; k++) vol.mass[k] -= c.volume; }
   const mh = massHaul(ds, vol.mass, vol.cut * usable, vol.fill);
   let footprint = 0, forestArea = 0, urbanLength = 0;
   const cutByClass: [number, number, number] = [0, 0, 0];
@@ -1971,7 +2051,7 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   lap('earthworks');
   return { prof, grade, waterZ, sec, retention, h, geotechnicalPerM, culverts, engineeredCrossings, structureValue,
     kind, runs, cutCover, structureViolations, retainingWalls, channelRelocations, width, urban, forest, vol, mh,
-    footprint, forestArea, urbanLength, cutByClass };
+    footprint, forestArea, urbanLength, cutByClass, cones, coneFill, conePaving };
 }
 
 /** A design pass, 3: buildings under the works (slope to slope at grade, the deck strip under bridges):
@@ -2222,7 +2302,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   const { bld, gone, keptIds, manualBuys, buildingCost, buildingViolations, demolished, kept } = houses;
   const { kind, grade, sec, runs, urban, h, mh, width, forest, geotechnicalPerM, culverts, structureViolations,
     prof, waterZ, retainingWalls, retention, vol, cutByClass, footprint, forestArea, urbanLength,
-    structureValue, cutCover } = quantities;
+    structureValue, cutCover, cones, coneFill, conePaving } = quantities;
   const { usable } = prices;
   const { pinViolations, profileFeasible, materialValue } = solved;
   const { oob, vpis } = lifted;
@@ -2289,7 +2369,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
     width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea, additionalLand: remedyLand,
-    cutCover,
+    cutCover, ...(cones.length ? { coneFill, conePaving } : {}),
     ...(widen ? { extraRoadPerM: Float64Array.from(widen, v => 2 * v * hairpinPavementPerM2(d.category)) } : {}),
   });
   const cost = sumParts(parts);
@@ -2412,7 +2492,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   return {
     length: al.length, ds, n, s: st.s, x: st.x, y: st.y, tx: st.tx, ty: st.ty, ground, grade, kind,
     geology: { ids: groundIds, profiles: groundProfiles },
-    cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
+    cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs, ...(cones.length ? { cones } : {}),
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     ...(roadX.some(c => c.members?.length) ? { mergedWays: roadX.flatMap(c => (c.members ?? []).map(m => m.way)) } : {}),
@@ -2641,6 +2721,9 @@ const STRICT_RETRY_REACH = 300;
 const WEAVE_SETBACK = 3;
 /** regula-falsi steps after the bracket when settling the fill value on a fixed grade line */
 const SETTLE_EVALS = 4;
+/** the grade search samples its cost every DP_STATION_STEP (autoprofile.ts, 20 m): a cut past STRUCTURE_RULES.deepCut
+ * over less than that is one it could not see (lifted, not tunnelled), m */
+const DEEP_RIDGE = 20;
 
 /** Stations where the mapped railway under us is the track we join or rebuild (EvalOptions.railTieIn):
  * the station areas at both ends, and stretches where our axis runs along it (three consecutive stations

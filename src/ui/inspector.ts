@@ -12,6 +12,7 @@ import { CATEGORIES } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, horizontalRules, speedNorms } from '../core/data/norms';
 import { autoRadius } from '../core/horizontal';
 import { BRIDGE_STYLES } from '../core/data/bridges';
+import { conePavingCost } from '../core/abutment-cone';
 import { bendSpeed, bendSpeedChoices, bendStretch, hairpinSpeed } from '../core/design-speed';
 import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
@@ -19,7 +20,7 @@ import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
 import { KIND } from '../core/structures';
-import { TUNNEL_RULES } from '../core/data/prices';
+import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
@@ -265,6 +266,16 @@ export class Inspector {
     return `<div class="seg choice" id="${id}" role="group">${options.map(([v, label, title]) =>
       `<button type="button" ${attr}="${v}" class="${active === v ? 'on' : ''}" aria-pressed="${active === v}" title="${esc(title)}">${label}</button>`).join('')}</div>`;
   }
+  /** the structure choices, Earthwork with what an open cut would cost against Auto's tunnel where a cut would be
+   * deeper than designers cut (Run.deepCut) */
+  private structureOptions(r: Result, piece: string | undefined, s0: number, s1: number, mine: boolean): [string, string, string][] {
+    const deep = !mine && piece === 'tunnel' ? r.runs.find((q) => q.kind === KIND.tunnel && q.s1 > s0 && q.s0 < s1 && q.deepCut)?.deepCut : undefined;
+    if (!deep) return STRUCTURE_OPTIONS;
+    const diff = deep.earth - deep.tunnel;
+    return STRUCTURE_OPTIONS.map(([v, label, title]) => v === '0'
+      ? [v, `${label} <small>${diff >= 0 ? '+' : '−'}${czk(Math.abs(diff)).replace(' CZK', '')}</small>`, `An open cut instead, up to ${deep.depth.toFixed(0)} m deep: about ${czk(Math.abs(diff))} ${diff >= 0 ? 'more' : 'less'} (key E)`] as [string, string, string]
+      : [v, label, title]);
+  }
   private moreToggle() { return `<button type="button" class="more-t" aria-expanded="${this.more}">${this.more ? 'Less ▴' : 'More ▾'}</button>`; }
   /** violations about this thing: title, short fix, and fix buttons */
   private issues(list: { v: Violation; fixes: string }[]) {
@@ -318,7 +329,9 @@ export class Inspector {
       // of the player's lets Auto set the height again for it (so its figures may differ from before)
       // (the method or style the player chose on Auto's tunnel or bridge leaves it Auto's: said with the choice)
       const cutChosen = sel.piece === 'tunnel' && r.runs.some((q) => q.kind === KIND.tunnel && q.s1 > s0 && q.s0 < s1 && q.method === 'cut');
-      why = mine ? (d.profileMode === 'auto' ? 'Your choice; Auto set the road height for it.' : 'Your choice.') : cutChosen ? 'Auto’s tunnel, built by cut and cover as you chose.' : water ? `Auto: bridges the ${esc(water.waterKind)}.`
+      const deep = sel.piece === 'tunnel' ? r.runs.find((q) => q.kind === KIND.tunnel && q.s1 > s0 && q.s0 < s1 && q.deepCut)?.deepCut : undefined;
+      why = mine ? (d.profileMode === 'auto' ? 'Your choice; Auto set the road height for it.' : 'Your choice.') : cutChosen ? 'Auto’s tunnel, built by cut and cover as you chose.'
+        : deep ? `Auto: a cut here would be up to ${deep.depth.toFixed(0)} m deep; designers tunnel where a cut would be deeper than ${STRUCTURE_RULES.deepCut} m.` : water ? `Auto: bridges the ${esc(water.waterKind)}.`
         : { bridge: 'Auto: at this height cheaper than an embankment.', tunnel: 'Auto: at this depth cheaper than a cut.', fill: 'Auto: at this height cheaper than a bridge.', cut: 'Auto: at this depth cheaper than a tunnel.' }[sel.piece];
     } else {
       let b = 0, t = 0;
@@ -370,7 +383,10 @@ export class Inspector {
         return `<button type="button" data-style="${v}" class="${v === now ? 'on' : ''}" aria-pressed="${v === now}" ${p === undefined && v !== now ? 'disabled' : ''} title="${esc(p === undefined && v !== now ? `${title} ${unfit}` : title)}">${label}${diff}</button>`;
       }).join('');
       const span = bridge.layout?.span ?? r.ds * 3, arch = bridge.arch ? `arch ${m0(bridge.arch.s1 - bridge.arch.s0)}` : '';
-      method = `<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
+      // its ends in fills: the cones in front of the abutments (core/abutment-cone.ts)
+      const cones = (r.cones ?? []).filter((c) => c.i >= bridge.i0 && c.i <= bridge.i1);
+      const ends = cones.length ? `<div class="sub">${cones.length === 2 ? `Its ends stand on fills ${cones.map((c) => c.height.toFixed(0)).join(' and ')} m high` : `One end stands on a fill ${cones[0].height.toFixed(0)} m high`}, sloping on under the bridge: ${Math.round(cones.reduce((t, c) => t + c.volume, 0)).toLocaleString('en-US')} m³ of fill, ${czk(cones.reduce((t, c) => t + conePavingCost(c), 0))} of paving.</div>` : '';
+      method = `${ends}<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
     }
@@ -379,7 +395,7 @@ export class Inspector {
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
       <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
       ${this.issues(vio)}
-      ${this.choices('structure-choice', 'data-structure', STRUCTURE_OPTIONS, active)}
+      ${this.choices('structure-choice', 'data-structure', this.structureOptions(r, sel.piece, s0, s1, mine), active)}
       ${method}
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">

@@ -212,8 +212,8 @@ describe('automatic bridge support remedies', () => {
     }
     const autoProfile = evaluate(ctx, { ...design, profileMode: 'auto',
       structureOverrides: [{ s0: 490, s1: 520, kind: KIND.bridge }] });
-    // (each style's price follows the lifted grade)
-    const bare = (runs: typeof painted.runs) => runs.map(({ styles: _, ...run }) => run);
+    // (each style's price and the cones in front of the abutments follow the lifted grade)
+    const bare = (runs: typeof painted.runs) => runs.map(({ styles: _, coneReach: _c, ...run }) => run);
     expect(bare(autoProfile.runs)).toEqual(bare(painted.runs));
     expect(autoProfile.kind).toEqual(painted.kind);
     expect(autoProfile.grade[50]).toBeGreaterThanOrEqual(106.3);

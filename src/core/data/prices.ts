@@ -255,8 +255,8 @@ export const LAND = {
  * (VL 2 1995 sheet 301.04 note 2): not steeper than 1:2 in cuts up to 2 m deep, else 1:1.75, a 1 m bench every
  * 6 m of height (I/27 Klatovy EIA: 1 m bench in cuts over 6 m; the repeat every 6 m PROVISIONAL); sound rock
  * (class III) 4:1 with 1 m benches every 5 m (II/157 Srubec 2025 permit: 4:1 with 1.0 m benches; VL 2 sheet
- * 301.07: 5 m between benches), its face netted (OTSKP 289941, 2,513.47 CZK/m²; that every rock face is
- * netted is PROVISIONAL, SPOŽES F16 all-in remediation is 4,300). Railway formations use the same shapes
+ * 301.07: 5 m between benches), its face presplit and netted (OTSKP 12892 2,360.50 + 289941 2,513.47 CZK/m²; that
+ * every steep rock face is netted is PROVISIONAL, SPOŽES F16 all-in remediation is 4,300); rock by its kind below. Railway formations use the same shapes
  * (PROVISIONAL: no SŽ slope source researched). Not modelled: stepped ground under fills on slopes over 10 %
  * (OTSKP 12673), counterweight berms, landslide-prone flysch at 1:2.5.
  */
@@ -270,7 +270,20 @@ export const SIDE_SLOPES = {
   fillStandardTo: 10, fillHighUpper: 1.8, fillHighBlend: 5,
   cutShallow: 2, cutShallowDepth: 2, cutSoil: 1.75, cutRock: 0.25,
   soilBenchEvery: 6, rockBenchEvery: 5, benchWidth: 1,
-  rockFacePerM2: 2_513.47,
+  /** Rock below the weathered layer by what it is (pipeline/ground_profiles.json keys; research/67, decision 3): rock that
+   * weathers fast is cut like soil ("Sklony svahů v poloskalních a rychle zvětrávajících horninách se navrhují jako
+   * svahy v zeminách", VL 2 1995 sheet 301.04 note 2; FGSV M Fels via Grundbau-Taschenbuch 2.1: "verwitterungsanfällige
+   * Gesteine … weniger als 1:1,5"; claystones, siltstones and marlstones named by BAW 2017; marl on D11 1108 / D35):
+   * Permian siltstone / claystone and Cretaceous marlstone. Interbedded claystone sequences and phyllites (Brandecker
+   * group D, Grundbau-Taschenbuch 2.1 Bild 16) at 5:4 faces; Cretaceous sandstone (group C) at 2:1. Medium
+   * confidence; the others (gneiss, quartzite, limestone, igneous, the Permian and Carboniferous sandstones and
+   * conglomerates) keep 4:1 (group A/B; II/157). Fault zones (D3 Luka at 1:1.25) are beyond a rock-type rule. */
+  rockByGround: { perm_fine: 'soil', marl: 'soil', carb_mixed: 0.8, phyllite: 0.8, cret_sand: 0.5 } as Readonly<Record<string, number | 'soil'>>,
+  /** A rock face this steep or steeper (1:n) is blasted to a controlled face and netted: presplit OTSKP 12892
+   * (class III, "v [m2] požadované výsledné plochy"), recommended by TKP 4 (2026) art. 52 ("vhodné zvážit a eventuálně
+   * použít technologii řízeného výlomu"), research/67 decision 2; flatter faces are dug like soil, not netted. */
+  rockFaceSteepest: 0.5,
+  rockFacePerM2: 2_513.47 + 2_360.50,
 };
 
 /**
@@ -298,6 +311,13 @@ export const STRUCTURE_RULES = {
   minTunnelLength: 100,
   /** a tunnel's portal: where the ground is a structure height over the grade (TUNNEL_RULES) */
   portalDepth: TUNNEL_RULES.structureHeight,
+  /** Sourced game rule (research/67, decision 1): Auto builds no road or motorway cut deeper than this, m: a tunnel. The D3
+   * EIA (2010, printed p. 23): "zářezy v kratších úsecích hloubky 20-30 m, zde jsou však navrženy tunely" and its
+   * tunnel table gives "náhrada hlubokého zářezu" as the first purpose of every 0302–0303 tunnel; Hessen Mobil
+   * (Heft 52, 2006, §4.1.1): "Die wirtschaftliche Grenze für eine Einschnittslösung liegt erfahrungsgemäß bei ca.
+   * 30 m Tiefe"; the deepest Czech motorway cut, the D1 Lensedelský zářez, is 38 m (ČVUT FD 12PPOK). The upper end
+   * of the D3 range. The player may still paint a deeper cut. Railways: not applied (no railway source). */
+  deepCut: 30,
   /** cut and cover at each portal at least, m */
   portalCutCoverMin: TUNNEL_RULES.portalCutCoverMin,
   /** grade must be at least this far above a river / railway the road crosses, m (deck + clearance) */

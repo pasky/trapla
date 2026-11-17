@@ -25,6 +25,12 @@ export interface Run {
    * one arch, too shallow or too deep a valley for its rise, its rib through the ground, it or its feet on something
    * below, its approach spans too long, or it would need the road higher. */
   archMiss?: 'short' | 'long' | 'shallow' | 'deep' | 'ground' | 'blocked' | 'spans' | 'lift';
+  /** A tunnel Auto builds because the cut would be deeper than STRUCTURE_RULES.deepCut: the deepest it would be (m)
+   * and what the open cut would cost against the tunnel (CZK, the structure choice's prices on this grade line). */
+  deepCut?: { depth: number; earth: number; tunnel: number };
+  /** A bridge: how far the cones in front of its abutments reach into it from its start and its end, m (0: none;
+   * abutment-cone.ts): no pier stands on them. */
+  coneReach?: [number, number];
 }
 
 export interface StructureInput {
@@ -56,6 +62,8 @@ export interface StructureInput {
   forced?: ArrayLike<number>;
   /** A surface watercourse above a grade a tunnel's height below it keeps a tunnel, not an open cut. */
   forcedTunnel?: ArrayLike<number>;
+  /** Auto builds no open cut deeper than this, m: a tunnel (STRUCTURE_RULES.deepCut); the player may paint one */
+  deepCut?: number;
   /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
   overrides?: ArrayLike<number>;
   /** 1 = a higher-ranking road's deck this road rides (its bridge over that road, built and billed
@@ -111,12 +119,14 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     }
     return tubes * (inp.tunnelFactor ? inp.tunnelFactor(length) : 1) + extra;
   };
+  const locked = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const h = inp.h[i];
     if (h >= rules.bridgeMinHeight && bridgeAt(i) < inp.earthPerM[i]) kind[i] = KIND.bridge;
     else if (-h >= rules.tunnelMinDepth && tunnelAt(i) < inp.earthPerM[i]) kind[i] = KIND.tunnel;
+    // deeper than designers cut: a tunnel whatever the price (kept by the run-level check)
+    if (inp.deepCut !== undefined && -h > inp.deepCut) { kind[i] = KIND.tunnel; locked[i] = 1; }
   }
-  const locked = new Uint8Array(n);
   if (inp.forced) {
     // a forced crossing is bridged over at least the minimum bridge length, centred on it
     const pad = Math.max(1, Math.ceil((rules.minBridgeLength / inp.ds - 1) / 2));
@@ -168,7 +178,10 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       for (let i = r.i0; i <= r.i1; i++) kind[i] = 0;
       continue;
     }
-    runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len, forced: isLocked });
+    let deepest = 0;
+    if (r.kind === KIND.tunnel && inp.deepCut !== undefined) for (let i = r.i0; i <= r.i1; i++) deepest = Math.max(deepest, -inp.h[i]);
+    runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len, forced: isLocked,
+      ...(inp.deepCut !== undefined && deepest > inp.deepCut ? { deepCut: { depth: deepest, earth, tunnel: struct } } : {}) });
   }
   // Manual paint is authoritative: never optimise away or silently extend an invalid request.
   // Rebuild runs for billing, then report the safety constraints rather than repairing the design.
