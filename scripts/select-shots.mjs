@@ -46,7 +46,7 @@ try {
   await hover(p);
   assert.equal(await cursor(), 'grab'); assert.equal(await label(), 'drag to bend');
   await shot(382, 'select-road-selected');
-  await drag(p, 120, 50);
+  await drag(p, 40, 15);
   assert.equal((await T(() => window.trapla.getDesign())).pis.length, 1, 'selected, a drag adds a bend');
   await game.park(); await idle();
   await shot(383, 'select-road-bent');
