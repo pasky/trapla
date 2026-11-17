@@ -409,6 +409,15 @@ bottom of a 60 m open cut](docs/screenshots/222-d35-portal-before.png) → [the 
 the cut is about its own height deep](docs/screenshots/223-d35-portal-after.png),
 [the tunnel card: how it is built, its method (Mined · Cut and cover)](docs/screenshots/224-d35-tunnel-card.png),
 [D3-0304: twin tubes in a 9 m approach cut](docs/screenshots/225-d3-0304-twin-portals.png).
+Bridge styles (cost model 35, PLAN.md "Bridge styles"): [D11 direct-80 km 8.6: Auto puts the 50 m high viaduct on
+52 m spans, the card's style choice with each style's price](docs/screenshots/226-d11-direct-80-viaduct-long-spans.png)
+([from the side: few tall piers](docs/screenshots/227-d11-direct-80-viaduct-long-spans-low.png)),
+[direct-90 km 7.84–8.18 as the player’s arch: a 180 m arch with columns on it, +41 M against long
+spans](docs/screenshots/228-d11-direct-90-arch.png) ([from the side](docs/screenshots/229-d11-direct-90-arch-low.png)),
+[town-centre km 16.78: one 120 m span over the railway with long spans beside it; short spans and an arch do not fit
+here](docs/screenshots/230-town-centre-long-span-over-railway.png),
+[D3 motorway km 8.59: "Our bridge over it" in our cutting is built, and its card says what raising our motorway
+for it cost](docs/screenshots/231-d3-motorway-our-bridge-over-track-raised.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

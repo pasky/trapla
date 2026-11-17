@@ -594,10 +594,9 @@ Four findings of the architecture review, then a play of the D3 and D11 missions
   D11 direct-80 km 6.83 is now a box, its three homes kept (4,183 → 4,157 M); a player's unbuildable crossing owns
   its way's stretch (no phantom relocation); "Cut and reroute" no longer pins a road Auto moves beside ours (D3 km
   15.29: +3.1 bn → said). `scripts/choice-audit.ts` (gate).
-- **Still open:** "Our bridge over it" in our cutting is met at any price (the painted bridge's support lifts,
-  D3 km 8.59 +1.26 bn); the player's "Cut and reroute" at D3 km 5.26 removes the crossing a class II road is led
-  to (Auto bridges both, a clash, +577 M); D3 km 0.43–0.53: a garage under a 7 m bridge deck demolished
-  (relayed to design-realism).
+- **Still open:** the player's "Cut and reroute" at D3 km 5.26 removes the crossing a class II road is led
+  to (Auto bridges both, a clash, +577 M). ("Our bridge over it" in our cutting and the garage under a bridge:
+  cost model 35, "Bridge styles".)
 
 ### Tunnels as they are built: cut-and-cover portals, method, escape provision (cost model 34, 2026-11-17)
 
@@ -643,6 +642,64 @@ starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
   umbrellas) are not billed (research/49 §3; small beside a 9 m portal). No TBM (no Czech road case, no SPK row).
   The drag at km 4.4 of the Křálovec railway moves the cut before the tunnel of km 1.98–4.5 (that tunnel's far end
   is in the dragged stretch): tests/rail-drag-locality checks the grade to km 1.75.
+
+### Bridge styles: short spans, long spans, an arch (cost model 35, 2026-11-17)
+
+Plan and sources: docs/design-realism-plan.md M3, research/50 (styles, Czech bridges), /62 (buildings under a
+bridge), /63 (real sections). Code: `data/bridges.ts` BRIDGE_STYLES, `bridge.ts` (longLayouts, longPerM, archRib,
+equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`style`, `auto`).
+- **Three styles, one per bridge.** *Short spans*: ≈ 30 m, one span to 60 m over a road, railway or water (II/268
+  Jizera 6 × 30 + 60 + 2 × 30 m on falsework). *Long spans*: equal spans of 45–60 m (Czech tall viaducts 45–58 m), or,
+  where something below needs a longer span (to 180 m), that span with side spans at least 0.56 × it beside it
+  (Czech cantilevers 0.56–0.71) and short or 45–60 m spans beyond; priced by the model's own span curve, a span over
+  60 m on a deck ≥ 40 m high at most 1.2 × the 30 m-span price (PROVISIONAL: Czech long-span valley bridges ≈ 0.8–1.0
+  × SPK with its height attribute; no launched or cantilevered box outturn). *Arch*: one arch of 100–250 m, the
+  bridge 1.8–2.8 × as long, its rise 1/10–1/5 of the span, its rib clear of the ground and of what lies below,
+  springings on free ground; priced as a 30 m-span viaduct as high as the bridge's highest point (Opárno 0.99, Plasy
+  0.82 × SPK with height: PROVISIONAL, two bridges). Cable-stayed later.
+- **Auto takes the cheapest that fits** (no lift first). The grade search and the structure choice see the cheaper
+  of short and long equal spans (long spans with one pier per span, so a tall viaduct is not made cheap by the
+  120 m reference's few piers: with the reference density direct-90 went +508 M); support-layout places each
+  style's supports, checks spans and clearances and keeps the cheapest; the card shows each style's price against
+  this one ("Short spans +19 M · Long spans · Arch +51 M"; a style that does not fit is greyed).
+- **The player's style** is only that choice (`StructureOverride.auto`): the bridge stays Auto's (its ends, the grade
+  search). Painting a bridge as it stands re-solves the grade around it (D11 direct-90's viaduct: +462 M; d35's
+  tunnel painted as it stands: 6,610 → 5,743 M and invalid) — so the tunnel's method on Auto's tunnel is now
+  such a choice too; "Too deep to dig from above" is said for it as for the player's own tunnel. A style that does
+  not fit is said ("This bridge cannot be built with an arch") and the bridge is built as Auto would.
+- **Drawn**: long spans as few tall piers and a deck span/20 deep; an arch as its rib from the springings up under
+  the deck, columns on it (screenshots 226–230).
+- **Buildings under a deck** (research/62, relayed D3 km 0.5 garage): a house under a deck whose underside is ≥ 15 m
+  above it (falsework from the ground is used to 10–15 m, Suchánek) and 3 m over its roof (PROVISIONAL) stays
+  unless a pier stands on it (Nuselský most, D1 Vysočina); garages and sheds go (fire, FHWA). The D3 garage stands
+  under a 4.5 m deck: still demolished, the card says why.
+- **"Our bridge over it"** (relayed, D3 km 8.59 +1.26 bn, valid): no span avoids the lift there (our motorway is 3.4 m
+  in cut, the track at the ground). The choice no longer floors the grade search nor lifts our line in the first
+  pass; it is met through the same regrade retry as the player's box (research/61) and kept — our road going up over
+  the road is what was chosen — with its price on the crossing card ("For it our motorway is built up to 15.4 m
+  higher: 1.21 bn CZK more in all", screenshot 231). The player's box keeps the rule of proportion; where it is not
+  met, its problem now says what meeting it would cost.
+- **Bills** (model 34 → 35; grade lines of the frozen D11 fixtures unchanged, bridges only): straight 8,173 → 8,225
+  (+52: spans over 60 m get side spans), best family unchanged, demo 4,234.5 → 4,233.6, direct-80 4,157 → 4,142 (the
+  50 m viaduct on 52 m spans), direct-90 4,676 → 4,674, town-centre 8,869 → 8,968 (+99: its 80–120 m spans over
+  streets and the railway get side spans). Scenario starters, all VALID: d3 3,504 → 3,364 (the 109 m high bridge at
+  km 4.38 on long spans; the grade search re-solves around it), d3-0301 5,139 → 5,102, d3-0302 5,066 → 4,935 (the
+  113 m high bridge on 62 m spans), d3-0303 5,440, d3-0304 10,152 → 10,174, d3-0305 9,124, d3-full 32,391 →
+  32,187, d35 6,729 → 6,610 (the 60 m high 2 km viaduct on 49 m spans), d35-full 29,969 → 29,825, i16-nova-paka
+  2,063; d35 stage-1 motorway 19,497 → 19,390; D3 motorway starter 10,930 → 10,899. Outcome audit (24 random D11
+  lines): 6 VALID (6), 84 violations (82), links > 1 km 17 (18), ramps > 250 m 5 (5); the two new: random-3 a 0.1 m
+  support lift at km 13.43 Auto cannot make (its lift runs into the pin at km 16.70 with the railway's 13.6 m), and
+  random-15's track at the tunnel portal km 5.45 buried again (M2's known case; its split retry no longer triggers).
+- **Real projects** (research/63): our D35 stage-1 motorway 1,175 M/km against the real 1,066 (+10 %), D3 0304 659
+  against 787 (−16 %). On a line deep enough for the real D35's 4 km tunnel (680 m of bridges) our bill is +21 %
+  (23.4 bn): the long tunnel's per-metre price is the suspect (≈ 1.0 M CZK per tube-m implied against SPK's 1.55 M),
+  recorded, not changed.
+- **Known limits.** The structure choice weighs the buildings under the whole deck strip (cached per evaluation),
+  the bill only those that go. Side spans are a minimum, not designed; a cantilever's haunch is drawn as a constant
+  depth; the arch's rib depth (2 m) is drawn and checked, not priced. Long spans over obstacles stay within 180 m
+  (the engine's limit, inside CTU's 80–250 m). Evaluate: work.support +5 ms on town-centre (5 passes × the styles'
+  plans), the structure choice now memoises run prices (cheaper than before); a drag preview weighs an arch only
+  where asked and long spans only where they may pay (docs/evaluate-performance.md).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
