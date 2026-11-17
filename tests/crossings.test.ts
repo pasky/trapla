@@ -349,6 +349,7 @@ describe('crossing geometry and map overlay', () => {
     expect(out.some(q => q.surface === 'ramp')).toBe(true);
     for (let i = 1; i < out.length; i++) if (out[i].d! - out[i - 1].d! > 1)
       expect(Math.abs(out[i].z - out[i - 1].z) / (out[i].d! - out[i - 1].d!)).toBeLessThanOrEqual(ROAD_CLASSES.track.rampSteepest + 1e-6);
+    expect(auditCrossingGeometry(cs, route, valley, net)).toEqual([]);
   });
 
   it('straightens a skewed track whose box would be too long, and moves a track that comes back out on its own side', () => {

@@ -66,6 +66,8 @@ describe('active road widgets on project history', () => {
     adapter.update(d => { d.pis[0].x = 70; }, false);
     adapter.cancelStep(); expect(adapter.design.pis[0].x).toBe(60); expect(project.canUndo()).toBe(true);
     adapter.update(d => { d.pis[0].x = 80; }, false); adapter.commit(); // the held pointer moves on and lets go
+    adapter.editProject(d => { d.buildingOverrides = [{ j: 1, action: 'keep' }]; }); // (a handle's release edits the project)
+    expect(project.snapshot.design.buildingOverrides).toEqual([]);
     adapter.release();
     expect(adapter.design.pis[0].x).toBe(60); expect(project.inTransaction).toBe(false);
     adapter.undo(); expect(adapter.design.pis[0].x).toBe(50);

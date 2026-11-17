@@ -1042,7 +1042,9 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         const survey = surveyLink([along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)], g.width, linkEnv);
         let plan = profileLink(survey, row.rampGradient, linkEnv);
         if (plan.problems.includes('steep') && row.rampSteepest > row.rampGradient) plan = profileLink(survey, row.rampSteepest, linkEnv);
+        // (its earth slopes reaching a building refuse it, as a building on its line does: squarePath)
         const failed = plan.problems.filter(p => p === 'steep' || p === 'railway' || p === 'water' || p === 'building');
+        if (plan.houses.length && !failed.includes('building')) failed.push('building');
         if (failed.length) { diagnose(g, `${SQUARE_FAILS}${failed.join(',')}`); continue; }
         for (const q of road) if (q.d! > d0 + 1e-6 && q.d! < d1 - 1e-6) {
           const z = linkHeight(plan.points, q.d! - d0);
@@ -1436,9 +1438,12 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     const tried = new Map(failed.map(c => [c, { messages: [...c.geometry!.diagnostics!], lowered: c.lowered }]));
     for (const c of failed) { delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; }
     let plain = buildOnce(items, budget, anchorOnly);
+    // (one that fails on its own line too is built as asked, with its problems; the others stay on their line)
+    const both = failed.filter(c => c.geometry?.diagnostics?.length);
+    if (both.length) { for (const c of both) c.square = true; plain = buildOnce(items, budget, anchorOnly); }
     for (const c of failed) c.square = true;
-    if (failed.some(c => c.geometry?.diagnostics?.length)) return buildOnce(items, budget, anchorOnly);
     for (const c of failed) {
+      if (both.includes(c)) continue;
       const { messages, lowered } = tried.get(c)!, issue = squareIssue(c, messages, lowered);
       (c.issues ??= []).push(issue); plain = [...plain, issue];
     }
@@ -1847,7 +1852,8 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
         const open = (g.underpass.wings ?? []).reduce((sum, wing) => sum + underpassOpenCost(wing, (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000), 0);
         const price = (c.underpassLength ?? 0) * box.perM + 2 * box.head + open + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.drainCost ?? 0) + (c.realignCost ?? 0);
         if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Underpass bill differs from measured quantities');
-        if (!c.lowered && g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
+        // (a straightened way's new pieces beyond the box are built on their own earthworks)
+        if (!c.lowered && g.road.some((q, i) => q.surface !== 'terrain' && (c.squared === undefined || (i >= start && i <= end)))) report('Underpass way leaves its terrain level');
         if (c.lowered !== undefined && (!g.approaches || c.lowered > LOWERING_RULES.maxDepth + 1e-6) && !g.diagnostics?.length) report('Lowered underpass way is not engineered');
         if (!g.diagnostics?.length && underpassLowest(g.road, start, end, (route.crownWidth ?? 0) / 2 + g.width / 2, q => project(q), heightAt)
           < box.minHeight - 1e-6) report('Underpass roof does not clear the carriageway');

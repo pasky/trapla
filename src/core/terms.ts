@@ -90,8 +90,9 @@ export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, l
 }
 /** "A house stands", "2 buildings stand", "3 houses and 3 other buildings stand" (homes, sheds / garages / barns …) */
 function standing(homes: number, others: number): string {
-  const one = (k: number, what: string, many: string) => k === 1 ? `a ${what}` : `${k} ${many}`;
-  const parts = [homes ? one(homes, 'house', 'houses') : '', others ? one(others, homes ? 'other building' : 'building', homes ? 'other buildings' : 'buildings') : ''].filter(Boolean).join(' and ');
+  const house = homes === 1 ? 'a house' : homes ? `${homes} houses` : '';
+  const rest = !others ? '' : homes ? (others === 1 ? 'another building' : `${others} other buildings`) : (others === 1 ? 'a building' : `${others} buildings`);
+  const parts = [house, rest].filter(Boolean).join(' and ');
   return `${parts.charAt(0).toUpperCase()}${parts.slice(1)} ${homes + others === 1 ? 'stands' : 'stand'}`;
 }
 function ownOutcome(c: OutcomeOf): OutcomeText {

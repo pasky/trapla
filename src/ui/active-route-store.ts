@@ -97,6 +97,7 @@ export class ActiveRouteStore {
       buildAlignment(a, b, after.pis, horizontalRules(after.speed, after.category), bendRules(after.pis, after.speed, after.category)), before.vpis);
   }
   editProject(edit: (project: ProjectDesign) => void) {
+    if (this.cancelled) return;
     const own = !this.project.inTransaction;
     if (own) this.project.begin(); this.atomic = true;
     try { this.project.update(edit); if (own) this.project.commit(); }
