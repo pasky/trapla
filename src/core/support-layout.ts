@@ -454,7 +454,12 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     const consider = (style: BridgeStyle) => {
       for (const plan of plansOf(style)) {
         if (plan.tooLong !== undefined) { unfit.push(plan); continue; }
-        if (depthCheck(run, plan, isManual)) fits.push(plan); else unfit.push(plan);
+        // (an arch is a choice where it stands as the road runs: Auto lifts no line for one, as for its rib)
+        const stands = depthCheck(run, plan, isManual);
+        if (!stands || (plan.style === 'arch' && plan.raiseM > 0.01 && asked !== 'arch')) {
+          if (plan.style === 'arch') archMiss = stands ? 'lift' : 'blocked';
+          unfit.push(plan);
+        } else fits.push(plan);
       }
     };
     if (styles?.price) {

@@ -23,8 +23,8 @@ export interface Run {
   style?: Exclude<BridgeStyle, 'short'>; arch?: BridgeArch; styles?: Partial<Record<BridgeStyle, number>>; styleChosen?: BridgeStyle;
   /** A bridge weighed for an arch where none fits: why (support-layout archFor): too short or too long a bridge for
    * one arch, too shallow or too deep a valley for its rise, its rib through the ground, it or its feet on something
-   * below, its approach spans too long. */
-  archMiss?: 'short' | 'long' | 'shallow' | 'deep' | 'ground' | 'blocked' | 'spans';
+   * below, its approach spans too long, or it would need the road higher. */
+  archMiss?: 'short' | 'long' | 'shallow' | 'deep' | 'ground' | 'blocked' | 'spans' | 'lift';
 }
 
 export interface StructureInput {

@@ -97,6 +97,7 @@ const ARCH_MISS: Record<NonNullable<Result['runs'][number]['archMiss']>, string>
   ground: 'An arch would cut into the valley side.',
   blocked: 'An arch would stand on, or pass too low over, a road, a railway or water.',
   spans: 'Its approach spans would be too long.',
+  lift: 'An arch here would need the road higher.',
 };
 const TUNNEL_METHODS: [string, string, string][] = [
   ['mined', 'Mined', 'Dug underground; built from a pit and covered again near its ends, where the ground is thin'],
