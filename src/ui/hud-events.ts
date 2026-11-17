@@ -89,6 +89,8 @@ export function hudEvents(app: HudEventContext): HudEvents {
       if (v && v.title === issue.violation.title) { showViolation(v); return; }
       const at = issue.locations.find(l => l.routeId === app.store.activeRouteId), d = app.store.read();
       if (!at) { app.hud.reveal('viol'); return; }
+      // an end on open ground: the map goes to it (that end selected)
+      if (issue.code === 'road-ends-nowhere') { app.select({ kind: 'end', end: at.s0 > 0 ? 'b' : 'a' }, true); if (issue.at) app.view.flyTo(issue.at.x, issue.at.y, 800); return; }
       if (at.pi !== undefined && d?.pis[at.pi]) app.select({ kind: 'bend', i: at.pi }, true);
       else if (at.vpi !== undefined && d?.profileMode === 'manual' && app.lastFull && at.vpi > 0 && at.vpi < app.lastFull.vpis.length - 1) app.select({ kind: 'vpi', i: at.vpi }, true);
       else app.select({ kind: 'stretch', s0: at.s0, s1: at.s1 }, true);
