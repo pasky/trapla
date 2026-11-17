@@ -49,6 +49,8 @@ export const JARGON: readonly [RegExp, string][] = [
   [/#\d/, 'object ID'],
   [/\bstation\b/i, '"station" (say "km")'],
   [/polygon/i, '"polygon" (say "the straights between bends")'],
+  // (also in a rule line or a price source: the norm or price book is named, not our note on it)
+  [/research\//, 'research note reference'],
 ];
 /** Source names: allowed only in a violation's `rule` line and pricing tooltips. */
 export const SOURCE_NAMES: readonly [RegExp, string][] = [
@@ -56,7 +58,6 @@ export const SOURCE_NAMES: readonly [RegExp, string][] = [
   [/\bOTSKP\b/, '"OTSKP" (price list)'],
   [/\bSFDI\b/, '"SFDI"'],
   [/ČSN/, 'norm number'],
-  [/research\/\d+/, 'research note reference'],
 ];
 
 /** Every internal term found in `text`; `sources` also flags source names. */
@@ -265,7 +266,7 @@ export function roadRemedyDetail(what: string, affected: number, plan: Pick<Road
 }
 export function roadRemedySource(plan: Pick<RoadRealignmentPlan, 'roadCode' | 'closed' | 'retainingArea' | 'lumpCost'>): string | undefined {
   if (plan.closed) return undefined;
-  return `SPK 2026 price per km of ${/P4/.test(plan.roadCode) ? 'paved track' : /S\d/.test(plan.roadCode) ? 'class I–III road' : 'local road'}${plan.retainingArea ? '; retaining walls per research/18' : ''}${plan.lumpCost ? `; ${(plan.lumpCost / 1e6).toFixed(1)} M CZK for access junctions (provisional estimate, research/13)` : ''}`;
+  return `SPK 2026 price per km of ${/P4/.test(plan.roadCode) ? 'paved track' : /S\d/.test(plan.roadCode) ? 'class I–III road' : 'local road'}${plan.retainingArea ? '; retaining walls from OTSKP 2026 items' : ''}${plan.lumpCost ? `; ${(plan.lumpCost / 1e6).toFixed(1)} M CZK for access junctions (provisional estimate)` : ''}`;
 }
 
 const NUMBERED: Record<string, string> = { primary: 'I', secondary: 'II', tertiary: 'III' };

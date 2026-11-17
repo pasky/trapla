@@ -281,18 +281,18 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     const v: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, title, fix, basis: 'game',
       rule: {
         spacing: 'ČSN 73 6101:2018: junctions at least 1.5 km apart, counting both ends of the route (also in town: a scenario assumption)',
-        class: 'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access (research/08)',
+        class: 'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access', // research/08
         ours: gradeSeparated === 'railway' ? 'Game rule: a new railway crosses roads only on bridges, under them or by rerouting them (no level crossings)'
-          : 'ČSN 73 6101: a motorway has no level junctions or direct access; other roads cross it on bridges, under it, or are rerouted to such a crossing (research/08)',
+          : 'ČSN 73 6101: a motorway has no level junctions or direct access; other roads cross it on bridges, under it, or are rerouted to such a crossing', // research/08
         depth: 'Game rule: a bridge over our road needs a cutting at least 6 m deep where the crossed road cannot be raised; a junction cannot lie in such a cutting',
         clearance: 'Game rule: our bridge needs 6 m above ordinary roads and 7.5 m above motorways; a junction cannot lie that high',
         structure: 'Game rule: the crossing choice and what our road does there (bridge, tunnel, earthworks) must agree',
         reach: `Game limit: a reroute reaches at most ${CROSSING_RULES.linkHardReach} m along our road to the next crossing`,
         geometry: 'Game rule: crossed roads keep their real line and meet the ground at both ends',
-        underpass: `Game estimate (research/19, 37): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road (the crossed road may be lowered by up to ${LOWERING_RULES.maxDepth} m to make it), and is at most ${UNDERPASS_RULES.maxLength} m long`,
+        underpass: `Game estimate: an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road (the crossed road may be lowered by up to ${LOWERING_RULES.maxDepth} m to make it), and is at most ${UNDERPASS_RULES.maxLength} m long`,
         shape: 'Game rule: a reroute the player shaped must be buildable where it is drawn',
         reroute: 'Game rule: a reroute must be buildable',
-        square: 'Game rule (research/44): a straightened crossing is built like any new road',
+        square: 'Game rule: a straightened crossing is built like any new road', // research/44
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
