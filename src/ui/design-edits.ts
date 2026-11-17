@@ -95,7 +95,11 @@ export function createDesignEdits(app: DesignEditContext) {
     // a bend's stretch speed: the road's own is no setting of its own
     bendSpeed: (i, v) => app.store.update((d) => { const p = d.pis[i]; if (!p) return; if (v === null || v === d.speed) delete p.speed; else p.speed = v; }),
     // a hairpin takes its own radius: back to Auto either way
-    hairpin: (i, on) => app.store.update((d) => { const p = d.pis[i]; if (!p) return; if (on) p.hairpin = true; else delete p.hairpin; p.r = null; }),
+    // (with `speed`: its stretch's speed too, one step to undo — a problem's "Make it a hairpin")
+    hairpin: (i, on, speed) => app.store.update((d) => {
+      const p = d.pis[i]; if (!p) return; if (on) p.hairpin = true; else delete p.hairpin; p.r = null;
+      if (on && speed !== undefined) { if (speed === d.speed) delete p.speed; else p.speed = speed; }
+    }),
     deletePi,
     bendHeight: (i) => { const b = app.last && bendStations(app.last, app.store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     vpiRadius: (i, r) => app.store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),

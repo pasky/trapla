@@ -11,7 +11,7 @@
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
-import { geometryPis, hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
+import { geometryPis, hairpinFixes, hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -262,6 +262,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     ...(d.pis.some(p => p.hairpin) ? hairpinViolations(al, d.pis, d.speed, d.category, ctx.terrain) : []),
     ...r.violations.filter(v => local1(v) && v.s1 < s0), ...w.violations.filter(local1).map(v => shiftS(v, s0)),
     ...r.violations.filter(v => local1(v) && v.s0 > old1).map(v => shiftS(v, shift))];
+  hairpinFixes(al, d.pis, d.category, ctx.terrain, violations);
   // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
   // message to the main thread).
   const lean = (c: Result['crossings'][number]) => { const { geometry: _g, ...rest } = c; return rest; };

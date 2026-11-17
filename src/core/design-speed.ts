@@ -4,7 +4,7 @@
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { designSpeeds, HAIRPIN, hairpinLaneWidening, speedNorms, type SpeedNorms } from './data/norms';
 import type { RadiusLimit } from './vertical';
-import type { Alignment, PI } from './horizontal';
+import { HAIRPIN_MAX_DEFLECTION, type Alignment, type PI } from './horizontal';
 import { groundSlopeAt, routeMountainous, TERRAIN_CLASS } from './terrain-class';
 import type { Terrain } from './terrain';
 import type { Violation } from './checks';
@@ -145,6 +145,22 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
         detail: `A hairpin belongs on a stretch designed for the lowest speed, ${lowest} km/h.` });
   }
   return out;
+}
+
+/** A bend turning back almost on itself (checks.ts, past MAX_DEFLECTION) may be a hairpin where one would be
+ * allowed (hairpinViolations: a road, not a local road or track, on steep ground, up to HAIRPIN_MAX_DEFLECTION):
+ * its problem offers that, with its stretch at the category's lowest speed. Changes `violations` in place. */
+export function hairpinFixes(al: Pick<Alignment, 'curves'>, pis: readonly PI[], category: CategoryId, terrain: Terrain, violations: Violation[]): void {
+  const cat = CATEGORIES[category];
+  if (cat.minor || cat.mode !== 'road') return;
+  const lowest = Math.min(...designSpeeds(category));
+  for (const v of violations) {
+    if (v.kind !== 'radius' || v.pi === undefined || pis[v.pi]?.hairpin) continue;
+    const c = al.curves.find(x => x.index === v.pi);
+    if (!c?.tooSharp || c.delta > HAIRPIN_MAX_DEFLECTION || !(groundSlopeAt(terrain, c.x, c.y) > TERRAIN_CLASS.mountainousFrom)) continue;
+    v.target = { ...v.target, hairpin: { pi: v.pi, speed: lowest } };
+    v.fix = `${v.fix}, or make it a hairpin`;
+  }
 }
 
 /** Travel time over the stretches at their design speeds, minutes. */

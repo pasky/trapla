@@ -10,6 +10,7 @@ import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, endCard, HAIR
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, speedNorms } from '../core/data/norms';
+import { BRIDGE_STYLES } from '../core/data/bridges';
 import { bendSpeed, bendSpeedChoices, bendStretch, hairpinSpeed } from '../core/design-speed';
 import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
@@ -61,7 +62,7 @@ export interface InspectorEvents {
   /** design speed of bend i's stretch (null: the road's) */
   bendSpeed?: (i: number, speed: number | null) => void;
   /** bend i a hairpin or an ordinary curve */
-  hairpin?: (i: number, on: boolean) => void;
+  hairpin?: (i: number, on: boolean, speed?: number) => void;
   deletePi?: (i: number) => void;
   /** pin the road's height at bend i (Auto) / add a height point there (By hand) */
   bendHeight?: (i: number) => void;
@@ -87,6 +88,16 @@ const MINOR_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.map(
 const crossingOptions = (line: OurLine, minor = false): [string, string, string][] => line === 'road' ? (minor ? MINOR_CROSSING_OPTIONS : CROSSING_OPTIONS)
   : CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => [v, label, v === '' ? (line === 'railway' ? RAILWAY_AUTOMATIC : MOTORWAY_AUTOMATIC) : ourWords(why, line)]);
 /** a tunnel's method: the tunnel card's choice */
+/** why no arch fits a bridge (support-layout archFor), in a few words */
+const ARCH_MISS: Record<NonNullable<Result['runs'][number]['archMiss']>, string> = {
+  short: `The bridge is too short for an arch of at least ${BRIDGE_STYLES.arch.minArch} m.`,
+  long: `The bridge is too long for one arch: an arch bridge is at most ${BRIDGE_STYLES.arch.lengthMax} times its arch.`,
+  shallow: 'The valley is too shallow under the road for an arch to rise in.',
+  deep: 'The valley is too deep for an arch: it would have to rise too steeply.',
+  ground: 'An arch would cut into the valley side.',
+  blocked: 'An arch would stand on, or pass too low over, a road, a railway or water.',
+  spans: 'Its approach spans would be too long.',
+};
 const TUNNEL_METHODS: [string, string, string][] = [
   ['mined', 'Mined', 'Dug underground; built from a pit and covered again near its ends, where the ground is thin'],
   ['cut', 'Cut and cover', `Built in a pit that is filled in again over it: at most ${TUNNEL_RULES.cutCoverMaxCover} m of ground over the tunnel`],
@@ -303,7 +314,9 @@ export class Inspector {
       const water = r.waterCrossings.find((c) => c.s >= s0 && c.s <= s1 && sel.piece === 'bridge' && c.structure === 'bridge');
       // Auto compares the options at the road's present height, buildings and land included; a choice
       // of the player's lets Auto set the height again for it (so its figures may differ from before)
-      why = mine ? (d.profileMode === 'auto' ? 'Your choice; Auto set the road height for it.' : 'Your choice.') : water ? `Auto: bridges the ${esc(water.waterKind)}.`
+      // (the method or style the player chose on Auto's tunnel or bridge leaves it Auto's: said with the choice)
+      const cutChosen = sel.piece === 'tunnel' && r.runs.some((q) => q.kind === KIND.tunnel && q.s1 > s0 && q.s0 < s1 && q.method === 'cut');
+      why = mine ? (d.profileMode === 'auto' ? 'Your choice; Auto set the road height for it.' : 'Your choice.') : cutChosen ? 'Auto’s tunnel, built by cut and cover as you chose.' : water ? `Auto: bridges the ${esc(water.waterKind)}.`
         : { bridge: 'Auto: at this height cheaper than an embankment.', tunnel: 'Auto: at this depth cheaper than a cut.', fill: 'Auto: at this height cheaper than a bridge.', cut: 'Auto: at this depth cheaper than a tunnel.' }[sel.piece];
     } else {
       let b = 0, t = 0;
@@ -321,7 +334,10 @@ export class Inspector {
         : auto.length ? `Auto: ${[...new Set(auto.map((w) => `${w.height} m`))].join(', ')}` : 'Auto: none';
       return { active, now };
     };
-    const near = r.noise.receivers.some((p) => p.i >= i0 - 10 && p.i <= i1 + 10 && p.raw > -3) || r.walls.some((w) => w.s1 > s0 && w.s0 < s1) || (d.wallOverrides ?? []).some((o) => o.s1 > s0 && o.s0 < s1);
+    // (no wall in a tunnel: nothing there is heard)
+    let open = false;
+    for (let i = i0; i <= i1 && !open; i++) open = r.kind[i] !== KIND.tunnel;
+    const near = open && (r.noise.receivers.some((p) => p.i >= i0 - 10 && p.i <= i1 + 10 && p.raw > -3) || r.walls.some((w) => w.s1 > s0 && w.s0 < s1) || (d.wallOverrides ?? []).some((o) => o.s1 > s0 && o.s0 < s1));
     const wallRow = (side: 'L' | 'R') => {
       const st = wallState(side);
       const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall: too-loud houses become violations'], ...NOISE.playerWallHeights.map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall along the whole stretch`])];
@@ -348,10 +364,12 @@ export class Inspector {
       const now = bridge.style ?? 'short', here = bridge.styles[now] ?? 0;
       const buttons = BRIDGE_STYLE_TEXT.map(([v, label, title]) => {
         const p = bridge.styles![v], diff = p === undefined || v === now ? '' : ` <small>${p >= here ? '+' : '−'}${czk(Math.abs(p - here)).replace(' CZK', '')}</small>`;
-        return `<button type="button" data-style="${v}" class="${v === now ? 'on' : ''}" aria-pressed="${v === now}" ${p === undefined && v !== now ? 'disabled' : ''} title="${esc(p === undefined && v !== now ? `${title} Does not fit this bridge.` : title)}">${label}${diff}</button>`;
+        const unfit = v === 'arch' && bridge.archMiss ? ARCH_MISS[bridge.archMiss] : 'Does not fit this bridge.';
+        return `<button type="button" data-style="${v}" class="${v === now ? 'on' : ''}" aria-pressed="${v === now}" ${p === undefined && v !== now ? 'disabled' : ''} title="${esc(p === undefined && v !== now ? `${title} ${unfit}` : title)}">${label}${diff}</button>`;
       }).join('');
       const span = bridge.layout?.span ?? r.ds * 3, arch = bridge.arch ? `arch ${m0(bridge.arch.s1 - bridge.arch.s0)}` : '';
       method = `<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
+        ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
     }
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
@@ -363,7 +381,7 @@ export class Inspector {
       ${method}
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
-        ${near ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
+        ${near || !open ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
         <div class="ctx-lbl">Road height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
           : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height point here</button></div>`}
@@ -399,6 +417,7 @@ export class Inspector {
       if (t.buildings.some((j) => d.buildingOverrides?.some((o) => o.j === j && o.action === 'keep'))) btn(`data-fix-unkeep="${t.buildings.join(',')}"`, 'Stop keeping');
     }
     if (t?.road !== undefined) btn(`data-road-card="${t.road}"`, 'The side road');
+    if (t?.hairpin) btn(`data-fix-hairpin="${t.hairpin.pi},${t.hairpin.speed}"`, `Make it a hairpin <small>${t.hairpin.speed} km/h</small>`);
     const roadId = (v as Violation & { crossing?: { roadId?: number } }).crossing?.roadId;
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
@@ -432,7 +451,7 @@ export class Inspector {
     const active = auto ? 'auto' : null;
     const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
-    const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
+    const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: v.target?.hairpin ? this.fixes(v, d) : '' }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
       <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
@@ -673,6 +692,7 @@ export class Inspector {
     }
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
+    if (b.dataset.fixHairpin) { const [pi, speed] = b.dataset.fixHairpin.split(',').map(Number); this.ev.hairpin?.(pi, true, speed); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }

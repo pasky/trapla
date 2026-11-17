@@ -123,6 +123,20 @@ describe('hairpins (research/47 §3)', () => {
     const g = buildAlignment(A, { x: 2000, y: 1040 }, gentle, horizontalRules(70, 'S9.5'), bendRules(gentle, 70, 'S9.5'));
     expect(hairpinViolations(g, gentle, 90, 'S9.5', steep).map(v => v.fix)).toEqual(['Make bend 1 an ordinary curve; for a tighter one set its stretch to 70 km/h']);
   });
+  it('a bend turning back almost on itself offers to be a hairpin where one may stand (QA3)', async () => {
+    const { hairpinFixes } = await import('../src/core/design-speed');
+    const { syntheticTerrain } = await import('../src/core/terrain');
+    const steep = syntheticTerrain(400, 400, 5, (_x, y) => 300 + 0.25 * y), flat = syntheticTerrain(400, 400, 5, () => 300);
+    const u: PI[] = [{ x: 1000, y: 200, r: null }], B2 = { x: 0, y: 300 };
+    const ua = buildAlignment(A, B2, u, horizontalRules(90, 'S9.5'), bendRules(u, 90, 'S9.5'));
+    const issues = () => ROAD_CHECKS.horizontal(ua, speedNorms(90, 'S9.5'), { a: A, b: B2, pis: u, category: 'S9.5' }).filter(v => v.title.endsWith('turns back almost on itself'));
+    const onSteep = issues();
+    hairpinFixes(ua, u, 'S9.5', steep, onSteep);
+    expect(onSteep.map(v => v.target?.hairpin)).toEqual([{ pi: 0, speed: 70 }]);
+    const onFlat = issues();
+    hairpinFixes(ua, u, 'S9.5', flat, onFlat);
+    expect(onFlat.map(v => v.target?.hairpin)).toEqual([undefined]);
+  });
 });
 
 describe('grade limits along the road (M4-2)', () => {

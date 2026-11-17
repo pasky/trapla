@@ -49,9 +49,11 @@ export const BRIDGE_STYLES = {
   long: { minSpan: 45, span: 60, maxSpan: 180, capFrom: 60, capHeight: 40, capFactor: 1.2, sideSpan: 0.56 },
   /** Arch: one arch of 100–250 m (Czech: Napajedla 115, Opárno 135, Podolsko 150, Červená 156, Plasy 180,
    * D3 Sázava 251 m) with the deck on columns, and short approach spans (Opárno 17.5–24 m, Plasy 25–32 m). The
-   * bridge is 1.8–2.8 × the arch span (Opárno 273/135, Červená 316/156, Plasy 496/180); rise 1/10–1/5 of the
-   * span (Trojský 20/200, Napajedla 20/115). Priced `factor` × a 30 m-span viaduct as high as the arch's highest
-   * point (Opárno 0.99, Plasy 0.82 × SPK with its height attribute): PROVISIONAL, two bridges (research/50 §3,
-   * §5). */
-  arch: { minArch: 100, maxArch: 250, lengthMin: 1.8, lengthMax: 2.8, riseMin: 1 / 10, riseMax: 1 / 5, columnSpan: 30, factor: 1 },
+   * bridge is 1.8–3.3 × the arch span (Opárno 273/135, Červená 316/156, Plasy 496/180; D3 Sázava 787/237, ŘSD
+   * leaflet 0302, research/69); rise 1/10 (Trojský 20/200) to 1/3.5 of the span: "most arches … within 1:4.5 to
+   * 1:6", the Cowlitz River bridge, "a typical true concrete arch", 159 m with a 45 m rise (Fox, Bridge
+   * Engineering Handbook, CRC 2000, ch. 17 §17.4, §17.6.1; research/69). Priced `factor` × a 30 m-span viaduct as
+   * high as the arch's highest point (Opárno 0.99, Plasy 0.82 × SPK with its height attribute): PROVISIONAL, two
+   * bridges (research/50 §3, §5). */
+  arch: { minArch: 100, maxArch: 250, lengthMin: 1.8, lengthMax: 3.3, riseMin: 1 / 10, riseMax: 1 / 3.5, columnSpan: 30, factor: 1 },
 } as const;

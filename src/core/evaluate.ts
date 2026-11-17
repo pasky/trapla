@@ -23,7 +23,7 @@ import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoic
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
-import { geometryPis, hairpinPavementPerM2, hairpinViolations, hairpinWidening, raisedBendSpeeds, slowedSteps, speedStretches, travelMinutes, verticalLimits } from './design-speed';
+import { geometryPis, hairpinFixes, hairpinPavementPerM2, hairpinViolations, hairpinWidening, raisedBendSpeeds, slowedSteps, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
@@ -2292,6 +2292,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
   ];
+  if (!win) hairpinFixes(al, d.pis, d.category, terrain, violations);
   const waterCrossings: WaterResult[] = water.map((c, k) => {
     const i = Math.min(n - 1, Math.round(c.s / ds));
     const wd = sec.dayL[i] + sec.dayR[i], above = waterZ[k] - terrain.heightAt(c.x, c.y), size = waterSize(c, wd, above);

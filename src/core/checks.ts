@@ -73,6 +73,8 @@ export interface ViolationTarget {
   road?: number;
   /** a wall that fixes it: sides, height (m) and station range */
   wall?: { sides: ('L' | 'R')[]; height: number; s0: number; s1: number };
+  /** a bend that may be a hairpin instead (design-speed.ts hairpinFixes): its index and the speed its stretch needs */
+  hairpin?: { pi: number; speed: number };
 }
 
 /** one-line form for logs and scripts */

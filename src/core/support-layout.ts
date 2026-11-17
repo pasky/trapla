@@ -312,26 +312,46 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   /** An arch for the bridge (BRIDGE_STYLES.arch): springings on the ground, the arch 1/1.8–1/2.8 of the
    * bridge, its rise 1/10–1/5 of its span, its rib clear of the ground. The longest such arch, then the most
    * even; undefined where none fits. O(cells² · cells) on bridges of 180–700 m only. */
+  /** why the last bridge got no arch (the furthest any candidate came: its length, its rise, the ground, its feet) */
+  let archMiss: Run['archMiss'], archTried: Run | undefined;
   const archFor = (run: Run): Plan['arch'] => {
     const A = BRIDGE_STYLES.arch, depth = ARCH_DECK_DEPTH;
     const aMin = Math.max(A.minArch, run.length / A.lengthMax), aMax = Math.min(A.maxArch, run.length / A.lengthMin);
+    archMiss = run.length < A.minArch * A.lengthMin ? 'short' : 'long';
     if (aMin > aMax + 1e-9) return undefined;
+    const miss = (m: NonNullable<Run['archMiss']>) => { const order = ['short', 'long', 'shallow', 'deep', 'ground', 'blocked'];
+      if (order.indexOf(m) > order.indexOf(archMiss!)) archMiss = m; };
     let best: Plan['arch'], bestA = 0, bestEven = Infinity, height = -Infinity;
     for (let i = run.i0; i <= run.i1; i++) height = Math.max(height, r.grade[i] - r.ground[i]);
+    // the rib clears the ground and what lies below as depthCheck will judge it (cell by cell between the springings)
+    const ribClear = (sa: number, sb: number, rib: (s: number) => number) => {
+      const i0 = Math.max(run.i0, Math.floor(sa / r.ds + 0.5)), i1 = Math.min(run.i1, Math.floor(sb / r.ds + 0.5));
+      for (let i = i0; i <= i1; i++) {
+        const left = Math.max(sa, r.s[i] - r.ds / 2), right = Math.min(sb, r.s[i] + r.ds / 2);
+        if (right <= left) continue;
+        const z = rib((left + right) / 2);
+        if (z < r.ground[i] - 0.01 || z < obstacle(cellAt(r, (left + right) / 2, (right - left) / 2, r.crownWidth / 2)) - 1.2 - 0.01) return false;
+      }
+      return true;
+    };
     for (let ia = run.i0 + 1; ia < run.i1; ia++) for (let ib = ia + 1; ib < run.i1; ib++) {
       const sa = r.s[ia], sb = r.s[ib], a = sb - sa;
       if (a < aMin - 1e-9) continue;
       if (a > aMax + 1e-9) break;
       const za = r.ground[ia], zb = r.ground[ib], sm = (sa + sb) / 2, zc = gradeAt(sm) - depth, rise = zc - (za + zb) / 2;
-      if (rise < a * A.riseMin || rise > a * A.riseMax) continue;
+      if (rise < a * A.riseMin) { miss('shallow'); continue; }
+      if (rise > a * A.riseMax) { miss('deep'); continue; }
       const even = Math.abs(za - zb);
       if (a < bestA - 1e-9 || (a < bestA + 1e-9 && even >= bestEven)) continue;
       const rib = archRib(sa, sb, za, zb, zc);
       let clear = true;
       for (let k = ia + 1; k < ib && clear; k++) if (rib(r.s[k]) < r.ground[k] - 0.01) clear = false;
-      if (!clear || blocked(sa, true) || blocked(sb, true)) continue;
+      if (!clear) { miss('ground'); continue; }
+      if (!ribClear(sa, sb, rib)) { miss('blocked'); continue; }
+      if (blocked(sa, true) || blocked(sb, true)) { miss('blocked'); continue; }
       best = { s0: sa, s1: sb, height, rib }; bestA = a; bestEven = even;
     }
+    if (best) archMiss = undefined;
     return best;
   };
   for (const run of runs) {
@@ -408,6 +428,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
           return plan;
         });
       }
+      archTried = run;
       const arch = archFor(run);
       if (!arch) return [];
       const span = BRIDGE_STYLES.arch.columnSpan;
@@ -418,7 +439,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       const supports = [run.s0, ...left.piers, arch.s0], after = [arch.s1, ...right.piers, run.s1];
       let approach = 0;
       for (const list of [supports, after]) for (let k = 1; k < list.length; k++) approach = Math.max(approach, list[k] - list[k - 1]);
-      if (approach > BRIDGE_STYLES.short.maxSpan) plan.tooLong = approach;
+      if (approach > BRIDGE_STYLES.short.maxSpan) { plan.tooLong = approach; archMiss = 'spans'; }
       plan.layout = { span: approach, pierDensity: plan.layout.pierDensity };
       return [plan];
     };
@@ -485,6 +506,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       const prices: Partial<Record<BridgeStyle, number>> = {};
       for (const plan of fits) if (plan.raiseM <= 0.01 || plan === chosen) prices[plan.style] = Math.min(prices[plan.style] ?? Infinity, priced(plan));
       run.styles = prices;
+      // (an arch weighed and not fitting: why, for the card)
+      if (prices.arch === undefined && archTried === run && archMiss) run.archMiss = archMiss;
     }
     for (const [s, z] of chosen.required) requiredElevations.set(s, Math.max(z, requiredElevations.get(s) ?? -Infinity));
     if (chosen.regrade[0] + chosen.regrade[1] > 0) run.regradeM3 = chosen.regrade;
