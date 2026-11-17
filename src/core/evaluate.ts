@@ -17,7 +17,7 @@ import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, cutCoverPitHalfWidth, cutCoverPitPerM, tunnelTubeFactor, decisionPrices, dividedRoad, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
-import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
+import { heldRailway, RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
 import { WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
 import { buildCrossings, type KeptCrossings } from './crossings-kept';
@@ -851,9 +851,9 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
   // auto-profile requests an overpass) or pass far enough below for an overbridge
-  // (not a railway or motorway of the project: it is held at the height our crossing leaves it, project-evaluate.ts)
+  // (not a railway of the project: it is held at the height our crossing leaves it, crossing-geometry.ts heldRailway)
   rawRoadX.forEach((c) => {
-    if (!ROAD_CLASSES[c.cls].noAtGrade || ctx.roads?.isDesigned(c.way)) return;
+    if (!ROAD_CLASSES[c.cls].noAtGrade || heldRailway({ designed: ctx.roads?.isDesigned(c.way) || undefined, cls: c.cls })) return;
     // Only the actual endpoint tie-in is exempt (1 m coordinate tolerance), not the 150 m billing
     // margin or the other carriageway. B lies on D11; A gets the same rule if placed on a motorway.
     if (c.s <= CROSSING_RULES.endpointTolerance || al.length - c.s <= CROSSING_RULES.endpointTolerance) return;
