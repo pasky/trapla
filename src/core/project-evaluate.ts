@@ -1110,7 +1110,7 @@ function heldChecks(r: Result, holds: readonly (Hold & ReturnType<typeof placedH
     const credit = Math.min(h.billed ?? 0, Math.max(0, r.cost.total - spent));
     spent += credit;
     if (credit > 0) credits.push({ kind: 'junction', s: h.s, x: h.crossing.x, y: h.crossing.y, length: 2 * half, cost: -credit,
-      label: `${cap(name)} pays for its bridge over ${name} and the ramps up to it` });
+      label: `${cap(name)} pays for its bridge over ${name}${h.crossing.approachLength ? ' and the ramps up to it' : ''}` });
   }
   return { violations, credits };
 }

@@ -63,6 +63,10 @@ const byDistance = (path: readonly Readonly<WayPoint>[]) => {
 };
 // Match the main bridge model's clear-span overbridge layout: abutments on the banks, no
 // piers in our traffic corridor. Raised earth approaches are billed separately below.
+/** A railway or motorway of the project carried over us (`c.designed`) climbs to the deck on its own line,
+ * drawn and billed by itself (its grade is held at the deck, project-evaluate.ts): the crossing builds
+ * and bills its deck only, no approach ramps of its own. */
+export const ownApproaches = (c: Pick<CrossingResult, 'designed' | 'cls'>) => !!c.designed && !!ROAD_CLASSES[c.cls]?.noAtGrade;
 const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
 
 /** Lowest grade-minus-floor along a box under the crown band, on the final way samples plus
@@ -905,7 +909,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     g.approaches = [{ start: road.findIndex(q => q.d === f0), end: start }, { start: end, end: road.findIndex(q => q.d === f1) }];
     if (isRaised) {
       g.deck = { start, end, depth: DEPTH };
-      c.span = d1 - d0; c.approachLength = d0 - f0 + f1 - d1;
+      c.span = d1 - d0; c.approachLength = ownApproaches(c) ? 0 : d0 - f0 + f1 - d1;
       c.cost = deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
     }
   } else if (c.type === 'reconnection' || c.type === 'diversion') {

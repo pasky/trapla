@@ -851,8 +851,9 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
   // auto-profile requests an overpass) or pass far enough below for an overbridge
+  // (not a railway or motorway of the project: it is held at the height our crossing leaves it, project-evaluate.ts)
   rawRoadX.forEach((c) => {
-    if (!ROAD_CLASSES[c.cls].noAtGrade) return;
+    if (!ROAD_CLASSES[c.cls].noAtGrade || ctx.roads?.isDesigned(c.way)) return;
     // Only the actual endpoint tie-in is exempt (1 m coordinate tolerance), not the 150 m billing
     // margin or the other carriageway. B lies on D11; A gets the same rule if placed on a motorway.
     if (c.s <= CROSSING_RULES.endpointTolerance || al.length - c.s <= CROSSING_RULES.endpointTolerance) return;

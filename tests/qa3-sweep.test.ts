@@ -42,18 +42,27 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(owned).toBeGreaterThan(0);
     expect(Math.abs(alone - expected)).toBeLessThan(1);
   }, 60_000);
-  // Královec railway, the new railway across our line where it runs through a cutting: a 12.5 ‰ line cannot
-  // dip 7.7 m to a deck at ground level; it passes over our railway on that bridge built higher, at least
-  // clear of our line, and its stretch over our cutting is a bridge.
-  it('a new railway across our railway passes over it on its own bridge', () => {
+  // Královec railway, the QA's new railway across ours: it was held at a deck at ground level ("lower this
+  // railway here by 7.7 m": a 12.5 ‰ line cannot) while our railway dug itself 15 m down under the ground
+  // there (+265 M). A railway of the project follows our crossing as a road does: our line stays where it
+  // is, the new one goes over it on its bridge, and our bill rises by that bridge's deck only.
+  it('a new railway across our railway passes over it on its own bridge; ours stays where it was', () => {
     const design = fixture('rail-new-railway-across'), r = run(design);
     expect(r.issues.filter(i => i.code !== 'road-ends-nowhere').map(i => i.violation.title)).toEqual([]);
     const ours = r.routes['route:railway'].legacy!, held = r.routes[design.routes[1].id].legacy!;
     const c = ours.crossings.find(c => c.crossedRoute?.id === design.routes[1].id)!;
-    expect(c.type).toBe('overbridge');
+    expect(c).toMatchObject({ type: 'overbridge', approachLength: 0 });
     let k = 0; for (let q = 1; q < held.n; q++) if (Math.hypot(held.x[q] - c.x, held.y[q] - c.y) < Math.hypot(held.x[k] - c.x, held.y[k] - c.y)) k = q;
     expect(held.kind[k]).toBe(1);
-    expect(held.grade[k] - ours.grade[c.i]).toBeGreaterThanOrEqual(7.5 - 0.5);
+    const deck = c.geometry!.road!.reduce((p, q) => Math.abs(q.d!) < Math.abs(p.d!) ? q : p).z;
+    expect(Math.abs(held.grade[k] - deck)).toBeLessThan(1);
+    const alone = structuredClone(design); alone.routes = alone.routes.slice(0, 1);
+    alone.connections = alone.connections.filter(x => x.ports.every(p => p.kind !== 'route' || p.routeId === 'route:railway'));
+    const solo = run(alone).routes['route:railway'].legacy!;
+    expect(Math.abs(ours.grade[c.i] - solo.grade[c.i])).toBeLessThan(1);
+    expect(ours.cost.total - solo.cost.total).toBeLessThan(2 * c.cost);
+    const { alone: bills, expected } = billedOnce(design, r);
+    expect(Math.abs(bills - expected)).toBeLessThan(1);
   }, 60_000);
 });
 

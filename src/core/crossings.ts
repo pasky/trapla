@@ -4,7 +4,7 @@ import { bridgeModel } from './bridge';
 import { ACCESS, CROSSING_RULES, JUNCTION, minorCrossroads, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { LOWERING_RULES, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
-import { underpassFits } from './crossing-geometry';
+import { ownApproaches, underpassFits } from './crossing-geometry';
 import { crossingOutcome } from './terms';
 import type { OurLine } from './terms';
 import { KIND } from './structures';
@@ -222,10 +222,11 @@ export function crossingBridgeMask(s: ArrayLike<number>, raw: readonly RoadCross
   return mask;
 }
 
-/** Shared automatic/manual pricing; excludes main-road bridge/tunnel costs and surcharge. */
+/** Shared automatic/manual pricing; excludes main-road bridge/tunnel costs and surcharge. A railway or
+ * motorway of the project carried over us climbs to the deck on its own line: its deck only (ownApproaches). */
 export function overbridgePrice(c: CrossingResult, footprint: number, urban: number) {
   const row = ROAD_CLASSES[c.cls], u = urban >= 0.5 ? 1 : 0;
-  const approachLength = 2 * Math.max(0, CROSSING_RULES.underDepth + c.h) / row.rampGradient;
+  const approachLength = ownApproaches(c) ? 0 : 2 * Math.max(0, CROSSING_RULES.underDepth + c.h) / row.rampGradient;
   const span = footprint, roadPerKm = row.roadPerKm[u];
   // The cut/road corridor stays unobstructed: one clear span, bank-top abutments, no fictitious
   // piers on the main road. Depth below the banks is not a pier height. Raised approaches stay separate.
@@ -377,7 +378,9 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (c.requestedType) continue;
     if (kind[c.i] === KIND.bridge) c.type = 'bridge';
     else if (kind[c.i] === KIND.tunnel) c.type = 'tunnel';
-    else if (row.noAtGrade && c.h <= -CROSSING_RULES.underDepth) {
+    else if (row.noAtGrade && (c.h <= -CROSSING_RULES.underDepth || c.designed)) {
+      // (a railway or motorway of the project passes over us wherever our line is: it follows our crossing's
+      // height, project-evaluate.ts, as a road of the project does)
       c.type = 'overbridge'; Object.assign(c, separated(c));
     } else continue;
     if (!row.noAtGrade) anchors.push(c);
