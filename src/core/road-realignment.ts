@@ -443,13 +443,13 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     // Where the new pavement crosses another existing road (or its own surviving continuation)
     // outside the footprint, it joins that road at its own ground level: pin the profile there
     // instead of passing over it on a ramp. Engineered crossing surfaces keep their own levels.
-    const pins = new Map<WayPoint, number>();
+    const pins = new Map<WayPoint, { way: number; d: number }>();
     parts = parts.map(part => {
       const out: WayPoint[] = [part[0]];
       for (let i = 1; i < part.length; i++) {
         const p = part[i - 1], q = part[i], dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy);
         if (len > 1e-6 && (distance(p, along(raw, p.d)) > 0.01 || distance(q, along(raw, q.d)) > 0.01)) {
-          const hits: { t: number; way: number }[] = [];
+          const hits: { t: number; way: number; d: number }[] = [];
           roads.nearSegments([Math.min(p.x, q.x) - 1, Math.min(p.y, q.y) - 1, Math.max(p.x, q.x) + 1, Math.max(p.y, q.y) + 1], segment => {
             if (ROAD_CLASSES[segment.cls].noAtGrade) return;
             const ex = segment.bx - segment.ax, ey = segment.by - segment.ay, den = dx * ey - dy * ex;
@@ -461,9 +461,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
             if (sourceIntervals.some(s => s.way === segment.way && d >= s.a - 1 && d <= s.b + 1)) return;
             if ((covered?.get(segment.way) ?? []).some(([lo, hi]) => d >= lo && d <= hi)) return;
             if ((input.crossings ?? []).some(c => crossingSource(c, roads)?.intervals.some(s => s.way === segment.way && d >= s.a - 1 && d <= s.b + 1))) return;
-            if (!grid.hits({ x: p.x + t * dx, y: p.y + t * dy }, half)) hits.push({ t, way: segment.way });
+            if (!grid.hits({ x: p.x + t * dx, y: p.y + t * dy }, half)) hits.push({ t, way: segment.way, d });
           });
-          for (const { t, way: other } of hits.sort((x, y) => x.t - y.t)) {
+          for (const { t, way, d } of hits.sort((x, y) => x.t - y.t)) {
+            const other = { way, d };
             // A crossing at a vertex pins that vertex (never a part's fixed end).
             if (t <= 0.02 && i > 1) { pins.set(p, other); continue; }
             if (t >= 0.98 && i + 1 < part.length) { pins.set(q, other); continue; }
@@ -481,10 +482,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     const path = flat.map(point), gap = parts.length === 2 ? parts[0].length : -1;
     const fixed = new Map([[0, anchorA?.z ?? path[0].ground], [path.length - 1, anchorB?.z ?? path[path.length - 1].ground]]);
     if (gap > 0) { fixed.set(gap - 1, linkA!.z); fixed.set(gap, linkB!.z); }
-    const pinned: (Point2 & { way: number })[] = [];
+    const pinned: (Point2 & { way: number; d: number })[] = [];
     flat.forEach((p, i) => {
       const other = pins.get(p);
-      if (other !== undefined && !fixed.has(i)) { fixed.set(i, path[i].ground); pinned.push({ x: p.x, y: p.y, way: other }); }
+      if (other !== undefined && !fixed.has(i)) { fixed.set(i, path[i].ground); pinned.push({ x: p.x, y: p.y, ...other }); }
     });
     for (const index of fixed.keys()) if (grid.hits(path[index], half)) problems.add('tie-in inside the footprint');
     // Solve a bounded Lipschitz profile with fixed terrain tie-ins. Explicit wall-supported
@@ -738,6 +739,22 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
           const t = Math.max(0, Math.min(1, ((junction.x - a.x) * dx + (junction.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
           preserved = Math.hypot(junction.x - a.x - t * dx, junction.y - a.y - t * dy) < 2
             && Math.abs(ground - a.z - t * (b.z - a.z)) < 0.1;
+        }
+        // A side road the new pavement crosses near its old junction joins it there instead (its stub between goes,
+        // where no other road joins that stub): each outside arm needs such a contact.
+        if (!preserved) {
+          const rejoined: RoadSourceInterval[] = [];
+          preserved = unowned.every(connection => {
+            if (grid.hits(junction, ROAD_CLASSES[connection.cls].width / 2)) return true;
+            const pin = pinned.find(p => p.way === connection.way && Math.abs(p.d - connection.d) <= CROSSING_RULES.linkMinLength);
+            if (!pin) return false;
+            const lo = Math.min(pin.d, connection.d), hi = Math.max(pin.d, connection.d), stub = roads.wayPath(connection.way, lo, hi);
+            for (let i = 1; i < stub.length; i++) for (const j of roads.junctions(stub[i - 1], stub[i]))
+              if (distance(j, junction) > JUNCTION_TOLERANCE && distance(j, pin) > JUNCTION_TOLERANCE) return false;
+            rejoined.push({ way: connection.way, a: lo, b: hi });
+            return true;
+          });
+          if (preserved) sourceIntervals.push(...rejoined);
         }
         if (!preserved) problems.add('realignment would sever an unhandled road branch');
       }
