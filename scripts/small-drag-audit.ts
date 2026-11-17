@@ -1,7 +1,7 @@
 // Robustness of Auto's crossing treatments under small drags: move the bend nearest a chainage by a
 // few metres (seeded), evaluate, and count invalid results and their violations.
 // SCENARIO=i16-nova-paka npx tsx scripts/small-drag-audit.ts scripts/scenarios/i16-nova-paka/default.json --at 3300 --n 24 --radius 25
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
 import { loadPack } from './loadpack';
 
@@ -26,6 +26,8 @@ console.log(`${file}: base ${(base.cost.total / 1e9).toFixed(4)} bn ${base.valid
 for (const pi of bends) for (let k = 0; k < count; k++) {
   const a = rand() * 2 * Math.PI, r = radius * Math.sqrt(rand());
   const pis = design.pis.map((p, j) => j === pi ? { ...p, x: p.x + r * Math.cos(a), y: p.y + r * Math.sin(a) } : p);
+  // DUMP=dir: write each dragged design (for scripts/_near.ts etc.)
+  if (process.env.DUMP) writeFileSync(`${process.env.DUMP}/drag-${pi + 1}-${k}.json`, JSON.stringify({ design: { ...design, pis } }));
   const t0 = performance.now();
   const res = evaluate(ctx, { ...design, pis });
   ms += performance.now() - t0;

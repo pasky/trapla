@@ -203,9 +203,13 @@ describe('bounded real road relocation', () => {
   });
 
   it('never severs outside-grid third arms when removing a dead-end stub or straightening a connector', () => {
+    // (a dead end with no room to turn round before its junction is cut back to that junction, which stays)
     const dead = setup([[0, 500, 240, 500, 450], [0, 500, 275, 650, 275]]);
     dead.hit = { a: 0, b: 32, i: 40, j: 40 };
-    preservesJunctionOrBlocks(planRoadRealignment(dead), 500, 275, 35, 1);
+    const cut = planRoadRealignment(dead);
+    expect(cut.problems).toEqual([]);
+    expect(cut.closed).toEqual({ length: 35, detour: 0 });
+    expect(cut.sourceIntervals).toEqual([{ way: 0, a: 0, b: 35 }]);
 
     const split = setup([[0, 700, 100, 700, 400], [0, 700, 100, 500, 100], [0, 500, 100, 500, 400], [0, 700, 200, 850, 200]]);
     split.hit = { a: 128, b: 172, i: 60, j: 60 }; split.crossings = [crossing(2)];
@@ -243,9 +247,12 @@ describe('bounded real road relocation', () => {
     const plan = planRoadRealignment(input);
     expect(plan.problems.length).toBeGreaterThan(0);
     expect(plan.geometry.turnarounds).toBeUndefined();
+    // (a displaced T-junction outside the footprint is where a dead end with no room to turn round is cut back to)
     const side = setup([[0, 500, 240, 500, 450], [0, 501.2, 275, 650, 275]]);
     side.hit = input.hit;
-    expect(planRoadRealignment(side).problems).toContain('realignment would sever an unhandled road branch');
+    const cut = planRoadRealignment(side);
+    expect(cut.problems).toEqual([]);
+    expect(cut.sourceIntervals).toEqual([{ way: 0, a: 0, b: 35 }]);
   });
 
   it('blocks new pavement over parallel or crossing expressways and unrelated ordinary roads', () => {

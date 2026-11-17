@@ -18,6 +18,7 @@ import {
   type CostBreakdown, type CostParts,
 } from './cost';
 import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
+import { WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
@@ -457,8 +458,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
     }
   }
-  // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
-  // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
+  // A motorway / railway crosses every road at another level (an ordinary road those it meets in no
+  // junction: too close to another one). Where Auto's grade left a road neither room to pass under us
+  // nor a buildable bridge over us (its ramps would bury a road beside it), a designer moves the grade
+  // line: once more
   // with Auto asked to clear those roads (kept only if it resolves more than it breaks). `base`: the
   // options of the kept result, whose own clearances stay.
   const separation = (base: EvalOptions, buriedToo = false) => {
@@ -466,7 +469,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       separate: [...base.separate ?? [], ...gs.flat().flatMap(t => t.road ? [t.road] : [])],
       separateWater: [...base.separateWater ?? [], ...gs.flat().flatMap(t => t.water ? [t.water] : [])] });
     const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
-      && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
+      && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH) || m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG));
     // …and where it paid the clearance penalty over a river, railway or stream instead of clearing it.
     const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water'));
     // …and where a way could be led to no other crossing and nothing else was buildable there either: it
@@ -512,7 +515,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
     }
   };
-  if (!opts.preview && !opts.window && !opts.separate && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') separation(opts);
+  if (!opts.preview && !opts.window && !opts.separate && d.profileMode === 'auto') separation(opts);
   // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
   // designer lowers the grade there (or raises it out of a cutting) so the slope stays off the road: once
   // more with Auto asked for NARROW_STEP less embankment (cutting) there, kept per stretch where it

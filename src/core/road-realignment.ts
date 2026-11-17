@@ -277,10 +277,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   };
   const anchors = [crossingAnchor(ends[0], along(raw, Math.min(hi, lo + CROSSING_RULES.linkMinLength))),
     crossingAnchor(ends[1], along(raw, Math.max(lo, hi - CROSSING_RULES.linkMinLength)))];
-  // Only a true graph end inside acquired earthwork may be removed. A clipped traversal or
-  // a junction is not a licence to close a branch. Structure foundations are never acquisition.
+  // Only a true graph end inside acquired earthwork (its pavement reaching into it) may be removed. A
+  // clipped traversal or a junction is not a licence to close a branch. Structure foundations are never acquisition.
   const dead = ends.map((p, i) => Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6
-    && grid.near(p).some(c => !c.structure && insideFootprint(p, c)) && roads.isDeadEnd(p));
+    && grid.near(p).some(c => !c.structure && insideFootprint(p, c, half)) && roads.isDeadEnd(p));
   // A dead-end piece that lies wholly under our earthworks (its other end joins a road there too) leads
   // nowhere that remains: it is removed with the land it served, at no cost.
   // (so is one whose part left outside them is shorter than the turning area its cut end would need)
@@ -293,19 +293,35 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       if (Math.hypot(j.x - live.x, j.y - live.y) > JUNCTION_TOLERANCE) return true;
     return false;
   };
-  if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1]))) && !joined()) {
+  /** the stretch [a, b] of the connected path removed, no new pavement */
+  const removal = (a: number, b: number): RoadRealignmentPlan => {
     const intervals: RoadSourceInterval[] = [];
     for (const span of spans) {
-      const start = Math.max(lo, span.lo), end = Math.min(hi, span.hi);
+      const start = Math.max(a, span.lo), end = Math.min(b, span.hi);
       if (end <= start + 1e-6) continue;
       const da = span.a + (span.b - span.a) * (start - span.lo) / (span.hi - span.lo), db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
       intervals.push({ way: span.way, a: Math.min(da, db), b: Math.max(da, db) });
     }
-    return { geometry: { width: row.width, schematic: false, road: [] }, original: source.map(point), length: 0, cost: 0, roadCode: '', problems: [],
+    return { geometry: { width: row.width, schematic: false, road: [] }, original: slice(raw, a, b).map(point), length: 0, cost: 0, roadCode: '', problems: [],
       pavementCosts: [], apronCost: 0, sourceIntervals: mergeIntervals(intervals), turnaroundArea: 0, retainingArea: 0, retainingCost: 0,
-      closed: { length: hi - lo, detour: 0 } };
-  }
+      closed: { length: b - a, detour: 0 } };
+  };
+  if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1]))) && !joined()) return removal(lo, hi);
   if (dead[0] && dead[1]) return failure('no surviving branch outside the acquired footprint');
+  /** chainage of the junction with other roads nearest the dead end (`reverse`: the path's last point),
+   * clear of our earthworks */
+  const firstJunction = (reverse: boolean): number | undefined => {
+    const end = reverse ? source[source.length - 1] : source[0];
+    let best: number | undefined;
+    for (let i = 1; i < source.length; i++) for (const j of roads.junctions(source[i - 1], source[i])) {
+      if (distance(j, end) <= JUNCTION_TOLERANCE || under(j)) continue;
+      const a = source[i - 1], b = source[i], dx = b.x - a.x, dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((j.x - a.x) * dx + (j.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      const d = a.d + t * (b.d - a.d);
+      if (best === undefined || (reverse ? d > best : d < best)) best = d;
+    }
+    return best;
+  };
 
   // Exact ribbon/rectangle tests on bounded local pieces, including all connecting chords.
   const chordHits = (a: Point2, b: Point2, width = half): boolean => {
@@ -341,6 +357,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     // No laterally invented anchor and no new access across the severed main-road corridor.
     const samples = dense(source), reverse = dead[1], ordered = reverse ? [...samples].reverse() : samples;
     turn = ordered.find(p => !grid.hits(p, radius + SETBACK));
+    // A dead end with no room for a turning area before the first road it joins is cut back to that
+    // junction: its traffic turns there, and what it led to lies under our road.
+    const junction = firstJunction(reverse);
+    if (junction !== undefined && (!turn || (reverse ? turn.d < junction : turn.d > junction))) return reverse ? removal(junction, hi) : removal(lo, junction);
     if (!turn) return failure('no clear turnaround on the surviving branch within real-way reach');
     if (reverse) { removedHi = hi; hi = turn.d; } else { removedLo = lo; lo = turn.d; }
   }
