@@ -548,14 +548,15 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       let retry = evaluateRoute(ctx, d, split);
       if (retry.withNoise) retry = retry.withNoise();
       retry.timing['count.splitRetry'] = 1;
-      if (regionCount(retry, buried.map(f => (f.s0 + f.s1) / 2)) < regionCount(r0, buried.map(f => (f.s0 + f.s1) / 2))) {
-        result = retry; used = split;
-        // (a way of its own may now be left neither room under us nor a buildable bridge over us)
-        if (CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') {
-          separation(used);
-          if (result !== retry && result.withNoise) result = result.withNoise();
-        }
+      const at = buried.map(f => (f.s0 + f.s1) / 2), before = used;
+      // (a way of its own may now be left neither room under us nor a buildable bridge over us: the grade
+      // clears it, as for any crossing; the split is judged with that)
+      result = retry; used = split;
+      if (d.profileMode === 'auto') {
+        separation(used);
+        if (result !== retry && result.withNoise) result = result.withNoise();
       }
+      if (regionCount(result, at) >= regionCount(r0, at)) { result = r0; used = before; }
     }
   }
   if (!opts.preview && !opts.window && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto'
@@ -1762,11 +1763,18 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
   let baseLine = vpis;
   let liftShared = false;
   for (let attempt = 0; attempt < 5 && !preview && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
-    // Blocks: targets on the traced line's points, 10 cm up, so they do not move with the stations.
-    for (const q of engineering.supportHeights) {
-      const x = blocks ? snapTraced(q.s) : q.s, z = blocks ? Math.ceil(q.z * 10 - 1e-9) / 10 : q.z;
+    // Blocks: targets on the traced line's points, 10 cm up, so they do not move with the stations; a target
+    // moved there is raised by what the line falls from there to where the height is needed (on a 5 % grade a
+    // point 5 m off is 0.25 m higher).
+    const snapped = blocks ? engineering.supportHeights.map(q => snapTraced(q.s)) : [];
+    const fall = snapped.map((x, k) => {
+      const s = engineering.supportHeights[k].s, z = elevations(engineering.prof, x <= s ? [x, s] : [s, x]);
+      return Math.max(0, x <= s ? z[0] - z[1] : z[1] - z[0]);
+    });
+    engineering.supportHeights.forEach((q, k) => {
+      const x = blocks ? snapped[k] : q.s, z = blocks ? Math.ceil((q.z + fall[k]) * 10 - 1e-9) / 10 : q.z;
       repairTargets.set(x, Math.max(z, repairTargets.get(x) ?? -Infinity));
-    }
+    });
     const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
     // Each stretch of nearby targets is lifted on its own (a failure elsewhere does not undo it), within
     // its block of the grade solve: a lift never reaches past the block, so it does not depend on targets
