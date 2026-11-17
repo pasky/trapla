@@ -10,6 +10,7 @@ import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 import * as dm from './detmath';
 import { KIND } from './structures';
+import { bridgeLayout } from './bridge';
 import type { KeepClear } from './keep-clear';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
@@ -148,6 +149,16 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     } else out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i], r: Math.max(reach(i - 1), reach(i)) + pad, ...z });
   }
   if (result.n === 1) out.push({ ax: result.x[0], ay: result.y[0], bx: result.x[0], by: result.y[0], r: reach(0) + pad });
+  // A bridge's piers stand on the ground under its deck (as footprint.ts structureFootprints places them): a
+  // deck high above another road's works shares no land with them, its piers do.
+  for (const run of result.runs ?? []) if (run.kind === KIND.bridge && result.grade) {
+    const spans = Math.max(1, Math.round(run.length / bridgeLayout(run.length).span));
+    for (const s of run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + run.length * (k + 1) / spans)) {
+      const k = Math.max(0, Math.min(result.n - 2, Math.floor(s / result.ds))), t = Math.max(0, Math.min(1, (s - result.s[k]) / result.ds));
+      const x = result.x[k] + (result.x[k + 1] - result.x[k]) * t, y = result.y[k] + (result.y[k + 1] - result.y[k]) * t;
+      out.push({ ax: x, ay: y, bx: x, by: y, r: Math.max(1.2, halfWidth * 0.55) + pad, top: Math.max(result.grade[k], result.grade[k + 1]) });
+    }
+  }
   const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0, reroute = false) => {
     if (!points?.length) return;
     // Earthwork toe bound: half width plus a 1:2 side slope over the largest height difference.

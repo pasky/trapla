@@ -134,7 +134,11 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable, ownTrack); memo.set(key, height); }
     return height;
   };
-  const blocked = (s: number, pier = false) => obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
+  // (no pier of ours on the higher-ranking road under the deck it carries us on: that deck spans it)
+  const onHeld = (s: number) => { if (!held) return false;
+    const k = Math.max(0, Math.min(r.n - 2, Math.floor((s - r.s[0]) / r.ds))); return !!held[k] || !!held[k + 1]; };
+  const blocked = (s: number, pier = false) => pier && onHeld(s)
+    || obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
   const heldRun = (run: { i0: number; i1: number }) => {
     if (!held) return false;
     for (let i = run.i0; i <= run.i1; i++) if (!held[i]) return false;

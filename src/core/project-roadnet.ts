@@ -207,6 +207,8 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   const ends = slots.map((r, k) => drawn[k] ? endsOf(r) : undefined);
   const key = JSON.stringify([cuts.map(c => [c.way, c.d0.toFixed(2), c.d1.toFixed(2), c.slot]),
     slots.map((r, k) => drawn[k] ? [r.id, r.endpoints, ends[k], r.alignment.kind === 'pi' ? r.alignment.pis : null, r.specification,
+      // (its old line, where it keeps an old road's own curves: planLine)
+      r.source?.intervals ?? null, !!oldOf?.(r),
       r.kind === 'motorway' ? design.corridors.find(c => c.children.forward === r.id && c.mode === 'paired') ?? null : null] : r.id)]);
   const at = cache.findIndex(c => c.key === key && c.base === roads);
   if (at >= 0) { const [hit] = cache.splice(at, 1); cache.unshift(hit); return hit.net; }

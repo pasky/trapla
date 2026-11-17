@@ -84,7 +84,8 @@ export function hudEvents(app: HudEventContext): HudEvents {
       if (issue.scope.buildingIndex !== undefined) { app.select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
       // A road's own check: core lists each road's kernel violations in order, route-qualified. Its
       // ordinal among that road's 'invalid' issues identifies the kernel violation (never its title).
-      const own = app.projectFull.issues.filter(i => i.blocking === 'invalid' && i.scope.routeIds.length === 1 && i.scope.routeIds[0] === app.store.activeRouteId);
+      // (a free end is the project's finding, not the kernel's)
+      const own = app.projectFull.issues.filter(i => i.blocking === 'invalid' && i.scope.routeIds.length === 1 && i.scope.routeIds[0] === app.store.activeRouteId && i.code !== 'road-ends-nowhere');
       const n = own.indexOf(issue), v = n >= 0 && app.lastFull && own.length === app.lastFull.violations.length ? app.lastFull.violations[n] : undefined;
       if (v && v.title === issue.violation.title) { showViolation(v); return; }
       const at = issue.locations.find(l => l.routeId === app.store.activeRouteId), d = app.store.read();

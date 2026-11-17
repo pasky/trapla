@@ -836,7 +836,9 @@ Research: research/65.
   the final sweep's new road over the railway viaduct) stay unpriced: an engine limit.
 - **Review fixes**: a held line is held at least the owner's clearance over it (7.5 m over a railway; the crossing
   engine's deck sat 6 m up); a railway's drag preview follows the crossings others built with it; a rebuilt
-  stretch's plan line in other roads' networks yields its old corners to Auto as its kernel does.
+  stretch's plan line in other roads' networks yields its old corners to Auto as its kernel does; a held road's own
+  bridge puts no pier on the deck band it rides over the owner (support-layout.ts, it used to ignore the owner: a
+  pier on our centreline), and the screen keeps a bridge's piers as ground works under a deck it exempts.
 - **Bills**: frozen single-road fixtures identical; multi-road projects change (credits, railway crossings, free
   ends priced): model 39.
 - Screenshots `docs/screenshots/310…314-qa3fix-*.png`: the new road's card (−48 M), the new railway on its bridge

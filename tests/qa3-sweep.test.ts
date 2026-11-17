@@ -120,3 +120,28 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dra
     expect(off).toBeLessThan(0.5); // (where it is built anew: on the old road it is drawn on the old line)
   }, 120_000);
 });
+
+// Review of the sweep-3 fixes: a road the player puts on one long bridge over ours rides our crossing's deck
+// there; that deck spans our road, so none of its piers stands on it (its piers used to ignore our road).
+it("a road on its own long bridge over ours puts no pier on our road", async () => {
+  const { D11_SCENARIO } = await import('../src/core/data/scenario');
+  const { makeLegacyProjectContext, projectFromLegacyDesign } = await import('../src/core/project-legacy');
+  const { RoadNet } = await import('../src/core/roadnet');
+  const { syntheticTerrain } = await import('../src/core/terrain');
+  const { structureFootprints } = await import('../src/core/footprint');
+  const y = 658.8235294117648; // (where the even pier spacing put a pier on our centreline)
+  const legacy = { terrain: syntheticTerrain(260, 260, 5, () => 100), scenario: D11_SCENARIO, a: { x: 100, y }, b: { x: 1100, y },
+    roads: new RoadNet({ cls: ['track'], ways: [[0, 50, 20, 60, 30]] }) };
+  const project = projectFromLegacyDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] },
+    makeLegacyProjectContext(legacy, { presetId: 'legacy-road', packId: 'd11', objectData: 'objects', transportData: null }));
+  project.routes.push({ id: 'side', name: 'Side road', role: 'auxiliary', revision: 0, kind: 'road', acousticSourceId: 'side',
+    endpoints: { a: { position: { x: 600, y: 100, z: 120 }, anchor: { kind: 'free' }, binding: 'resolved' }, b: { position: { x: 600, y: 1100, z: 120 }, anchor: { kind: 'free' }, binding: 'resolved' } },
+    alignment: { kind: 'pi', pis: [], vertical: { kind: 'manual', vpis: [{ s: 0, z: 120, r: null }, { s: 1000, z: 120, r: null }] }, controls: { structureOverrides: [{ s0: 0, s1: 1000, kind: 1 }] } },
+    specification: { kind: 'road', policy: 'legacy-road', legalClass: 'III', crossSection: 'S7.5', designSpeed: 70, operations: { aadt: 1000, heavyShare: 0.1, speed: 70, speedPolicy: 'design' } } });
+  const ctx = { legacy, environment: { objectData: 'objects', transportData: null, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' as const } };
+  const r = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project }), side = r.routes.side.legacy!, ours = r.routes[project.routes[0].id].legacy!;
+  const piers = structureFootprints({ ...side, crownWidth: 7.5 }).filter(f => f.structure === 'pier');
+  expect(piers.length).toBeGreaterThan(10);
+  const reach = ours.cell.width[Math.round(500 / ours.ds)] / 2;
+  expect(piers.filter(p => Math.abs(p.y - y) < reach + 1.2)).toEqual([]);
+});
