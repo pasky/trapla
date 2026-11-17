@@ -36,7 +36,9 @@ designs VALID, parts sums match), `npx tsx scripts/eval-regression.ts` (bills fr
 change: bump `COST_MODEL_VERSION`), `npx tsx scripts/outcome-audit.ts --straight scripts/*-design.json
 --random 24` for crossing/footprint changes, `npx tsx scripts/edit-locality.ts` (≈ 1 min: random small edits
 on D11, the D3 sections, the whole D3 / D35 and the Královec railway, plus QA's repros; exit 1 if a grade pin or a
-repro changes anything beyond 10 km, or a repro marked so is not valid) for anything touching the grade solve, retries or previews. Look at the screenshots yourself; reviews of numbers alone missed
+repro changes anything beyond 10 km, or a repro marked so is not valid) for anything touching the grade solve, retries or previews,
+`npx tsx scripts/local-retry-report.ts` (≈ 1.5 min: a retry's crossings built near its change only must equal
+the whole route's on the 177 exact cases) for anything touching the crossing engine or what a pass hands it. Look at the screenshots yourself; reviews of numbers alone missed
 broken visuals and jargon before.
 
 One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
@@ -74,6 +76,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   A drag on a straight start puts in a bend that turns the whole line about A and B (10 px ≈ 220–240 m at
   km 3–9): the price of a different road, the same on main; grade edits there are local
   (`scripts/edit-locality.ts`).
+- A retry's later finishes build only the crossings within 2 km of what they changed (no model version,
+  `src/core/crossings-kept.ts`; no result moved, whole D3 −14 … −18 %; `LOCAL_RETRY.local = false` is the
+  whole-route reference). A new per-pass input of the crossing build must go into `CrossingInputs`. The footprint
+  screen and the engineering passes of a retry are still whole-route (docs/evaluate-performance.md).
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running

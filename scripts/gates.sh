@@ -36,6 +36,7 @@ edit-locality|node|full|npx tsx scripts/edit-locality.ts
 straighten|node|full|npx tsx scripts/straighten-audit.ts d3-motorway d11 d11-best d11-town-centre
 choice-audit|node|full|npx tsx scripts/choice-audit.ts
 outcome-audit|node|full|npx tsx scripts/outcome-audit.ts --quiet --straight scripts/*-design.json --random 24
+local-retry|node|full|npx tsx scripts/local-retry-report.ts
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m unittest discover -s pipeline -p 'test_*.py'
 smoke|browser|full|node scripts/smoke.mjs

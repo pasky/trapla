@@ -49,7 +49,8 @@ function canonical(value: unknown, seen = new Set<object>()): unknown {
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const road = (r: Result): Case => ({ hash: hash(r), bill: bill(r) });
 
-function snapshotPack(id: string, random: number, seed0: number): Snapshot {
+/** `watch` (scripts/local-retry-report.ts): told each case before it is evaluated and its result after. */
+export function snapshotPack(id: string, random: number, seed0: number, watch?: { begin(name: string): void; end(name: string, result: unknown): void }): Snapshot {
   const out: Snapshot = {};
   const pack = loadPack(`public/scenarios/${id}`);
   const ctx = evalContext(pack);
@@ -75,7 +76,9 @@ function snapshotPack(id: string, random: number, seed0: number): Snapshot {
     designs.push([`random-${seed0}-${k}`, { category: rand() < 0.3 ? 'S7.5' : 'S9.5', speed: rand() < 0.5 ? 80 : 90, pis, profileMode: 'auto', vpis: [] }]);
   }
   for (const [name, design] of designs) {
+    watch?.begin(`${id} evaluate ${name}`);
     const full = evaluate(ctx, design);
+    watch?.end(`${id} evaluate ${name}`, full);
     out[`${id} evaluate ${name}`] = road(full);
     out[`${id} preview ${name}`] = road(evaluate(ctx, design, { preview: true, materialValue: full.quantities.materialValue, structureValue: full.quantities.structureValue }));
   }
@@ -85,12 +88,14 @@ function snapshotPack(id: string, random: number, seed0: number): Snapshot {
     const preset = scenario.presetId ?? scenario.id;
     const { ctx: project, initial } = projectContext(pack, scenario);
     const design = initial(), snapshot = { epoch: 'exact', revision: 1, design };
+    watch?.begin(`${id} project ${preset}`);
     const result = evaluateProject(project, snapshot);
+    watch?.end(`${id} project ${preset}`, result);
     out[`${id} project ${preset}`] = { hash: hash(result), total: result.cost.total, valid: result.valid,
       issues: result.issues.map(i => `${i.blocking}: ${i.violation.title}`) };
     for (const route of design.routes) {
       const legacy = result.routes[route.id]?.legacy;
-      if (legacy) out[`${id} project ${preset} ${route.id}`] = road(legacy);
+      if (legacy) { out[`${id} project ${preset} ${route.id}`] = road(legacy); watch?.end(`${id} project ${preset} ${route.id}`, legacy); }
       const preview = previewProjectRoute(project, snapshot, route.id, { materialValue: legacy?.quantities.materialValue, structureValue: legacy?.quantities.structureValue }, result);
       out[`${id} project-preview ${preset} ${route.id}`] = preview.legacy ? road(preview.legacy) : { hash: hash(preview) };
     }
@@ -102,7 +107,7 @@ const here = fileURLToPath(import.meta.url);
 const arg = (k: string) => { const i = process.argv.indexOf(k); return i < 0 ? undefined : process.argv[i + 1]; };
 const random = Number(arg('--random') ?? 12), seed = Number(arg('--seed') ?? 1);
 
-if (process.env.EXACT_PACK) {
+if (process.env.EXACT_PACK && process.argv[1] === here) {
   writeFileSync(process.env.EXACT_OUT!, JSON.stringify(snapshotPack(process.env.EXACT_PACK, random, seed)));
 } else if (process.argv[1] === here) {
   const out = arg('--out'), compare = arg('--compare');

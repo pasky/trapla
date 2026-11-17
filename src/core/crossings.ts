@@ -463,6 +463,8 @@ function compatible(c: CrossingResult, cls?: string): boolean {
 export function crossingLabel(c: CrossingResult, line: OurLine = 'road'): string { return crossingOutcome(c, line).label; }
 
 /** Geometry inputs deliberately do not import evaluate.ts; safe in the worker and synthetic tests. */
+/** (What of it differs between the passes of one evaluation is listed in crossings-kept.ts `CrossingInputs`:
+ * a retry builds again only the crossings near where those differ. A new per-pass input belongs there too.) */
 export interface CrossingRoute {
   s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
   tx: ArrayLike<number>; ty: ArrayLike<number>; grade: ArrayLike<number>;

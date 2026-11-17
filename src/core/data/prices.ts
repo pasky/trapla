@@ -98,7 +98,10 @@
  * D11 frozen +0–5.5 M (the lifts).
  * 38: a side road whose junction lies on a stretch we rebuild beside our earthworks is re-joined where the new road
  * crosses it (within 25 m of its old junction; the stub between goes): some designs become valid (Nová Paka drags).
- * Frozen bills, starters and the outcome audit unchanged. */
+ * Frozen bills, starters and the outcome audit unchanged.
+ * (No version: a later finish of an evaluation builds again only the crossings near where its road differs from
+ * an earlier finish's, crossings-kept.ts. No bill, validity or other field moved on any checked design:
+ * docs/evaluate-performance.md.) */
 export const COST_MODEL_VERSION = 38;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
