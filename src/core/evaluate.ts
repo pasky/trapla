@@ -294,10 +294,16 @@ export interface EvalOptions {
   splitWays?: readonly number[];
 }
 
-interface PassCache {
+export interface PassCache {
   profile: Map<string, unknown>; support: Map<string, number>; retaining: RetainingFeatureCache;
   reroutes: ReturnType<typeof crossingCache>; sections: SectionCache;
+  /** the first pass's setup (passSetup) and the inputs it was made from */
+  setup?: { made: ReturnType<typeof routeSetup>; ctx: EvalContext; d: Design; from: readonly unknown[] };
+  /** Tests: called with the shared setup when it is made and after each pass, which may not change it. */
+  onPass?: (shared: ReturnType<typeof routeSetup>) => void;
 }
+/** An empty pass cache (evaluate makes one per evaluation; a test may hand in its own, with `trial`). */
+export const passCache = (): PassCache => ({ profile: new Map(), support: new Map(), retaining: new Map(), reroutes: crossingCache(), sections: [] });
 /** a cut's [class I, II, III] areas, footprint width and netted rock face in one kind of ground */
 interface CutRow { a: [number, number, number]; width: number; rockFace: number }
 interface GeometryRow { width: number; area: number; bridge: number; bridgeUrban?: number; cuts: CutRow[] }
@@ -378,7 +384,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   // Every pass of a full evaluation shares its caches and leaves the noise for the one kept.
   if (!opts.preview && !opts.window && !opts.passCache) {
-    opts = { ...opts, trial: true, passCache: { profile: new Map(), support: new Map(), retaining: new Map(), reroutes: crossingCache(), sections: [] } };
+    opts = { ...opts, trial: true, passCache: passCache() };
   }
   let result = evaluateRoute(ctx, d, opts);
   if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
@@ -2329,8 +2335,31 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   return { finish };
 }
 
+/** The setup of a pass. Nothing in `routeSetup` reads what a retry changes (its floors, lifts, clearances,
+ * narrowings, split ways), so the passes of one design's evaluation share the first one's: the stationed line,
+ * the ground under it, what the grade must clear. A pass gets its own timing and its own copy of the one array
+ * a pass writes to (`clearanceS`: where the grade solve places its clearances). */
+function passSetup(ctx: EvalContext, d: Design, opts: EvalOptions): ReturnType<typeof routeSetup> {
+  const pc = opts.passCache;
+  if (!pc || opts.preview || opts.window) return routeSetup(ctx, d, opts);
+  const from = [opts.holds, opts.oldRoad, opts.fixedProfile, opts.railTieIn, opts.railRetired];
+  const had = pc.setup && pc.setup.ctx === ctx && pc.setup.d === d && pc.setup.from.every((v, k) => v === from[k]) ? pc.setup : undefined;
+  const shared = (had ?? (pc.setup = { made: routeSetup(ctx, d, opts), ctx, d, from })).made;
+  const clearanceS = shared.clearanceS.slice();
+  if (!had) { pc.onPass?.(shared); return { ...shared, clearanceS }; }
+  const t0 = performance.now(), timing: Record<string, number> = {}, lap = (k: string) => { timing[k] = performance.now() - t0; };
+  lap('stations');
+  return { ...shared, timing, lap, clearanceS };
+}
+
+/** One pass of a design's evaluation (evaluatePass), on the setup its passes share. */
 function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
-  const setup = routeSetup(ctx, d, opts);
+  const result = evaluatePass(ctx, d, opts), pc = opts.passCache;
+  if (pc?.onPass && pc.setup) pc.onPass(pc.setup.made);
+  return result;
+}
+function evaluatePass(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+  const setup = passSetup(ctx, d, opts);
   const { preview, timing, n, ds, manualStructures, rawRoadX } = setup;
 
   // --- per-metre costs for the auto-profile: on flat ground, rural or town rates, incl. the surcharge ---
