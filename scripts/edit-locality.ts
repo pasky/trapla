@@ -52,12 +52,17 @@ const QA: Record<string, Edit[]> = {
 
 /** Edits whose far change is physics, not the solve's reach (each with why; still a FAIL if the far change grows
  * past `maxFar` m or a far problem appears): reported as EXPECTED. */
-const EXPECTED: Record<string, { label: string; maxFar: number; why: string }[]> = {
+const EXPECTED: Record<string, { label: string; maxFar: number; why: string; farProblems?: string[] }[]> = {
   'tests/fixtures/qa-final/rail-kralovec.json': [{ label: 'pin -9 m at km 2.7', maxFar: 3.5,
     why: 'the line climbs at its 12.5 ‰ limit over km 2.25–8.5, so a 9 m lower pin lowers it ≈ 11 m all the way to km 10.5; '
       + 'the support lifts (heights the grade must keep) the old line needed at km 9.83–10.15 are gone with it, '
       + 'and the boundary at km 11.21 saw them in its 5 km window: without them its cheapest height there is 7 m lower, and the block '
-      + 'beyond it (to km 13.27) follows. The change starts 0.7 km past the physically changed stretch (PLAN.md "Design realism")' }],
+      + 'beyond it (to km 13.27) follows. The change starts 0.7 km past the physically changed stretch (PLAN.md "Design realism"). '
+      + 'Since model 42 that lower block leaves the track at km 12.89 level with our line (0.1 m): its box would need lowering it '
+      + 'into a cutting through its own level crossing of the station tracks there, a reroute would cross those tracks on the '
+      + 'ground, and our line cannot climb 6 m over it before it joins the station: said as a problem (it was built over the '
+      + 'tracks unchecked before)',
+    farProblems: ['No buildable reroute for the track'] }],
 };
 
 const here = fileURLToPath(import.meta.url);
@@ -181,7 +186,8 @@ for (const file of suite.designs) {
     let verdict = '';
     if (e.kind === 'pin' || e.qa) {
       const ok = (planEverywhere || far <= 0.5) && !newFar.length && (!e.valid || r.valid);
-      const expected = !ok && EXPECTED[file]?.find(x => x.label === label && far <= x.maxFar && !newFar.length && (!e.valid || r.valid));
+      const expected = !ok && EXPECTED[file]?.find(x => x.label === label && far <= x.maxFar
+        && newFar.every(v => x.farProblems?.includes(v.title)) && (!e.valid || r.valid));
       verdict = ok ? 'PASS ' : expected ? `EXPECTED (${expected.why}) ` : 'FAIL ';
       if (!ok && !expected) failed++;
     }

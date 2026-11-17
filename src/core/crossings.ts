@@ -66,6 +66,9 @@ export interface CrossingGeometry {
   removed?: [number, number];
   /** Side roads joining the rebuilt stretch, regraded from its new level down to their own ground. */
   ties?: { cls: string; way: number; path: CrossingPoint[] }[];
+  /** A closed way's pieces that just end: each its cut end and the old road's first metres beyond it (what a road
+   * rebuilt beside our earthworks meets; nothing built, drawn or billed). */
+  keptEnds?: CrossingPoint[][];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   /** Explicit priced turning disk, distinct from legacy small severed-end heads. */
@@ -141,6 +144,8 @@ export interface CrossingResult {
   /** Culverts carrying streams under a reroute (count, and their pre-surcharge CZK, included in cost). */
   culverts?: number;
   culvertCost?: number;
+  /** Its bridge over us also spans the mapped railway it crossed at the same level beside us (crossing-geometry.ts). */
+  overRailway?: true;
   /** A cut way's pieces that still reach the road network over other ways and just end here ([right, left] of our
    * road), and, where both do, how much further its traffic goes round over the network, m (way-pieces.ts). */
   closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number };

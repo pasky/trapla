@@ -73,7 +73,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -138,8 +138,8 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     case 'tunnel': return { tag: 'above our tunnel', label: 'Our road is in a tunnel below it',
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
     case 'overbridge': return { tag: 'its bridge over us',
-      label: `Carried over our road on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}${square}`,
-      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${squareWhy}${works}` };
+      label: `Carried over our road${c.overRailway ? ' and the railway beside it' : ''} on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}${square}`,
+      explain: `The ${what} is raised onto a new bridge over our road${c.overRailway ? ', long enough to span the railway it crossed at the same level beside it too' : ''}; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${squareWhy}${works}` };
     case 'junction': return { tag: 'junction', label: 'Junction with our road',
       explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.${works}` };
     case 'reconnection': return { tag: 'reconnected',

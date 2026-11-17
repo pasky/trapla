@@ -602,7 +602,8 @@ export class Inspector {
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {
-    if ((c.type !== 'reconnection' && c.type !== 'diversion') || c.moved) return '';
+    // (a closed way builds no new road: nothing to drag)
+    if ((c.type !== 'reconnection' && c.type !== 'diversion') || c.moved || !c.geometry?.links?.some(l => l.length > 1)) return '';
     if (!shapeable(this.r, d, c.roadId!)) return `<div class="why link-path">This road crosses ours more than once: choose "Cut and reroute" for it to reshape its new roads.</div>`;
     const via = crossingVia(c.roadId, d.crossingOverrides ?? []), bends = via ? via[0].length + via[1].length : 0;
     return bends ? `<div class="ctx-row link-path"><span>Path: your shape, ${bends} bend point${bends === 1 ? '' : 's'}</span>

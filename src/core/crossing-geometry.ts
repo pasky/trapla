@@ -800,6 +800,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
   if (reuse) { c.geometry = reuse.g; rawPaths.set(c, reuse.raw); survivingSides.set(c, reuse.sides); return; }
   const g: CrossingGeometry = c.geometry = { width: ROAD_CLASSES[c.cls].width, schematic: false };
   if (c.type !== 'reconnection' && c.type !== 'diversion') delete c.closure;
+  if (c.type !== 'overbridge') delete c.overRailway;
   let path = getPath(c.roadId, c.x, c.y, g);
   if (path.length < 2) {
     diagnose(g, 'Crossed way has no usable polyline');
@@ -889,6 +890,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       const end = Math.max(path[0].d, Math.min(path[path.length - 1].d, reach + direction * RAIL_STEP));
       if (direction < 0) d0 = end; else d1 = end;
     }
+    if (overRail.length) c.overRailway = true; else delete c.overRailway;
     if (first === 0 || last === path.length - 1) {
       if (isRaised) {
         diagnose(g, 'Existing way ends inside the crossing footprint');
@@ -1444,7 +1446,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     const straight = [0, 1].map(k => required[k] && start?.[k] && finish?.[k] ? Math.hypot(finish[k]!.x - start[k]!.x, finish[k]!.y - start[k]!.y) : 0);
     const linkRate = (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000, access = c.cls === 'service' && straight[0] + straight[1] > 0 ? ACCESS : 0;
     if ((straight[0] + straight[1]) * linkRate + access >= budget) { diagnose(g, OVER_BUDGET); continue; }
-    const links: CrossingPoint[][] = [];
+    const links: CrossingPoint[][] = [], kept: CrossingPoint[][] = [];
     let culverts = 0, culvertCost = 0, steepest = 0, spent = 0, abandon = false;
     const houses = new Set<number>();
     for (const side of [-1, 1]) {
@@ -1453,7 +1455,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       // (a piece that just ends keeps its cut end as the place what it leads on to meets it: no new road)
       // (a piece that just ends keeps its cut end and the old road's first metres beyond it as where what it leads
       // on to meets it: no new road, nothing billed)
-      if (!required[k] || !a || !b) { links.push(c.closure?.connected[k] && a ? keptEnd(c, g, a) : []); continue; }
+      if (!required[k] || !a || !b) { links.push([]); if (c.closure?.connected[k] && a) kept.push(keptEnd(c, g, a)); continue; }
       let built = buildSide(c, g, a, b, side, c.via?.[k]);
       // (where the shorter line to the target's road cannot be built, the one to its crossing is tried)
       // (nor where it costs more than the one to its crossing: houses bought out, culverts)
@@ -1483,8 +1485,9 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     }
     if (abandon) { if (!g.diagnostics?.length) diagnose(g, OVER_BUDGET); continue; }
     g.links = links as [CrossingPoint[], CrossingPoint[]];
-    g.turnarounds = links.filter((path, k) => path.length > 0 && required[k]).map(path => path[0]);
-    c.linkLength = links.reduce((sum, path, k) => sum + (required[k] ? crossingPlanLength(path) : 0), 0);
+    if (kept.length) g.keptEnds = kept; else delete g.keptEnds;
+    g.turnarounds = links.filter(path => path.length > 0).map(path => path[0]);
+    c.linkLength = links.reduce((sum, path) => sum + crossingPlanLength(path), 0);
     // (a piece that just ends: a public road's cut end gets a turning area, a track's or service road's none)
     // (its cut end is where the old road now ends: what is left of it beyond our earthworks is kept)
     let heads = 0;
@@ -1697,7 +1700,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     }
     return !!next;
   };
-  const FIELDS = ['span', 'approachLength', 'linkLength', 'targetS', 'targetRoadId', 'underpassLength', 'worksCost', 'tieLength', 'wallLength', 'culverts', 'culvertCost', 'houses', 'houseCost', 'homes', 'linkGrade', 'lowered', 'drainage', 'drainCost', 'square', 'squared', 'realignLength', 'realignCost', 'moved', 'closure'] as const;
+  const FIELDS = ['span', 'approachLength', 'linkLength', 'targetS', 'targetRoadId', 'underpassLength', 'worksCost', 'tieLength', 'wallLength', 'culverts', 'culvertCost', 'houses', 'houseCost', 'homes', 'linkGrade', 'lowered', 'drainage', 'drainCost', 'square', 'squared', 'realignLength', 'realignCost', 'moved', 'closure', 'overRailway'] as const;
   const leadsTo = (x: CrossingResult, c: CrossingResult) => x !== c && (x.type === 'reconnection' || x.type === 'diversion') && !x.moved && x.targetS === c.s && x.targetRoadId === c.roadId;
   // (a way that comes back out of our earthworks on the side it went in carries nothing across our road)
   const carries = (t: CrossingResult) => feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
@@ -1788,7 +1791,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (best !== c) {
         delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
         delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
-        delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure;
+        delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure; delete c.overRailway;
         Object.assign(c, best); changed = true;
       }
       return;
@@ -1839,7 +1842,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (best !== c) {
       delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
       delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
-      delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure;
+      delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure; delete c.overRailway;
       Object.assign(c, best); changed = true;
     }
   };
@@ -1948,7 +1951,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // (the player's own "Cut and reroute" left without a crossing to lead to is not such a connection: it says so)
   if (crossings.some((c,i) => baseline[i].feasible && !feasible(c) && !(c.requestedType === 'reconnection' && c.via === undefined))) {
     crossings.forEach((c,i) => {
-      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','homes','linkGrade','lowered','drainage','drainCost','square','squared','realignLength','realignCost','moved','closure'] as const) delete c[key];
+      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','homes','linkGrade','lowered','drainage','drainCost','square','squared','realignLength','realignCost','moved','closure','overRailway'] as const) delete c[key];
       Object.assign(c, baseline[i].state);
     });
     if (persist) persist.rolledBack = true;
