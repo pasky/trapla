@@ -2,7 +2,7 @@
 // ownership of source intervals already engineered by a crossing or another relocation.
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossings';
 import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
-import { retainingAssembly } from './data/remedies';
+import { LINK_MAX_SUPPORT as MAX_SUPPORT, retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
 import { cellBounds, clipFootprint, insideFootprint, touchesFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
@@ -53,7 +53,7 @@ export interface RoadRealignmentPlan {
 }
 type WayPoint = Point2 & { d: number };
 type SourceSpan = RoadSourceInterval & { lo: number; hi: number; cls: string };
-const STEP = 5, SETBACK = 3, MAX_POINTS = 1600, MAX_SUPPORT = 10;
+const STEP = 5, SETBACK = 3, MAX_POINTS = 1600;
 /** PROVISIONAL longest junction-to-junction stretch that may be closed instead of rebuilt, m. */
 const MAX_CLOSURE = 400;
 /** PROVISIONAL height difference a new junction mouth or turning area may regrade, m. */

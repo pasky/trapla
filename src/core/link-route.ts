@@ -5,6 +5,8 @@
 // exists the reroute is infeasible and Auto chooses another treatment.
 import type { CrossingPoint } from './crossings';
 import { ROAD_CLASSES } from './data/urban';
+import { LINK_MAX_SUPPORT, SIDE_ROAD_FLAT as SLOPE_FLAT, SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
+export { LINK_MAX_SUPPORT };
 import { barrelLength, waterSize, type WaterCrossing } from './watercourses';
 import type { RoadNet } from './roadnet';
 
@@ -12,14 +14,8 @@ type XY = { x: number; y: number };
 /** Engine problem codes (crossing-geometry.ts gives them player words). */
 export type LinkProblem = 'steep' | 'footprint' | 'motorway' | 'railway' | 'water' | 'building' | 'works' | 'river' | 'far';
 /** A house in the way of a new road is bought out and demolished like one under our own road. */
-/** Deepest cut or fill a reroute's own profile may need, m: the same PROVISIONAL support limit as
- * rebuilt roads (road-realignment.ts MAX_SUPPORT) and bridge-over-us ramps (10 m). */
-export const LINK_MAX_SUPPORT = 10;
 /** Profile sampling along the line, m; obstacles are queried per piece of at most PIECE m. */
 const SAMPLE = 5, PIECE = 50, MAX_SAMPLES = 450;
-/** Earth slopes of a raised or lowered new road (1:1.5, as drawn: render/crossing-surface.ts), and the
- * least height difference that has a slope at all (crossing-works.ts FLAT), m. */
-const SLOPE = 1.5, SLOPE_FLAT = 0.15;
 /** Ground departing from a chord between samples by more than this is sampled more finely (the same
  * 0.2 m as crossing-geometry.ts refineTerrain), to at most MAX_REFINED samples. */
 const REFINE = 0.2, MAX_REFINED = 480;

@@ -4,9 +4,10 @@ import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { smoothLink } from './crossing-link';
-import { engineerLink, LINK_CORRIDOR, LINK_MAX_SUPPORT, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
+import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
 import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
-import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
+import { LINK_MAX_SUPPORT, LOWERING_RULES, MAX_RAMP_LENGTH, OVERBRIDGE_CLEARANCE as CLEARANCE, RETAINING_RULES, retainingAssembly, sagDrainage, SQUARE_BELOW, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
+export { SQUARE_BELOW };
 import { slopeSurfaceAt } from './sections';
 import { UNKNOWN_GROUND } from './ground';
 import { KIND } from './structures';
@@ -16,10 +17,8 @@ import { INDEPENDENCE_SCREEN } from './project-ledger';
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
 export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road within its steepest allowed slope';
-/** PROVISIONAL game limit: longest ramp on either side of a bridge over our road, m. */
-export const MAX_RAMP_LENGTH = 250;
 export const RAMP_TOO_HIGH = 'Approach earthwork exceeds';
-const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
+const DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 /** Reroute work kept across evaluate()'s engineering passes (its strict retry), for one design on fixed
  * terrain and roads: the crossed ways' traced lines, and smoothed lines / engineered reroutes, each
  * reused only while our footprint within PERSIST_REACH of its stations is exactly unchanged. */
@@ -128,10 +127,6 @@ const REROUTE = 'Reroute ', REROUTE_FAILS = 'Reroute cannot be built: ';
 const SQUARE_FAILS = 'Straightened line cannot be built: ';
 /** Diagnostic of a move beside our earthworks on a way that does cross our road. */
 const MOVE_FAILS = 'Move cannot be built';
-/** Auto straightens a crossed road meeting ours at less than this angle (degrees) and keeps the
- * cheaper buildable variant: research/44, ŘSD R 111 treats crossings under 70° as non-standard
- * (signing); no Czech norm gives a minimum bridge angle (game rule). */
-export const SQUARE_BELOW = 70;
 /** How far along the old way beyond our corridor a straightened line may rejoin it, m (PROVISIONAL
  * engine bound: a local realignment, not a reroute). */
 const SQUARE_SEARCH = 400;

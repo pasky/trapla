@@ -333,19 +333,22 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   `checks.ts`, `crossing-geometry.ts`, `tie-in.ts`, `design-speed.ts`, `project-evaluate.ts`; price sources in
   `retaining.ts`, `project-replacement.ts`; bill explanations in `ui/hud.ts`, junction choices in
   `ui/route-cards.ts`. The norm or price book they name stays, the `(research/NN)` is a comment on the line.
-  **Open, right after bridge styles (M3) lands** (its open diff has these files): the last 13 in
-  `crossings.ts` (4), `data/urban.ts` (6), `terms.ts` (2), `footprint.ts` (1), and then `jargonIn` (terms.ts)
-  rejects `research/` in player text for good. Count them with `scripts/dev/strings.mjs <file> | grep research/`.
+  After bridge styles landed: the last 13 (`crossings.ts` 4, `data/urban.ts` 6, `terms.ts` 2, `footprint.ts` 1).
+  Two guards: `jargonIn` (terms.ts) rejects `research/` in every player text, rule lines and price sources
+  included, and `tests/research-citations.test.ts` fails on any string literal in `src/` that cites a note
+  (notes are cited in comments only).
 - **Engineering numbers outside `data/`** (engine tuning such as step sizes and search budgets is fine
   where it is; these are numbers a designer or a norm sets):
-  `crossing-geometry.ts` `CLEARANCE = 4.8`, `MAX_RAMP_LENGTH = 250`, `SQUARE_BELOW = 70`;
-  `crossing-works.ts` / `link-route.ts` `SLOPE = 1.5` (twice) and `SLOPE_FLAT`; `link-route.ts`
-  `LINK_MAX_SUPPORT = 10` and `road-realignment.ts` `MAX_SUPPORT = 10` (the same limit twice);
-  `project-kept.ts` `KEPT_TOLERANCE = 12`, `TIE_LENGTH = 50`, `HELD_APPROACH = 100`;
+  Done (`data/remedies.ts`, each with its note; the engine files import them under the names they used):
+  `OVERBRIDGE_CLEARANCE` 4.8 (crossing-geometry.ts `CLEARANCE`), `MAX_RAMP_LENGTH`, `SQUARE_BELOW`,
+  `LINK_MAX_SUPPORT` (also road-realignment.ts `MAX_SUPPORT`: the same limit was written twice),
+  `SIDE_ROAD_SLOPE` / `SIDE_ROAD_FLAT` (crossing-works.ts and link-route.ts: written twice).
+  Still where they were: `project-kept.ts` `KEPT_TOLERANCE = 12`, `TIE_LENGTH = 50`, `HELD_APPROACH = 100`;
   `evaluate.ts` `OLD_ROAD_TIE`, `OLD_ROAD_BAND`, `MINOR_CROSSROADS_BAND` (marked PROVISIONAL, good, but
   not in data); `ui/road-edit.ts` `DEFAULT_SPEED = 70`, `MIN_STRETCH = 60` (a design speed default in the
-  UI layer); `ui/mode-kinds.ts` `RAIL_CROSSING_CLEAR = 20`. Move to `data/remedies.ts` / `data/urban.ts`
-  with their notes when the files are next open (shared with the design-realism agent).
+  UI layer); `ui/mode-kinds.ts` `RAIL_CROSSING_CLEAR = 20`: the numbers of a rebuilt stretch, for a
+  `data/` block of their own. The re-exports of `SQUARE_BELOW` (crossing-geometry.ts) and `LINK_MAX_SUPPORT`
+  (link-route.ts) go when their importers are next open.
 - `data/scenario.ts` (306 lines) holds every preset with its bends next to `TRAFFIC_THRESHOLDS` and
   `CATEGORY_RANK`. When the next scenarios arrive: `data/scenarios/<id>.ts` per place, the registry and
   the engine thresholds stay.
@@ -453,7 +456,7 @@ ends where it does: docs/evaluate-performance.md "What a retry pass costs".
 11. Merged (`5ea8d7e`): the citation guard, `scripts/dev/profile.mjs`, four footprint-screen savings.
 12. The passes of an evaluation share their setup; citations by file name; `stationIndex`; the stages of
     `buildCrossingGeometryOnce` and `evaluateProjectOnce`.
-13. Player text without research-note numbers (36 places; 13 more and the guard after M3);
+13. Player text without research-note numbers (49 places and two guards);
     `crossingStructure(c, ours, …)`.
 14. Next: the stage functions into files (after M3).
 

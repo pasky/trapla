@@ -284,7 +284,11 @@ describe('crossing geometry and map overlay', () => {
     expect(auditCrossingGeometry(low, route, () => 396, roads)).toEqual([]);
     // Lower than the deepest allowed lowering: the box does not fit.
     const lowest = box.minHeight - LOWERING_RULES.maxDepth, tooLow = [cross(2, 3200, 'track', lowest - 1)];
-    expect(resolve(tooLow, [{ roadId: 2, type: 'underpass' }])[0].crossing).toMatchObject({ code: 'underpass', actual: lowest - 1, required: lowest });
+    const tooLowIssue = resolve(tooLow, [{ roadId: 2, type: 'underpass' }])[0];
+    expect(tooLowIssue.crossing).toMatchObject({ code: 'underpass', actual: lowest - 1, required: lowest });
+    // (the level our road must reach lies below the crossed road: said so, not as a negative height above it)
+    expect(lowest).toBeLessThan(0);
+    expect(tooLowIssue.fix).toContain(`Raise our road here by 1.0 m, to ${(-lowest).toFixed(2)} m below the crossed road`);
     buildCrossingGeometry(tooLow, route, () => 401 - lowest, roads);
     expect(tooLow[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
     const primary = [cross(0, 3000, 'primary', 9)];

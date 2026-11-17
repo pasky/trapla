@@ -5,6 +5,7 @@
 // note takes the next free number when it is merged.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parseAst } from 'rolldown/parseAst';
 
 describe('research citations', () => {
   it('every research/NN, research/NN–MM and research/<file> cited in src, scripts and tests exists and names one note', () => {
@@ -30,5 +31,24 @@ describe('research citations', () => {
     expect(missing).toEqual([]);
     expect(vague).toEqual([]);
     expect(cited).toBeGreaterThan(200);
+  });
+
+  // The player never reads a research-note reference (the norm or price book is named instead): notes are
+  // cited in comments only. Every string the program holds is checked, whichever text it ends up in.
+  it('no string literal in src cites a research note', () => {
+    const held: string[] = [];
+    const walk = (node: unknown, file: string): void => {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { for (const child of node) walk(child, file); return; }
+      const n = node as { type?: string; value?: unknown };
+      const text = n.type === 'Literal' && typeof n.value === 'string' ? n.value
+        : n.type === 'TemplateElement' ? (n.value as { raw: string }).raw : undefined;
+      if (text?.includes('research/')) held.push(`${file}: ${text}`);
+      for (const [key, child] of Object.entries(n)) if (key !== 'type') walk(child, file);
+    };
+    const files = (readdirSync('src', { recursive: true }) as string[]).filter(f => /\.ts$/.test(f)).map(f => `src/${f}`);
+    for (const file of files) walk(parseAst(readFileSync(file, 'utf8'), { lang: 'ts' }), file);
+    expect(files.length).toBeGreaterThan(100);
+    expect(held).toEqual([]);
   });
 });

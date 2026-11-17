@@ -331,7 +331,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         if (h.i === h.j && (h.i === 0 || h.i === r.n - 1) && endClasses.get(h.i)?.has(cls)) continue;
         base.detail = `Our earthworks cover ${(h.b - h.a).toFixed(0)} m of the ${row.label}; a ${row.label} cannot be moved aside or crossed at the same level.`;
         block(base, `Our earthworks cover a ${row.label}`, moveOrBridge(base, original, existingHalfWidth(cls), row.label),
-          'ČSN 73 6101: motorways and expressways keep their own space and are crossed only at a different level (research/08)');
+          'ČSN 73 6101: motorways and expressways keep their own space and are crossed only at a different level'); // research/08
       }
       continue;
     }

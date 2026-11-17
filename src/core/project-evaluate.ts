@@ -15,7 +15,7 @@ import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project
 import { assertProjectDesign } from './project-validation';
 import { evaluateProjectRailway, type RailPaths, type RailwayEvaluation } from './project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
-import type { ProjectDesign } from './project';
+import type { ProjectDesign, RoadOperations } from './project';
 import * as dm from './detmath';
 import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, type ResolvedEnds } from './project-roadnet';
 import type { CrossingResult } from './crossings';
@@ -39,11 +39,7 @@ const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: {
   violation: { kind: 'crossing', basis: 'engine', title: 'Road checks are not finished',
     fix: 'Keep the existing road until its replacement is checked',
     rule: 'Engine limit: this foundation does not yet check shared construction, connections and combined noise for this design.' } });
-function crownOf(route: RouteDesign): number {
-  if (route.kind === 'motorway') return CATEGORIES[route.alignment.kind === 'corridor' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth;
-  if (route.kind === 'railway') return CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth;
-  return route.kind === 'road' && route.specification.crossSection !== 'existing' ? CATEGORIES[route.specification.crossSection].crownWidth : 0;
-}
+const crownOf = (route: RouteDesign): number => ROUTE_KINDS[route.kind].crown(route);
 function roadSurface(route: RouteDesign, result: Result): TransportSurface {
   const width = crownOf(route);
   return { routeId: route.id, revision: route.revision, points: Array.from({ length: result.n }, (_, i) => ({ s: result.s[i], x: result.x[i], y: result.y[i], z: result.grade[i],
@@ -108,6 +104,10 @@ type KindEvaluation = CorridorEvaluation | RailwayEvaluation | ReturnType<typeof
 const evaluateAsRoad = ({ ctx, snapshot, route, preview, prices, ends, holds, endsOf }: KindInput): KindEvaluation =>
   evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays,
     ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}) });
+/** A row's function of a route of its own kind (a row is only asked about routes of its kind). */
+function own<K extends RouteDesign['kind'], T>(_kind: K, f: (route: Extract<RouteDesign, { kind: K }>) => T): (route: RouteDesign) => T {
+  return route => f(route as Extract<RouteDesign, { kind: K }>);
+}
 /**
  * How each kind of line is handled inside a project: its evaluator, the noise method its receivers are
  * computed by, and the clearance another line needs over it. One row per RouteKind, and the compiler insists
@@ -119,9 +119,21 @@ const ROUTE_KINDS: Record<RouteDesign['kind'], {
   noise: 'legacy-road' | 'cnossos-rail';
   /** m: how far a line passing over this one stays above its grade */
   clearanceOver: number;
+  /** m: the width of its crown (0: a road kept as it is) */
+  crown(route: RouteDesign): number;
+  /** its end on another of the player's lines is built where that line is built (followEnds) */
+  endsFollow: boolean;
+  /** an end on open ground is said as "ends nowhere" (a motorway's ends wait for interchanges: that issue says so) */
+  endsNowhere: boolean;
+  /** the traffic it is screened with against other lines when it is not a direction of a corridor */
+  operations(route: RouteDesign): Pick<RoadOperations, 'aadt' | 'speed' | 'heavyShare'>;
 }> = {
-  road: { evaluate: evaluateAsRoad, noise: 'legacy-road', clearanceOver: CROSSING_RULES.overHeight },
+  road: { evaluate: evaluateAsRoad, noise: 'legacy-road', clearanceOver: CROSSING_RULES.overHeight,
+    crown: own('road', r => r.specification.crossSection !== 'existing' ? CATEGORIES[r.specification.crossSection].crownWidth : 0),
+    endsFollow: true, endsNowhere: true, operations: own('road', r => r.specification.operations) },
   motorway: {
+    crown: r => CATEGORIES[r.alignment.kind === 'corridor' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth,
+    endsFollow: false, endsNowhere: false, operations: () => ({ aadt: Infinity, speed: Infinity, heavyShare: 1 }),
     // both directions of a corridor in one evaluation; a motorway route outside a corridor has no evaluator
     // of its own (the road kernel reports it as not supported)
     evaluate(k) {
@@ -139,6 +151,8 @@ const ROUTE_KINDS: Record<RouteDesign['kind'], {
     evaluate: ({ ctx, snapshot, route, preview, prices, holds, edited }) => evaluateProjectRailway(edited([route]), snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices,
       ...(ctx.railPaths ? { railPaths: ctx.railPaths } : {}), ...(holds?.length ? { holds } : {}) }),
     noise: 'cnossos-rail', clearanceOver: STRUCTURE_RULES.railClearance,
+    crown: own('railway', r => CATEGORIES[r.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth),
+    endsFollow: false, endsNowhere: true, operations: () => ({ aadt: Infinity, speed: Infinity, heavyShare: 1 }),
   },
 };
 /** The last full evaluation's fill values, which a drag preview prices at (EvalOptions). */
@@ -190,7 +204,7 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
   const design = snapshot.design;
   if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
   const route = design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
-  if (!last || last.epoch !== snapshot.epoch || route.kind !== 'road') return routeProposal(ctx, snapshot, route, true, prices).route;
+  if (!last || last.epoch !== snapshot.epoch || !ROUTE_KINDS[route.kind].endsFollow) return routeProposal(ctx, snapshot, route, true, prices).route;
   const legacyOf = (id: string) => design.routes.some(r => r.id === id) ? last.routes[id]?.legacy : undefined;
   const ends = followEnds(route, legacyOf), line = planLine(route, ends, undefined, design);
   const holds: Hold[] = [];
@@ -219,7 +233,7 @@ function followEnds(r: RouteDesign, legacyOf: (id: string) => Result | undefined
 /** Where a road's ends are built, for its plan line in other roads' networks: on the roads it joins as
  * evaluated, else (not evaluated yet) on their plan. */
 function lineEnds(design: ProjectDesign, r: RouteDesign, legacyOf: (id: string) => Result | undefined): ResolvedEnds {
-  if (r.kind !== 'road' || ![r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'route')) return undefined;
+  if (!ROUTE_KINDS[r.kind].endsFollow || ![r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'route')) return undefined;
   const now = followEnds(r, legacyOf);
   const pending = (['a', 'b'] as const).some(end => r.endpoints[end].anchor.kind === 'route' && !now?.[end]);
   const plan = pending ? planEnds(design, r, STEP) : undefined;
@@ -438,7 +452,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     seenOwners, designedJunctions, result, engineered, builtJunctions, replacements, ringsOf, priced } = start;
   for (const route of [...order, ...cyclic]) {
     // its ends follow the roads it joins; the heights its crossings hold are placed on the line it is built on
-    const ends = route.kind === 'road' ? followEnds(route, evaluated) : undefined;
+    const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(route, evaluated) : undefined;
     const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design) : [];
     let holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
     let proposal = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, holds.flatMap(heldBands), endsOf, routeClear(route));
@@ -670,7 +684,7 @@ function projectNetwork(ctx: ProjectEvalContext, start: ReturnType<typeof projec
   }
   // A new road that ends nowhere is not a project: every end must reach a road or a scenario end.
   // (A motorway's ends wait for interchanges: that issue already says so.)
-  for (const r of design.routes) if (r.role !== 'mission' && r.kind !== 'motorway' && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
+  for (const r of design.routes) if (r.role !== 'mission' && ROUTE_KINDS[r.kind].endsNowhere && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
     result.issues.push(endsNowhere(r.id, r.kind === 'railway')); unprice([r.id], 'road-ends-nowhere');
   }
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
@@ -728,7 +742,7 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
   }
   const screen = screenIndependence(units.map(({ route, legacy }) => {
     const spec = route.specification, corridor = corridorOfRoute(design, route.id);
-    const op = corridor ? corridorOperations(design, corridor) : spec.kind === 'road' ? spec.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
+    const op = corridor ? corridorOperations(design, corridor) : ROUTE_KINDS[route.kind].operations(route);
     const halfWidth = corridor || (spec.kind === 'road' && spec.crossSection !== 'existing') ? crownOf(route) / 2 : Infinity;
     // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
     // another road, which a road crossing it changes on its own)
