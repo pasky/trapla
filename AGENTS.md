@@ -76,7 +76,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   A drag on a straight start puts in a bend that turns the whole line about A and B (10 px ≈ 220–240 m at
   km 3–9): the price of a different road, the same on main; grade edits there are local
   (`scripts/edit-locality.ts`).
-- A retry's later finishes build only the crossings within 2 km of what they changed (cost model 39,
+- A retry's later finishes build only the crossings within 2 km of what they changed (no model version,
   `src/core/crossings-kept.ts`; no result moved, whole D3 −14 … −18 %; `LOCAL_RETRY.local = false` is the
   whole-route reference). A new per-pass input of the crossing build must go into `CrossingInputs`. The footprint
   screen and the engineering passes of a retry are still whole-route (docs/evaluate-performance.md).

@@ -52,7 +52,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 20 | Orphan "foundation" modules only tests import (307 lines), unused contract surface | low | none | owner |
 | 21 | `data/scenario.ts` mixes scenario content (presets with their bends) with engine thresholds | low | low | next, when scenarios grow |
 | 22 | `Result` is one flat interface of ≈ 100 fields (geometry arrays, bill, UI extras) | medium | high | later, with #4 |
-| 23 | A retry pass engineers the whole route again (40–65 % of a first pass where nothing changed; three such passes on the whole D3) | high (long routes) | a model change | crossings done (cost model 39: a later finish builds only the crossings near what it changed; whole D3 −14 … −18 %, no result moved); footprint screen and engineering passes left (§ Planned next performance lever); bit-exact part done: the passes share their setup |
+| 23 | A retry pass engineers the whole route again (40–65 % of a first pass where nothing changed; three such passes on the whole D3) | high (long routes) | a model change | crossings done (no model version, no result moved: a later finish builds only the crossings near what it changed; whole D3 −14 … −18 %, no result moved); footprint screen and engineering passes left (§ Planned next performance lever); bit-exact part done: the passes share their setup |
 
 ### 1–2, 6, 12–13. Tooling (done unless noted)
 
@@ -392,7 +392,7 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 
 ## Planned next performance lever: a retry that re-engineers only its stretch (a reviewed model change)
 
-**Done of it (cost model 39, 2026-11-17): the crossing build**, and not as planned below. A later finish of an
+**Done of it (2026-11-17, no model version: no result moved): the crossing build**, and not as planned below. A later finish of an
 evaluation builds again only the crossings within 2 km (in plan) of a station where the build's inputs differ
 from an earlier finish's (2 km of context around them, their carriers and followers) and takes the rest as built; `src/core/crossings-kept.ts`,
 docs/evaluate-performance.md "A retry builds only the crossings near what it changed" (reach study, rules,

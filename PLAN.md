@@ -796,7 +796,7 @@ Research: research/65.
   VKL 3–4 reference, not SPK's TT4, and its spread (deep / 10–20 m ≈ 0.74) disagrees with the Czech derivation
   (≈ 0.82).
 
-### A retry builds only the crossings near what it changed (cost model 39, 2026-11-17)
+### A retry builds only the crossings near what it changed (no model version, 2026-11-17)
 
 - **What.** An evaluation finishes its design several times (the stream and strict retries of a pass, then the
   separation, narrowing, regrade and split passes: 10 finishes on the whole D3), and each finish built every
@@ -808,12 +808,12 @@ Research: research/65.
   the engine's rollback fired, when over 90 % would be built anyway, when a context crossing in reach of a
   rebuilt one came out other than kept, or when a kept crossing is led to a rebuilt one that changed. Grade
   line, engineering, quantities, buildings and the footprint screen stay whole-route.
-- **Bills** (model 38 → 39): none moved. 177 / 177 whole results of `scripts/exact.ts` identical to main's;
+- **Bills** (still model 38): none moved. 177 / 177 whole results of `scripts/exact.ts` identical to main's;
   outcome audit output identical (32 bills, 77 flags); 2,083 local builds checked against a whole-route build on
   the same inputs (the exact cases, 100 more random D11 designs, the outcome audit, edit-locality, choice and
-  straighten audits, bench, the ten scenario checks): no crossing differs. A version all the same: it is not
-  proven that a crossing 2 km from every change cannot come out differently, and a saved best is re-evaluated
-  rather than trusted.
+  straighten audits, bench, the ten scenario checks): no crossing differs. No version (owner's decision: no bill or
+  validity change, no bump). It is measured, not proven, that a crossing 2 km from every change cannot come out
+  differently: the report below stays a gate.
 - **Time**: whole D3 ≈ 2.35 → 1.98 s (−14 … −18 %, interleaved minima), direct-80 −2 … −7 % (near the noise),
   designs without a retry unchanged. Numbers, the reach study, the seams and what is left (footprint screen,
   engineering passes): docs/evaluate-performance.md.

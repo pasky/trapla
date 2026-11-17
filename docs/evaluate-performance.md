@@ -1,6 +1,6 @@
 # Evaluate performance regression
 
-## A retry builds only the crossings near what it changed (cost model 39, 2026-11-17)
+## A retry builds only the crossings near what it changed (no model version, 2026-11-17)
 
 Finding 23 of docs/architecture-review.md ("a retry pass engineers the whole route again"), its first part.
 Code: `src/core/crossings-kept.ts`, called from `finishCrossings` (evaluate.ts); reference and checks:
@@ -62,9 +62,9 @@ On the merged tree (main `30d0ad8`, cost model 38, plus this):
 | `choice-audit.ts`, `straighten-audit.ts`, `bench.ts scripts/*.json`, `eval-regression.ts` | 85, 51, 12, 14 | 0 | exit 0 |
 | `scenarios/check.ts`, ten packs | 660 | 0 | exit 0 |
 
-No bill, validity or other field of any result moved. It is still a model change, not a refactor: nothing
-proves that a crossing 2 km from every change cannot come out differently (see the seams), so it carries a
-cost model version and the report stays a gate.
+No bill, validity or other field of any result moved, so it carries no cost model version (cost model 38
+stays). It is still not a refactor: nothing proves that a crossing 2 km from every change cannot come out
+differently (see the seams), so the report stays a gate.
 
 (Before the merge, against main `1ba513d`, the same checks: 2,068 local builds, none different, 177 / 177.)
 

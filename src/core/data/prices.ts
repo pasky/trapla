@@ -99,11 +99,10 @@
  * 38: a side road whose junction lies on a stretch we rebuild beside our earthworks is re-joined where the new road
  * crosses it (within 25 m of its old junction; the stub between goes): some designs become valid (Nová Paka drags).
  * Frozen bills, starters and the outcome audit unchanged.
- * 39: a later finish of an evaluation (a retry) builds again only the crossings within 2 km of where its road
- * differs from an earlier finish's and takes the others as built there (crossings-kept.ts). No bill, validity
- * or other field moved on any checked design (exact.ts, the outcome audit, every local build against a
- * whole-route one: docs/evaluate-performance.md); a version because that is measured, not proven. */
-export const COST_MODEL_VERSION = 39;
+ * (No version: a later finish of an evaluation builds again only the crossings near where its road differs from
+ * an earlier finish's, crossings-kept.ts. No bill, validity or other field moved on any checked design:
+ * docs/evaluate-performance.md.) */
+export const COST_MODEL_VERSION = 38;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
