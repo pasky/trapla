@@ -41,7 +41,10 @@ export function culvertSection(size: NonNullable<WaterResult['size']>): Pick<Cul
   return { shape: 'vault', width: plan - 2 * CULVERT_RULES.buriedWall, height: size.height, wall: CULVERT_RULES.buriedWall };
 }
 
-type Route = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'kind' | 'dayL' | 'dayR'>;
+type Route = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'kind' | 'dayL' | 'dayR'> & Partial<Pick<Result, 'wallSurfaceL' | 'wallSurfaceR'>>;
+/** where our slope ends at a retaining wall, the culvert's end stands this far out of the wall's face, m (its
+ * headwall in front of it, not hidden in it) */
+const WALL_CLEAR = 0.5;
 
 /** Inside our earthworks as drawn: in one of the quads between two earthwork stations' daylight points near
  * station `i` (the quads ±3 stations around it). */
@@ -143,16 +146,20 @@ export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'>, w
     const [a, b] = ends as { x: number; y: number }[], len = Math.hypot(b.x - a.x, b.y - a.y);
     if (len < 1) continue;
     const ux = (a.x - b.x) / len, uy = (a.y - b.y) / len, nx = uy, ny = -ux;
-    // our road's direction at an end, in the barrel's terms: along = skew × across
-    const skew = (p: { x: number; y: number }, ox: number, oy: number) => {
+    // the nearest station to an end; our road's direction there in the barrel's terms (along = skew × across)
+    const nearest = (p: { x: number; y: number }) => {
       let k = i, best = Infinity;
       for (let j = Math.max(0, i - cells); j < Math.min(r.n, i + cells); j++) { const d = (r.x[j] - p.x) ** 2 + (r.y[j] - p.y) ** 2; if (d < best) { best = d; k = j; } }
-      const along = r.tx[k] * ox + r.ty[k] * oy, across = r.tx[k] * nx + r.ty[k] * ny;
-      return Math.max(-1, Math.min(1, along / (Math.abs(across) > 1e-6 ? across : 1e-6)));
+      return k;
     };
-    out.push({ s: c.s, id: c.id, ...culvertSection(c.size), ends: [
-      { x: a.x, y: a.y, z: natural(a.x, a.y), ox: ux, oy: uy, skew: skew(a, ux, uy) },
-      { x: b.x, y: b.y, z: natural(b.x, b.y), ox: -ux, oy: -uy, skew: skew(b, -ux, -uy) }] });
+    const end = (p: { x: number; y: number }, ox: number, oy: number) => {
+      const k = nearest(p), along = r.tx[k] * ox + r.ty[k] * oy, across = r.tx[k] * nx + r.ty[k] * ny;
+      const left = -(p.x - r.x[k]) * r.ty[k] + (p.y - r.y[k]) * r.tx[k] > 0;
+      const out = Number.isFinite((left ? r.wallSurfaceL : r.wallSurfaceR)?.[k]) ? WALL_CLEAR : 0;
+      const x = p.x + ox * out, y = p.y + oy * out;
+      return { x, y, z: natural(x, y), ox, oy, skew: Math.max(-1, Math.min(1, along / (Math.abs(across) > 1e-6 ? across : 1e-6))) };
+    };
+    out.push({ s: c.s, id: c.id, ...culvertSection(c.size), ends: [end(a, ux, uy), end(b, -ux, -uy)] });
   }
   return out;
 }
