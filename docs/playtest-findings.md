@@ -4,6 +4,104 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Sweep 3 — main 30d0ad8 (cost model 38; 2026-11-17, three chunks of 15, 11 and 10 min)
+
+Fresh localStorage, real mouse, SwiftShader 1440×900 (toolbar also 1024–1920). Driver `qa3/drive.mjs` (+ `qa3/helpers.js`,
+`qa3/q.sh`, `qa3/chunk.sh`); Node repros in `qa3/*.ts`, saved designs in `qa3/designs/`. Screenshots 260–281
+(`docs/screenshots/2xx-qa3-*.png`), the rest under `/tmp/trapla-qa3/c{1,2,3}/`.
+
+### Per-area verdicts
+
+| area | verdict | notes |
+|---|---|---|
+| (a) hairpins / serpentine | **PASS** (P2s) | Build → Road on the Rýchory slope (x 12650–13050, y 16400–16900): three hairpins (R 30 m, 89 m of curve, ≈ 30 km/h), legs on embankments, the last leg into a 390 m tunnel with a cut-and-cover portal; no hairpin problem, only "Road ends nowhere" and the end's sight line (260). The card says it needs the road authority's approval (261). |
+| (a) design speed per bend | **FAIL** (P1 #1) | the choice works (90 / 80 / 70, radius and time follow), but its price moves the wrong way. |
+| (b) large earthworks | **still forced** (P1 #3, #4) | D3 0302: a 62 m deep, 1.56 km open cut (2.39 bn) and 41 / 47 m high fills at both ends of the Sázava bridge. |
+| (b) tunnel portals | **PASS** | D35 and 0304 twin portals stand at the end of a ≈ 9 m approach cut, boxes in the slope (266, 277); the serpentine's portal the same. P2: lines poke out of the hill above the 0304 portal (278). |
+| (c) bridge styles | **PASS** (P2) | D35 viaduct: Long spans (Auto, longest span 69 m) ↔ Short spans +99 M (53 m), the piers visibly denser (267); Undo / Redo step through the choice. Arch fitted none of the four bridges I tried. |
+| (c) tunnel method | **PASS** (P2) | Cut and cover on D35 (124 m deep) and 0304 (40 m): "Too deep to dig from above · raise the road to at most 22 m below ground", +12.9 bn / +692 M shown; Undo restores (265). |
+| (c) piers | **PASS** | D11 km 7.50–8.39 (along the valley road and railway) and the Královec viaduct: no pier on a road, track or stream in the views I checked. |
+| (d) non-motorway cost | **not too expensive** | Nová Paka 165 M/km (real ≈ 200–230); D11 straight 443 M/km (1.39 bn of it demolitions through Trutnov), the best fixture 194 M/km; a rebuilt 105 m of III/3012 6 M; new class II roads on hillsides 180–260 M/km (cut / fill). |
+| (e) editing any road | **PASS** with P1 #6 | III/3012 drag at km 2.4 → its own mapped radius makes it invalid until "Tightest"; then VALID, and moving it 23 m saves our road a 100 m bridge (−162 M). |
+| (e) multi-road projects | **FAIL** (P1 #2, #5) | new road over our road: credit larger than the bridge that carries it; new railway over our railway: not on its bridge. |
+| (e) undo / redo | **PASS** | across roads (a new road removed and restored), bridge style and tunnel method, Ctrl+Z during a held drag takes the drag back (bill unchanged after release). Labels are all "Undo edit" (P2). |
+| (e) map ↔ profile | **PASS** | a click on the profile at km 2.85 selects the Sázava bridge, the map flies to it, both highlighted (281). |
+| (e) toolbar | **PASS** | no overlap at 1024, 1280, 1366, 1920 px; at 1024 the view buttons wrap under Undo / Redo (280). |
+| Whole D3 | **PASS** | loads in 12.5 s; a 60 px drag at km 40: live ≈ 31.93 bn equals the settled 31.931 bn, VALID (279). On SwiftShader each mouse move took ≈ 0.9 s to process (untimed run, not a budget verdict). |
+| Královec railway | **PASS** | the final sweep's 50 px drag at km 6 is VALID (8.95 bn, −157 M). |
+
+### P0
+
+None confirmed. (#2 below becomes one as soon as such a road is priced.)
+
+### P1
+
+1. **A design speed changes the bill the wrong way.** The grade search is not monotone in the speed, so the new choice
+   can't be trusted for money:
+   - D11 road, fresh start: drag the road at km 11.7 160 px right (one bend, 7°), open Bend 1, *Design speed here* 70:
+     **+284 M** (8.78 → 9.07 bn; an 800 m bridge at km 8.84–9.64 where 90 km/h has 280 m) although every vertical and
+     horizontal minimum is smaller at 70. With one bend "this bend's stretch" is the whole road, so it is also "Too
+     slow: 15.96 min" — the card does not say which kilometres the stretch covers (262).
+     `npx tsx qa3/speed-monotone.ts`: 90 → 8.782, 80 → 8.783, 70 → 9.067 bn.
+   - Královec railway after the km 6 drag (`qa3/designs/rail-kralovec-drag-km6.json`), bend 3 at **160 km/h: −312 M
+     and 0.36 min faster** (8.948 → 8.636 bn), at 140 +22 M, at 100 +47 M (`SCENARIO=d11 npx tsx qa3/rail-speed.ts`) (263).
+   - Best D11 design, each bend alone at 80 or 70 (`npx tsx qa3/speed-per-bend.ts scripts/best-design.json`):
+     −35 … +45 M, 14 of 36 slow-downs dearer. A player who slows a bend to save money gets noise.
+   Also: the railway bend card offers 160 and 140 km/h on the 120 km/h single-track mission, after the owner had the
+   150 / 160 km/h pilot removed — owner's call whether a bend may go faster than the line.
+2. **A road carried over ours is credited more than the bridge that carries it.** D11 road: Build → Road across our
+   road at km 12.5 (from ≈ 700 m west to ≈ 700 m east, a 2 km top-down view; `qa3/designs/d11-new-road-across-km12.5.json`).
+   The new road's card: "Its 593 m on the bridge over our road are built with that bridge, not twice **−238.3 M CZK**".
+   Our road bills that overbridge at **37.4 M** (31 m span, 562 m of approaches as earth ramps), but inside the 593 m
+   the new road draws its own viaduct over a dip (km 0.32–0.59, 185 M), so ≈ 160 m of drawn viaduct is billed by
+   neither road (`npx tsx qa3/held-credit.ts …`; `heldChecks` in `core/project-evaluate.ts` credits every part of the
+   held road within ±(span + approaches)/2) (274). Unpriced here only because both ends are free ("Road ends nowhere").
+   On D3 0302 the same credit (Build → Road across the motorway at km 3.9: "335 m … −54.0 M") is close to what the
+   motorway's bill rose (+59 M): the excess comes where the held road has its own structures inside the window.
+3. **Large earthworks are still Auto's answer on D3 0302.** Start 0302: "Cut km 0.73–2.29 · 1,558 m · up to 62 m deep
+   · 2.39 bn · Auto: at this depth cheaper than a tunnel" (268, 269) where the real section has the 1,843 m Luka tunnel
+   (research/25, /49); the player's Tunnel on it costs +4.8 bn and "too little cover" at both ends. Either side of
+   the Sázava bridge the motorway runs on 40–41 m (km 2.60) and 47 m (km 3.05) high fills: per station a 40 m
+   fill bills 6.8 M against 26.5 M for the bridge beside it. If 40–60 m earthworks are what the model's prices say,
+   the owner should see that decision explicitly; I found no rule capping cut depth or fill height.
+4. **High fills end at a bridge in a vertical face.** D3 0302 km 2.63 and 3.05: the 41 / 47 m fill stops in a flat
+   vertical wall under the deck (green rectangle from the side, a 40 m grey slab from the valley; clicking it selects
+   nothing, no retaining wall is billed) (270, 271). Same on the Královec railway's bridge km 9.33–9.56 after the km 6 drag
+   (grey triangles at both ends, 272). Real abutments sit in a spill-through cone or behind wing walls; what is drawn here
+   is neither, and is not on the bill.
+5. **A new railway across our railway is not put on its bridge.** Railway mission (starter), Build → Railway from
+   (10950, 18484) to (12350, 18884) across our line in its cutting (`qa3/designs/rail-new-railway-across.json`):
+   "Not on its bridge over our railway · Lower this railway here by 7.7 m" at km 0.73, while the card credits "Its 31 m
+   on the bridge over our railway … −5.5 M" and our railway rose 9.10 → 9.37 bn for it (275). A 12.5 ‰ line cannot
+   lose 7.7 m locally; the crossing engine should hold the new line at the deck (final-sweep P1 #3 still open for
+   railway × railway).
+6. **Dragging a mapped road keeps its mapped radius as "Your radius".** D11 straight start, select road III/3012
+   (beside our road at km 2.4), drag it 40 px off: Bend 1 "R 120 m · Your radius" → "Bend 1 is too sharp for 70 km/h"
+   + "radii too different" + "too close to its end", NOT VALID (276). The player never set a radius; "Tightest"
+   makes it VALID (and the problem has no fix button). Since model 38 a drag lowers a set radius to fit; a mapped
+   radius below the norm on a rebuilt stretch should be raised the same way, or start Auto.
+
+### P2
+
+- Hairpins: the Hairpin choice appears only once a bend turns ≥ 150°; "Bend 2 turns back almost on itself" (170°)
+  offers no "Make it a hairpin" fix. Its bend marker sits where the tangents meet, ≈ 340 m from the hairpin itself.
+  Shaping a serpentine with the mouse is fiddly: a drag on a long curve moves that curve's bend (by design), and a
+  double-click near the road added nothing. A straight 270 m climb (21.8 %) bills its last 0 m "Embankment km
+  1.47–1.47" at 1.13 bn (the track tie-in at the end, Auto found no legal height).
+- Arch fitted none of D11 km 7.50–8.39, the D35 viaduct, the Sázava bridge (113 m deep V-valley, the classic arch
+  site, 273) or 0302 after a far edit; the greyed button says only "Does not fit this bridge" — not why.
+- Bridge style row on the Sázava bridge: Short spans greyed ("does not fit") until an unrelated new road 0.9 km
+  away re-solved the grade (429 m bridge, then "Short spans +165 M").
+- Tunnel card: after choosing Cut and cover the status still reads "Auto: at this depth cheaper than a cut" with
+  Auto highlighted; D35's tunnel card offers noise walls (Left / Right 2–6 m) for a tunnel.
+- 0302's 62 m rock cut is drawn as smooth dark-brown faces, no benches or netting visible (269).
+- The score header "OUR MOTORWAY ONLY 4.99 bn ✗ NOT VALID" when only the new road is invalid.
+- Profile tooltip "river: bridge +1".
+- Undo / Redo labels are always "Undo edit" / "Redo edit".
+- Auto extends a bridge 100 m (+162 M, D11 km 2.18–2.38) over road III/3012 running beside our road, where moving
+  that road 23 m costs 6 M (the player's drag does it, P1 #6 aside) — Auto's "move a road running along ours" did
+  not catch it.
+
 ## Final sweep — main e24df59 (2026-11-16, three chunks of 7, 9 and 7 min)
 
 Fresh localStorage, real mouse, SwiftShader 1440×900. Screenshots `/tmp/trapla-qa/fin/` (numbering restarts per chunk).
