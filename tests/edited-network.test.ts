@@ -69,7 +69,7 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     expect(side.kind[k]).toBe(1); // its own deck over our road
     expect(side.violations.filter(v => v.kind === 'crossing')).toEqual([]);
     // what the crossing builds (deck and ramps) is not billed again in the side road's own bill
-    const credit = r.works.items.find(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))!;
+    const credit = r.works.items.find(w => w.owner.id === 'side' && /pays for its bridge over/.test(w.label!))!;
     expect(credit.cost).toBeLessThan(0);
   });
   // D11 Nový Rokytník: a street over our road's cutting rides the owner's deck at ground level. That deck is
@@ -92,7 +92,7 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     }
     expect(side.kind[Math.round((250 - side.y[0]) / side.ds)]).toBe(1);
     expect(side.violations).toEqual([]);
-    expect(r.works.items.some(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))).toBe(true);
+    expect(r.works.items.some(w => w.owner.id === 'side' && /pays for its bridge over/.test(w.label!))).toBe(true);
   });
   it('a crossing choice on it is stored on that road and our bridge keeps it low enough under us', () => {
     const { ctx, project, mission } = fixture();

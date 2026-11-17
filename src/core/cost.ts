@@ -96,6 +96,10 @@ export function surchargeRate(urban: number, divided = false): number {
     + (divided ? PRICES.technologySurcharge : 0);
 }
 
+/** The surcharge on a crossing structure's construction (SPK other objects, a railway's bridge markup):
+ * what a line bills on top of a crossing's own price. */
+export const structureSurcharge = (cat: Category, urban: number): number => cat.markup ? cat.markup.bridge : surchargeRate(urban);
+
 /** whether a category's own objects carry B.6 technology (motorways) */
 export const dividedRoad = (cat: Category) => cat.mode === 'motorway';
 
@@ -290,9 +294,9 @@ export function costParts(inp: StationCostInput): CostParts {
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
     parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
     const mk = cat.markup;
-    parts.surcharge[i] = !mk ? construction * surchargeRate(u, divided) + structure * surchargeRate(u)
-      : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth + structure * mk.bridge
-        : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel) + structure * mk.bridge;
+    parts.surcharge[i] = (!mk ? construction * surchargeRate(u, divided)
+      : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth
+        : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel)) + structure * structureSurcharge(cat, u);
     parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
     parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;

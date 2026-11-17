@@ -26,6 +26,8 @@ import { thisRoadWords } from './terms';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
 import { stationIndex } from './range';
+import { routeCategory } from './route-section';
+import { structureSurcharge, surchargeRate } from './cost';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Mapped railway lines (what a rebuilt railway stretch takes up); absent until the transport graph loads. */
@@ -990,7 +992,10 @@ interface Hold { x: number; y: number; min: number; max: number; owner: RouteDes
   /** on its bridge over the owner: half the deck's length along the held road */
   deck?: number;
   /** on its bridge over the owner: the deck's two ends, held at the deck's own height there */
-  deckEnds?: { x: number; y: number; z: number }[] }
+  deckEnds?: { x: number; y: number; z: number }[];
+  /** what the owner bills for building the held road here (its deck and ramps, with their surcharge), CZK:
+   * taken off the held road's own bill, which draws and prices that stretch itself */
+  billed?: number }
 type HeldBand = { s: number; min: number; max: number };
 /** A hold on the line the held road is built on: its station there (its deck's span and ends). */
 const placedHold = (h: Hold, line: readonly number[]): HeldBand & { bridge?: [number, number]; ends?: HeldBand[] } => {
@@ -1025,6 +1030,8 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
     // bridge (where both cross a valley on bridges: overBridge)
     case 'bridge': return c.above ? { ...band(z + clearOver(owner), Infinity), over: true }
       : band(-Infinity, z - (ROAD_CLASSES[c.cls]?.noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight));
+    // (through a box lowered under our road its ramps are the crossing's, billed by the owner, while the held
+    // road stays at the ground: PLAN.md "Known issues", a lowered box under a designed road)
     case 'underpass': return band(ground - HOLD_TOLERANCE, ground + HOLD_TOLERANCE);
     case 'overbridge': {
       // on its bridge over us: the deck's height where it crosses our centreline
@@ -1036,12 +1043,22 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
       const ends = span && road[span.start] && road[span.end]
         ? [road[span.start], road[span.end]].map(p => ({ x: p.x + dx, y: p.y + dy, z: p.z + lift })) : undefined;
       // its own deck over our road: the span is measured along the crossed road already
-      return { ...band(deck - HOLD_TOLERANCE, deck + HOLD_TOLERANCE), deck: (c.span ?? 0) / 2, ...(ends ? { deckEnds: ends } : {}) };
+      return { ...band(deck - HOLD_TOLERANCE, deck + HOLD_TOLERANCE), deck: (c.span ?? 0) / 2, ...(ends ? { deckEnds: ends } : {}),
+        billed: heldBodyBilled(owner, own, c) };
     }
     case 'junction': case 'atGrade': return band(z - HOLD_TOLERANCE, z + HOLD_TOLERANCE);
     default: return null; // over our tunnel: free
   }
 }
+/** What the owner bills for a crossing's copy of the held road on its bridge over us, which the held road
+ * draws and prices itself: the deck and ramps with their surcharge (not the side roads it regrades, its walls
+ * or the houses it takes, which the owner draws), CZK. */
+function heldBodyBilled(owner: RouteDesign, own: Result, c: CrossingResult): number {
+  const cat = routeCategory(owner), u = own.cell.urban[c.i] ?? 0;
+  const rate = cat === 'existing' ? surchargeRate(u) : structureSurcharge(CATEGORIES[cat], u);
+  return Math.max(0, c.cost - (c.worksCost ?? 0) - (c.houseCost ?? 0)) * (1 + rate);
+}
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const ownerName = (r: RouteDesign) => r.role === 'mission' ? (r.kind === 'railway' ? 'our railway' : r.kind === 'motorway' ? 'our motorway' : 'our road') : r.name;
 /** How far a road passing over the owner's bridge on its own bridge stays above the owner's grade, m: the
  * clearance over a road (CROSSING_RULES.overHeight), over a railway or motorway STRUCTURE_RULES.railClearance. */
@@ -1058,10 +1075,12 @@ function overBridge(r: Result, holds: readonly (Hold & ReturnType<typeof placedH
     && gradeAt(r, h.s) > h.max + HOLD_SLACK && r.kind[Math.round(h.s / r.ds)] === KIND.bridge);
   return high.length ? holds.map(h => high.includes(h) ? { ...h, min: h.z + clearOver(h.owner), max: Infinity, over: true as const } : h) : null;
 }
-/** A held road that misses its crossing's height (By hand), and the part of it the owner's bridge over
- * the owner already builds (its deck and ramps are billed with that crossing). */
+/** A held road that misses its crossing's height (By hand), and the part of its bill the owner's bridge over
+ * the owner already pays (its deck and ramps are billed with that crossing). */
 function heldChecks(r: Result, holds: readonly (Hold & ReturnType<typeof placedHold>)[], line: OurLine = 'road'): { violations: Result['violations']; credits: ReplacementWork[] } {
-  const violations: Result['violations'] = [], credits: ReplacementWork[] = [], credited = new Uint8Array(r.n);
+  const violations: Result['violations'] = [], credits: ReplacementWork[] = [];
+  /** credited so far: never more than the held road's own bill */
+  let spent = 0;
   /** how far the road misses a band (0: within it), m */
   const miss = (b: HeldBand) => {
     if (!(b.s >= 0 && b.s <= r.length)) return 0;
@@ -1079,15 +1098,15 @@ function heldChecks(r: Result, holds: readonly (Hold & ReturnType<typeof placedH
       fix: `${off > 0 ? 'Lower' : 'Raise'} this ${line} here by ${Math.abs(off).toFixed(1)} m`,
       rule: 'Game rule: where roads cross, the crossing is built once, by the more important road; the other road keeps the height it was built for.' } as Result['violations'][number];
       WORDED.add(v); violations.push(v); }
-    if (type !== 'overbridge') continue;
+    if (!h.billed) continue;
+    // The held road draws and prices its whole body, the owner's deck and ramps included, and the owner bills
+    // them as its crossing: what the owner bills comes off the held road's bill. Billed once; the rest of
+    // what the held road builds there (its own bridge over a dip beside the ramps) stays on its own bill.
     const half = ((h.crossing.approachLength ?? 0) + (h.crossing.span ?? 0)) / 2;
-    let credit = 0;
-    for (let q = 0; q < r.n; q++) if (Math.abs(r.s[q] - h.s) <= half && !credited[q]) {
-      credited[q] = 1; // overlapping crossings credit a cell once
-      for (const key of [...SHARED_PARTS, 'bridges', 'culverts'] as const) credit += r.parts[key][q];
-    }
+    const credit = Math.min(h.billed ?? 0, Math.max(0, r.cost.total - spent));
+    spent += credit;
     if (credit > 0) credits.push({ kind: 'junction', s: h.s, x: h.crossing.x, y: h.crossing.y, length: 2 * half, cost: -credit,
-      label: `Its ${Math.round(2 * half)} m on the bridge over ${name} are built with that bridge, not twice` });
+      label: `${cap(name)} pays for its bridge over ${name} and the ramps up to it` });
   }
   return { violations, credits };
 }
