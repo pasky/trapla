@@ -11,6 +11,7 @@ import type { Terrain } from '../core/terrain';
 import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
 import { bendNo } from './chainage';
+import { stationIndex } from '../core/range';
 
 export interface CurveEditHost {
   a: Vec2;
@@ -101,7 +102,7 @@ export class CurveEditor {
   private zAt(x: number, y: number, s: number) {
     const r = this.host.result();
     if (r && this.al && Math.abs(r.length - this.al.length) < 0.5) {
-      const k = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+      const k = stationIndex(r, s);
       return Math.max(r.grade[k], r.ground[k]) + 1.5;
     }
     return this.terrain.heightAt(x, y);

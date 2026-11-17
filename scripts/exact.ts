@@ -7,6 +7,9 @@
 //   npx tsx scripts/exact.ts --out /tmp/before.json          on the commit you start from (e.g. main)
 //   npx tsx scripts/exact.ts --compare /tmp/before.json      after the change: exit 1 on any difference
 //   options: --random N (D11 random designs, default 12), --seed S, --only d11,d3-0302 (pack ids)
+//   EXACT_TEXT=map.json (a deliberate change of wording): [["old text", "new text"], …] replaced in every string
+//     before hashing, on both sides: snapshot the base and compare the change with the same map, and the
+//     results are proved identical but for those words.
 //
 // A difference prints which case changed and the first differing bill lines. It does not replace the
 // frozen fixtures: it has no memory beyond the file you give it.
@@ -26,7 +29,9 @@ type Snapshot = Record<string, Case>;
 
 /** Canonical JSON of anything the evaluators return: typed arrays as numbers (-0, NaN and ±Infinity kept
  * apart), Maps / Sets in insertion order, object keys sorted, functions and wall-clock timings dropped. */
+const TEXT: [string, string][] = process.env.EXACT_TEXT ? JSON.parse(readFileSync(process.env.EXACT_TEXT, 'utf8')) : [];
 function canonical(value: unknown, seen = new Set<object>()): unknown {
+  if (typeof value === 'string') return TEXT.reduce((s, [was, now]) => s.split(was).join(now), value);
   if (typeof value === 'number') return Number.isFinite(value) && !Object.is(value, -0) ? value : `#${Object.is(value, -0) ? '-0' : value}`;
   if (value === null || typeof value !== 'object') return typeof value === 'function' || value === undefined ? undefined : value;
   if (ArrayBuffer.isView(value)) return Array.from(value as unknown as ArrayLike<number>, v => canonical(v));

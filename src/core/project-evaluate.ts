@@ -25,6 +25,7 @@ import { STEP } from './evaluate';
 import { thisRoadWords } from './terms';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
+import { stationIndex } from './range';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Mapped railway lines (what a rebuilt railway stretch takes up); absent until the transport graph loads. */
@@ -375,8 +376,10 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const again = evaluateProjectOnce(ctx, snapshot, yields), unsettled = (r: ProjectResult) => r.issues.filter(i => i.check === 'not-checked').length;
   return again.cost.total !== null || unsettled(again) < unsettled(first) ? again : first;
 }
-function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepClear: ReadonlyMap<string, KeepClear>,
-  yields?: Map<string, KeepClear>): ProjectResult {
+/** Stage 1 of evaluateProjectOnce: the empty result, the order the roads are evaluated in (a road after the
+ * roads its ends join and the roads drawn through it; what is left of a cycle last) and the maps the stages
+ * fill (each road's Result, the heights it holds for others, replacements, works, junctions). */
+function projectStart(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepClear: ReadonlyMap<string, KeepClear>) {
   assertProjectDesign(snapshot.design);
   const design = snapshot.design;
   const result: ProjectResult = { epoch: snapshot.epoch, revision: snapshot.revision, routes: {}, works: { items: [] },
@@ -424,6 +427,15 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
     return kids ? [...keepClear.get(kids.forward) ?? [], ...keepClear.get(kids.reverse) ?? []] : keepClear.get(route.id);
   };
   const endsOf = (r: RouteDesign) => lineEnds(design, r, evaluated);
+  return { design, result, priced, engineered, corridorCache, unitOf, builtJunctions, replacements, ringsOf, order,
+    holdsOf, seenOwners, cyclic, legacyOf, ownWorks, designedJunctions, evaluated, routeClear, endsOf };
+}
+
+/** Stage 2: every road evaluated in that order (its ends follow the roads it joins; the heights its crossings
+ * hold are placed on the line it is built on), and the mapped roads its rebuilt stretches replace. */
+function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start: ReturnType<typeof projectStart>) {
+  const { order, cyclic, evaluated, holdsOf, design, corridorCache, endsOf, routeClear, legacyOf, ownWorks,
+    seenOwners, designedJunctions, result, engineered, builtJunctions, replacements, ringsOf, priced } = start;
   for (const route of [...order, ...cyclic]) {
     // its ends follow the roads it joins; the heights its crossings hold are placed on the line it is built on
     const ends = route.kind === 'road' ? followEnds(route, evaluated) : undefined;
@@ -495,6 +507,13 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   // A rebuilt stretch's old road is gone from the map as soon as its new line is engineered against the
   // network without it, priced or not: every road is checked against the network as the player edited it.
   for (const route of design.routes) if (route.source && replacements.has(route.id)) result.acceptedReplacements.push(...route.source.intervals.map(i => ({ ...i })));
+}
+
+/** Stage 3: the junctions where a side road meets another designed road (built and billed by the side road),
+ * and every road's own works listed. */
+function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>) {
+  const { engineered, cyclic, design, legacyOf, ownWorks, designedJunctions, builtJunctions, replacements, ringsOf,
+    result } = start;
   // Junctions where a side road meets another designed road: built and billed by the side road (C1 c),
   // checked against the joined road's current design. Each road's other junctions (and ends) count.
   const junctionsOn = new Map<string, number[]>();
@@ -511,7 +530,7 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
       route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined);
     stations.push(t.s);
     if (t.violations.length) { legacy.violations.push(...t.violations); legacy.valid = false; }
-    const i = end === 'a' ? 0 : legacy.n - 1, k = Math.max(0, Math.min(host.n - 1, Math.round(t.s / host.ds)));
+    const i = end === 'a' ? 0 : legacy.n - 1, k = stationIndex(host, t.s);
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
     if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),
@@ -534,10 +553,16 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   for (const [id, rings] of ringsOf) ownWorks.set(id, [...ownWorks.get(id) ?? [], ...rings]);
   // Every road's own works are listed (its card shows them); they count in a price only once accepted below.
   for (const { route } of engineered) for (const [k, w] of (ownWorks.get(route.id) ?? []).entries()) result.works.items.push(replacementWork(route, k, w));
+}
+
+type Unit = { route: RouteDesign; legacy: Result; members: string[]; parts: { route: RouteDesign; legacy: Result }[];
+  total: number; valid: boolean; issues: ProjectIssue[] };
+/** Stage 4: the priced units (a road, or a motorway corridor as one), and each road's own bill and problems
+ * shown even while the project cannot be priced. */
+function projectUnits(start: ReturnType<typeof projectStart>) {
+  const { priced, unitOf, design, corridorCache, engineered, result, ownWorks } = start;
   // A priced unit is one road, or one motorway corridor: paired (one body published under both
   // directions) or split (two directions plus the corridor ledger that counts shared works once).
-  type Unit = { route: RouteDesign; legacy: Result; members: string[]; parts: { route: RouteDesign; legacy: Result }[];
-    total: number; valid: boolean; issues: ProjectIssue[] };
   const units: Unit[] = [];
   for (const { route, legacy } of priced) {
     const unit = units.find(p => unitOf(p.route) === unitOf(route));
@@ -568,6 +593,13 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   // a split motorway is one road: both directions show its whole bill (shared works once)
   for (const unit of units) if (unit.parts.length > 1 && corridorCache.get(corridorOfRoute(design, unit.route.id)?.id ?? '')?.status === 'split')
     for (const id of unit.members) defineRoute(result.cost.alone, id, unit.total + unit.members.flatMap(m => ownWorks.get(m) ?? []).reduce((t, w) => t + w.cost, 0));
+  return { units };
+}
+
+/** Stage 5: what keeps the network from being priced: roads that touch outside a junction, the mission's
+ * connections, two roads claiming the same mapped road, ends that end nowhere (`unprice` is handed on). */
+function projectNetwork(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>) {
+  const { result, design, designedJunctions, legacyOf, unitOf, replacements, builtJunctions } = start;
   const unprice = (routeIds: string[], reason: string) => {
     for (const routeId of routeIds) if (!result.cost.unpriced.some(u => u.routeId === routeId)) result.cost.unpriced.push({ routeId, reason });
   };
@@ -642,39 +674,13 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
     result.issues.push(endsNowhere(r.id, r.kind === 'railway')); unprice([r.id], 'road-ends-nowhere');
   }
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
-  const finish = () => {
-    // priced units' issues (incl. a split corridor's ledger), and every other engineered road's own problems
-    const listed = new Set<Result>();
-    for (const unit of units) { result.issues.push(...unit.issues); for (const p of unit.parts) listed.add(p.legacy); }
-    for (const { route, legacy } of engineered) if (!listed.has(legacy)) { listed.add(legacy); result.issues.push(...routeIssues(route, legacy)); }
-    // Not priced withholds the total, the verdict and decisions between roads: never what each road
-    // physically does. Houses under a road's works are gone, its own buy-outs stand (a paired corridor's
-    // one body once).
-    const own = new Set<Result>();
-    result.buildings = mergeBuildings(engineered.flatMap(({ route, legacy }) => own.has(legacy) ? [] : (own.add(legacy), ownBuildings(route, legacy))));
-    return result;
-  };
-  if (result.cost.unpriced.length || result.issues.length) return finish();
-  if (units.length === 1 && !ownWorks.size) {
-    // Compatibility facade. One kernel bill and one physical source; never several bills added up.
-    const { route, members, total, valid } = units[0];
-    for (const id of members) {
-      const rr = result.routes[id];
-      rr.complete = true; rr.valid = valid; rr.accepted = valid; rr.attributedCost = members.length > 1 ? null : total;
-    }
-    result.complete = true; result.valid = valid; result.cost.total = total;
-    // A corridor's common formation is shared work of both directions, not two attributed bills.
-    if (members.length > 1) result.cost.shared = total; else defineRoute(result.cost.routes, route.id, total);
-    result.issues = units[0].issues;
-    const outcomes = units[0].parts.map(p => routeOutcome(ctx, design, p.route, p.legacy));
-    result.buildings = mergeBuildings(outcomes.flatMap(o => o.buildings));
-    result.receivers = mergeReceivers(outcomes.flatMap(o => o.receivers), true);
-    // Legacy's all-height screen excludes only sub-limit receivers. One physical source means
-    // that bound is sufficient; it is NOT a valid aggregate screen for two or more sources.
-    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: dm.pow(10, NOISE.limitDayDb / 10),
-      omittedNightEnergyUpperBound: dm.pow(10, NOISE.limitNightDb / 10), complete: true };
-    return result;
-  }
+  return { unprice };
+}
+
+/** Stage 6, several roads: the screen of whether anything one builds, buys, closes or makes loud reaches another. */
+function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>, grouped: ReturnType<typeof projectUnits>) {
+  const { design, designedJunctions, replacements } = start;
+  const { units } = grouped;
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
   // A rebuilt stretch continues its old road where another road changes the rest of it (cuts, reroutes,
   // relocates it): the two roads' works meet at that end, as at a junction between them.
@@ -738,9 +744,17 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
           const n = nearestStation(legacy, w.x, w.y); return { ax: w.x, ay: w.y, bx: legacy.x[n], by: legacy.y[n], r: (ROAD_CLASSES[w.cls ?? '']?.width ?? 6.5) / 2 };
         })] } : {}) };
   }), ctx.legacy.buildings);
+  return { screen };
+}
+
+/** Stage 7: what the roads decide together (houses heard by several roads, houses under two roads' works: one
+ * payer) and what is left `blocking` a price. */
+function projectDecisions(ctx: ProjectEvalContext, yields: Map<string, KeepClear> | undefined, screened: ReturnType<typeof projectScreen>, grouped: ReturnType<typeof projectUnits>, start: ReturnType<typeof projectStart>) {
+  const { screen } = screened;
+  const { units } = grouped;
+  const { design, result, ownWorks } = start;
   // Houses heard by two or more roads are decided together from both roads' own sources; every other
   // interaction (shared land, roads, buildings) still keeps the project unpriced.
-  let valid = true;
   const heard = screen.interactions.filter(i => i.reason === 'shared-noise' && i.buildingIndex !== undefined);
   const heardRoutes = units.flatMap(u => u.parts).map(({ route, legacy }) => ({ route, result: legacy }));
   const builtIn = heard.length && ctx.legacy.buildings && !ctx.combinedNoise
@@ -773,24 +787,16 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   }
   const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)) && !takenTogether.includes(i));
   if (yields) for (const i of blocking) for (const y of i.yields ?? []) yields.set(y.routeId, [...yields.get(y.routeId) ?? [], ...y.keepClear]);
-  if (blocking.length) {
-    // one line per thing the roads share, with its place; the houses that hear the same roads are one line
-    const heardBy = new Map<string, number>();
-    for (const i of blocking) if (i.reason === 'shared-noise') { const key = i.routeIds.join('|'); heardBy.set(key, (heardBy.get(key) ?? 0) + 1); }
-    const listed = new Set<string>();
-    for (const i of blocking) {
-      unprice(i.routeIds, i.reason);
-      const key = i.routeIds.join('|');
-      if (i.reason === 'shared-noise') { if (listed.has(key)) continue; listed.add(key); }
-      const b = i.buildingIndex !== undefined ? ctx.legacy.buildings?.items[i.buildingIndex] : undefined, at = i.at ?? (b ? { x: b[0], y: b[1] } : undefined);
-      const locations = at ? i.routeIds.flatMap(routeId => {
-        const legacy = result.routes[routeId]?.legacy; if (!legacy) return [];
-        const s = legacy.s[nearestStation(legacy, at.x, at.y)]; return [{ routeId, s0: s, s1: s }];
-      }) : [];
-      result.issues.push(interactionIssue(i, at, locations, heardBy.get(key)));
-    }
-    return finish();
-  }
+  return { heard, builtIn, decider, housePayer, blocking };
+}
+
+/** Stage 8: the houses decided together (walls, buy-outs), each unit's share of the bill, the receivers;
+ * returns the total and whether the project is valid. */
+function projectTotals(ctx: ProjectEvalContext, between: ReturnType<typeof projectDecisions>, start: ReturnType<typeof projectStart>, grouped: ReturnType<typeof projectUnits>) {
+  const { decider, heard, builtIn, housePayer } = between;
+  const { priced, ringsOf, ownWorks, design, result } = start;
+  const { units } = grouped;
+  let valid = true;
   // houses already gone: under a road, bought by it, or on a roundabout's ring; the player's Keep is never bought
   const together = decider ? combineNoise(heard.map(i => i.buildingIndex!), decider, ctx.legacy.buildings!,
     new Set([...priced.flatMap(({ legacy }) => [...legacy.demolished, ...legacy.boughtOut].map(b => b.j)),
@@ -806,7 +812,7 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
         violation: { kind: 'noise', basis: 'norm', title: 'Too loud with both roads together',
           fix: 'Buy the house out, or build a higher or longer noise wall in front of it',
           detail: `${(h.over).toFixed(1)} dB over the limit at its loudest floor, with the noise of both roads added together. You chose to keep it.`,
-          rule: 'NV 272/2011 annex 3: the noise of all roads at a protected house adds up; the limit of the road that prevails there applies (research/31)' } });
+          rule: 'NV 272/2011 annex 3: the noise of all roads at a protected house adds up; the limit of the road that prevails there applies' } }); // research/31
       valid = false;
       continue;
     }
@@ -864,6 +870,76 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
     if (h.decision === 'buy') result.buildings.push({ buildingIndex: h.buildingIndex, action: 'buy', cost: h.buyout!.cost, routeId: h.buyout!.routeId });
   }
   result.buildings = mergeBuildings(result.buildings).map(b => housePayer.has(b.buildingIndex) ? { ...b, routeId: housePayer.get(b.buildingIndex)! } : b);
+  return { valid, total };
+}
+
+function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepClear: ReadonlyMap<string, KeepClear>,
+  yields?: Map<string, KeepClear>): ProjectResult {
+  const start = projectStart(ctx, snapshot, keepClear);
+  const { design, result, engineered, ownWorks } = start;
+  projectRoutes(ctx, snapshot, start);
+  projectWorks(ctx, start);
+  const grouped = projectUnits(start);
+  const { units } = grouped;
+  const network = projectNetwork(ctx, start);
+  const { unprice } = network;
+  const finish = () => {
+    // priced units' issues (incl. a split corridor's ledger), and every other engineered road's own problems
+    const listed = new Set<Result>();
+    for (const unit of units) { result.issues.push(...unit.issues); for (const p of unit.parts) listed.add(p.legacy); }
+    for (const { route, legacy } of engineered) if (!listed.has(legacy)) { listed.add(legacy); result.issues.push(...routeIssues(route, legacy)); }
+    // Not priced withholds the total, the verdict and decisions between roads: never what each road
+    // physically does. Houses under a road's works are gone, its own buy-outs stand (a paired corridor's
+    // one body once).
+    const own = new Set<Result>();
+    result.buildings = mergeBuildings(engineered.flatMap(({ route, legacy }) => own.has(legacy) ? [] : (own.add(legacy), ownBuildings(route, legacy))));
+    return result;
+  };
+  if (result.cost.unpriced.length || result.issues.length) return finish();
+  if (units.length === 1 && !ownWorks.size) {
+    // Compatibility facade. One kernel bill and one physical source; never several bills added up.
+    const { route, members, total, valid } = units[0];
+    for (const id of members) {
+      const rr = result.routes[id];
+      rr.complete = true; rr.valid = valid; rr.accepted = valid; rr.attributedCost = members.length > 1 ? null : total;
+    }
+    result.complete = true; result.valid = valid; result.cost.total = total;
+    // A corridor's common formation is shared work of both directions, not two attributed bills.
+    if (members.length > 1) result.cost.shared = total; else defineRoute(result.cost.routes, route.id, total);
+    result.issues = units[0].issues;
+    const outcomes = units[0].parts.map(p => routeOutcome(ctx, design, p.route, p.legacy));
+    result.buildings = mergeBuildings(outcomes.flatMap(o => o.buildings));
+    result.receivers = mergeReceivers(outcomes.flatMap(o => o.receivers), true);
+    // Legacy's all-height screen excludes only sub-limit receivers. One physical source means
+    // that bound is sufficient; it is NOT a valid aggregate screen for two or more sources.
+    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: dm.pow(10, NOISE.limitDayDb / 10),
+      omittedNightEnergyUpperBound: dm.pow(10, NOISE.limitNightDb / 10), complete: true };
+    return result;
+  }
+  const screened = projectScreen(ctx, start, grouped);
+  const { screen } = screened;
+  const between = projectDecisions(ctx, yields, screened, grouped, start);
+  const { blocking } = between;
+  if (blocking.length) {
+    // one line per thing the roads share, with its place; the houses that hear the same roads are one line
+    const heardBy = new Map<string, number>();
+    for (const i of blocking) if (i.reason === 'shared-noise') { const key = i.routeIds.join('|'); heardBy.set(key, (heardBy.get(key) ?? 0) + 1); }
+    const listed = new Set<string>();
+    for (const i of blocking) {
+      unprice(i.routeIds, i.reason);
+      const key = i.routeIds.join('|');
+      if (i.reason === 'shared-noise') { if (listed.has(key)) continue; listed.add(key); }
+      const b = i.buildingIndex !== undefined ? ctx.legacy.buildings?.items[i.buildingIndex] : undefined, at = i.at ?? (b ? { x: b[0], y: b[1] } : undefined);
+      const locations = at ? i.routeIds.flatMap(routeId => {
+        const legacy = result.routes[routeId]?.legacy; if (!legacy) return [];
+        const s = legacy.s[nearestStation(legacy, at.x, at.y)]; return [{ routeId, s0: s, s1: s }];
+      }) : [];
+      result.issues.push(interactionIssue(i, at, locations, heardBy.get(key)));
+    }
+    return finish();
+  }
+  const totals = projectTotals(ctx, between, start, grouped);
+  const { valid, total } = totals;
   result.cost.total = total; result.complete = true; result.valid = valid;
   result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: screen.omittedDayEnergy,
     omittedNightEnergyUpperBound: screen.omittedNightEnergy, complete: true };

@@ -193,6 +193,39 @@ Measured with each `evaluateRoute` call timed (a scratch wrapper; min of 8 evalu
   (the reroute cache's footprint signature is the pattern). Candidates, by what a retry would save: one
   crossing's candidate builds (≈ 18 % of a pass that changes nothing), the setup shared by all passes (≈ 5 %).
 
+Done of those (2026-11-17, bit-exact: 177 / 177): **the setup is shared** (`passSetup`: a retry pass takes the
+first pass's stationed line, ground and clearances from the pass cache, with its own timing and its own copy of
+`clearanceS`, the one array a pass writes to; `tests/pass-setup.test.ts` hashes the shared setup when made and
+after every pass). Interleaved against main `5ea8d7e` (load 4–5): direct-80 min 220.1 → 214.8 and 215.5 →
+212.4 ms (the 3–5 ms of one setup), the other D11 designs and the whole D3 (min ratio 0.99 / 1.00) within the
+noise: it is ≈ 1 % and mostly groundwork for a pass that starts from another pass's state.
+
+Not done: **a memo of one crossing's candidate builds.** A candidate (a box or a bridge over us weighed against
+the present remedy) reads our road through more than the tracked `spatial` queries: `route.grade`, `width`,
+`left`, `right`, `kind` by index at 19 places in the 840-line `buildCrossingGeometryOnce`, and the houses still
+standing through a closure over the pass's demolitions. A key that misses one of them is a wrong result that no
+frozen bill need show. Its place is after that function is in stages (done since: docs/architecture-review.md
+§ Core) and the loop body of `crossingStructures` is a function of one crossing that is handed what it reads of
+our road, so that the key can be read off its signature. Expected then: ≤ 18 % of a retry pass where the footprint near the crossing is unchanged (on a 19 km route a regrade
+changes about half of it), i.e. ≈ 5 ms on direct-80 and ≈ 2–3 % of the whole D3.
+
+The groundwork is done (2026-11-17, bit-exact): `crossingStructure(c, ours, …)` builds one crossing and reads
+our road through `ours` only (`route` is not in its scope; the list of what a key must cover is written at
+`ours` in `crossingTools`). Measured on the five D11 designs: `crossingStructures` is 36 % of the crossing
+geometry's time (19 % in the builds of all crossings, 16 % under the weighing of other remedies), i.e.
+≈ 9 % of an evaluation over all its passes, and a memo across passes can only save it in a retry pass, for the
+crossings whose stretch of our road did not change. **The memo itself is not built, and should not be before
+the stretch-local retry** (docs/architecture-review.md "Planned next performance lever"): that keeps the
+crossings outside a retry's window from the kept pass without building them at all, which is this memo's
+whole gain and more. What a memo would still need beyond the key: the build's writes are spread over the
+crossing (`cost`, `span`, `lowered` … set and deleted), its geometry object (which stages 3 and 4 go on to
+change, so a kept copy has to be a deep one, made before them and again at every reuse) and five maps of the
+build (`cuts`, `squares`, `rawPaths`, `survivingSides`, `squaredPaths`), and the houses standing along a
+straightened crossing's new road (`linkEnv.houses`) change with the pass's demolitions.
+
+The large lever (a retry that re-engineers only its stretch, ≈ −0.8 s of the whole D3's 2.5 s) is a model
+change: docs/architecture-review.md "Planned next performance lever".
+
 
 ## Crossing remedies, cost model 28 (2026-11-16)
 

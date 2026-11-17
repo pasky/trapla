@@ -187,7 +187,7 @@ export const RAILWAY_AUTOMATIC = 'The game decides: existing bridges stay; every
 /** A mapped road's card where another road's earthworks cover it (ui/mapped-road.ts): `by` is "our road" or a road's name. */
 export const coveredText = (by: string) => `${by.charAt(0).toUpperCase()}${by.slice(1)} covers it here: pick it further away.`;
 
-/** Automatic and Junction on a local road or track (no junction spacing; research/42, 43). */
+/** Automatic and Junction on a local road or track (no junction spacing; research/42, research/43-minor-crossroads.md). */
 export const MINOR_CROSSING_TEXT = {
   automatic: 'The game decides: existing bridges stay; every road but a motorway or expressway meets ours at its level in a junction; those get the cheapest of a bridge over our road, an underpass or a reroute to a nearby crossing.',
   junction: 'The crossed road meets ours at the same level in a junction (never a motorway or expressway).',

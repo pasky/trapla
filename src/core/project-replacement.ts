@@ -21,7 +21,7 @@ export const REMOVAL = {
   basePerM3: 766.96, baseDepth: 0.20,
   /** 18231 spreading existing topsoil up to 0.10 m on level ground + 18242 seeding, per m² */
   restorePerM2: 28.48 + 29.35,
-  source: 'OTSKP 2026 rows 113131, 11333, 18231, 18242 (research/30); layer thicknesses PROVISIONAL',
+  source: 'OTSKP 2026 rows 113131, 11333, 18231, 18242; layer thicknesses PROVISIONAL',
 } as const;
 /** An old-road sample lies under the new road within its land-take half-width plus this, m. */
 const UNDER = 1;
@@ -56,7 +56,7 @@ const nearest = (r: Result, x: number, y: number) => {
 /** Junction of a side road onto the rebuilt road: an access for tracks and service roads (research/13),
  * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). On a
  * rebuilt local road or track (`minor`) a minor side road's junction is a crossroads of two minor roads
- * (research/43). */
+ * (research/43-minor-crossroads.md). */
 export function sideJunctionCost(cls: string, minor?: 'local' | 'track'): number {
   return minorCrossroads(minor, cls)
     ?? (cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost);

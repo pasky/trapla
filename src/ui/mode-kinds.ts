@@ -9,6 +9,7 @@ import type { ProjectTransportIndex } from '../core/project-network';
 import { KIND } from '../core/structures';
 import { builtAnew, fitBends, fitRoad, MIN_STRETCH, moveStretchEnds, type PlacedEnd } from './road-edit';
 import { registerBuildKind, registerMappedLineKind, type BuildKind, type MappedLineKind } from './route-kinds';
+import { stationIndex } from '../core/range';
 
 /** A rebuilt railway's old line becomes bends where it strays more than this from a chord, and bends
  * closer than the gap are merged: track curves at 120 km/h are ≥ 740 m in radius, so the old line's every
@@ -84,7 +85,7 @@ export const RAIL_BUILD: BuildKind = {
     const r = result.legacy;
     if (route.kind !== 'railway') return { ok: false, why: 'A railway cannot end on a road: end it on a railway or on open ground.' };
     if (!r) return { ok: false, why: 'This railway is not checked yet, so nothing can join it.' };
-    const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+    const i = stationIndex(r, s);
     if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A railway cannot join on a bridge or in a tunnel.' };
     return { ok: true, label: `joins ${route.name}`, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };
   },

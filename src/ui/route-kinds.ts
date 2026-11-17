@@ -20,6 +20,7 @@ import { KIND } from '../core/structures';
 import { CATEGORIES } from '../core/data/categories';
 import { moveStretchEnds, newRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
 import { mappedRoadName } from '../core/terms';
+import { stationIndex } from '../core/range';
 
 export interface RouteIds { routeId: string; acousticSourceId: string }
 export type Verdict<T> = ({ ok: true } & T) | { ok: false; why: string };
@@ -106,7 +107,7 @@ export const ROAD_BUILD: BuildKind = {
     if (route.kind === 'motorway') return { ok: false, why: 'A motorway can only be joined at an interchange; those are not in the game yet.' };
     if (route.kind !== 'road') return { ok: false, why: 'A road cannot end on a railway.' };
     if (!r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
-    const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+    const i = stationIndex(r, s);
     if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
     return { ok: true, label: route.role === 'mission' ? 'joins our road' : `joins ${route.name}`, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };
   },

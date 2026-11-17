@@ -74,7 +74,7 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
     group.area += wall.area; group.height = Math.max(group.height, wall.height);
     const what = wall.feature === 'road' ? 'road' : wall.feature === 'railway' ? 'railway' : wall.feature === 'water' ? 'water' : wall.feature === 'building' ? 'building' : 'stream';
     group.conflict.detail = `A concrete wall on the ${wall.side === 'L' ? 'left' : 'right'}, up to ${group.height.toFixed(1)} m high (${group.area.toFixed(0)} m² of wall), ends our slope ${wall.feature === 'building' ? `${BUILDING_RULES.clearance} m or more short of the building, so the works keep clear of it` : `before it covers the ${what}`}${wall.watertight ? '; it is sealed against the water behind it' : ''}.`;
-    group.conflict.source = `Height-dependent concrete wall with foundation (OTSKP 327325 + 327365 + 13173 + 17411)${wall.watertight ? ', waterproofing and cutoff (711122 + 711519)' : ', rear drain and filter (212625 + 214613)'}; research/18`;
+    group.conflict.source = `Height-dependent concrete wall with foundation (OTSKP 327325 + 327365 + 13173 + 17411)${wall.watertight ? ', waterproofing and cutoff (711122 + 711519)' : ', rear drain and filter (212625 + 214613)'}`; // research/18
   }
   return out;
 }

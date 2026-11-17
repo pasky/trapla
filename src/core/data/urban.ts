@@ -240,7 +240,7 @@ export type EndpointJunctionKind = keyof typeof ENDPOINT_JUNCTIONS;
 /** Simple sjezd onto the service link, NOT onto the class-I road. Very low confidence — research/13. */
 export const ACCESS = 500_000;
 /** A crossroads where our local road or track meets another minor road at the same level: what it adds to
- * the two pavements (research/43, PROVISIONAL; no separately priced Czech crossroads of this kind was found).
+ * the two pavements (research/43-minor-crossroads.md, PROVISIONAL; no separately priced Czech crossroads of this kind was found).
  * Two local roads: 1 M CZK, its extra paved area and edges at the MMR/ÚÚR 2025 local-road unit prices (low
  * confidence). A track meeting a track or service road: 0.25 M CZK, from KoPÚ track budgets (very low
  * confidence). A track meeting a local road (or a local road a track): the access above (research/13). */

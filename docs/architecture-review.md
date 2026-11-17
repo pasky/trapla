@@ -33,7 +33,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
 | 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done: 1,840 → 325 lines, 22 modules out, the shared state is a `Session`; what is left is construction and wiring (§ main.ts) |
-| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: 14 named functions, itself 60 lines (three diffs of +74 −13, +50 −25 and +99 −29); the other two functions next (§ Core) |
+| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | done: `evaluateRoute` is 14 named functions, itself 60 lines; `buildCrossingGeometryOnce` four stages; `evaluateProjectOnce` eight stages and 67 lines (§ Core). Next: the stages into files |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
@@ -44,14 +44,15 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 12 | Browser gates run against the live working tree (vite); fixed ports collide between worktrees | medium | none | done in part: port per checkout; run gates from a clean checkout (§ Tooling) |
 | 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | 23 on `scripts/lib/browser.mjs` (the gates and every script that set the retired intro key); 17 left, when touched |
 | 14 | Change lists the worker computes (`changedRouteIds` …) are never read: every full result rebuilds every road's 3D body | medium (many roads) | medium | owner / next |
-| 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41, 42, 43 ×2): 33 citations in `src/` are ambiguous | medium | none | next: cite the file name |
+| 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41 ×2, 43 ×2): bare citations of them are ambiguous | medium | none | done: 14 comments cite the file; `tests/research-citations.test.ts` rejects a bare one. Open: ≈ 45 strings the player reads still say `research/NN` (§ Data) |
 | 16 | Engineering numbers outside `data/` (clearances, ramp limits, side slopes, a default design speed in `ui/`) | medium | low | sequence (list in § Data) |
 | 17 | `View` is a 1,720-line class; `ProfilePanel.paint()` 400 lines; `Inspector` builds every card | medium | medium | next, when touched |
-| 18 | Station-index clamp written out 25 times in 15 files | low | none | next: `stationIndex(r, s)` |
+| 18 | Station-index clamp written out 25 times in 15 files | low | none | done: `stationIndex(r, s)` in `core/range.ts` at the 22 sites of that form in 17 files |
 | 19 | Test wall time is one 16 s test (`player-text`: every violation kind) | low | none | done: four real-pack shards; the next longest file is `edited-network` (13.5 s alone) |
 | 20 | Orphan "foundation" modules only tests import (307 lines), unused contract surface | low | none | owner |
 | 21 | `data/scenario.ts` mixes scenario content (presets with their bends) with engine thresholds | low | low | next, when scenarios grow |
 | 22 | `Result` is one flat interface of ≈ 100 fields (geometry arrays, bill, UI extras) | medium | high | later, with #4 |
+| 23 | A retry pass engineers the whole route again (40–65 % of a first pass where nothing changed; three such passes on the whole D3) | high (long routes) | a model change | planned after M3 (§ Planned next performance lever); bit-exact part done: the passes share their setup |
 
 ### 1–2, 6, 12–13. Tooling (done unless noted)
 
@@ -207,10 +208,24 @@ small modules beside it already do.
   begins instead of 150 lines earlier. `complete()`'s call of itself is `completeDesign(…same
   arguments…, true)`. 177 / 177 results identical; interleaved timing against main unchanged.
   The former 1,590-line closure is 14 functions, the largest 293 lines (`routeSetup`).
-  Next, each again by the tool:
-  1. move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports, since they
-     no longer share a scope;
-  2. `buildCrossingGeometryOnce` (840 lines) and `evaluateProject` (443) with the same tool.
+  Then the other two long functions, the same way (2026-11-17, 177 / 177 identical):
+  `buildCrossingGeometryOnce` (840 lines) is `crossingTools` (what a build starts from: the crossed ways'
+  lines, their stretch through our earthworks, the squared line) → `crossingStructures` (each crossing's own
+  geometry: 362 lines, one loop, the next thing to cut by treatment) → `crossingReroutes` → `crossingFinish`
+  (+42 −7; hand step: the types of two defaulted parameters). `evaluateProjectOnce` (495 lines) is
+  `projectStart` → `projectRoutes` → `projectWorks` → `projectUnits` → `projectNetwork` → `projectScreen` →
+  `projectDecisions` → `projectTotals`, itself 67 lines: the three early returns and the last lines (hand
+  step: one `let` declared where it is first assigned). Each stage's inputs are its parameters now, which is
+  what a memo of a stage has to key on (docs/evaluate-performance.md "What a retry pass costs").
+  Then the loop body of `crossingStructures` as `crossingStructure(c, ours, …)`: one crossing's structure,
+  with our road read through `ours` only (`project`, `margin`, `between`, `crownWidth`, `cutOf`, `squarePath`,
+  `linkEnv`; `route` is not in its scope, and its other tools are typed down to those that do not read our
+  road). 177 / 177 identical, timing unchanged.
+  Interleaved against main `5ea8d7e` (host load 7–10): five D11 designs 30 × 2 min 0.99 / 0.99, CPU 0.99 / 1.01;
+  whole D3 10 × 1 min 0.98, CPU 0.97: unchanged.
+  Next: move the stage functions to files (`evaluate-setup.ts` …), a cut and paste with imports since they no
+  longer share a scope. **Wait for bridge styles (M3) to land first**: its branch has open hunks inside
+  `routeSetup`, `routePrices` and `routeEngineer`, and git does not carry a hunk into a moved function.
 - **Engine logic keyed on player text.** `evaluate.ts:1548` (`v.title.startsWith('A long bridge span is too
   low')`, set in `support-layout.ts:283`) and `:1905` (`'Road too low'`, set in `checks.ts:549`) decide
   lifts and railway wording from a *title*; `crossing-geometry.ts` passes diagnostics as message strings
@@ -309,7 +324,18 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 - **Research numbers collide** because parallel agents take "the next number": 15 (3 files), 16 (5),
   17 (3), 41, 42, 43 (2 each). `research/41` in a source comment may mean the 150 km/h pilot or the
   traffic defaults. Rule: cite the file name (`research/41-traffic-defaults.md`); a new note takes the
-  next free number at merge time, like `COST_MODEL_VERSION`. 33 citations to fix (comments only).
+  next free number at merge time, like `COST_MODEL_VERSION`. Done: the 14 comments that cited 15, 17, 41 or 43
+  bare name their note, and the citation guard rejects a bare number that names several (42 is one note with
+  a folder of extracts). The six places where text the player reads said `research/17` (four rules,
+  a price source, a bill line's explanation) say it in plain words now: a deliberate change of wording, the
+  results proved identical but for those words (`EXACT_TEXT` in `scripts/exact.ts`).
+  Then the same for 30 more strings (owner's rule: player text shows no internal references): rules in
+  `checks.ts`, `crossing-geometry.ts`, `tie-in.ts`, `design-speed.ts`, `project-evaluate.ts`; price sources in
+  `retaining.ts`, `project-replacement.ts`; bill explanations in `ui/hud.ts`, junction choices in
+  `ui/route-cards.ts`. The norm or price book they name stays, the `(research/NN)` is a comment on the line.
+  **Open, right after bridge styles (M3) lands** (its open diff has these files): the last 13 in
+  `crossings.ts` (4), `data/urban.ts` (6), `terms.ts` (2), `footprint.ts` (1), and then `jargonIn` (terms.ts)
+  rejects `research/` in player text for good. Count them with `scripts/dev/strings.mjs <file> | grep research/`.
 - **Engineering numbers outside `data/`** (engine tuning such as step sizes and search budgets is fine
   where it is; these are numbers a designer or a norm sets):
   `crossing-geometry.ts` `CLEARANCE = 4.8`, `MAX_RAMP_LENGTH = 250`, `SQUARE_BELOW = 70`;
@@ -332,8 +358,10 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   (`resetCamera` … `zoomAt`, `keepCameraAboveGround`) and the pointer gestures.
 - `ui/profile.ts` `paint()` is 400 lines; `ui/inspector.ts` holds every card. Split per card when a card
   is next changed (the route cards moved out of main.ts are the example).
-- The clamp `Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)))` appears 25 times in 15 files: one
-  `stationIndex(r, s)` in `core/range.ts` (same arithmetic, so bit-identical).
+- The clamp `Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)))` is `stationIndex(r, s)` in `core/range.ts`
+  (the same expression, so bit-identical) at its 22 sites. Left as written: the ones on bare locals `n`, `ds`
+  in `evaluate.ts` and `project-kept.ts` (an object per call for nothing) and the clamps of another shape
+  (`(c.s - s[0]) / ds`, `result-stitch.ts`).
 - Test wall time was `tests/player-text.test.ts` alone (16.7 s in a worker of its own, 16 s of it one `it`).
   Its real-pack designs are four files now (`player-text-pack-1…4.test.ts`, each a call of
   `packShardSuite(k)` in `tests/player-text-helpers.ts`), which run side by side: the five files take 6.6 s
@@ -358,6 +386,34 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   suite everywhere is a faster evaluation (docs/evaluate-performance.md). UI modules have no unit tests (no DOM in vitest); the
   modules moved out of main.ts take their dependencies as an interface, so they can be tested with a fake
   context once a DOM (happy-dom) is added.
+
+## Planned next performance lever: a retry that re-engineers only its stretch (a reviewed model change)
+
+Scheduled after bridge styles (design-realism M3). Not a refactor: it changes results on some designs, so it
+takes a `COST_MODEL_VERSION` and a review of every bill that moves. Measurements and why the bit-exact route
+ends where it does: docs/evaluate-performance.md "What a retry pass costs".
+
+- **What it is worth.** A retry pass (separation, narrowing, regrade, split ways) re-solves only the blocks its
+  new constraint reaches, then engineers the whole route again: 40–65 % of a first pass even where nothing
+  changed. The whole D3 spends 566 + 397 + 310 ms of ≈ 2.5 s in three such passes; with each cut to its grade
+  solve (24–71 ms) plus the engineering of its own stretch, an estimated **−0.8 s (≈ −30 %)**. D35 and the D3
+  sections in proportion to their retries. direct-80's regrade retry (85 ms) would gain little (≈ −20 ms): on a
+  19 km route the 5 km boundary windows re-solve about half the line anyway. Designs without a retry gain
+  nothing. (Estimates from the per-pass times, not measured.)
+- **How.** A pass keeps its per-station arrays, crossings and conflicts. A retry compares its re-solved grade
+  line with the kept pass's, takes the chainages where they differ plus a margin (a reroute reaches
+  `linkHardReach` = 2 km; support lifts stay within a block; how far a wall or a structure run can carry a
+  change is to be measured), evaluates that window as
+  the preview does (`EvalOptions.window`, `stationWindow`, the grades of the kept line at both ends) but with
+  the full engineering, and splices the result into the kept pass's (`result-stitch.ts` already does this
+  for previews; the bill's parts are per station, each block balances its own earth). `passSetup` (done) is the
+  first step: a pass that starts from another pass's state.
+- **What must be reviewed.** The seams: a structure run, a wall, a reroute or a merged crossing that crosses a
+  window end; a far effect the window cannot see (a strict retry it triggers elsewhere, a remedy weighed
+  against a crossing outside it); `regionCount` judged on a spliced result. Gates beyond the usual: every saved
+  design's bill before / after with the reasons for each difference, `scripts/outcome-audit.ts`,
+  `scripts/edit-locality.ts`, and a whole-route evaluation of each kept retry as the reference while it is
+  being built (the difference should be zero outside the margins).
 
 ## How to make a behaviour-preserving change here
 
@@ -394,7 +450,12 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
    redone on the new code by the tool.
 9. Browser scripts: the gates and the 18 scripts with the retired intro key on `scripts/lib/browser.mjs`.
 10. `main.ts`: routes, the active line, the score, the map window (→ 325 lines).
-11. Next: the stage functions into files, the other two long functions.
+11. Merged (`5ea8d7e`): the citation guard, `scripts/dev/profile.mjs`, four footprint-screen savings.
+12. The passes of an evaluation share their setup; citations by file name; `stationIndex`; the stages of
+    `buildCrossingGeometryOnce` and `evaluateProjectOnce`.
+13. Player text without research-note numbers (36 places; 13 more and the guard after M3);
+    `crossingStructure(c, ours, …)`.
+14. Next: the stage functions into files (after M3).
 
 Noticed, not changed: the playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
 there after 4–7 s (`gates.sh` runs a failed untimed browser gate once more under load).

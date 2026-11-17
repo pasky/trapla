@@ -5,6 +5,7 @@ import type { View } from '../render/view';
 import type { ActiveRouteStore } from './active-route-store';
 import type { Sel } from './inspector';
 import type { ProfileEvents } from './profile';
+import { stationIndex } from '../core/range';
 
 export interface ProfileEventContext {
   readonly store: ActiveRouteStore; readonly view: View;
@@ -57,7 +58,7 @@ export function profileEvents(app: ProfileEventContext): ProfileEvents {
     onSelect: (range) => app.select(range ? { kind: 'stretch', s0: range.s0, s1: range.s1 } : null),
     onHover: (s, label) => {
       if (s === null || !app.last) { app.view.setHover(null); return; }
-      const i = Math.max(0, Math.min(app.last.n - 1, Math.round(s / app.last.ds)));
+      const i = stationIndex(app.last, s);
       app.view.setHover({ x: app.last.x[i], y: app.last.y[i], z: app.last.grade[i] }, label);
     },
     onView: () => app.updateZoomButtons(),

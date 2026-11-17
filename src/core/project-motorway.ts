@@ -22,6 +22,7 @@ import { cellLength, landPerM2, surchargeRate } from './cost';
 import { LAND, PRICES } from './data/prices';
 import { KIND } from './structures';
 import type { Violation } from './checks';
+import { stationIndex } from './range';
 
 /** Policy of a paired D 27.5 corridor priced as one whole-category SPK body (research/22, /33). */
 export const MOTORWAY_POLICY = 'paired-d27.5';
@@ -453,7 +454,7 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
   for (let i = 0; i < f.n; i++) {
     const d = p.d[i];
     if (!Number.isFinite(d) || Math.abs(d) > 2 * w + 400) continue;
-    const j = Math.max(0, Math.min(r.n - 1, Math.round(p.sb[i] / r.ds))), len = cellLength(i, f.n, f.ds);
+    const j = stationIndex(r, p.sb[i]), len = cellLength(i, f.n, f.ds);
     const zf = f.grade[i], zr = at(r, p.sb[i], r.grade), kf = f.kind[i], kr = r.kind[j];
     if (Math.abs(d) < 2 * w - JOINED_TOLERANCE) {
       // carriageways on top of each other (side by side or crossing over): only a structure with
