@@ -221,7 +221,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
           continue;
         }
       }
-      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
+      // (a tunnel where Auto would cut deeper than designers do: as above, with the open cut's price)
+      let deepest = 0, earthCost = 0;
+      if (r.kind === KIND.tunnel && inp.deepCut !== undefined && !manual) for (let i = r.i0; i <= r.i1; i++) { deepest = Math.max(deepest, -inp.h[i]); earthCost += inp.earthPerM[i] * inp.ds; }
+      const deep = inp.deepCut !== undefined && deepest > inp.deepCut ? { deepCut: { depth: deepest, earth: earthCost, tunnel: tunnelRunCost(r.i0, r.i1, length, (i) => (i === 0 || i === n - 1 ? 0.5 : 1) * inp.ds) } } : {};
+      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced, ...deep });
       // Do not turn an existing clipped crossing bridge into a new violation merely because
       // the player painted an unrelated range. Validate manual runs and fragments paint shortened.
       const shortened = (r.i0 > 0 && automatic[r.i0 - 1] === r.kind) || (r.i1 + 1 < n && automatic[r.i1 + 1] === r.kind);

@@ -1816,12 +1816,14 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     const abutment = Math.round((issue.targetS + (issue.targetS < issue.s ? ds : -ds) / 2) / ds);
     for (let i = a; i <= b; i++) supportHeights.push({ s: st.s[i], z: ground[i] + 0.15 - (i === abutment ? SUPPORT_LIMITS.abutmentCutM : 0) });
   }
-  // A cut just past Auto's deepest (STRUCTURE_RULES.deepCut) over a ridge narrower than the grade search's samples
-  // (it could not see it): the line is lifted there rather than tunnelled.
+  // A cut just past Auto's deepest (STRUCTURE_RULES.deepCut) where the grade search meant an open line (it keeps
+  // CLEARANCE_MARGIN inside the limit at its samples: a ridge narrower than them, or a cut past the limit by no
+  // more than that margin, is one it did not see): the line is lifted there rather than tunnelled.
   if (deepCut !== undefined) for (const run of supported.runs) if (run.kind === KIND.tunnel && run.deepCut) {
     const deep: number[] = [];
     for (let i = run.i0; i <= run.i1; i++) if (-h[i] > deepCut && manualStructures[i] < 0) deep.push(i);
-    if (deep.length && (deep[deep.length - 1] - deep[0]) * ds < DEEP_RIDGE) for (const i of deep) supportHeights.push({ s: st.s[i], z: ground[i] - deepCut + 0.05 });
+    if (deep.length && ((deep[deep.length - 1] - deep[0]) * ds < DEEP_RIDGE || run.deepCut.depth <= deepCut + CLEARANCE_MARGIN))
+      for (const i of deep) supportHeights.push({ s: st.s[i], z: ground[i] - deepCut + 0.05 });
   }
   work('engineering', engineeringStart);
   return { prof, grade, waterZ, sec, retention,
