@@ -36,64 +36,29 @@ export function bendStretch(al: StretchPlan, pis: readonly PI[], k: number, road
   return all.find(x => x.speed === -1);
 }
 
-/** A stretch slowed below the road's design speed only relaxes its rules (smaller radii, curves and crests), so
- * Auto's road there should cost no more than at the faster speed. The grade search prices an estimate (flat-ground
- * sections, no ordinary-road crossings: research/66), so the looser rules can lead it to a line the bill finds
- * dearer. A designer keeps the faster stretch's curves and heights then: Auto weighs the geometry of each faster
- * speed up to the road's (every slowed bend raised the same number of the category's speed steps, hairpins
- * keeping theirs) against the slowed one's at the bill (evaluate.ts). The speeds the geometry is built for, per
- * bend (null: the bend's own); null when no bend is slowed or `k` steps reach none. */
-export function raisedBendSpeeds(pis: readonly PI[], roadSpeed: number, category: CategoryId, k: number): (number | null)[] | null {
-  const speeds = designSpeeds(category).filter(v => v <= roadSpeed).sort((a, b) => a - b);
+/** A stretch slowed below the road's design speed may have smaller elements; a designer uses them where the faster
+ * ones do not fit ("přechod na minimální hodnotu návrhového prvku byl pozvolný", the transition to minimum elements
+ * gradual: VUT, research/47 §2; research/66 §2). Auto's grade search rounds the hilltops and dips of a slowed
+ * stretch as for the road's speed, and with the stretch's own smaller curves only where that finds no line
+ * (evaluate.ts); a slowed bend's Auto curve likewise (plan-speeds.ts). So slowing a stretch never makes Auto's road
+ * dearer where the faster elements fit, at no extra evaluation (research/66: weighing both lines at the bill cost
+ * 2–3 evaluations, and the grade search's own estimate misleads, it prices no crossed roads). The speeds the
+ * search's heights' rules are built for, per bend (null: its own; hairpins keep theirs); undefined where no bend is
+ * slowed. */
+export function searchSpeeds(pis: readonly PI[], roadSpeed: number, category: CategoryId): (number | null)[] | undefined {
   let any = false;
   const out = pis.map(p => {
-    const v = bendSpeed(p, roadSpeed, category);
-    if (p.hairpin || v >= roadSpeed) return null;
-    const at = speeds.indexOf(v);
-    if (at < 0) return null;
+    if (p.hairpin || bendSpeed(p, roadSpeed, category) >= roadSpeed) return null;
     any = true;
-    return speeds[Math.min(speeds.length - 1, at + k)];
+    return roadSpeed;
   });
-  return any ? out : null;
+  return any ? out : undefined;
 }
 
-/** how many speed steps the slowest slowed bend lies below the road's design speed (0: none slowed) */
-export function slowedSteps(pis: readonly PI[], roadSpeed: number, category: CategoryId): number {
-  const speeds = designSpeeds(category).filter(v => v <= roadSpeed).sort((a, b) => a - b);
-  let k = 0;
-  for (const p of pis) {
-    const v = bendSpeed(p, roadSpeed, category);
-    if (!p.hairpin && v < roadSpeed && speeds.includes(v)) k = Math.max(k, speeds.length - 1 - speeds.indexOf(v));
-  }
-  return k;
+/** the speeds a design's heights' rules are built for (EvalOptions.geometrySpeeds, else Auto's searchSpeeds) */
+export function heightSpeeds(d: { pis: readonly PI[]; speed: number; category: CategoryId; profileMode: string }, opts: { geometrySpeeds?: readonly (number | null)[] }): readonly (number | null)[] | undefined {
+  return opts.geometrySpeeds ?? (d.profileMode === 'auto' ? searchSpeeds(d.pis, d.speed, d.category) : undefined);
 }
-
-/** The geometries Auto weighs for a design with slowed bends (evaluate.ts): every combination of each slowed
- * bend's speeds from its own up to the road's (so slowing one more bend can cost no more than before: the
- * geometry the design had is among them), the all-own one left out; where that would be more than `cap`
- * evaluations, each slowed bend raised the same number of steps (raisedBendSpeeds). Fixed order. */
-export function geometryCandidates(pis: readonly PI[], roadSpeed: number, category: CategoryId, cap = GEOMETRY_CANDIDATES): (number | null)[][] {
-  const speeds = designSpeeds(category).filter(v => v <= roadSpeed).sort((a, b) => a - b);
-  const choices = pis.map(p => {
-    const v = bendSpeed(p, roadSpeed, category);
-    return p.hairpin || v >= roadSpeed || !speeds.includes(v) ? null : speeds.slice(speeds.indexOf(v));
-  });
-  let size = 1;
-  for (const c of choices) if (c) size *= c.length;
-  if (size <= 1) return [];
-  if (size - 1 > cap) {
-    const out: (number | null)[][] = [];
-    for (let k = 1; k <= slowedSteps(pis, roadSpeed, category); k++) { const g = raisedBendSpeeds(pis, roadSpeed, category, k); if (g) out.push(g); }
-    return out;
-  }
-  let all: (number | null)[][] = [[]];
-  for (const c of choices) all = all.flatMap(g => c ? c.map(v => [...g, v]) : [[...g, null]]);
-  // (the bends' own geometry is the design's own evaluation; a bend at its own speed builds as it is)
-  return all.slice(1).map(g => g.map((v, k) => v === null || v === bendSpeed(pis[k], roadSpeed, category) ? null : v));
-}
-/** the most geometries weighed for one design (each a full evaluation): one bend two steps below its road (2),
- * two bends one or two steps below (3, 8); beyond, the steps are raised together */
-export const GEOMETRY_CANDIDATES = 8;
 
 /** the bends as the geometry is built for them (`speeds`: raisedBendSpeeds; absent: as they are) */
 export function geometryPis(pis: readonly PI[], speeds?: readonly (number | null)[] | null): PI[] {

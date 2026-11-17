@@ -57,22 +57,25 @@ describe('a slowed stretch (playtest sweep 3, P1 #1)', () => {
     const one: PI[] = [{ x: 3000, y: 300, r: null }], al1 = build(one);
     expect(bendStretch(al1, one, 0, 90)).toMatchObject({ s0: 0, s1: al1.length });
   });
-  it('may keep a faster stretch\'s geometry: each slowed bend raised by the same number of steps', async () => {
-    const { raisedBendSpeeds, slowedSteps } = await import('../src/core/design-speed');
+  it('a slowed stretch searches its heights as for the road\'s speed (hairpins keep theirs)', async () => {
+    const { searchSpeeds } = await import('../src/core/design-speed');
     const p: PI[] = [{ x: 0, y: 0, r: null, speed: 70 }, { x: 1, y: 0, r: null }, { x: 2, y: 0, r: null, speed: 80 }, { x: 3, y: 0, r: null, speed: 70, hairpin: true }];
-    expect(slowedSteps(p, 90, 'S9.5')).toBe(2);
-    expect(raisedBendSpeeds(p, 90, 'S9.5', 1)).toEqual([80, null, 90, null]);
-    expect(raisedBendSpeeds(p, 90, 'S9.5', 2)).toEqual([90, null, 90, null]);
-    expect(raisedBendSpeeds([{ x: 0, y: 0, r: null }], 90, 'S9.5', 1)).toBeNull();
+    expect(searchSpeeds(p, 90, 'S9.5')).toEqual([90, null, 90, null]);
+    expect(searchSpeeds([{ x: 0, y: 0, r: null }], 90, 'S9.5')).toBeUndefined();
   });
-  it('weighs every mix of the slowed bends\' faster geometries (the design before one more slow-down is among them)', async () => {
-    const { geometryCandidates } = await import('../src/core/design-speed');
-    const two: PI[] = [{ x: 0, y: 0, r: null, speed: 70 }, { x: 1, y: 0, r: null }, { x: 2, y: 0, r: null, speed: 80 }];
-    expect(geometryCandidates(two, 90, 'S9.5')).toEqual([[null, null, 90], [80, null, null], [80, null, 90], [90, null, null], [90, null, 90]]);
-    expect(geometryCandidates([{ x: 0, y: 0, r: null }], 90, 'S9.5')).toEqual([]);
-    // three bends two steps down: 26 mixes, more than are weighed: the steps raised together
-    const three: PI[] = [0, 1, 2].map(x => ({ x, y: 0, r: null, speed: 70 }));
-    expect(geometryCandidates(three, 90, 'S9.5')).toEqual([[80, 80, 80], [90, 90, 90]]);
+  it('a slowed bend keeps the road speed\'s curve where it fits, its own tightest where not', async () => {
+    const { planPis } = await import('../src/core/plan-speeds');
+    // room for a 90 km/h curve: kept
+    const roomy: PI[] = [{ x: 3000, y: 300, r: null, speed: 70 }];
+    expect(planPis(a, b, roomy, 90, 'S9.5')[0].speed).toBe(90);
+    // three bends 330 m apart, all slowed to 70: 90 km/h S-bends do not fit between them; the middle one takes its
+    // own tightest, the outer ones keep 90 km/h curves
+    const tight: PI[] = [{ x: 2670, y: 300, r: null, speed: 70 }, { x: 3000, y: 0, r: null, speed: 70 }, { x: 3330, y: 300, r: null, speed: 70 }];
+    const plan = planPis(a, b, tight, 90, 'S9.5');
+    expect(plan.map(p => p.speed)).toEqual([90, 70, 90]);
+    expect(ROAD_CHECKS.horizontal(build(plan), speedNorms(90, 'S9.5'), { a, b, pis: plan, category: 'S9.5' })).toEqual([]);
+    const at90 = tight.map(p => ({ ...p, speed: undefined }));
+    expect(ROAD_CHECKS.horizontal(build(at90), speedNorms(90, 'S9.5'), { a, b, pis: at90, category: 'S9.5' }).map(v => v.title)).toContain('Bends 1 and 2 are too close for an S-bend');
   });
 });
 
@@ -88,11 +91,12 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('slowing a stretc
     const base = JSON.parse(readFileSync('qa3/designs/d11-one-bend-70.json', 'utf8'));
     const at = (v: number) => evaluate(ctx, { ...base, pis: base.pis.map((p: PI) => ({ ...p, speed: v })) });
     const [r90, r80, r70] = [at(90), at(80), at(70)];
-    expect(r80.cost.total).toBeLessThanOrEqual(r90.cost.total);
-    expect(r70.cost.total).toBeLessThanOrEqual(r80.cost.total);
-    // (at 70 the grade search's own line bridges 800 m at km 8.84–9.64: +284 M; Auto keeps a faster one)
-    expect(r70.geometrySpeeds?.[0]).toBeGreaterThan(70);
-    expect(r70.geometrySaving).toBeGreaterThan(200e6);
+    // (QA3: 70 billed 9,067 M against 8,782 M, an 800 m bridge at km 8.84–9.64; the weighing is before the retries:
+    // a near-tie may end ≈ 1 M either way)
+    expect(r80.cost.total).toBeLessThanOrEqual(r90.cost.total + 2e6);
+    expect(r70.cost.total).toBeLessThanOrEqual(r90.cost.total + 2e6);
+    // the 90 km/h curve fits: kept
+    expect(r70.planSpeeds?.[0]).toBe(90);
     expect(r70.travelMin).toBeGreaterThan(r90.travelMin + 3);
   }, 60_000);
 });
