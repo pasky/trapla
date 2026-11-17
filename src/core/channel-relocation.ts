@@ -40,14 +40,32 @@ function bankIsOob(terrain: Terrain, cell: FootprintCell): boolean {
   return false;
 }
 
+/** per stationed line (by its `x` array): the footprint grid last made for it, and the line and widths it was made of */
+const footprints = new WeakMap<object, { y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number>; s: ArrayLike<number>; ds: number;
+  left: Float64Array; right: Float64Array; grid: FootprintGrid }>();
+
 export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads: RoadNet | undefined,
   hits: readonly ChannelHit[], water: readonly WaterCrossing[]): ChannelRelocation[] {
   const candidates = hits.filter(h => h.reach.kind !== 'river' && waterWidth(h.reach) <= 5
     && !water.some(c => c.id === h.reach.id)); // keep centreline barrels intact; no overlapping channel/crossing assembly
   if (!candidates.length) return [];
-  const cells: FootprintCell[] = Array.from({ length: r.n }, (_, i) => ({ i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i],
-    along: r.ds / 2, left: r.dayL[i], right: r.dayR[i] }));
-  const grid = new FootprintGrid(cells), out: ChannelRelocation[] = [];
+  // (made for the first candidate that asks; the last one made for this stationed line serves again while
+  // the widths are the same: the two screening passes of a retaining plan, a pass that moved no section)
+  let made: FootprintGrid | undefined;
+  const footprint = () => {
+    if (made) return made;
+    const last = footprints.get(r.x as object);
+    if (last && last.y === r.y && last.tx === r.tx && last.ty === r.ty && last.s === r.s && last.ds === r.ds && last.left.length === r.n) {
+      let same = true;
+      for (let i = 0; i < r.n && same; i++) same = last.left[i] === r.dayL[i] && last.right[i] === r.dayR[i];
+      if (same) return made = last.grid;
+    }
+    made = new FootprintGrid(Array.from({ length: r.n }, (_, i) => ({ i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i],
+      along: r.ds / 2, left: r.dayL[i], right: r.dayR[i] })));
+    footprints.set(r.x as object, { y: r.y, tx: r.tx, ty: r.ty, s: r.s, ds: r.ds, left: Float64Array.from(r.dayL), right: Float64Array.from(r.dayR), grid: made });
+    return made;
+  };
+  const out: ChannelRelocation[] = [];
   for (const hit of candidates) {
     const reach = hit.reach, distances = terrain.watercourses?.reachDistances(reach.id);
     if (!distances || distances.length < 2) continue;
@@ -65,7 +83,7 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
       const t = (d - distances[lo]) / (distances[hi] - distances[lo] || 1), a = reach.points[lo], b = reach.points[hi];
       return { x: a[0] + t * (b[0] - a[0]), y: a[1] + t * (b[1] - a[1]) };
     };
-    const bankPad = assembly.topWidth / 2 + R.setback;
+    const bankPad = assembly.topWidth / 2 + R.setback, grid = footprint();
     for (let attempt = 0; attempt < 4 && grid.hits(at(start), bankPad) && start > 0; attempt++) start = Math.max(0, start - 200);
     for (let attempt = 0; attempt < 4 && grid.hits(at(end), bankPad) && end < distances[distances.length - 1]; attempt++) end = Math.min(distances[distances.length - 1], end + 200);
     // Reject incomplete source topology before allocating/draping hundreds of trial samples.

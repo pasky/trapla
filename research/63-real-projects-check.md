@@ -63,3 +63,11 @@ already holds its portals and equipment, a rock-cover factor (Hessen: deep rock 
 10–20 m), or this split itself — is recorded there, not changed. Our alignment also differs from the real one (its
 valley crossing needs only ≈ 700 m of bridges).
 
+
+## Correction (research/73, 2026-11-17)
+
+The "real-like" line above (500 m at km 3, 472 m at km 7) is not the real profile. The tunnel's portals are at
+514 and 439 m (ITA-AITES 2023). With them, the real layout bills 20,810 M, +10 % on Auto (18,918 M), not +17 %.
+Auto's east portal stands inside the nature monument PP Pod skálou, on the steepest part of the escarpment.
+The EIA kept the real portal out of the monument and its forest. Our model has no protected areas. Lines whose
+portal respects that bill 20.2–20.8 bn; research/73 has the details and the proposals.

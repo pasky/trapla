@@ -8,6 +8,71 @@ Rule for everything done here: **behaviour-preserving**. Frozen bills unchanged,
 `scripts/exact.ts` identical (177 whole results over all 11 packs), no player-visible change, no
 `COST_MODEL_VERSION` bump.
 
+## State at the end of the review (2026-11-17, main `3d6d40c`, cost model 38)
+
+**Done** (details in the findings below and in "Merge batches"):
+
+- *Tooling:* one gate command with the lock protocol (`scripts/gates.sh quick | full [--exact snap.json]`,
+  31 gates), `scripts/exact.ts` (177 whole results), `scripts/dev/profile.mjs`, `scripts/dev/interleave.ts`,
+  `scripts/lib/browser.mjs` under every browser script, the citation and player-text guards.
+- *Structure:* `main.ts` 1,840 → 325 lines (leaf modules, `Session`, `EvalClient`, typed worker protocol);
+  `evaluateRoute`, `finishDesign`, `buildCrossingGeometryOnce` and `evaluateProjectOnce` in named stages;
+  `ROUTE_KINDS` (first step of the kind registry); dead code and duplicated constants removed.
+- *Evaluation time* (docs/evaluate-performance.md): the passes of an evaluation share their setup; a later
+  finish builds only the crossings within 2 km of what it changed (whole D3 −14 … −18 %, no result moved,
+  `scripts/local-retry-report.ts` is its gate); the engineering passes replay what did not change (bit-exact
+  memos of the retaining screen and three plain loops: whole D3 −14 … −18 % more, D11 designs −4 … −10 %).
+  The whole D3 starter: ≈ 2.35 s → ≈ 1.68 s.
+
+**Left, ranked by value / effort:**
+
+1. **The stage functions of `evaluate.ts` into files** (2.6 k lines; finding 4). A pure move by
+   `scripts/dev/stage.mjs`, one short session, **only once the open branches on `evaluate.ts` have merged**
+   (qa3-realism, qa3-crossing). Proof: exact 177 / 177, interleaved timing within the noise.
+2. **`LINE_WORDS[mode]` in `terms.ts`** (finding 10, § 10–11): one descriptor of a line kind's words, read by
+   hud, profile, checks, route-cards and project-evaluate (with the `junctionsPending` / `endsNowhere` texts
+   and `ownerName`), then the rest of `ROUTE_KINDS`. Text must stay byte-identical: the player-text tests and
+   `scripts/dev/strings.mjs` old against new.
+3. **The rebuilt-stretch numbers into a `data/` block** with their sources or PROVISIONAL marks (finding 15):
+   `project-kept.ts` `KEPT_TOLERANCE`, `TIE_LENGTH`, `HELD_APPROACH`; `evaluate.ts` `OLD_ROAD_TIE`,
+   `OLD_ROAD_BAND`, `MINOR_CROSSROADS_BAND`; `ui/road-edit.ts` `DEFAULT_SPEED`, `MIN_STRETCH`;
+   `ui/mode-kinds.ts` `RAIL_CROSSING_CLEAR`. With it, drop the two re-exports (`SQUARE_BELOW` from
+   `crossing-geometry.ts`, `LINK_MAX_SUPPORT` from `link-route.ts`).
+4. **A bit-exact memo of `planRoadRealignment`** (the footprint screen, ≈ 13 % of a whole-D3 evaluation;
+   estimated ≈ −10 % of the whole D3, nothing on designs without a retry; not built: diminishing returns).
+   The study and the design are in "Planned next performance lever" below.
+5. Small, bit-exact, ≈ 1 % each on the whole D3: the whole footprint screen reused when none of its inputs
+   changed (26 of 258 later screens of the exact cases); the whole retaining plan reused when the grade line
+   is the last call's (4–6 of 18 `engineer()` calls).
+6. Allocation: an evaluation's CPU time is ≈ 2.5 × its wall time (the collector's threads; ≈ 3.6 GB allocated
+   per whole-D3 evaluation), so cuts in allocation pay more than the main thread's profile shows
+   (`profile.mjs --alloc`: the grade search's `solveIn`, the noise field, `FootprintGrid.hits`).
+
+Not recommended: splitting the `edited-network` / `noise-stages` tests (slow, but each is one scenario);
+a memo of one crossing's candidate builds (the local crossing build took its gain).
+
+**Method notes for performance work here** (beyond "How to make a behaviour-preserving change" below):
+
+- Profile first (`profile.mjs --sub fn`, `--lines fn`, `--alloc`), then time the calls themselves in a scratch
+  checkout: the profile showed `engineer()` flat, the per-call table showed 470 stations screened anew in
+  every pass. Two of the largest gains were plain mistakes on one line (a loop over the whole route per
+  watercourse; `Array.prototype.some.call` on a typed array), found by `--lines`.
+- Time interleaved against a clean checkout of the base (`interleave.ts`), report minima and the CPU ratio,
+  twice; a host load of 20–30 from other agents' gates moves single runs by ± 10 %.
+- **The frozen results do not exercise every memo key.** A retaining memo that ignored the barrels, or a
+  crossing stretch's owned stretches, passed all 177 exact cases and 589 plans compared one by one. For a
+  memo: (1) run the base implementation side by side on every call of the corpus and compare whole outputs;
+  (2) write a test that runs a sequence of variants with a shared cache and with a fresh one; (3) break each
+  key on purpose and see the test fail (`tests/retaining.test.ts`; ten of fourteen mutants die, the rest are
+  listed in docs/evaluate-performance.md).
+- Before a local (not bit-exact) step, study the reach: record every call's inputs and outputs, compare each
+  later call with the earlier one that differs at the fewest stations, and see how far from a changed input
+  the outputs differ (crossings: 2 km and one far effect, the engine's rollback; footprint screen: 195 m).
+  Give the compared items unique keys: two violations of one title at one station once read as a
+  difference 4.8 km from any change.
+- A new per-pass input of the crossing build goes into `CrossingInputs` (crossings-kept.ts); a new input of
+  the retaining screen into its memo keys (retaining.ts).
+
 ## What is healthy (keep doing it)
 
 - **Numbers live in `src/core/data/*`** with their sources: 12 files, 125 `research/` citations, 81
@@ -52,7 +117,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 20 | Orphan "foundation" modules only tests import (307 lines), unused contract surface | low | none | owner |
 | 21 | `data/scenario.ts` mixes scenario content (presets with their bends) with engine thresholds | low | low | next, when scenarios grow |
 | 22 | `Result` is one flat interface of ≈ 100 fields (geometry arrays, bill, UI extras) | medium | high | later, with #4 |
-| 23 | A retry pass engineers the whole route again (40–65 % of a first pass where nothing changed; three such passes on the whole D3) | high (long routes) | a model change | crossings done (no model version, no result moved: a later finish builds only the crossings near what it changed; whole D3 −14 … −18 %, no result moved); footprint screen and engineering passes left (§ Planned next performance lever); bit-exact part done: the passes share their setup |
+| 23 | A retry pass engineers the whole route again (40–65 % of a first pass where nothing changed; three such passes on the whole D3) | high (long routes) | a model change | crossings done (no model version, no result moved: a later finish builds only the crossings near what it changed; whole D3 −14 … −18 %, no result moved); engineering passes done bit-exact (memos of the retaining screen, two plain loops: whole D3 −14 … −18 % more, docs/evaluate-performance.md); footprint screen left (§ Planned next performance lever); the passes share their setup |
 
 ### 1–2, 6, 12–13. Tooling (done unless noted)
 
@@ -399,10 +464,36 @@ docs/evaluate-performance.md "A retry builds only the crossings near what it cha
 seams, timing). In-frame and per stage instead of "evaluate the window as its own route and splice": the
 grade solve was already block-local, and only crossings (separate objects) are spliced, on the retry's own
 whole-route arrays, so no array, structure run or wall has a seam. Whole D3 −14 … −18 %; no result of the 177
-exact cases, the outcome audit or any checked local build moved. **Left:** the footprint screen (≈ 11 % of the
-whole D3 now; its ledger of rebuilt roads is order-dependent across hits, study its reach first) and the
-engineering passes (≈ 19 %: 18 `engineer()` calls, half of each the retaining replay; probably bit-exact with
-a memo over runs of unchanged stations). The original plan, for those:
+exact cases, the outcome audit or any checked local build moved. **Done bit-exact (2026-11-17):** the engineering
+passes (18 `engineer()` calls on the whole D3, 528 → 298 ms of an evaluation: the retaining screen replays
+the stations whose inputs are unchanged; docs/evaluate-performance.md "The engineering passes replay what did
+not change"). **Left, studied, not built:** the footprint screen.
+
+*Reach study* (2026-11-17, scratch hooks on main `3d6d40c`, the 177 exact cases): 330 screens in 72
+evaluations; the 258 after the first of their evaluation take 73 % of all footprint time, and
+`planRoadRealignment` at its main call site 65 %. Each later screen against the earlier one with the fewest
+changed input stations (kind, grade, the four widths and daylight heights, each crossing, channel
+relocations, structure runs with their piers, strict ways, water elevations): of 4,417 conflicts and
+violations 920 differ, 903 at a changed station, 13 within 100 m, 4 within 250 m (the furthest 195 m), none
+further. Stations within 500 m / 2 km of a change: 12 % / 25 % of the route; conflicts and violations there:
+25 % / 37 %. On the whole D3 starter 12 of 152 items of the later screens differ.
+
+*Recommended, if it is ever wanted: a memo, not a local screen.* `planRoadRealignment` reads our road only
+through the footprint grid (22 call sites), the two widths at the hit's stations and the stationing, never
+the grade; its other inputs are the covered stretches by way, the crossings' source stretches (5 sites),
+`fixedConnections` (2 sites), its bounds and the hit. A memo in the pass cache that records what a plan read
+(the grid buckets asked, with a signature per bucket; the covered lists and crossing stretches of the ways
+asked; the answers it got from `fixedConnections`) and replays the plan when all of that is unchanged is
+bit-exact by construction, and the ledger's order dependence becomes part of the key. `fixedConnections`
+grows with every accepted plan: its two reads must become queries with explicit arguments whose answers are
+logged, or one changed plan early in the order invalidates every later one. Estimated ≈ −10 % of the whole
+D3 (plans are two thirds of the later screens' time and ≈ 92 % of their conflicts are unchanged there).
+Proof as for the retaining memo (a check mode that plans both ways on every call; the method notes at the
+top). A local screen like `crossings-kept` would gain about the same but is a model change: its reach is
+measured, not proven, and the kept conflicts' entries in `roadCovered`, `fixedConnections` and the
+`RoadRemedyLedger` would have to be replayed in order.
+
+The original plan (a window evaluated as its own route), kept for the record:
 
 Scheduled after bridge styles (design-realism M3). Not a refactor: it changes results on some designs, so it
 takes a `COST_MODEL_VERSION` and a review of every bill that moves. Measurements and why the bit-exact route
@@ -470,7 +561,10 @@ ends where it does: docs/evaluate-performance.md "What a retry pass costs".
     `buildCrossingGeometryOnce` and `evaluateProjectOnce`.
 13. Player text without research-note numbers (49 places and two guards);
     `crossingStructure(c, ours, …)`.
-14. Next: the stage functions into files (after M3).
+14. Merged (`6017767`): a later finish builds only the crossings near what it changed (`crossings-kept.ts`).
+15. Merged (`3d6d40c`): the engineering passes replay what did not change (retaining memos, `forceWater`,
+    `chooseStructures`).
+16. Next: the stage functions into files, once the open branches on `evaluate.ts` have merged.
 
 Noticed, not changed: the playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
 there after 4–7 s (`gates.sh` runs a failed untimed browser gate once more under load).
