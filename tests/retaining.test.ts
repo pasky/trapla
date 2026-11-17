@@ -156,6 +156,54 @@ describe('automatic slope retention', () => {
     expect(split.route.dayL).toEqual(whole.route.dayL);
     expect(split.plan.perCell.reduce((a, b) => a + b, 0)).toBeCloseTo(whole.plan.perCell.reduce((a, b) => a + b, 0), 5);
   });
+  it('a cache that has seen other grade lines, barrels and crossing ways plans as a fresh one does', () => {
+    // A ditch crossing with a dog-leg (barrels), a road beside us that shortens its barrel (two screening
+    // passes), a second ditch of its own, a track crossing us (a crossing way's own stretch) and a railway
+    // under the crown (a bridge asked for by the grade alone). Each plan is made with one shared cache and
+    // with a fresh one.
+    const base = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+      points: [[400, 0], [520, 120], [550, 120], [550, 200]], catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] },
+    { id: 2, kind: 'ditch', width: 0.5, points: [[150, 0], [270, 120], [300, 120], [300, 200]], catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] }] });
+    const { terrain } = base, n = base.route.n;
+    for (let col = 150; col < 156; col++) terrain.lc[19 * terrain.nx + col] = LC.rail;
+    const roads = new RoadNet({ cls: ['service', 'track'], ways: [[0, 450, 118, 490, 118], [1, 600, 80, 800, 120]] });
+    const water = terrain.watercourses!.intersections(n, base.route.s, base.route.x, base.route.y), at = roads.wayStation(1, 700, 100);
+    type Variant = { grade?: (i: number) => number; ways?: Map<number, number[]>; cover?: number; bare?: (i: number) => number; twice?: boolean };
+    const variants: Variant[] = [
+      {}, {},
+      { grade: i => i >= 30 && i <= 50 ? 109 : 108 }, // a lift over the ditch and the wall beside the road
+      {},
+      { ways: new Map([[1, [at + 300]]]) }, // the track crosses elsewhere: its stretch here is an obstacle
+      { ways: new Map() },
+      {},
+      { cover: 0.4 }, // less cover over the first ditch: another barrel there, the same sections
+      {},
+      { twice: true }, // planned again on the sections its walls have narrowed
+      {},
+      { bare: i => i >= 63 && i <= 69 ? 104 : 108 }, // lower over the railway, the sections as they were
+      {},
+    ];
+    const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open', 'rockFace', 'subgrade', 'sideL', 'sideR'] as const;
+    const shared = new Map(), seen = new Set<string>();
+    for (const v of variants) {
+      const plans = [shared, undefined].map(cache => {
+        const { route } = setup(108);
+        if (v.grade) route.grade.forEach((_, i) => { route.grade[i] = v.grade!(i); });
+        Object.assign(route, computeSections(terrain, n, route.x, route.y, route.tx, route.ty, route.grade, { crownWidth: route.crownWidth }, true));
+        if (v.bare) route.grade.forEach((_, i) => { route.grade[i] = v.bare!(i); });
+        const elevations = v.cover === undefined ? undefined : new Map(water.filter(c => c.id === 1).map(c => [c, 100 + v.cover!]));
+        const make = () => planRetainingWalls(route, terrain, roads, undefined, water, cache ?? new Map(), elevations, v.ways ?? new Map([[1, [at]]]));
+        const plan = make();
+        return { plan: v.twice ? make() : plan, route };
+      });
+      expect(plans[0].plan).toEqual(plans[1].plan);
+      for (const key of fields) expect(plans[0].route[key]).toEqual(plans[1].route[key]);
+      seen.add(JSON.stringify([plans[1].plan.walls, [...plans[1].plan.forcedBridge]]));
+    }
+    // (the variants are different plans: the base, the lift, the track as an obstacle (both ways), the other
+    // barrel, the narrowed sections, no bridge over the railway)
+    expect(seen.size).toBe(6);
+  });
   it('rescreens culvert ownership after a road wall shortens the crossing barrel', () => {
     const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
       points: [[400, 0], [520, 120], [550, 120], [550, 200]], catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] }] });

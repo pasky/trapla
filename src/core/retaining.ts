@@ -56,8 +56,9 @@ interface StationMemo { left: number; right: number; grade: number; barrels: str
 type StationEvent = [0, Request] | [1, ClearanceRequest] | [2, BridgeRequest] | [3, number] | [4, WaterSegment['reach'], number, number, number]
   | CrossingHit;
 /** A crossing way's stretch inside a station's footprint: cell, segment, half width, way, the stretch; and what
- * screening it made of it last time (`made`: for this grade and these owned stretches of the way). */
-type CrossingHit = [5, FootprintCell, RoadSegment, number, number, [number, number], { made?: { grade: number; owned: [number, number][]; events: StationEvent[] } }];
+ * screening it made of it last time (`made`: for these owned stretches of the way; the cell and the grade
+ * there are those the station's events are replayed for). */
+type CrossingHit = [5, FootprintCell, RoadSegment, number, number, [number, number], { made?: { owned: [number, number][]; events: StationEvent[] } }];
 /** The stations of the last screening pass of its kind (`ways`: which pass of a plan, its crossing ways): what each read of our
  * road and of the barrels (`reads`: its candidates' own, `barrels`: their key then) and the events it made.
  * A later pass with the same ways replays every station for which these are unchanged without asking its
@@ -355,17 +356,17 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     crossingIntervals.set(way, merged.filter(([a, b]) => at.some(d => d >= a - 0.5 && d <= b + 0.5)));
   }
   for (const hit of crossingHits) {
-    // (beyond its cell, which the station's events are replayed for unchanged, the screening of a crossing
-    // way's stretch reads the grade there and the stretches of the way that its crossings own)
+    // (beyond its cell and the grade there, which the station's events are replayed for unchanged, the
+    // screening of a crossing way's stretch reads the stretches of the way that its crossings own)
     const [, c, seg, pad, , , kept] = hit, owned = crossingIntervals.get(seg.way)!, made = kept.made;
-    if (made && made.grade === r.grade[c.i] && made.owned.length === owned.length && made.owned.every((o, k) => o[0] === owned[k][0] && o[1] === owned[k][1])) {
+    if (made && made.owned.length === owned.length && made.owned.every((o, k) => o[0] === owned[k][0] && o[1] === owned[k][1])) {
       for (const e of made.events) apply(e);
       continue;
     }
     const row = ROAD_CLASSES[seg.cls], events: StationEvent[] = recording = [];
     segment(c, seg, pad, 'road', undefined, owned, row.separable ? 1 : 2, row.separable ? Infinity : 2 * row.roadPerKm[0] / 1000);
     recording = null;
-    if (cache) kept.made = { grade: r.grade[c.i], owned: owned.map(o => [o[0], o[1]]), events };
+    if (cache) kept.made = { owned: owned.map(o => [o[0], o[1]]), events };
   }
   if (buildingWalls) requests.push(...buildingWalls.requests);
   const walledBuildings = buildingWalls?.walled ?? [];
