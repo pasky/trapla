@@ -12,8 +12,9 @@ export const LOCAL_CORE = CROSSING_RULES.linkHardReach;
 /** Crossings this much further out are built along with them (the crossings those may be led to and weighed
  * against), their results not taken, m. */
 export const LOCAL_CONTEXT = CROSSING_RULES.linkHardReach;
-/** Above this share of all crossings the whole route is built (ENGINE: a local build would save little). */
-export const LOCAL_MAX_SHARE = 0.6;
+/** Above this share of all crossings the whole route is built (ENGINE: nothing left to save; at 0.6 direct-80's
+ * regrade retry, 66 % of its crossings, was built whole and gained nothing; at 0.9 it is 8 % faster). */
+export const LOCAL_MAX_SHARE = 0.9;
 
 /** Which path a finish's crossing build takes: `local` false (the reference) builds the whole route in every
  * finish; `check` builds both ways in each later finish, reports what differs and goes on with the whole
@@ -145,7 +146,9 @@ export function buildCrossings(kept: KeptCrossings[] | undefined, frame: object,
   const t1 = performance.now();
   if (out && LOCAL_RETRY.check) {
     // The reference: the whole route built on the same crossings; the finish goes on with it.
-    const text = (c: CrossingResult) => JSON.stringify(c, (k, v) => k === 'issues' ? (v as CrossingIssue[] | undefined)?.map(x => [x.title, x.fix, x.detail, x.crossing]) : v);
+    // (keys sorted: a kept crossing's are in the order the earlier finish set them)
+    const text = (c: CrossingResult) => JSON.stringify(c, (k, v) => k === 'issues' ? (v as CrossingIssue[] | undefined)?.map(x => [x.title, x.fix, x.detail, x.crossing])
+      : v && typeof v === 'object' && !Array.isArray(v) && !ArrayBuffer.isView(v) ? Object.fromEntries(Object.entries(v as object).sort(([p], [q]) => p < q ? -1 : p > q ? 1 : 0)) : v);
     const local = crossings.map(text), localIssues = JSON.stringify(out), near = dist!;
     out = whole(resolve());
     report.differs = crossings.flatMap((c, k) => text(c) === local[k] ? [] : [{ key: `${c.roadId}@${Math.round(c.s)}`, s: c.s, d: near[c.i], core: near[c.i] <= LOCAL_CORE,
