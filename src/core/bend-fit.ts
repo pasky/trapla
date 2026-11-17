@@ -1,5 +1,6 @@
 // A bend placed by the drag that rebuilds a mapped line can land where its curve has no room (too close
-// to the stretch's end or to a neighbouring bend: track curves at 120 km/h are ≥ 740 m in radius). The
+// to the stretch's end or to a neighbouring bend: track curves at 120 km/h are ≥ 740 m in radius; or so close
+// to a bend turning the same way that the two join into one curve too sharp). The
 // drag's bend is then moved along the line, bounded, to where its curve fits; a player's later moves are
 // left alone (their violation and its fix stay the player's).
 import { ROAD_CHECKS } from './checks';
@@ -10,9 +11,13 @@ import { buildAlignment, type PI, type Vec2 } from './horizontal';
 /** Furthest the fit moves the bend, m: beyond that the drag's intent is no longer kept. */
 export const BEND_FIT_MAX = 150;
 
-const crowding = (a: Vec2, b: Vec2, pis: PI[], category: CategoryId, speed: number) => {
+/** What lacks room: a curve and its easing curves between bends or ends, or two curves joined into one too sharp.
+ * (an old road's own curve, PI.mapped, as Auto's: where the drag builds it anew, it is) */
+const crowding = (a: Vec2, b: Vec2, pis0: PI[], category: CategoryId, speed: number) => {
+  const pis = pis0.map(p => p.mapped ? { ...p, r: null } : p);
   const al = buildAlignment(a, b, pis, horizontalRules(speed, category), bendRules(pis, speed, category));
-  return ROAD_CHECKS.horizontal(al, speedNorms(speed, category), { a, b, pis, category }).filter(v => v.horizontal?.extraDistance !== undefined);
+  return ROAD_CHECKS.horizontal(al, speedNorms(speed, category), { a, b, pis, category })
+    .filter(v => v.horizontal?.extraDistance !== undefined || v.kind === 'radius' && (v.pis?.length ?? 0) > 1);
 };
 
 /** `pis` with bend `i` moved along the chord A→B (either way, ≤ BEND_FIT_MAX m) to where no bend lacks room

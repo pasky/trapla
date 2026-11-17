@@ -48,9 +48,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   // is, the new one goes over it on its bridge, and our bill rises by that bridge's deck only.
   it('a new railway across our railway passes over it on its own bridge; ours stays where it was', async () => {
     const design = fixture('rail-new-railway-across'), r = run(design);
-    // (and, engine limits: both lines change the track at km 12.05, over ours and over the new line; since cost model
-    // 40 our line runs 3 m lower at km 12.58, beside the new line's embankment past its bridge: 9 m apart)
-    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere' && i.code !== 'shared-road' && i.code !== 'shared-land').map(i => i.violation.title)).toEqual([]);
+    // (both lines carry the track at km 12.05 over themselves, 500 m apart along it: two changes of it that do
+    // not meet, priced. Since cost model 41 our line tunnels its 54 m cut at km 6.6–8.6 and, short of that cut's
+    // spoil, balances its earth 3 m lower here: at km 12.58 its embankment comes 9 m from the new line's, past that
+    // line's bridge, which the screen of several roads does not yet price: an engine limit, the project unpriced)
+    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere' && i.code !== 'shared-land').map(i => i.violation.title)).toEqual([]);
     const ours = r.routes['route:railway'].legacy!, held = r.routes[design.routes[1].id].legacy!;
     const c = ours.crossings.find(c => c.crossedRoute?.id === design.routes[1].id)!;
     expect(c).toMatchObject({ type: 'overbridge', approachLength: 0 });
@@ -75,7 +77,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
 // D11 straight start, road III/3012 at our km 2.3, its one bend (the old road's own R 104 m corner) dragged
 // 23 m: it used to stay "Your radius" and be too sharp for 70 km/h; built anew, its curve is Auto's.
 describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dragged', async () => {
-  it("keeps the old road's own curve only where it still lies on the old road", async () => {
+  const d11 = async () => {
     const { loadPack } = await import('../scripts/loadpack');
     const { objectDataKey } = await import('../src/core/build-controls');
     const { ProjectTransportIndex } = await import('../src/core/project-network');
@@ -94,16 +96,40 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dra
     const ctx = { legacy: { terrain: pack.terrain, scenario, a: A, b: B, buildings: pack.buildings, roads: pack.roads },
       environment: { objectData, transportData: fingerprint, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' as const },
       sourceWays: new Map(graph.sources.flatMap((s: { id: string; legacyNetIndex?: number }) => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]])) as Map<string, number> };
+    return { pack, index, ctx, design, coveredStretches, derivedStretch, rebuildCommand };
+  };
+  /** where our earthworks cover the old road, with its station 389–395 m (since cost model 41 our bridge there runs
+   * 10 m further, its end's fill clear of the old road, and the old road's stretch would start at 363 m with an Auto
+   * bend before the R 104 m corner: pinned to keep these about that corner) */
+  const pinned = <T extends { s0: number; s1: number }>(covered: T[]) => [...covered.filter(c => c.s1 < 380), { ...covered[0], s0: 389, s1: 395 }];
+  // The playtest of these fixes: the road grabbed 80 m further on (its stretch converted from there) and dragged
+  // 40 px took the old corner with it, which, built anew, merged with the next bend into one curve too sharp for
+  // 70 km/h. The bend the converting drag moves is fitted on release as one it places (core/bend-fit.ts), also
+  // where two curves merge too sharp.
+  it('one drag of it leaves no curve too sharp', async () => {
+    const { index, ctx, design, coveredStretches, derivedStretch, rebuildCommand } = await d11();
+    const { fitPlacedBend } = await import('../src/core/bend-fit');
+    const ours = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes[design.routes[0].id].legacy!;
+    const id = 'osm:way:236292102';
+    const command = rebuildCommand(index, derivedStretch(index, id, 620, pinned(coveredStretches(index, id, [{ ...ours, name: 'our road' }])))!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
+    const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
+    const q = edited.routes[1]; if (q.alignment.kind !== 'pi' || q.specification.kind !== 'road' || q.specification.crossSection === 'existing') throw new Error('converted');
+    // (the drag took the old corner, bend 1, 29 m east: built anew, Auto's curve, merged with bend 2)
+    const a = q.endpoints.a.position, b = q.endpoints.b.position, k = 0;
+    expect(q.alignment.pis.length).toBe(2);
+    q.alignment.pis[0] = { ...q.alignment.pis[0], x: 7660.99, y: 5361.26 };
+    const sharp = (r: ProjectResult) => r.routes['route:r1'].legacy!.violations.filter(v => v.kind === 'radius').map(v => v.title);
+    expect(sharp(evaluateProject(ctx, { epoch: 'e', revision: 2, design: edited }))).toEqual(['Bends 1 and 2 merge into one curve that is too sharp']);
+    q.alignment.pis = fitPlacedBend(a, b, q.alignment.pis, k, q.specification.crossSection, q.specification.designSpeed) ?? q.alignment.pis;
+    expect(sharp(evaluateProject(ctx, { epoch: 'e', revision: 3, design: edited }))).toEqual([]);
+  }, 120_000);
+  it("keeps the old road's own curve only where it still lies on the old road", async () => {
+    const { pack, index, ctx, design, coveredStretches, derivedStretch, rebuildCommand } = await d11();
     const ours = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes[design.routes[0].id].legacy!;
     const id = 'osm:way:236292102', length = index.source(id)!.stations.at(-1)!;
     let at = 0, best = Infinity;
     for (let s = 0; s <= length; s += 5) { const p = index.position(id, s)!, k = Math.round(2320 / ours.ds), d = Math.hypot(p.x - ours.x[k], p.y - ours.y[k]); if (d < best) { best = d; at = s; } }
-    // (the stretch from where our earthworks cover the old road at its station 389–395 m; since cost model 40 our bridge
-    // there runs 10 m further, its end's fill clear of the old road, and the old road's stretch would start at 363 m,
-    // with an Auto bend before the R 104 m corner: pinned to keep this about that corner)
-    const covered = coveredStretches(index, id, [{ ...ours, name: 'our road' }]).filter(c => c.s1 < 380);
-    covered.push({ ...covered[0], s0: 389, s1: 395 });
-    const command = rebuildCommand(index, derivedStretch(index, id, at, covered)!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
+    const command = rebuildCommand(index, derivedStretch(index, id, at, pinned(coveredStretches(index, id, [{ ...ours, name: 'our road' }])))!, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
     const q = edited.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
     expect(q.alignment.pis).toMatchObject([{ r: 104, mapped: true }]);

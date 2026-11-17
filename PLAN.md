@@ -833,7 +833,16 @@ Research: research/65.
   closed everywhere), a way left as it is under our bridge or over our tunnel is neither our works nor a change of
   that way, and one road on its bridge ≥ 6 m above the other's works there shares no land with it. Two lines that
   both change one old road (QA's railway across ours and the track at km 12.05, the D11 new road and road I/14,
-  the final sweep's new road over the railway viaduct) stay unpriced: an engine limit.
+  the final sweep's new road over the railway viaduct) stayed unpriced: an engine limit. Cost model 40: two changes
+  of one old road conflict only where they reach each other along it (each change's ramps, box or cut piece; a
+  reroute's junction, `ENDPOINT_JUNCTIONS['tie-in'].zone`); further apart each road rebuilds its own piece. Those
+  projects are priced now (D11 new road 8.55 bn, QA's railway 9.68 bn, the final sweep's road 11.70 / railway
+  18.57 bn, all NOT VALID by their free ends only). Where changes do overlap it stays unpriced: the newer edit
+  taking the old road over there (as the player's road does from an automatic reroute) is the next step.
+- **One drag of a mapped road** (playtest of these fixes): grabbing III/3012 80 m further on and dragging 40 px took
+  its old corner along, which, built anew, merged with the next bend into one curve too sharp. The bend the
+  converting drag moves is fitted on release like one it places, and the fit also moves a bend off a too-sharp
+  merge (core/bend-fit.ts). Left: that drag still crosses a track at km 0.1 with no place to reconnect it.
 - **Review fixes**: a held line is held at least the owner's clearance over it (7.5 m over a railway; the crossing
   engine's deck sat 6 m up); a railway's drag preview follows the crossings others built with it; a rebuilt
   stretch's plan line in other roads' networks yields its old corners to Auto as its kernel does; a held road's own
@@ -874,7 +883,7 @@ Research: research/65.
   exit 1 on any difference); any script under `--import ./scripts/dev/local-retry-check.ts` checks its own
   evaluations. `LOCAL_RETRY.local = false` is the reference.
 
-### Playtest sweep 3: slowed stretches, deep cuts, cones at bridge ends, arches, hairpins (cost model 40, 2026-11-17)
+### Playtest sweep 3: slowed stretches, deep cuts, cones at bridge ends, arches, hairpins (cost model 41, 2026-11-17)
 
 Findings: docs/playtest-findings.md "Sweep 3 — main 30d0ad8". Research: research/66 (design speed), /67 (deep cuts,
 rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/qa3-fixes-shots.mjs`).
@@ -929,7 +938,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   aside; else, beside its flanks, and on the player's bridge, a wall: a longer bridge had needed spans no style
   reaches, random-21); the bridge card says "One end is a
   wall down to the ground, so the fill does not cover what lies below." (D11 best km 6.99, shot 301). A closed
-  abutment is not priced apart from the bridge (as every abutment before model 40). Piers stay off the cones of
+  abutment is not priced apart from the bridge (as every abutment before model 41). Piers stay off the cones of
   bridges whose ends the support layout moved; cones follow sliced, stitched and windowed results; the two motorway
   directions' overlapping cones are counted once; a cone's fill is weighed at its block's fill value. Rock faces of
   exactly 2:1 (Cretaceous sandstone) are dug, not presplit or netted, as decided in research/67 (d35-full −177 M).
@@ -937,7 +946,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   haul): counting it pins a block that cannot balance at the top fill value, which then prices all of its fill and
   bridges far more than pays (D11 one bend at 90: a 270 m bridge at km 9.2 became 730 m, +306 M); the balance
   search's own limit, to be fixed with it.
-- **Bills** (model 38 → 40; model 39, the projects' sweep, left single-road bills as they were). Frozen D11 fixtures, validity unchanged (all VALID but best-manual and town-controls,
+- **Bills** (model 38 → 41; models 39 and 40, the projects' sweeps, left single-road bills as they were). Frozen D11 fixtures, validity unchanged (all VALID but best-manual and town-controls,
   whose player's choices leave problems, as before): straight 8,224.7 → 8,847.9, best 3,618.5 → 3,694.6, best-drag
   3,601.1 → 3,681.2, best-pin 3,614.2 → 3,713.2, best-structures 3,729.6 → 3,782.9, best-manual 3,622.2 → 3,689.7, demo
   4,233.6 → 4,248.3, direct-80 4,144.7 → 4,232.2, direct-90 4,676.4 → 5,421.8, town-centre 8,972.7 → 9,384.9,

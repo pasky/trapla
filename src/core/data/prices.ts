@@ -107,7 +107,9 @@
  * our crossing's height (ours no longer digs under it as under a mapped railway; the crossing is its deck only); a held
  * line high above the deck set for it passes over on that bridge built higher; a mapped road's own curve built anew
  * is Auto's; a new road that ends nowhere is priced, not valid (it was unpriced). Frozen single-road bills unchanged.
- * 40: playtest sweep 3. A slowed bend keeps the road speed's curve where it fits, a slowed stretch's heights are
+ * 40: two roads change the same old road only where their changes reach each other along it (each its ramps, box or
+ * cut piece, a reroute's junction): more projects of several roads are priced. Frozen single-road bills unchanged.
+ * 41: playtest sweep 3. A slowed bend keeps the road speed's curve where it fits, a slowed stretch's heights are
  * searched as for the road's speed with its own smaller curves weighed in one more pass (research/66; designs with
  * slowed bends only); a bend is never faster than its road;
  * arches rise to 1/3.5 of their span, a bridge to 3.3 × its arch, the rib's clearance in the search, an arch Auto's
@@ -115,7 +117,7 @@
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
  * 4,935 → 7,045 M. */
-export const COST_MODEL_VERSION = 40;
+export const COST_MODEL_VERSION = 41;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

@@ -4,7 +4,7 @@
 // resolves an interaction. Joint engineering/acquisition/noise decisions are a later stage.
 import type { BuildingIndex } from './buildings';
 import type { CrossingGeometry, CrossingPoint } from './crossings';
-import { CROSSING_RULES, NOISE } from './data/urban';
+import { CROSSING_RULES, ENDPOINT_JUNCTIONS, NOISE } from './data/urban';
 import type { Result } from './evaluate';
 import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
@@ -201,16 +201,25 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
 /** A crossed way our bridge passes over or our tunnel under, left as it is (not moved onto a square line). */
 const unchanged = (c: Result['crossings'][number]) => (c.type === 'bridge' || c.type === 'tunnel') && !c.realignLength
   && !(c.geometry?.road ?? []).some(q => q.surface !== 'terrain');
-function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: { x: number; y: number; reach: number }[] } {
-  const roads = new Map<number, { x: number; y: number }[]>();
-  const add = (id: number | undefined, x: number, y: number) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y }); else roads.set(id, [{ x, y }]); };
+/** `r`: how far along the way the change reaches from that point (its ramps, box, cut piece), m; a change of
+ * unknown extent reaches everywhere (Infinity). */
+function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number; r: number }[]>; closes: { x: number; y: number; reach: number }[] } {
+  const roads = new Map<number, { x: number; y: number; r: number }[]>();
+  const add = (id: number | undefined, x: number, y: number, r = Infinity) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y, r }); else roads.set(id, [{ x, y, r }]); };
+  /** a crossing's reach along the crossed way: its structure and ramps, or the piece cut out of it */
+  const extent = (c: Result['crossings'][number]) => {
+    const removed = c.geometry?.removed ? Math.max(Math.abs(c.geometry.removed[0]), Math.abs(c.geometry.removed[1])) : 0;
+    const built = ((c.span ?? 0) + (c.approachLength ?? 0) + (c.underpassLength ?? 0)) / 2 + (c.realignLength ?? 0);
+    const r = Math.max(removed, built, c.geometry?.road?.length ? Math.max(...c.geometry.road.map(q => Math.abs(q.d ?? 0))) : 0);
+    return Number.isFinite(r) && r > 0 ? r : Infinity;
+  };
   // (a junction meets the way where it is and leaves it whole on both sides: no change of its course; its
   // works are screened as land like any other)
   // (nor does our bridge over it or our tunnel under it: the way stays as it is)
   for (const c of result.crossings) if (c.type !== 'junction' && !(unchanged(c))) {
-    add(c.roadId, c.x, c.y);
-    // (a reroute joins the road it is led to where its new pieces end)
-    if (c.targetRoadId !== undefined) for (const p of [c, ...(c.geometry?.links ?? []).flatMap(l => l.length ? [l[l.length - 1]] : [])]) add(c.targetRoadId, p.x, p.y);
+    add(c.roadId, c.x, c.y, extent(c));
+    // (a reroute joins the road it is led to where its new pieces end: a junction there)
+    if (c.targetRoadId !== undefined) for (const p of [c, ...(c.geometry?.links ?? []).flatMap(l => l.length ? [l[l.length - 1]] : [])]) add(c.targetRoadId, p.x, p.y, ENDPOINT_JUNCTIONS['tie-in'].zone);
   }
   const closes: { x: number; y: number; reach: number }[] = [];
   for (const f of result.footprintConflicts) {
@@ -303,8 +312,10 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     // where: the first road's change of the shared road nearest to the second's
     let at: { x: number; y: number } | undefined, best = Infinity;
     const own = new Set([...routes[a].ownWays ?? [], ...routes[b].ownWays ?? []]);
+    // (two changes of one way meet where their reaches along it come within the clearance of each other;
+    // further apart, each road rebuilds its own piece of it)
     for (const [id, here] of ta.roads) if (!own.has(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
-      const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; at = p; }
+      const d = Math.hypot(p.x - q.x, p.y - q.y); if (d - p.r - q.r < S.clearance && d < best) { best = d; at = { x: p.x, y: p.y }; }
     }
     // (a closure's detour, and another road's change of a road it could use)
     const detours = (t: typeof ta, u: typeof tb) => t.closes.some(c => [...u.roads.values()].some(list => list.some(p => Math.hypot(p.x - c.x, p.y - c.y) <= c.reach)));

@@ -1,4 +1,4 @@
-# Where a fill meets a bridge: spill-through cones (playtest sweep 3, P1 #4; cost model 40)
+# Where a fill meets a bridge: spill-through cones (playtest sweep 3, P1 #4; cost model 41)
 
 Snapshot 2026-11-17 (qa3-realism-fixes agent). QA: high fills ended at a bridge in a vertical face under the deck (D3
 0302 km 2.63 and 3.05, 41 / 47 m; a Královec railway bridge): not clickable, not billed, not a real abutment.
@@ -314,7 +314,7 @@ The same at h_a = 30 m:
   The only height found for the closed abutment is SETRA's "une culée remblayée ne peut se concevoir que pour une
   hauteur limitée à une dizaine de mètres" (§1.4, secondary, **UNVERIFIED**). Rule (`CONE.closedMax` = 10 m,
   support-layout.ts): on a fill of at most 10 m the end is a closed abutment, no cone (billed as every abutment was
-  before model 40, inside the bridge price: **PROVISIONAL**, its extra wall is not priced); above 10 m Auto's bridge
+  before model 41, inside the bridge price: **PROVISIONAL**, its extra wall is not priced); above 10 m Auto's bridge
   goes on to the first end whose cone's axis is clear, counting only what the footprint screen may not move aside (a
   minor road it may move only closes the end); something under the quarter cones at its flanks (the cone's first
   half, out to 0.87 of its reach either side), no clear end within the abutment search's reach, and the player's

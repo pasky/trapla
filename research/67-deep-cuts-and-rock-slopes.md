@@ -1,4 +1,4 @@
-# Deep cuts and rock slopes on D3 0302 (playtest sweep 3, P1 #3; cost model 40)
+# Deep cuts and rock slopes on D3 0302 (playtest sweep 3, P1 #3; cost model 41)
 
 Snapshot 2026-11-17 (qa3-realism-fixes agent). QA: on the D3 0302 starter Auto built "Cut km 0.73–2.29 · 1,558 m · up
 to 62 m deep · 2.39 bn · Auto: at this depth cheaper than a tunnel" where the real section has the 1,843 m Luka tunnel,
@@ -33,7 +33,7 @@ shows the open cut's price; presplit and rock slopes by what the geology says.
    spoil tipping beyond the existing surplus haul; land / forest / wildlife-corridor costs of a deep cut (the
    non-monetary reasons the EIA gives). The 30 m rule stands for those.
 
-## What it does (model 38 → 40, together with research/68's cones)
+## What it does (model 38 → 41, together with research/68's cones)
 
 **D3 0302 starter**: 4,935 → 7,028 M CZK, VALID (7,045 after the review fixes of research/68 §4.5). Auto's line now rides higher: the cut at Luka is at most 27 m deep
 (km 1.6–1.9), and the Sázava is crossed by one 1,678 m bridge (km 2.04–3.72, long spans, deck up to ≈ 145 m over the

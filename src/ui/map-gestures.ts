@@ -75,7 +75,9 @@ export function createMapGestures(app: MapGestureContext) {
     catch (error) { app.projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
     app.switchRoute(id, true);
     const k = bendByDrag(x, y);
-    // (a new bend, not one the old line's own curve already had, is fitted where its curve has room on release)
+    // (the bend this first drag places, or one of the old line's it takes along, is fitted where its curve has
+    // room on release: the drag is the conversion's, not yet the player's own placing of a bend)
+    if (app.store.activeRouteId) placedByDrag = { routeId: app.store.activeRouteId, i: k };
     return k;
   };
   /** A drag that starts on the road: on a straight it adds a bend there, which is fitted on release where
