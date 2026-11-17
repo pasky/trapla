@@ -16,8 +16,8 @@ scenarios), `research/` (sources for every number).
   unsolvable cases and for the player's own overrides. Overrides may create violations; that's allowed.
 - **Powerful but simple.** Every realistic decision can be overridden by the player, but the interface stays
   simple: map-first, click anything to inspect it, one card with what it is / what Auto chose and why / cost /
-  alternatives as buttons; map and profile selection always in sync; drag the road to bend it; no hidden
-  gestures or modifier keys. See `docs/interface-rethink.md`.
+  alternatives as buttons; map and profile selection always in sync; click a road to select it, drag it to
+  bend it (a drag on a road not selected moves the map); no hidden gestures or modifier keys. See `docs/interface-rethink.md`.
 - **Few, plain words.** Default to deleting text. No internal terms, codes or IDs in player text. One
   vocabulary: `src/core/terms.ts`; guard: `tests/player-text.test.ts`. Each violation: short title, one
   concrete computed fix, optional "why", basis tag (norm / game rule / engine limit). If something is an engine
