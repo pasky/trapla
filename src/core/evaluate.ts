@@ -19,7 +19,8 @@ import {
 } from './cost';
 import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
 import { WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG } from './crossing-works';
-import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
+import { buildCrossings, type KeptCrossings } from './crossings-kept';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
@@ -310,13 +311,15 @@ export interface EvalOptions {
 export interface PassCache {
   profile: Map<string, unknown>; support: Map<string, number>; retaining: RetainingFeatureCache;
   reroutes: ReturnType<typeof crossingCache>; sections: SectionCache;
+  /** the crossing builds of this evaluation's finishes (crossings-kept.ts) */
+  crossings: KeptCrossings[];
   /** the first pass's setup (passSetup) and the inputs it was made from */
   setup?: { made: ReturnType<typeof routeSetup>; ctx: EvalContext; d: Design; from: readonly unknown[] };
   /** Tests: called with the shared setup when it is made and after each pass, which may not change it. */
   onPass?: (shared: ReturnType<typeof routeSetup>) => void;
 }
 /** An empty pass cache (evaluate makes one per evaluation; a test may hand in its own, with `trial`). */
-export const passCache = (): PassCache => ({ profile: new Map(), support: new Map(), retaining: new Map(), reroutes: crossingCache(), sections: [] });
+export const passCache = (): PassCache => ({ profile: new Map(), support: new Map(), retaining: new Map(), reroutes: crossingCache(), sections: [], crossings: [] });
 /** a cut's [class I, II, III] areas, footprint width and netted rock face in one kind of ground */
 interface CutRow { a: [number, number, number]; width: number; rockFace: number }
 interface GeometryRow { width: number; area: number; bridge: number; bridgeUrban?: number; cuts: CutRow[] }
@@ -2082,7 +2085,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
  * split again where asked), then the footprint check and what its remedies cost (walls, moved channels,
  * land). */
 function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySet<number>, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, houses: ReturnType<typeof finishBuildings>) {
-  const { n, st, ds, terrain, al, crossingOverrides, cat, preview, lap, endJunctions, railOurs, retiredAt, water } = setup;
+  const { n, st, ds, terrain, al, crossingOverrides, cat, preview, lap, endJunctions, railOurs, retiredAt, water, timing } = setup;
   const { width, kind, sec, engineeredCrossings, prof, urban, grade, runs, channelRelocations, waterZ,
     retainingWalls, culverts } = quantities;
   const { b } = prices;
@@ -2109,8 +2112,9 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
       ? [{ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade' as const, cost: 0 }] : [];
   })) : [];
   if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
-  const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
+  const resolve = () => resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
     ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor);
+  let crossingIssues = resolve();
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
   // other roads' works it is kept clear of).
   const clearOf = opts.keepClear?.length ? capsuleTest(opts.keepClear) : undefined;
@@ -2133,11 +2137,17 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
     return out;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
-    streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
-    left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i])),
-    right: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i])),
-  }, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes));
+  if (!preview) {
+    const left = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i]));
+    const right = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i]));
+    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
+      streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
+      left, right };
+    // (a retry builds only the crossings near what it changed: crossings-kept.ts)
+    crossingIssues = buildCrossings(opts.window ? undefined : opts.passCache?.crossings, st, { grade, kind, width: crossWidth, left, right, urban: urbanCentre },
+      new Map(demolished.map(p => [p.j, p.i])), crossings, crossingIssues, items => buildCrossingGeometry(items, route, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes),
+      resolve, () => !!reroutes.rolledBack, path => { timing[`count.crossings.${path}`] = (timing[`count.crossings.${path}`] ?? 0) + 1; });
+  }
   const shared = opts.sharedCrossings;
   if (shared && !shared.own) {
     const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);

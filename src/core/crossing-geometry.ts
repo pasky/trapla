@@ -25,6 +25,9 @@ const DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 export interface CrossingCache {
   paths: Map<string, CachedPath>;
   links: Map<string, { i0: number; left: Float64Array; right: Float64Array; value: unknown }>;
+  /** The last build with this cache put every crossing back to its first treatment (the rollback at the end of
+   * buildCrossingGeometry): its result is then not a sum of local decisions (crossings-kept.ts). */
+  rolledBack?: boolean;
 }
 export const crossingCache = (): CrossingCache => ({ paths: new Map(), links: new Map() });
 /** Beyond the chainages a reroute's computation consulted, our footprint decides which houses under it are
@@ -102,7 +105,8 @@ export function rampLimit(cls: string, z: number, g0: number, g: number, run: nu
 
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */
 /** Issues this geometry pass raises (rebuilt from scratch on every build). */
-const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape' || v.crossing.code === 'reroute' || v.crossing.code === 'square';
+/** An issue of the build (buildCrossingGeometry), not of the treatment's choice (resolveCrossings). */
+export const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape' || v.crossing.code === 'reroute' || v.crossing.code === 'square';
 /** Every diagnostic of a player's reroute shape starts so (issue code 'shape'). */
 const SHAPED = 'Shaped link';
 
@@ -1479,6 +1483,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
 export function buildCrossingGeometry(crossings: CrossingResult[], route: CrossingRoute,
   heightAt: (x: number, y: number) => number, roads?: RoadNet, persist?: CrossingCache): CrossingIssue[] {
   if (route.s.length < 2) return [];
+  if (persist) persist.rolledBack = false;
   const spatial = routeGeometry(route);
   // Candidate treatments and the final rebuild use the same immutable OSM alignment. Share only
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
@@ -1787,6 +1792,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','homes','linkGrade','lowered','drainage','drainCost','square','squared','realignLength','realignCost','moved'] as const) delete c[key];
       Object.assign(c, baseline[i].state);
     });
+    if (persist) persist.rolledBack = true;
     return build(crossings);
   }
   return issues;
