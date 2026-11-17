@@ -180,6 +180,20 @@ frozen bill need show. Its place is after that function is in stages (done since
 our road, so that the key can be read off its signature. Expected then: ≤ 18 % of a retry pass where the footprint near the crossing is unchanged (on a 19 km route a regrade
 changes about half of it), i.e. ≈ 5 ms on direct-80 and ≈ 2–3 % of the whole D3.
 
+The groundwork is done (2026-11-17, bit-exact): `crossingStructure(c, ours, …)` builds one crossing and reads
+our road through `ours` only (`route` is not in its scope; the list of what a key must cover is written at
+`ours` in `crossingTools`). Measured on the five D11 designs: `crossingStructures` is 36 % of the crossing
+geometry's time (19 % in the builds of all crossings, 16 % under the weighing of other remedies), i.e.
+≈ 9 % of an evaluation over all its passes, and a memo across passes can only save it in a retry pass, for the
+crossings whose stretch of our road did not change. **The memo itself is not built, and should not be before
+the stretch-local retry** (docs/architecture-review.md "Planned next performance lever"): that keeps the
+crossings outside a retry's window from the kept pass without building them at all, which is this memo's
+whole gain and more. What a memo would still need beyond the key: the build's writes are spread over the
+crossing (`cost`, `span`, `lowered` … set and deleted), its geometry object (which stages 3 and 4 go on to
+change, so a kept copy has to be a deep one, made before them and again at every reuse) and five maps of the
+build (`cuts`, `squares`, `rawPaths`, `survivingSides`, `squaredPaths`), and the houses standing along a
+straightened crossing's new road (`linkEnv.houses`) change with the pass's demolitions.
+
 The large lever (a retry that re-engineers only its stretch, ≈ −0.8 s of the whole D3's 2.5 s) is a model
 change: docs/architecture-review.md "Planned next performance lever".
 

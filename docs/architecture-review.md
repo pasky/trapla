@@ -217,6 +217,10 @@ small modules beside it already do.
   `projectDecisions` → `projectTotals`, itself 67 lines: the three early returns and the last lines (hand
   step: one `let` declared where it is first assigned). Each stage's inputs are its parameters now, which is
   what a memo of a stage has to key on (docs/evaluate-performance.md "What a retry pass costs").
+  Then the loop body of `crossingStructures` as `crossingStructure(c, ours, …)`: one crossing's structure,
+  with our road read through `ours` only (`project`, `margin`, `between`, `crownWidth`, `cutOf`, `squarePath`,
+  `linkEnv`; `route` is not in its scope, and its other tools are typed down to those that do not read our
+  road). 177 / 177 identical, timing unchanged.
   Interleaved against main `5ea8d7e` (host load 7–10): five D11 designs 30 × 2 min 0.99 / 0.99, CPU 0.99 / 1.01;
   whole D3 10 × 1 min 0.98, CPU 0.97: unchanged.
   Next: move the stage functions to files (`evaluate-setup.ts` …), a cut and paste with imports since they no
@@ -449,7 +453,9 @@ ends where it does: docs/evaluate-performance.md "What a retry pass costs".
 11. Merged (`5ea8d7e`): the citation guard, `scripts/dev/profile.mjs`, four footprint-screen savings.
 12. The passes of an evaluation share their setup; citations by file name; `stationIndex`; the stages of
     `buildCrossingGeometryOnce` and `evaluateProjectOnce`.
-13. Next: the stage functions into files (after M3).
+13. Player text without research-note numbers (36 places; 13 more and the guard after M3);
+    `crossingStructure(c, ours, …)`.
+14. Next: the stage functions into files (after M3).
 
 Noticed, not changed: the playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
 there after 4–7 s (`gates.sh` runs a failed untimed browser gate once more under load).
