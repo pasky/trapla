@@ -90,14 +90,22 @@ function changedStations(n: number, inputs: CrossingInputs, goneAt: ReadonlyMap<
 
 /** Whether a point lies within `reach` of a changed station's axis point (a grid of those stations). */
 function besideChanged(x: ArrayLike<number>, y: ArrayLike<number>, changed: Uint8Array, reach: number) {
-  const cells = new Map<string, number[]>(), cell = (v: number) => Math.floor(v / reach);
+  // (cells numbered from the changed stations' own corner; most points fall outside their box at once)
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < changed.length; i++) if (changed[i]) { x0 = Math.min(x0, x[i]); x1 = Math.max(x1, x[i]); y0 = Math.min(y0, y[i]); y1 = Math.max(y1, y[i]); }
+  x0 -= reach; x1 += reach; y0 -= reach; y1 += reach;
+  const cells = new Map<number, number[]>(), rows = Math.floor((y1 - y0) / reach) + 3, at = (px: number, py: number) => (Math.floor((px - x0) / reach) + 1) * rows + Math.floor((py - y0) / reach) + 1;
   for (let i = 0; i < changed.length; i++) if (changed[i]) {
-    const k = `${cell(x[i])}:${cell(y[i])}`, list = cells.get(k);
+    const k = at(x[i], y[i]), list = cells.get(k);
     if (list) list.push(i); else cells.set(k, [i]);
   }
   return (px: number, py: number) => {
-    for (let a = cell(px) - 1; a <= cell(px) + 1; a++) for (let b = cell(py) - 1; b <= cell(py) + 1; b++)
-      for (const i of cells.get(`${a}:${b}`) ?? []) if ((x[i] - px) ** 2 + (y[i] - py) ** 2 <= reach * reach) return true;
+    if (!(px >= x0 && px <= x1 && py >= y0 && py <= y1)) return false;
+    const k = at(px, py);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const list = cells.get(k + a * rows + b);
+      if (list) for (const i of list) if ((x[i] - px) ** 2 + (y[i] - py) ** 2 <= reach * reach) return true;
+    }
     return false;
   };
 }
@@ -105,8 +113,10 @@ function besideChanged(x: ArrayLike<number>, y: ArrayLike<number>, changed: Uint
 function anyPoint(value: unknown, test: (x: number, y: number) => boolean): boolean {
   if (value === null || typeof value !== 'object' || ArrayBuffer.isView(value)) return false;
   const p = value as { x?: unknown; y?: unknown };
-  if (typeof p.x === 'number' && typeof p.y === 'number' && test(p.x, p.y)) return true;
-  for (const v of Array.isArray(value) ? value : Object.values(value)) if (anyPoint(v, test)) return true;
+  // (a point holds nothing further)
+  if (typeof p.x === 'number' && typeof p.y === 'number') return test(p.x, p.y);
+  if (Array.isArray(value)) { for (const v of value) if (anyPoint(v, test)) return true; return false; }
+  for (const k in value) if (anyPoint((value as Record<string, unknown>)[k], test)) return true;
   return false;
 }
 
