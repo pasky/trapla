@@ -796,6 +796,41 @@ Research: research/65.
   VKL 3–4 reference, not SPK's TT4, and its spread (deep / 10–20 m ≈ 0.74) disagrees with the Czech derivation
   (≈ 0.82).
 
+### Playtest sweep 3: a line over ours billed once, a railway across ours, mapped curves (cost model 39, 2026-11-17)
+
+- **A road carried over ours is let off what our road bills for that bridge, no more** (QA3 P1 #2). The held road
+  draws and prices its whole body, the owner's deck and ramps included, and the owner bills the deck and ramps as
+  its crossing. It used to be let off everything it built within the ramps' reach: on D11 km 12.5 (`tests/fixtures/
+  qa3/d11-new-road-across-km12.5.json`) −238 M against our 37 M overbridge, its own 185 M viaduct over a dip beside
+  the ramps billed by neither road. Now the credit is exactly what the owner bills for that crossing (deck and ramps
+  with their surcharge; not the side roads it regrades, its walls or the houses it takes, which the owner draws):
+  −48 M, "Our road pays for its bridge over our road and the ramps up to it". Invariant (`tests/qa3-sweep.test.ts`
+  `billedOnce`): the roads' bills sum to their own bodies and works less exactly what owners bill for the others'.
+- **A railway of the project across ours** (QA3 P1 #5, `rail-new-railway-across.json`). Our railway used to clear it
+  as a mapped railway at ground level (it cannot move): it dug itself 15 m down there, +265 M, while the new railway
+  was held at a deck at ground level it could not reach ("lower this railway by 7.7 m"). A railway of the project
+  now follows our crossing's height as a road of the project does: our line stays as it is, the new one goes over
+  it where our line is on earth, held at the deck; the crossing bills that deck only (it climbs on its own line,
+  which it draws and bills; `heldRailway` in crossing-geometry.ts); a held railway's deck is a bridge. A held line
+  that stays high above the deck set for it (a 12.5 ‰ line, a road on its own embankment) passes over on that bridge
+  built higher, held at least clear of the owner (as one high above the owner's bridge already was). Our railway
+  +38 M (the deck), the new one valid. A new motorway is still cleared as a mapped one: its corridor kernel does not
+  take holds yet.
+- **A mapped road's own curve** (QA3 P1 #6). Converting a mapped road into bends keeps a sharp old corner's own
+  radius (it lies on the old road, which is kept as it is there); it is now marked as the old road's (`PI.mapped`),
+  not the player's: while its curve lies wholly on the old road it stands ("The old road's own curve, kept as it
+  is."), where a drag builds it anew it is Auto's, as a new road's (`project-kept.ts plannedKept`, road and railway;
+  a set radius clears the mark). D11 III/3012 at km 2.3, its R 104 m corner dragged 23 m: no longer "too sharp for
+  70 km/h". Every bend problem whose fix is a radius back to Auto has a *Back to Auto* button (`ViolationTarget.auto`).
+- **P2**: Undo / Redo say what they take back ("Undo: moving bend 3", "Redo: a bridge or tunnel (Road III/3012)"),
+  worked out from the designs either side of the step when the button is pointed at (`core/history-label.ts`); the
+  profile's tooltip says "River under our bridge, and 1 more".
+- **Bills**: frozen single-road fixtures identical; multi-road projects change (credits, railway crossings): model 39.
+- **Known issue (audit)**: a box lowered under our road for a road of the project (our road too low over it) bills
+  the lowered approach ramps on our road while the held road stays at the ground through the box: its hold should be
+  the box floor, but where the held road ends within the ramps (D11 km 4.03 service road) it cannot reach it, and the
+  owner, evaluated first, cannot see that. Left as it was (no QA repro of a priced case).
+
 ### A retry builds only the crossings near what it changed (no model version, 2026-11-17)
 
 - **What.** An evaluation finishes its design several times (the stream and strict retries of a pass, then the

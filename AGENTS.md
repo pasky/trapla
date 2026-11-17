@@ -90,7 +90,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Project roads (2026-11-16 final-sweep P1s, PLAN.md "Final-sweep P1s"): the player's road takes over from
   our reroutes (they are planned again clear of it); new railways and motorways are crossed by the
   higher-ranking line; `scripts/reroute-takeover-audit.ts` still leaves 13 of 292 D11 bends near our reroutes
-  unpriced (mostly the rebuilt road's own body within 10 m of our embankment, a real conflict).
+  unpriced (mostly the rebuilt road's own body within 10 m of our embankment, a real conflict). A road carried
+  over ours is let off exactly what our road bills for that bridge; a railway of the project follows our
+  crossing's height (a new motorway is still cleared as a mapped one); a lowered box under a project road bills
+  ramps the held road does not build (PLAN.md "Playtest sweep 3", model 39).
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
   hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /
