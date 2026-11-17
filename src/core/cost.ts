@@ -40,10 +40,16 @@ export function basePerKmUrban(cat: CategoryId, terrain: TerrainClass): number {
 /** tunnel tube price per km for a tunnel of the given length, bored or (`cut`) cut and cover; `urban` =
  * built-up share 0…1. SPK prices urban cut and cover "individuálně": PROVISIONAL, the urban bored row with
  * the rural rows' cut-and-cover premium. */
+/** A long mined tube's price per metre against SPK's > 500 m row (TUNNEL_RULES.lengthFactor, research/64). */
+export function tunnelLengthFactor(length: number): number {
+  const f = TUNNEL_RULES.lengthFactor;
+  return length > PRICES.tunnelLongThreshold ? Math.max(f.min, f.a + f.b / length) : 1;
+}
+
 export function tunnelPerKm(length: number, urban = 0, cut = false): number {
   const long = length > PRICES.tunnelLongThreshold;
   const bored = long ? PRICES.tunnelLongPerKm : PRICES.tunnelShortPerKm;
-  const rural = cut ? long ? PRICES.cutCoverLongPerKm : PRICES.cutCoverShortPerKm : bored;
+  const rural = cut ? long ? PRICES.cutCoverLongPerKm : PRICES.cutCoverShortPerKm : bored * tunnelLengthFactor(length);
   const town = (long ? URBAN_RATES.tunnelLongPerKm : URBAN_RATES.tunnelShortPerKm) * rural / bored;
   return rural + (town - rural) * urban;
 }

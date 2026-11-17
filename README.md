@@ -418,6 +418,8 @@ spans](docs/screenshots/228-d11-direct-90-arch.png) ([from the side](docs/screen
 here](docs/screenshots/230-town-centre-long-span-over-railway.png),
 [D3 motorway km 8.59: "Our bridge over it" in our cutting is built, and its card says what raising our motorway
 for it cost](docs/screenshots/231-d3-motorway-our-bridge-over-track-raised.png).
+[The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
+VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

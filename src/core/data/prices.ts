@@ -88,8 +88,10 @@
  * high as its highest point); Auto takes the cheapest that fits (the grade search and the structure choice see the
  * cheaper of short and long spans), the player may choose another (only that choice: the bridge stays Auto's).
  * A house under a deck ≥ 15 m up and 3 m over its roof stays unless a pier stands on it (research/62). Our bridge
- * over a road the player chose is met through the regrade retry, its price said. */
-export const COST_MODEL_VERSION = 35;
+ * over a road the player chose is met through the regrade retry, its price said.
+ * 36: a long mined tube costs less per metre (Hessen's length curve, research/64): × 0.957 at 1 km, 0.935 at 2 km,
+ * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row). */
+export const COST_MODEL_VERSION = 36;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -176,6 +178,12 @@ export const TUNNEL_RULES = {
   twinTubesFromLaneTraffic: 10_000,
   /** one tube with an escape gallery against one tube (Hessen Fig. 3-6: 121–135 %) */
   escapeGalleryFactor: 1.3,
+  /** A long mined tube's price per metre against the > 500 m row (SPK has no length step beyond 500 m):
+   * f(L) = a + b / L for L > 500 m, through Hessen Mobil 2006 Abb. 3-2 (spec. cost per tube-m: 98.9 % at 500 m,
+   * 94.8 % at 1 km, 92.4 % at 2 km, normalised to 500 m; the BASt/Bochum 2019 civil-cost model agrees, ≈ 0.90–0.92
+   * at 1.8 km with the equipment share held): 0.957 at 1 km, 0.935 at 2 km. Beyond 2 km no data (ventilation and
+   * control-centre steps from 3 km): held at `min` (research/64). */
+  lengthFactor: { a: 0.913, b: 43.7, min: 0.92 },
 };
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { ROAD_CHECKS } from '../src/core/checks';
-import { allowanceValuePerKm, costParts, PART_KEYS, sumParts } from '../src/core/cost';
+import { allowanceValuePerKm, costParts, PART_KEYS, sumParts, tunnelLengthFactor } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { speedNorms } from '../src/core/data/norms';
 import { EXCAVATION_MIX, NORM_EARTHWORK_ALLOWANCE, PRICES, SIDE_SLOPES } from '../src/core/data/prices';
@@ -143,8 +143,9 @@ describe('cost roll-up', () => {
       }));
     };
     expect(tunnel(400).tunnels).toBeCloseTo(0.4 * PRICES.tunnelShortPerKm, 0);
-    expect(tunnel(600).tunnels).toBeCloseTo(0.6 * PRICES.tunnelLongPerKm, 0);
-    expect(tunnel(600, 1).tunnels).toBeCloseTo(0.6 * URBAN_RATES.tunnelLongPerKm, 0);
+    // (a long mined tube's length factor, research/64)
+    expect(tunnel(600).tunnels).toBeCloseTo(0.6 * PRICES.tunnelLongPerKm * tunnelLengthFactor(600), 0);
+    expect(tunnel(600, 1).tunnels).toBeCloseTo(0.6 * URBAN_RATES.tunnelLongPerKm * tunnelLengthFactor(600), 0);
   });
 
   it('global mass-balance items are spread over the cells that cause them and add up exactly', () => {

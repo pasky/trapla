@@ -45,3 +45,21 @@ likely the cause: they are SPK-calibrated and the long-span style made them chea
 Not changed: one section, an ŘSD estimate (not a tender), and a different alignment. Next step if pursued: a
 length factor on the mined tube row from the Hessen curve and the Czech long tunnels (Panenská, Dětřichov once
 tendered, Blanka excluded as urban).
+
+## After the long-tunnel length factor (cost model 36, research/64)
+
+| | Model 35 | Model 36 |
+|---|---|---|
+| Auto, stage-1 motorway | 19,390 M (1,175 M/km, +10 % on the real 1,066) | **18,911 M (1,146 M/km, +7.5 %)** |
+| Real-like line, tunnel painted (4.0 km tunnel, 680 m of bridges) | 23,398 M (+21 % on Auto) | **22,204 M (+17 % on Auto)** |
+| Same line, structures Auto's (4.3 km tunnel) | 24,698 M | 23,410 M |
+| D3 0304 starter | 10,174 M (659 M/km) | 10,118 M (655 M/km, −17 %) |
+
+The real designers' choice still ranks second, 17 % dearer than Auto's 1.9 km tunnel with its 1.8 km viaduct. The
+length factor (× 0.924 at 4 km) was all the sources support: research/64 also corrects this note's reading of
+Panenská (≲ 1.0 M per tube-m is 2003–06 money, ≈ 1.75–2.08 M today) and finds the implied 1.0 M below SPK's own
+minimum for the row. What else could close the gap — the 29.4 % other-objects surcharge on a tunnel row that
+already holds its portals and equipment, a rock-cover factor (Hessen: deep rock 100–145 % against 140–190 % under
+10–20 m), or this split itself — is recorded there, not changed. Our alignment also differs from the real one (its
+valley crossing needs only ≈ 700 m of bridges).
+

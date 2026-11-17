@@ -127,7 +127,8 @@ carries it, labelled.
    geology map calls for them.
 4. **Tunnel ends forced to cut-and-cover to ≈ 0 cover** (proposed) versus only capping the portal face at ≈ 18–20 m.
 5. **Bridge styles: Short / Long / Arch now, cable-stayed later?**
-6. **Nová Paka starter**: its 2.23 bn is its route (buildings, streets). A starter along the real bypass needs the
+6. *(Done, cost model 36: the starter follows the mapped bypass, PLAN.md "A long tunnel's price per metre; the Nová
+   Paka starter".)* **Nová Paka starter**: its 2.23 bn is its route (buildings, streets). A starter along the real bypass needs the
    crossing fixes it currently fails (side roads under earthworks, ramps): leave to the scenario / P1 work, or
    should I take it?
 

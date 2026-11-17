@@ -887,6 +887,8 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
   const mk = cat.markup;
   /** a tunnel's tubes and escape provision for its length (NV 264/2009) */
   const tunnelFactor = (length: number) => tunnelTubeFactor(cat, length, scenario.traffic);
+  // (the structure choice prices the tubes at the ≤ 500 m rows per station; the bill's rows for the run's length)
+  const tunnelRate = (length: number, cut: boolean) => categoryTunnelPerKm(cat, length, 0, cut) / categoryTunnelPerKm(cat, 0, 0, cut);
   const divided = dividedRoad(cat);
   const surE = (u: number) => mk ? mk.earth : surchargeRate(u, divided), surB = (u: number) => mk ? mk.bridge : surchargeRate(u, divided);
   const surT = (u: number) => mk ? mk.tunnel : surchargeRate(u, divided);
@@ -1090,7 +1092,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
         else must[k] = 1;
       });
     }
-    const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
+    const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, tunnelRate, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
       bridgeRunCost: equalSpanRunCost(bridge, hh, bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i]))) };
     const firstChoice = chooseStructures(input);
     forceWater(must, S, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
@@ -1099,7 +1101,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
     for (let k = 0; k < m; k++) if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * w;
     return bal;
   };
-  return { surE, surB, surT, baseRural, baseUrban, tunnelKm, tunnelFactor, bridge, b, topsoilPerM2, costFor, usable,
+  return { surE, surB, surT, baseRural, baseUrban, tunnelKm, tunnelFactor, tunnelRate, bridge, b, topsoilPerM2, costFor, usable,
     balanceTolerance, tpl, roadS, balanceOf };
 }
 
@@ -1427,7 +1429,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   const { timing, st, water, terrain, n, preview, manualStructures, lap, w, ds, ground, waterAt,
     crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG,
     crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod, bridgeStyle, choiceDeck } = setup;
-  const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, tunnelFactor, surT, roadS, balanceTolerance,
+  const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, tunnelFactor, tunnelRate, surT, roadS, balanceTolerance,
     usable } = prices;
   const { sectionMemo, work, wideHitL, wideHitR, wideHits, hitsAt, retainingMemo, wallable, coverLeft, coverRight,
     urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre, deckHits, deckBuildings, earthHitL,
@@ -1622,7 +1624,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
         + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
     }
     const forcedAt = forced.slice();
-    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, cutCoverExtraPerM, tunnelFactor, cutMethod, forced: forcedAt, forcedTunnel, overrides: selectionOverrides, ...(heldDeck ? { held: heldDeck } : {}),
+    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, cutCoverExtraPerM, tunnelFactor, tunnelRate, cutMethod, forced: forcedAt, forcedTunnel, overrides: selectionOverrides, ...(heldDeck ? { held: heldDeck } : {}),
       bridgeRunCost: noBridgeAny ? (i0: number, i1: number, length: number) => noBridge.subarray(i0, i1 + 1).some(Boolean) && !forcedAt.subarray(i0, i1 + 1).some(Boolean) ? Infinity : runCost(i0, i1, length) : runCost };
     let chosen = chooseStructures(input);
     // An economical bridge still needs its abutments outside the channel/banks, even if a culvert

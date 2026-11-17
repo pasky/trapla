@@ -702,6 +702,32 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
   plans), the structure choice now memoises run prices (cheaper than before); a drag preview weighs an arch only
   where asked and long spans only where they may pay (docs/evaluate-performance.md).
 
+### A long tunnel's price per metre; the Nová Paka starter (cost model 36, 2026-11-17)
+
+- **Length factor on the mined tube row** (research/64): SPK has no length step beyond 500 m; Hessen Mobil's
+  specific-cost curve (2006, Abb. 3-2) and the BASt/Bochum civil-cost model (2019) agree on −4 % at 1 km and −7 % at
+  2 km against 500 m. f(L) = 0.913 + 43.7 / L on the > 500 m mined row, held at ≥ 0.92 (no data beyond 2 km;
+  ventilation and control-centre steps from 3 km); not on cut and cover nor the railway's own rows. The structure
+  choice now weighs the bill's tube rows for the run's length (it took the ≤ 500 m row for every tunnel).
+  Escalated with the ČSÚ tunnel index, no Czech long tunnel is clearly cheaper per tube-m than SPK (Panenská's
+  "≲ 1.0 M" in research/51 / 63 was 2003–06 money).
+- **The real D35 choice** (research/63): Auto 19,390 → 18,911 M (1,146 M/km, +7.5 % on the real section); the
+  real-like line with its 4 km tunnel 23,398 → 22,204 M, still 17 % dearer than Auto's: the length factor is
+  ≈ a fifth of the gap the section estimate implies. Left as hints: the 29.4 % other-objects surcharge on a tunnel
+  row that already holds portals and equipment, a rock-cover factor, and the comparison's own split.
+- **Bills** (model 35 → 36): D11 frozen fixtures bit-identical (no tunnels). d3-0304 10,174 → 10,118, d35 6,610 →
+  6,481, d35-full 29,825 → 29,362, d35 stage-1 motorway 19,390 → 18,911; others unchanged; outcome audit: same
+  validity and problems (6 VALID, 84), the lines with tunnels 0.1–2 % cheaper (random-10 −223 M).
+- **Nová Paka starter** (decision 6): along the mapped bypass, its nine curves as bends at their mapped tangent
+  points and radii (R 360–1,475 m), bends 0 and 6 moved 4 / 6 m off side roads: VALID 1,221 M, 7.39 km, 165 M/km
+  (was a four-bend chord, 2,063 M over 6.6 km, demolishing 480 M of buildings). The real branch ≈ 1.5–1.7 bn
+  (research/46 §4): ours is lower because the ground model already holds the real bypass's cuts (its earthworks
+  come cheap; the photo note says so) and Auto fills the Štikov ravine 14 m high where the real road has a 423 m
+  bridge (1,020 m of bridges in all; ours 190 m). **Known:** small drags along it fail more often than on the old
+  chord (24 seeded drags of 25 m, `scripts/small-drag-audit.ts`: invalid 16 / 15 / 9 at km 1.5 / 3.3 / 5.0, the
+  old starter 8 / 10 / 0): the real line threads between class III roads and streets it rebuilt, which our
+  earthworks then cover (each with its concrete fix); the crossing engine's rebuilding of such roads is the lever.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
