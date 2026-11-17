@@ -1,5 +1,19 @@
 # Evaluate performance regression
 
+## Protected areas and the 3 % tunnel rule, cost model 42 (2026-11-17)
+
+What runs more on every route: a scan of the protected areas per station in the setup (crown and a dug tunnel end's
+reach, ≈ 0.7 ms per 2,000 stations; a 160 m block bitmap rejects most stations at once), the footprint's check of our
+works in areas (0.2–0.6 ms on D11, 0.9 ms on the whole D3), and the same cells in the retaining and support screens
+(memoised with their candidates). On D11 (no area near the saved designs, no tunnel) the interleaved timing against
+main 62ab65c, 12 rounds at host load 17–24: sum of minima B/A 1.030, medians 1.015, CPU 1.041 (an earlier run at load
+84: minima 0.955, medians 1.125, CPU 1.061) — within the noise of a loaded host; drag-perf `--gpu --check` passes in
+all six modes. Where a tunnel line exists, the grade search now also tries the wide band (only where the line runs
+at the band's floor) and the fine grid near the line (its coarse grade steps miss 3 % by a step), and in a window or
+block holding a protected area it skips the narrow corridor: the d35 stage-1 motorway, whose 3.2 km tunnel is now the
+one under the escarpment, evaluates in ≈ 0.6–0.7 s against ≈ 0.3–0.4 s (profile ≈ 0.26 s against 0.15–0.18 s); the
+d35 road 0.3–0.5 s against 0.14–0.2 s. Load was 17–84 throughout: these D35 figures are single runs, not interleaved.
+
 ## The engineering passes replay what did not change (bit-exact, 2026-11-17)
 
 Finding 23 of docs/architecture-review.md, its engineering part: `engineer()` (sections → retaining walls →
