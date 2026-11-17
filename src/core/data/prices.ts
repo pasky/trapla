@@ -90,8 +90,13 @@
  * A house under a deck ≥ 15 m up and 3 m over its roof stays unless a pier stands on it (research/62). Our bridge
  * over a road the player chose is met through the regrade retry, its price said.
  * 36: a long mined tube costs less per metre (Hessen's length curve, research/64): × 0.957 at 1 km, 0.935 at 2 km,
- * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row). */
-export const COST_MODEL_VERSION = 36;
+ * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row).
+ * 37: a support lift's target moved onto the traced line's point is raised by what the line falls from there to
+ * where the height is needed (it fell short on steep grades); side roads our earthworks cover: a dead end with no
+ * room to turn round before its junction is cut back to it, an overbridge whose ramps would bury a road beside it
+ * is cleared by the grade on every road (the separation retry), a split-off way is judged with that retry.
+ * D11 frozen +0–5.5 M (the lifts). */
+export const COST_MODEL_VERSION = 37;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
