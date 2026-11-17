@@ -1,21 +1,27 @@
 // Interleaved evaluate timing of two checkouts in one process (docs/evaluate-performance.md):
-//   npx tsx scripts/dev/interleave.ts <checkout A> <checkout B> [rounds]      (absolute paths; A = the base)
-// The five saved D11 designs, both evaluators loaded and warm, alternating (order swapped every round), so
-// host load hits both alike. Prints min / median per design, the ratio of the sums and the CPU time.
+//   npx tsx scripts/dev/interleave.ts <checkout A> <checkout B> [rounds] [<pack>[:<preset>] <design.json> …]
+// (absolute paths; A = the base). Default: the five saved D11 designs; else the designs named on the pack
+// named (the whole D3: `d3-full:d3-full-motorway scripts/scenarios/d3-full/d3-full-motorway.json`, with
+// NODE_OPTIONS=--max-old-space-size=4096). Both evaluators loaded and warm, alternating (order swapped every
+// round), so host load hits both alike. Prints min / median per design, the ratio of the sums and the CPU time.
 import { readFileSync } from 'node:fs';
-const [rootA, rootB, roundsArg] = process.argv.slice(2);
+const [rootA, rootB, roundsArg, packArg, ...files] = process.argv.slice(2);
 const rounds = Number(roundsArg ?? 12);
+const [packId, presetId] = (packArg ?? 'd11').split(':');
 async function load(root: string) {
-  const { loadPack } = await import(`${root}/scripts/loadpack.ts`);
+  const { loadPack, evalContext } = await import(`${root}/scripts/loadpack.ts`);
   const { evaluate } = await import(`${root}/src/core/evaluate.ts`);
-  const pack = loadPack(`${root}/public/scenarios/d11`);
+  const { scenarioParams } = await import(`${root}/src/core/data/scenario.ts`);
+  const pack = loadPack(`${root}/public/scenarios/${packId}`);
+  // (D11's own ends and junctions as the frozen bills have them; another pack as its mission starts)
   const { meta, terrain, scenario, buildings, roads, junctions } = pack;
-  const ctx = { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
+  const ctx = packArg ? evalContext(pack, scenarioParams(packId, presetId || undefined))
+    : { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
   return (d: unknown) => evaluate(ctx, d);
 }
 const A = await load(rootA), B = await load(rootB);
-const names = ['best', 'demo', 'direct-80', 'direct-90', 'town-centre'];
-const designs = names.map(n => JSON.parse(readFileSync(`${rootA}/scripts/${n}-design.json`, 'utf8')).design);
+const names = files.length ? files.map(f => f.split('/').pop()!.replace(/(-design)?\.json$/, '')) : ['best', 'demo', 'direct-80', 'direct-90', 'town-centre'];
+const designs = (files.length ? files : names.map(n => `scripts/${n}-design.json`)).map(f => JSON.parse(readFileSync(`${rootA}/${f}`, 'utf8')).design);
 const cpu = [0, 0]; // process CPU time: steadier than wall time on a loaded host (includes GC threads)
 const times: Record<string, number[][]> = Object.fromEntries(names.map(n => [n, [[], []]]));
 for (const d of designs) { A(d); B(d); A(d); B(d); }
