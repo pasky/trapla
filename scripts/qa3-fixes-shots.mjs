@@ -1,4 +1,4 @@
-// Shots of the sweep-3 fixes (research/66, /69): a slowed bend's card (its stretch, the faster geometry Auto keeps), the
+// Shots of the sweep-3 fixes (research/66, /69): a slowed bend's card (its stretch, the faster curve Auto keeps), the
 // railway bend card (no speed above the line's), the D3 0302 Sázava bridge with an arch, the D35 viaduct saying why
 // no arch fits, the tunnel card after the player's cut and cover, a near U-turn offering a hairpin.
 //   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/qa3-fixes-shots.mjs [--out docs/screenshots] [--first 290]
@@ -25,14 +25,16 @@ const piece = async (s, dist = 900, bearing = 120, elev = 35) => {
   await T(([x, y, d, b, e]) => window.trapla.lookAt(x, y, d, b, e), [r.x[i], r.y[i], dist, bearing, elev]); await game.idle(); await game.still();
 };
 try {
-  // 1. D11, one 7° bend at km 11.7 slowed to 70: its stretch is the whole road; Auto keeps the 90 km/h geometry
+  // 1. D11, one 7° bend at km 11.7 slowed to 70: its stretch is the whole road; Auto keeps the 90 km/h curve (it fits)
+  //    and rounds the heights as for 90 km/h (cheaper here)
   await game.open('scenario=d11'); await park();
   const one = JSON.parse(readFileSync('qa3/designs/d11-one-bend-70.json', 'utf8'));
   await setDesign(one);
   await T(() => window.trapla.selectPi(0)); await game.idle();
   let text = await card(); console.log('CARD bend 70', text.slice(0, 700));
   assert.match(text, /Its stretch is the whole road/);
-  assert.match(text, /Auto keeps the 90 km\/h curves and heights here/);
+  assert.match(text, /Auto keeps the 90 km\/h curve here: it fits/);
+  assert.match(text, /hilltops and dips as for 90 km\/h/);
   assert.equal(Math.round(await T(() => window.trapla.result().cost.total) / 1e6), 8782);
   await shot('d11-one-bend-70-keeps-90-geometry');
   // 2. a near U-turn on the Rýchory slope: "Make it a hairpin"

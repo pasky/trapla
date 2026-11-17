@@ -26,37 +26,46 @@ With the 90 km/h line kept on the 70 km/h plan (By hand), the bill is 8,732 M: t
 Over the best design (18 Auto bends, each alone at 80 or 70): −35 … +45 M, 14 of 36 slow-downs dearer (the same gap,
 smaller; the bend's tighter Auto radius also moves the line a little).
 
-## 2. The fix: Auto keeps a faster stretch's geometry where the bill finds it cheaper
+## 2. The fix: faster elements where they fit; the slower ones weighed in one pass
 
-A designer given a lower design speed for a stretch uses its smaller elements only where they pay. Every line built
-for a faster speed meets the slower stretch's rules (larger radii, gentler curves). So Auto now also evaluates the
-design with the slowed bends' curves and heights built for faster speeds — every mix of each slowed bend's speeds
-from its own up to the road's (hairpins keep theirs); where that is more than 8 evaluations, every slowed bend
-raised the same number of steps — and keeps the cheapest that has no more problems (`design-speed.ts
-geometryCandidates`, `evaluate.ts`; `EvalOptions.geometrySpeeds`). Travel time and the time goal stay at the bends'
-own speeds. A drag preview builds the geometry the last full result kept. By hand too: a bend's Auto radius is
-Auto's choice there as well, and a line taken by hand from Auto's was built on the geometry Auto kept (without it,
-taking the best design's line by hand with bend 1 at 70 changed that bend's radius 280 → 205 m and the bill +6 M).
+**First attempt (reviewed, replaced).** Every line built for a faster speed meets a slower stretch's rules, so Auto
+evaluated the design once more per faster geometry (every mix of each slowed bend's speeds) and kept the cheapest.
+Monotone, but 2–9 full evaluations per design: D11 one bend at 70 km/h 1.2 s against 0.3 s, too slow (owner).
+Cheaper rankings tried on the best design's 36 single-bend slow-downs (each against the road-speed line):
+- **a preview** (one solve, one engineering pass, no retaining walls, no crossing geometry): its differences
+  missed the full ones by up to ±25 M (e.g. bend 6 at 80: full −18.6 M, preview −0.1 M; bend 8 at 80: full +8.1 M,
+  preview −16.8 M): useless for a ranking at this scale;
+- **the first pass** of a full evaluation (before the retries): within 0.5 M of the full difference on all 36.
 
-| repro | before | after |
+**The mechanism now** (`plan-speeds.ts`, `design-speed.ts searchSpeeds`, `evaluate.ts`):
+1. *Plan.* A designer uses a slower stretch's smaller elements where the faster ones do not fit ("přechod na
+   minimální hodnotu návrhového prvku byl pozvolný", the transition to minimum elements gradual: VUT, research/47
+   §2). A slowed bend whose radius is Auto's keeps the curve of the fastest speed up to the road's that has no
+   horizontal problem its own speed's curve does not have; elsewhere its own tightest (three bends 330 m apart all at
+   70 km/h: 90 km/h S-bends do not fit, the middle bend takes its 70 km/h curve). "Tightest" on a slowed bend is the
+   player's choice (its own speed's tightest, set as the player's radius).
+2. *Heights.* The grade search rounds a slowed stretch's hilltops and dips as for the road's speed. Its own
+   smaller curves are weighed in one more pass of the same evaluation (its caches: the plan is the same), compared
+   before the retries as the first passes are (above), and kept where that line is cheaper with no more problems
+   (or has fewer).
+
+| repro | QA (model 38) | now |
 |---|---:|---:|
-| D11 one bend 90 / 80 / 70 | 8,782 / 8,783 / 9,067 M | 8,782 / 8,782 / 8,782 M (70: the 90 km/h geometry kept, 284 M cheaper) |
-| best design, 36 single-bend slow-downs | 14 dearer (up to +45 M) | none dearer; every 70 ≤ its 80 |
-| Královec railway, bend 3 at 100 | +47 M (QA) | 0 (the 120 km/h geometry kept) |
+| D11 one bend 90 / 80 / 70 | 8,782 / 8,783 / 9,067 M | 8,782 / 8,783 / 8,782 M |
+| best design, 36 single-bend slow-downs | 14 dearer (to +45 M) | none dearer; savings to −44 M (bend 13 at 70) |
+| Královec railway, bend 3 at 100 | +47 M | 0 |
 
-Guarantee: a slowed design costs no more than the same design with any of its slowed bends faster (its candidates
-include that design's geometry), so 70 ≤ 80 ≤ 90 bend by bend, and slowing one more bend costs nothing (review:
-best design, bend 1 at 70, then bend 5 at 70 as well: 3,592.6 → 3,608.8 M with the steps raised together, 3,592.6 M
-now). It holds up to 8 candidate geometries (two bends two steps down); beyond, per step only.
+Not a proof: the weighing is before the retries, so a near tie may end about 1 M either way (D11 one bend at 80:
++1.1 M); the 284 M kind of error is caught.
 
 The bend card says which kilometres the stretch covers ("Its stretch is the whole road" for one bend; else "Its
-stretch: km a–b", halfway along the straights to its neighbours) and, where Auto kept faster geometry, "Auto keeps the 90 km/h curves and heights here:
-284 M CZK cheaper."
+stretch: km a–b", halfway along the straights to its neighbours), "Auto keeps the 90 km/h curve here: it fits." and
+"Auto rounds its hilltops and dips as for 90 km/h." where it does.
 
-**Price in time.** A design with slowed bends is evaluated once more per candidate geometry (D11 one bend: 300 ms
-at 90, 740 ms at 80, 1.2 s at 70; the best design with two bends at 70: 1.6 s). Designs without slowed bends are unchanged (all frozen fixtures and
-drag-perf cases). The lasting fix is the grade search pricing the crossed roads (PLAN.md "Next steps" 1); then the
-candidates would rarely win.
+**Time.** One more pass for a design with slowed bends: D11 one bend at 70 0.45 s (0.27 s at 90); the best design
+with a bend at 70 0.23 s (0.16 s). Drags (`drag-perf --gpu --check`, all six modes, the best design with bends 4 at
+80 and 10 at 70): all within budget, settle after release 472 ms (the same design unslowed: 464 ms). The lasting fix
+is the grade search pricing the crossed roads (PLAN.md "Next steps" 1).
 
 ## 3. Which speeds a bend may have
 

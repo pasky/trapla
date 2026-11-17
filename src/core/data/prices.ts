@@ -102,8 +102,9 @@
  * (No version: a later finish of an evaluation builds again only the crossings near where its road differs from
  * an earlier finish's, crossings-kept.ts. No bill, validity or other field moved on any checked design:
  * docs/evaluate-performance.md.)
- * 39: playtest sweep 3. A stretch slowed below its road's speed keeps a faster speed's curves and heights where the
- * bill finds them cheaper (research/66; designs with slowed bends only); a bend is never faster than its road;
+ * 39: playtest sweep 3. A slowed bend keeps the road speed's curve where it fits, a slowed stretch's heights are
+ * searched as for the road's speed with its own smaller curves weighed in one more pass (research/66; designs with
+ * slowed bends only); a bend is never faster than its road;
  * arches rise to 1/3.5 of their span, a bridge to 3.3 × its arch, the rib's clearance in the search, an arch Auto's
  * only without a lift (research/69). Frozen bills and starters unchanged (runs carry the arch prices / reasons);
  * outcome audit random-3 −31.5 M (the arch options steer its support lifts). */

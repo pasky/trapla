@@ -419,8 +419,8 @@ here](docs/screenshots/230-town-centre-long-span-over-railway.png),
 [D3 motorway km 8.59: "Our bridge over it" in our cutting is built, and its card says what raising our motorway
 for it cost](docs/screenshots/231-d3-motorway-our-bridge-over-track-raised.png).
 Playtest sweep 3 fixes (cost model 39, PLAN.md "Playtest sweep 3"; `node scripts/qa3-fixes-shots.mjs`): [D11, one
-bend slowed to 70 km/h: its stretch is the whole road, Auto keeps the 90 km/h curves and heights (284 M
-cheaper)](docs/screenshots/290-d11-one-bend-70-keeps-90-geometry.png),
+bend slowed to 70 km/h: its stretch is the whole road, Auto keeps the 90 km/h curve and heights (the 70 km/h line
+was 284 M dearer)](docs/screenshots/290-d11-one-bend-70-keeps-90-geometry.png),
 [a bend turning back on itself on steep ground offers a hairpin](docs/screenshots/291-d11-near-u-turn-offers-hairpin.png)
 ([made one](docs/screenshots/292-d11-u-turn-made-a-hairpin.png)),
 [the railway mission's bend: no speed above the line's 120 km/h](docs/screenshots/293-rail-bend-speeds-up-to-the-line.png),
