@@ -116,6 +116,7 @@ export const LINK_TOO_FAR = 'Shaped link runs too far';
 export const LINK_CROSSES_MOTORWAY = 'Shaped link crosses a motorway at grade';
 /** + 'railway' | 'water' | 'building' */
 export const LINK_BLOCKED = 'Shaped link runs through a ';
+export const LINK_NATURE = 'Shaped link runs through a protected nature area';
 
 /** The height of an engineered line (link-route.ts profileLink) at distance d along it. */
 function linkHeight(points: readonly CrossingPoint[], d: number): number {
@@ -165,7 +166,7 @@ const JOIN_SHORTER = 0.8;
 const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
-  river: 'Shaped link crosses a river', far: LINK_TOO_FAR, works: 'Shaped link runs into another road of the project',
+  river: 'Shaped link crosses a river', far: LINK_TOO_FAR, works: 'Shaped link runs into another road of the project', nature: LINK_NATURE,
 };
 const linkMessage = (problem: LinkProblem, _shaped: true) => SHAPED_LINK[problem];
 
@@ -206,7 +207,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       footprint: 'there is no room for it beside our earthworks', motorway: 'it would have to cross a motorway on the ground',
       railway: 'it would have to cross a railway on the ground', water: 'it would have to run through a pond or river',
       river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
-      works: 'another road you build is in the way',
+      works: 'another road you build is in the way', nature: 'it would have to run through a protected nature area',
       none: 'no crossing within reach carries traffic over or under our road',
     } as Record<string, string>)[problem] ?? problem);
     const reason = reasons.join('; ');
@@ -234,6 +235,10 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Drag its bend points closer to our road, or choose "Automatic path" on the crossing card',
     detail: `A new piece of ${what} may run at most about ${(4 * MAX_REACH / 1000).toFixed(0)} km.`, basis: 'engine',
     rule: `Engine limit: a reroute is at most ${(4 * MAX_REACH / 1000).toFixed(0)} km long` };
+  if (message === LINK_NATURE) return { title: `Your path for the new ${what} runs through a protected nature area`,
+    fix: 'Drag its bend points so that it stays clear of the area, or choose "Automatic path" on the crossing card',
+    detail: `Nature reserves, nature monuments and Natura 2000 sites take no new roads.`, basis: 'law',
+    rule: 'Act 114/1992 §§29, 34–36, 45c: no building in nature reserves and monuments, no damage to Natura 2000 sites' };
   if (message === LINK_CROSSES_MOTORWAY || message.startsWith(LINK_BLOCKED)) {
     const thing = message === LINK_CROSSES_MOTORWAY ? 'a motorway' : `a ${message.slice(LINK_BLOCKED.length)}`;
     return { title: `Your path for the new ${what} runs across ${thing}`,
@@ -1080,7 +1085,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       let plan = profileLink(survey, row.rampGradient, linkEnv);
       if (plan.problems.includes('steep') && row.rampSteepest > row.rampGradient) plan = profileLink(survey, row.rampSteepest, linkEnv);
       // (its earth slopes reaching a building refuse it, as a building on its line does: squarePath)
-      const failed = plan.problems.filter(p => p === 'steep' || p === 'railway' || p === 'water' || p === 'building');
+      const failed = plan.problems.filter(p => p === 'steep' || p === 'railway' || p === 'water' || p === 'building' || p === 'nature');
       if (plan.houses.length && !failed.includes('building')) failed.push('building');
       if (failed.length) { diagnose(g, `${SQUARE_FAILS}${failed.join(',')}`); continue; }
       for (const q of road) if (q.d! > d0 + 1e-6 && q.d! < d1 - 1e-6) {

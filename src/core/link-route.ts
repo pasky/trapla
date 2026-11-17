@@ -12,7 +12,9 @@ import type { RoadNet } from './roadnet';
 
 type XY = { x: number; y: number };
 /** Engine problem codes (crossing-geometry.ts gives them player words). */
-export type LinkProblem = 'steep' | 'footprint' | 'motorway' | 'railway' | 'water' | 'building' | 'works' | 'river' | 'far';
+/** what a reroute may not run through on the ground ('nature': an area that takes no works, research/75) */
+export type LinkObstacle = 'railway' | 'water' | 'building' | 'works' | 'nature';
+export type LinkProblem = 'steep' | 'footprint' | 'motorway' | LinkObstacle | 'river' | 'far';
 /** A house in the way of a new road is bought out and demolished like one under our own road. */
 /** Profile sampling along the line, m; obstacles are queried per piece of at most PIECE m. */
 const SAMPLE = 5, PIECE = 50, MAX_SAMPLES = 450;
@@ -37,7 +39,7 @@ export interface LinkEnv {
   roads?: RoadNet;
   /** What blocks a new road of this half-width from a to b on the ground (raster rail/water). */
   /** ('works': another road of the project the reroute is kept clear of) */
-  obstacle?: (a: XY, b: XY, half: number) => 'railway' | 'water' | 'building' | 'works' | null;
+  obstacle?: (a: XY, b: XY, half: number) => LinkObstacle | null;
   /** Houses (still standing) under a new road of this half-width from a to b, and their price. */
   houses?: (a: XY, b: XY, half: number) => number[];
   houseCost?: (j: number) => number;
@@ -45,7 +47,7 @@ export interface LinkEnv {
   streams?: (a: XY, b: XY) => (XY & { crossing: WaterCrossing })[];
   /** Search memo shared by every reroute of one evaluation (terrain and our road are fixed): what
    * stands at a 2 m lattice point (-1 blocked, else the price of the houses there). */
-  memo?: { free: Map<number, number>; slopes?: Map<string, { blocked: 'railway' | 'water' | 'building' | 'works' | null; houses: number[] }> };
+  memo?: { free: Map<number, number>; slopes?: Map<string, { blocked: LinkObstacle | null; houses: number[] }> };
 }
 export interface LinkPlan {
   points: CrossingPoint[];

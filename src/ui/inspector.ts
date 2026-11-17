@@ -121,6 +121,8 @@ export class Inspector {
     maxRadius: (i: number) => number | null;
     /** a radius the editor lowered to fit during a drag (ui/radius-notes.ts): what was set */
     radiusNote?: (i: number, r: number | null) => { from: number; to: number } | null;
+    /** notes where our works on km s0…s1 stand in a protected area that allows them on conditions (ui/nature-notes.ts) */
+    natureNotes?: (r: Result, d: Design, s0: number, s1: number) => string[];
     /** a house heard by two or more roads and decided once for the project: its project receiver and the
      * roads' names (null: decided by one road alone, or the project is not priced) */
     together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
@@ -357,7 +359,7 @@ export class Inspector {
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
-      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
+      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', STRUCTURE_OPTIONS, active)}
       ${method}

@@ -41,7 +41,8 @@ import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TRACK_CENTRES_M, TURNOUT_ANGLE_RAD } fro
 import { d275CrossSection } from './data/motorway';
 import { sourceReach, type SourceLane } from './noise-field';
 import { crossingWallGaps } from './crossing-walls';
-import { protectedRasterCells } from './protected-raster';
+import { natureCells, protectedRasterCells } from './protected-raster';
+import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
@@ -2056,7 +2057,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
 function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySet<number>, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, houses: ReturnType<typeof finishBuildings>) {
   const { n, st, ds, terrain, al, crossingOverrides, cat, preview, lap, endJunctions, railOurs, retiredAt, water, timing } = setup;
   const { width, kind, sec, engineeredCrossings, prof, urban, grade, runs, channelRelocations, waterZ,
-    retainingWalls, culverts } = quantities;
+    retainingWalls, culverts, cutCover } = quantities;
   const { b } = prices;
   const { mergedInto, urbanCentre, reroutes, retainingMemo } = caches;
   const { bld, keptIds, gone, buildingCost, demolished } = houses;
@@ -2091,8 +2092,10 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     const len = Math.hypot(q.x - p.x, q.y - p.y);
     if (!(len > 0)) return null;
     const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
-    let hit: 'railway' | 'water' | 'building' | 'works' | null = null;
-    protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
+    let hit: LinkObstacle | null = null;
+    const piece = { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half };
+    protectedRasterCells(terrain, piece, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
+    if (!hit && terrain.protectedAreas) natureCells(terrain, piece, false, c => { if (c.level === 'ban') hit = 'nature'; });
     if (!hit && clearOf?.(p, q, half)) hit = 'works';
     // a house you keep is never demolished for a reroute
     if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
@@ -2145,6 +2148,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
+    motorway: cat.mode === 'motorway', cutCover,
     ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}), ...(retiredAt ? { railRetired: retiredAt } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));

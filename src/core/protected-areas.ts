@@ -12,6 +12,8 @@ export class ProtectedAreas {
   private readonly rowStart: Int32Array;
   private readonly runs: Int32Array;
   private readonly ruling = new Map<number, number>();
+  /** local metres covered by any run: [x0, y0, x1, y1] (empty: x0 > x1) */
+  readonly extent: readonly [number, number, number, number];
 
   constructor(data: ProtectedData, readonly nx: number, readonly ny: number, readonly cell: number) {
     this.sites = data.sites;
@@ -75,6 +77,12 @@ export class ProtectedAreas {
     }
     starts[ny] = runs.length / 3;
     this.rowStart = starts; this.runs = Int32Array.from(runs); this.combos = combos;
+    let c0 = Infinity, c1 = -Infinity, r0 = Infinity, r1 = -Infinity;
+    for (let r = 0; r < ny; r++) if (starts[r + 1] > starts[r]) {
+      r0 = Math.min(r0, r); r1 = r;
+      c0 = Math.min(c0, runs[3 * starts[r]]); c1 = Math.max(c1, runs[3 * (starts[r + 1] - 1) + 1]);
+    }
+    this.extent = [c0 * cell, height - (r1 + 1) * cell, (c1 + 1) * cell, height - r0 * cell];
   }
 
   /** the combo of sites covering grid cell (col, row), or −1 */
@@ -104,14 +112,15 @@ export class ProtectedAreas {
     }
   }
 
-  /** The site that rules works in this combo for a road (strictest that takes no works), −1 if none does. */
-  rulingSite(combo: number, motorway = false, builtUp = false): number {
+  /** The site that rules works in this combo for a road: the first, strictest first, that takes no works, else
+   * (`any`) the first that needs consent, else the first at all; −1 if none (or, without `any`, if none bans works). */
+  rulingSite(combo: number, motorway = false, builtUp = false, any = false): number {
     if (combo < 0) return -1;
-    const key = combo * 4 + (motorway ? 2 : 0) + (builtUp ? 1 : 0);
+    const key = combo * 8 + (motorway ? 4 : 0) + (builtUp ? 2 : 0) + (any ? 1 : 0);
     let v = this.ruling.get(key);
     if (v === undefined) {
-      v = -1;
-      for (const k of this.combos[combo]) if (protectedRule(this.sites[k], motorway, builtUp).level !== 'info') { v = k; break; }
+      const sites = this.combos[combo], level = (k: number) => protectedRule(this.sites[k], motorway, builtUp).level;
+      v = sites.find(k => level(k) === 'ban') ?? (any ? sites.find(k => level(k) === 'consent') ?? sites[0] : -1);
       this.ruling.set(key, v);
     }
     return v;

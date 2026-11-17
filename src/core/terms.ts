@@ -248,6 +248,7 @@ export function realignmentReason(problems: readonly string[]): string {
         : /intersects an unhandled road|grade-separated/.test(p) ? 'it would have to cross another road on a ramp'
           : /sever/.test(p) ? 'it would cut off a side road'
             : /water\/rail/.test(p) ? 'it would run into water or a railway'
+              : /protected nature/.test(p) ? 'it would run through a protected nature area'
               : /turnaround/.test(p) ? 'there is no room for a turning area at its cut end'
                 : /terrain data/.test(p) ? 'it would leave the map'
                   : /no surviving branch/.test(p) ? 'none of it would remain outside our earthworks'

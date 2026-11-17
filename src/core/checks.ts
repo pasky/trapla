@@ -18,7 +18,8 @@ export type ViolationKind = typeof VIOLATION_KINDS[number];
 
 /** what a requirement rests on: a design norm, a rule / simplification of the game, or a limitation of
  *  the game's solvers (they found no valid shape although one may exist) */
-export type ViolationBasis = 'norm' | 'game' | 'engine';
+/** norm (ČSN, TP), law (an Act), game rule, engine limit */
+export type ViolationBasis = 'norm' | 'law' | 'game' | 'engine';
 
 /** Numeric diagnostics for the geometry model, not proof that every norm-compliant shape is impossible. */
 export interface HorizontalConstraint {
