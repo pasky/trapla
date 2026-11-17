@@ -101,9 +101,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Playtest sweep 3 realism (cost model 41, PLAN.md "Playtest sweep 3: slowed stretches, deep cuts, cones …"): Auto
   cuts no road or motorway deeper than 30 m (a tunnel), cuts rock by its kind (the Královec railway now tunnels its
   54 m cut in Carboniferous interbeds: 9.1 → 10.6 bn), and stands bridge ends in fills on cones; where a cone would
-  cover what lies under the bridge the end is a wall (fill ≤ 10 m) or Auto's bridge goes on. Open: the cones' fill
-  is not in the structure choice's earth balance (it pins blocks at the top fill value and over-bridges); a wall
-  abutment is not priced apart; no arch inside a viaduct over 3.3 × its arch; the grade search can take a dearer line
+  cover what nothing moves aside the end is a wall (fill ≤ 10 m, billed: cost model 42, PLAN.md "Bridge ends: one
+  rule"; `scripts/bridge-ends-audit.ts` is a gate) or Auto's bridge goes on; a minor way under a cone is moved aside.
+  Open: the cones' fill is not in the structure choice's earth balance (it pins blocks at the top fill value and
+  over-bridges); no arch inside a viaduct over 3.3 × its arch; the grade search can take a dearer line
   when a price tips it (direct-90 with presplit: 391 M dearer than holding its old line). Two roads of a project whose
   earthworks come within the working strip: the later one keeps clear behind a wall (project-ledger.ts, evaluateProject).
 - Junction approaches on class I–III roads are not ramp-capped.

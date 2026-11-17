@@ -980,6 +980,45 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   sky-coloured sliver beside the cone). Left: random-12 / random-19 (already invalid) bury a track / street that
   cannot be moved aside on the 30 m rule's new line (steep ground, a side road it would cut off).
 
+### Bridge ends: one rule (cost model 42, 2026-11-17)
+
+Owner's review of the Královec railway (shots /tmp/owner-shots, the QA's repro `qa3/bridge-ends.ts`): some ends stood on
+cones, others were closed by vertical walls up to 28 m (km 5.61: 24.9 m, km 5.70: 16.1 m, km 10.27: 28.4 m; an 80 m fill
+between km 5.61 and 5.70 boxed in by walls at both ends), unbilled. The end-closing check counted any way under the
+cone's flanks, field tracks included, and never looked at `CONE.closedMax`; the search that lengthens Auto's bridge
+looked at the cone's axis only and spared minor ways; and a memo shared one key between the screen of every road and
+that of the strict ways (an empty strict set), so a check could read the other's answer.
+
+- **One rule** (`support-layout.ts` `coneBuries`, both for Auto's ends and the final check): what the cone would cover,
+  on its axis or under its quarter cones (`abutment-cone.ts` `coneFootprint`, the same ground the footprint screen
+  sees), that nothing moves aside. A minor way the footprint screen may move aside is not counted: the cone's ground is
+  screened as an abutment's (`footprint.ts`), so the way is moved aside by the existing remedy (or, if that fails, it
+  is a strict way on the retry and counts). A covered end is a closed abutment only on a fill of at most 10 m; above it
+  Auto's bridge goes on to an end that is clear or low enough for a wall; where none is within reach, and on the
+  player's bridge, the cone stands and what it covers is a footprint problem ("A bridge end stands on …").
+- **The wall is billed** as what is drawn (the concrete end cap across the fill's end section): `closedEndWall`, a
+  cantilever retaining wall at its height across the crest and falling with the side slopes, `retainingAssembly`
+  prices (OTSKP, research/18; shape PROVISIONAL, research/68 §4.5); with the bridge (≈ 2–5 M CZK per end). The bridge
+  card: "One end is a wall 9 m high down to the ground, so the fill does not cover what lies below: 2.9 M CZK."
+- **A fill between two bridges closed off by a wall** is bridged where its deck costs less than the fill, its walls and
+  cones (after the support layout, Auto's gaps only; the structure choice had weighed cones there). None tips on the
+  packs (decks 1.5–3.4 × the fill); the Královec fill at km 5.61–5.70 became part of one bridge because its walls
+  were over 10 m.
+- **Results.** Every bridge end of every pack's straight start, saved designs and presets (1,212 ends): a cone or a
+  billed wall of at most 10 m (`scripts/bridge-ends-audit.ts`, a full gate; `tests/bridge-ends.test.ts` for D11 and
+  Nová Paka). Before: 254 closed ends, 127 of them on fills over 10 m (up to 28 m), none billed; now 94, all ≤ 10 m.
+  Validity unchanged everywhere. Frozen D11: straight 8,847.9 → 8,947.0 (five ends that were walls of 11.4–12.7 m go
+  on 20–60 m to a cone or a ≤ 10 m wall: +140 bridges, −31 bought fill, −23 crossings), best 3,694.6 → 3,700.3,
+  best-drag 3,681.2 → 3,688.5, best-pin 3,713.2 → 3,718.9, best-structures 3,782.9 → 3,790.9, best-manual 3,689.7 →
+  3,695.4, demo 4,248.3 → 4,251.8, direct-80 4,232.2 → 4,236.1, direct-90 5,421.8 → 5,454.0, town-centre 9,384.9 →
+  9,435.9, town-controls 9,393.7 → 9,444.7. Starters (route bills, bn): Královec railway 10.595 → 10.670, d3-full
+  37.865 → 38.060, d3-0301 5.154 → 5.163, d3-0302 7.045 → 7.053, d3-0303 5.599 → 5.563, d3-0304 10.133 → 10.182,
+  d3-0305 9.559 → 9.593, d3 3.927 → 3.934, d3 motorway 14.465 → 14.471, d35-full 32.380 → 32.584, d35 motorway
+  19.093 → 19.213, d35 road 6.561 → 6.597, Nová Paka 1.223 (unchanged). Shots 390–393 (`scripts/abutment-ends-shots.mjs`).
+- **Open:** the wall's shape is a study allowance (no Czech height rule for closed abutments was found, research/68
+  §1.4); the structure choice still weighs a cone at every end (a closed end's wall is known only after the support
+  layout).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
