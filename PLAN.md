@@ -589,7 +589,7 @@ Four findings of the architecture review, then a play of the D3 and D11 missions
 - **Seen while playing, then fixed (cost model 33, research/61):** a player's underpass / bridge choice no longer
   forces the grade solve (no fixed point; D3 km 2.67's +41 M gone); where Auto's line leaves a crossing too little
   room — the player's box or bridge, or a reroute through homes where a box would do — the line is lifted locally
-  or solved again with that height, the cheaper that works, only while it costs no more than the crossing's own
+  solved again with that height (else lifted locally), only while it costs no more than the crossing's own
   treatment (otherwise the problem says how much to raise our road: D3 km 1.76 +1.45 bn → 12.7 M and said);
   D11 direct-80 km 6.83 is now a box, its three homes kept (4,183 → 4,157 M); a player's unbuildable crossing owns
   its way's stretch (no phantom relocation); "Cut and reroute" no longer pins a road Auto moves beside ours (D3 km

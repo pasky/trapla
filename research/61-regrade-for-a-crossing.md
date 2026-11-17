@@ -28,10 +28,9 @@ what it would take. Implemented (evaluate.ts, "Our line raised for a crossing"):
 2. Where that line leaves a crossing too little room — the player's box (even with the way lowered by
    LOWERING_RULES.maxDepth, research/37, or on its straightened line), the player's bridge over a road (its
    clearance), or an automatic reroute that takes a home where its class's box would do (research/60: homes
-   only where nothing else can be built) — two candidates are evaluated: the line lifted there (the support
-   lift, a local repair within its block) and the grade solved again with that height as a floor.
-3. The cheaper candidate that meets the need and adds no problem nearby (for Auto's homes: takes fewer homes)
-   is kept, **only while its bill rises by no more than the crossing's own treatment costs** (the reroute it
+   only where nothing else can be built) — the grade is solved again with that height as a floor and, where
+   that does not do, the line is lifted there instead (the support lift, a local repair within its block).
+3. The first that meets the need and adds no problem nearby (for Auto's homes: takes fewer homes) is kept, **only while its bill rises by no more than the crossing's own treatment costs** (the reroute it
    replaces, or the player's box / bridge). This is a game rule of proportion, not a sourced number: our road
    is not regraded for kilometres to suit one crossing. Otherwise the crossing's problem says how much our road
    would have to rise ("Embankment too low for an underpass: raise our road here by 8.6 m …").
@@ -51,6 +50,8 @@ what it would take. Implemented (evaluate.ts, "Our line raised for a crossing"):
   more than 3 km away or clashes (`choice-audit` gate; on main before this: 3 failures, +123 to +666 M).
   D3 km 1.76 underpass: 12.7 M, "Embankment too low … raise our road here by 8.6 m"; D11 direct-80 km 6.83
   underpass: valid (as Auto now). Straighten-audit: 9 done (km 5.26 now done at +28 M), 18 said, none BAD.
+- Evaluate time: one more pass (two where the new solve fails) only for a design with such a crossing:
+  D11 direct-80 181 → 247 ms (min of 3, loaded host); designs without one unchanged.
 - Left: "Our bridge over it" in our cutting (D3 km 8.59: +1.26 bn, valid) is still met at any price: the choice
   paints a bridge, whose support needs lift the line (support-layout, the design-realism agent's area). The
   player's "Cut and reroute" at D3 km 5.26 takes away the crossing the class II road is led to; Auto then bridges

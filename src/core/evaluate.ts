@@ -385,8 +385,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // (the box under our embankment even with the way lowered as far as it may be, or on its straightened line;
   // our bridge its clearance); (b) an automatic reroute that takes a home where its class's box would do but
   // for our low embankment (homes go only where nothing else can be built, research/60). A designer tries it
-  // both ways: lifting the line there (as for a bridge's supports) and solving the grade again with that
-  // height; the cheaper that meets it and leaves no more problems is kept — only while it costs no more than
+  // both ways: solving the grade again with that height and, where that fails, lifting the line there (as for a
+  // bridge's supports); the first that meets it and leaves no more problems is kept — only while it costs no more than
   // the crossing's treatment itself (a rule of proportion: our road is not regraded for kilometres to suit one
   // crossing; the problem then says how much our road would have to rise). The first line is Auto's own: a
   // player's choice is no fixed point of the grade solve.
@@ -416,10 +416,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const meets = (r: Result) => (needs.some(q => q.asked) ? regionCount(r, at) < regionCount(result, at) : regionCount(r, at) <= regionCount(result, at))
         && (needs.every(q => q.asked) || homes(r) < homes(result));
       let best: { r: Result; o: EvalOptions } | undefined;
-      for (const [k, o] of [{ ...used, choiceLifts: needs }, { ...used, choiceFloors: needs }].entries()) {
+      // (the new solve first: where it works, the lift is not tried — evaluate time)
+      for (const [k, o] of [{ ...used, choiceFloors: needs }, { ...used, choiceLifts: needs }].entries()) {
+        if (best) break;
         const r = evaluateRoute(ctx, d, o);
         r.timing['count.regradeRetry'] = k + 1;
-        if (meets(r) && r.cost.total - result.cost.total <= price(result, false) + price(r, true) && (!best || r.cost.total < best.r.cost.total)) best = { r, o };
+        if (meets(r) && r.cost.total - result.cost.total <= price(result, false) + price(r, true)) best = { r, o };
       }
       if (best) { result = best.r; used = best.o; }
     }
