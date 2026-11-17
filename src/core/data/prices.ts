@@ -237,8 +237,9 @@ export const TUNNEL_RULES = {
   /** NV 264/2009 Sb. annex 2.2 (EU Directive 2004/54/EC annex I §2.2): "V nových tunelech nesmí být podélný sklon
    * větší než 5 %, kromě případů, kde prostorové podmínky neumožňují jiné řešení"; "V tunelech o sklonu větším než
    * 3 % se na základě analýzy rizik musí přijmout dodatečná nebo zesílená opatření ke zvýšení bezpečnosti". Hessen
-   * Mobil 2006 §3.1.6: "das Längsgefälle sollte 3 % nicht überschreiten" (research/73 §3). Auto keeps its tunnels
-   * within `autoMaxGrade`; above it a note, above `maxGrade` a problem. */
+   * Mobil 2006 §3.2.1: such measures "können die Kosten … deutlich erhöhen", with no figure; no source prices them
+   * (research/73 §3, research/76): above `autoMaxGrade` a tunnel's card has a note, no cost. No new tunnel of Auto's
+   * is steeper than `maxGrade` where its line lies wholly in it; the player's over 500 m is a problem. */
   autoMaxGrade: 0.03,
   maxGrade: 0.05,
   /** NV 264/2009 is the act on tunnels longer than 500 m: the note and the problem are for those, m */

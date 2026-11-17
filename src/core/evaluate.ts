@@ -1337,7 +1337,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       ...(vlim.gradeAt ? { gradeAt: vlim.gradeAt } : {}),
       ...(typeof vlim.crest === 'number' ? {} : { crestAt: vlim.crest }), ...(typeof vlim.sag === 'number' ? {} : { sagAt: vlim.sag }),
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: either, structureKind: manualStructures, pins: d.gradePins,
-      portalDepth: STRUCTURE_RULES.portalDepth, tunnelMaxGrade: TUNNEL_RULES.autoMaxGrade, tunnelHardGrade: TUNNEL_RULES.maxGrade,
+      portalDepth: STRUCTURE_RULES.portalDepth, tunnelHardGrade: TUNNEL_RULES.maxGrade,
       // A motorway or railway structure costs far more than the default penalty (a 70 m motorway bridge):
       // clear rivers, railways and roads rather than pay it.
       ...(penaltyAt ? { clearancePenaltyAt: penaltyAt } : {}), ...(nature ? { hardClearance: nature } : {}),

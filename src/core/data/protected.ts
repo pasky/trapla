@@ -1,10 +1,11 @@
 // Nature protection areas (research/75; data: AOPK ČR open data, pipeline/fetch_protected.py and
 // build_protected.py, a pack's `protected.json`). What zákon 114/1992 Sb. forbids in each kind of area and
-// how the game treats works there: a `ban` area takes no works of ours (cuts, fills, tunnel ends and their pits,
+// how the game treats works there (a Natura 2000 site is not a ban: works there need a Natura assessment, §§45h–i):
+// a `ban` area takes no works of ours (cuts, fills, tunnel ends and their pits,
 // bridge supports, walls, rebuilt roads): Auto bridges over it with no supports inside, takes the road under it in
 // a mined tunnel, or the player moves the route; the player's works there are a problem. A `consent` area (a
-// protection zone) takes them with a note that they need the nature authority's consent; an `info` area (a bird
-// area, an outer zone of a landscape area) is drawn and named, with a note where works stand in it.
+// protection zone) takes them with a note that they need the nature authority's consent; an `info` area (a Natura
+// 2000 site or bird area, an outer zone of a landscape area) is drawn and named, with a note where works stand in it.
 
 /** AOPK category codes: national / nature reserve and monument, protection zone, Natura 2000 site of community
  * importance (EVL) and bird area (PO), national park, protected landscape area (CHKO). */
@@ -61,8 +62,11 @@ export function protectedRule(site: Pick<ProtectedSiteData, 'kind' | 'zone' | 'o
       rule: 'Act 114/1992 §36(2): a nature monument may not be changed or damaged' };
     case 'OP': return { level: 'consent', label, why: `Works next to a protected ${site.of === 'NP' ? 'national park' : 'reserve or monument'} need the nature authority's consent.`,
       rule: `Act 114/1992 §37: works in a protection zone need the nature authority's consent${site.declared ? '' : ' (50 m round a reserve or monument where no zone is declared)'}` };
-    case 'EVL': return { level: 'ban', label, why: 'A Natura 2000 site is protected from damage; works that may harm it need a Natura assessment and are allowed only for an overriding public interest.',
-      rule: 'Act 114/1992 §45c(2), §§45h–45i: a Natura 2000 site is protected from damage; harmful works need consent and a Natura assessment' };
+    // Not a ban (§§45h–45i): works that may harm the site need a Natura assessment, and with a significant impact an
+    // overriding public interest and compensation; motorways do cross such sites (the D3 Sázava bridge over EVL
+    // Dolní Sázava). The assessment and any compensation are not costed (no source): a note, like a bird area.
+    case 'EVL': return { level: 'info', label, why: 'Works here need a Natura assessment; if they would harm the site, they are allowed only for an overriding public interest, with compensation.',
+      rule: 'Act 114/1992 §45c(2), §§45h–45i: works in a Natura 2000 site need a Natura assessment' };
     case 'PO': return { level: 'info', label, why: 'A bird area: works there need a Natura assessment, but are not forbidden as such.',
       rule: 'Act 114/1992 §45e, §§45h–45i: works in a bird area need a Natura assessment' };
     case 'NP': return builtUp ? { level: 'info', label, why: 'Inside a village of a national park building is allowed.', rule: 'Act 114/1992 §16(2)' }
