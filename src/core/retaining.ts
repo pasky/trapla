@@ -45,7 +45,10 @@ export interface WalledBuilding { j: number; s0: number; s1: number; side: 'L' |
   /** the wall's estimated price and what demolishing the building would have cost, CZK */
   wall: number; demolition: number; kept: boolean }
 export type RetainingFeatureCache = Map<number, { left: number; right: number; roads: RoadSegment[]; water: WaterSegment[];
-  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memos?: StationMemo[] }>;
+  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memos?: StationMemo[];
+  /** which barrels the station reads: '' none (no water near it), 'S' all (a raster stream), else those
+   * connected to these reaches (its water candidates') */
+  reads?: string }>;
 /** One station's screening outcome, replayed in order when every input it read is unchanged:
  * this candidate set (same object), section widths, grade, barrels and crossing-way map. A station keeps
  * its last few (the two passes of a plan differ in their barrels, a strict retry in its crossing ways). */
@@ -55,11 +58,11 @@ type StationEvent = [0, Request] | [1, ClearanceRequest] | [2, BridgeRequest] | 
 /** A crossing way's stretch inside a station's footprint: cell, segment, half width, way, the stretch; and what
  * screening it made of it last time (`made`: for this grade and these owned stretches of the way). */
 type CrossingHit = [5, FootprintCell, RoadSegment, number, number, [number, number], { made?: { grade: number; owned: [number, number][]; events: StationEvent[] } }];
-/** The stations of the last screening pass with one set of crossing ways (`ways`) that read no barrel (no
- * water near them): what each read of our road and the events it made. A later pass with the same ways
- * replays every such station whose three numbers are unchanged without asking its candidates again.
- * `grade` is NaN where the station is not held (it reads barrels, or its candidates were asked again). */
-interface PassRecord { ways: string; left: Float64Array; right: Float64Array; grade: Float64Array; events: StationEvent[][] }
+/** The stations of the last screening pass of its kind (`ways`: which pass of a plan, its crossing ways): what each read of our
+ * road and of the barrels (`reads`: its candidates' own, `barrels`: their key then) and the events it made.
+ * A later pass with the same ways replays every station for which these are unchanged without asking its
+ * candidates again. `grade` is NaN where the station is not held (its candidates were asked again). */
+interface PassRecord { ways: string; left: Float64Array; right: Float64Array; grade: Float64Array; reads: string[]; barrels: string[]; events: StationEvent[][] }
 /** A wall's place on one side of a station as last found (from this grade, limit, room on the other side
  * and whether it holds back water), and the section it leaves. */
 interface WallMemo { grade: number; limit: number; otherFoot: number; wet: boolean;
@@ -68,8 +71,8 @@ interface WallMemo { grade: number; limit: number; otherFoot: number; wet: boole
  * `walls`: per constraint set (all, firm) and side, by station. */
 interface PassMemo { records: PassRecord[]; walls: (WallMemo | undefined)[][] }
 const passMemos = new WeakMap<RetainingFeatureCache, PassMemo>();
-/** Crossing-way sets whose pass is kept, and outcomes kept per station. */
-const PASS_RECORDS = 4, STATION_MEMOS = 4;
+/** Passes kept (two or three of a plan, for two or three sets of crossing ways), and outcomes kept per station. */
+const PASS_RECORDS = 8, STATION_MEMOS = 4;
 type Request = { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number };
 type ClearanceRequest = { i: number; z: number; id?: number };
 type BridgeRequest = { i: number; id?: number };
@@ -130,7 +133,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     }
   };
   for (let attempt = 0; attempt < 3; attempt++) {
-    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays, buildingWalls);
+    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays, buildingWalls, attempt);
     let changed = false;
     barrels = barrels.flatMap(b => {
       const left = Math.min(b.left, r.dayL[b.i]), right = Math.min(b.right, r.dayR[b.i]);
@@ -146,11 +149,11 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
   }
   // Bound coupled wall/ownership retries. If they do not settle, no hypothetical barrel
   // can waive a constraint: retain/bridge the feature and let the final screen validate it.
-  return retainingPass(r, terrain, roads, overrides, water, cache, [], crossingWays, buildingWalls);
+  return retainingPass(r, terrain, roads, overrides, water, cache, [], crossingWays, buildingWalls, 3);
 }
 
 function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | undefined, overrides: ArrayLike<number> | undefined,
-  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[], crossingWays?: CrossingChainages, buildingWalls?: BuildingWalls): RetainingPlan {
+  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[], crossingWays?: CrossingChainages, buildingWalls?: BuildingWalls, attempt = 0): RetainingPlan {
   const { n, ds } = r, w = r.crownWidth / 2;
   const forcedBridge = new Uint8Array(n), forcedTunnel = new Uint8Array(n), perCell = new Float64Array(n), landPerCell = new Float64Array(n);
   const wallSurfaceL = new Float64Array(n).fill(NaN), wallSurfaceR = new Float64Array(n).fill(NaN);
@@ -236,12 +239,17 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   const crossingIntervals = new Map<number, [number, number][]>();
   // Barrels read by a station: those connected to its water candidates (all of them for raster streams).
   const barrelSig = barrels.map(b => `${water.indexOf(b.c)}:${b.i}:${b.left}:${b.right}:${b.cover}|`);
-  const stationBarrels = (candidates: { water: WaterSegment[]; raster: { feature: string }[] }) => {
-    if (!barrels.length || (!candidates.water.length && !candidates.raster.length)) return '';
-    const stream = candidates.raster.some(p => p.feature === 'stream');
-    let key = '';
-    for (let k = 0; k < barrels.length; k++)
-      if (stream || candidates.water.some(seg => connectedToBarrel(seg.reach.id, k))) key += barrelSig[k];
+  const barrelKeys = new Map<string, string>();
+  const stationBarrels = (candidates: { water: WaterSegment[]; raster: { feature: string }[]; reads?: string }) => {
+    const reads = candidates.reads ??= candidates.raster.some(p => p.feature === 'stream') ? 'S' : [...new Set(candidates.water.map(seg => seg.reach.id))].join(',');
+    if (!barrels.length || reads === '') return '';
+    let key = barrelKeys.get(reads);
+    if (key === undefined) {
+      key = '';
+      for (let k = 0; k < barrels.length; k++)
+        if (reads === 'S' || candidates.water.some(seg => connectedToBarrel(seg.reach.id, k))) key += barrelSig[k];
+      barrelKeys.set(reads, key);
+    }
     return key;
   };
   const barrelLinks = new Map<number, boolean[]>();
@@ -258,21 +266,25 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   };
   let held = cache && passMemos.get(cache);
   if (cache && !held) passMemos.set(cache, held = { records: [], walls: [[], [], [], []] });
-  // This pass's record: the one made with the same crossing ways, or a new one.
-  const ways = crossingWays ? [...crossingWays.keys()].join(',') : '';
+  // This pass's record: the one made with the same crossing ways by the same pass of an earlier plan (its
+  // barrels are the likeliest to be this pass's), or a new one.
+  const ways = `${attempt}:${crossingWays ? [...crossingWays.keys()].join(',') : ''}`;
   let record = held?.records.find(x => x.ways === ways && x.grade.length === n);
   if (held) {
     if (record) held.records.splice(held.records.indexOf(record), 1);
-    else record = { ways, left: new Float64Array(n), right: new Float64Array(n), grade: new Float64Array(n).fill(NaN), events: new Array(n) };
+    else record = { ways, left: new Float64Array(n), right: new Float64Array(n), grade: new Float64Array(n).fill(NaN), reads: new Array(n), barrels: new Array(n), events: new Array(n) };
     held.records.unshift(record);
     if (held.records.length > PASS_RECORDS) held.records.length = PASS_RECORDS;
   }
   for (let i = 1; i < n - 1; i++) {
     const grade = r.grade[i];
     if (record && record.grade[i] === grade && record.left[i] === r.dayL[i] && record.right[i] === r.dayR[i]) {
-      const events = record.events[i];
-      for (let k = 0; k < events.length; k++) apply(events[k]);
-      continue;
+      const reads = record.reads[i];
+      if (record.barrels[i] === (reads === '' || !barrels.length ? '' : barrelKeys.get(reads) ?? stationBarrels(cache!.get(i)!))) {
+        const events = record.events[i];
+        for (let k = 0; k < events.length; k++) apply(events[k]);
+        continue;
+      }
     }
     const c: FootprintCell = { i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i], along: ds / 2,
       left: r.dayL[i], right: r.dayR[i] };
@@ -291,8 +303,9 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const barrelKey = stationBarrels(candidates), near = candidates.roads;
     const memo = candidates.memos?.find(m => m.left === c.left && m.right === c.right && m.grade === grade && m.barrels === barrelKey && sameWays(near, m.ways));
     const events: StationEvent[] = memo?.events ?? [];
-    if (record && !candidates.water.length && !candidates.raster.length) {
-      record.left[i] = c.left; record.right[i] = c.right; record.grade[i] = grade; record.events[i] = events;
+    if (record) {
+      record.left[i] = c.left; record.right[i] = c.right; record.grade[i] = grade;
+      record.reads[i] = candidates.reads!; record.barrels[i] = barrelKey; record.events[i] = events;
     }
     if (memo) {
       for (const e of events) apply(e);
