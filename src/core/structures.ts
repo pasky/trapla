@@ -3,7 +3,7 @@
 
 import { STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import type { Violation } from './checks';
-import type { BridgeLayout } from './bridge';
+import type { BridgeArch, BridgeLayout, BridgeStyle } from './bridge';
 
 export const KIND = { earth: 0, bridge: 1, tunnel: 2 } as const;
 
@@ -18,6 +18,9 @@ export interface Run {
   /** A tunnel: its tubes and escape provision against one tube (cost.ts tunnelTubeFactor), how much of it is
    * cut and cover, m, and 'cut' where the player chose cut and cover throughout (evaluate). */
   tubes?: number; cutCoverM?: number; method?: 'cut';
+  /** A bridge: how it is built (absent: short spans), its arch, the price of each style that fits it (as
+   * billed, for the card), and whether the player chose the style (support-layout). */
+  style?: Exclude<BridgeStyle, 'short'>; arch?: BridgeArch; styles?: Partial<Record<BridgeStyle, number>>; styleChosen?: BridgeStyle;
 }
 
 export interface StructureInput {

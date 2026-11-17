@@ -1,5 +1,6 @@
 // Local, deterministic study-stage support remedies. No road/water network-wide scans.
-import { bridgeLayout, supportBridgeLayout } from './bridge';
+import { BRIDGE_STYLE_ORDER, bridgeLayout, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
+import { BRIDGE_STYLES } from './data/bridges';
 import type { Violation } from './checks';
 import { STRUCTURE_RULES as R } from './data/prices';
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
@@ -13,7 +14,17 @@ import { waterWidth } from './watercourses';
 /** Provisional automatic-search envelope, not a norm-proven span feasibility limit. Clear
  * spans up to 180 m use the existing bridge model's long-span extrapolation (as overbridges
  * already do), fully priced per span. Larger changes still require a new alignment/profile. */
-export const SUPPORT_LIMITS = { extensionM: 300, spanM: 180, abutmentCutM: 5 } as const;
+export const SUPPORT_LIMITS = { extensionM: 300, spanM: BRIDGE_STYLES.long.maxSpan, abutmentCutM: 5 } as const;
+/** PROVISIONAL engine spacing, m: the shortest span a moved pier leaves next to the last one (a pier's own
+ * footprint and its foundation; not a design rule). */
+const MIN_PIER_GAP = 10;
+/** a bridge style asked for per station (overrides.ts styleMask): 0 none */
+export const STYLE_CODES: readonly (BridgeStyle | undefined)[] = [undefined, 'short', 'long', 'arch'];
+/** the styles as the player reads them (terms.ts BRIDGE_STYLE_TEXT has the card's words) */
+const STYLE_WORDS: Record<BridgeStyle, string> = { short: 'short spans', long: 'long spans', arch: 'an arch' };
+/** The bill of a bridge run with a given layout and style (evaluate: bridgeRunCost with the style). */
+export type BridgePrice = (i0: number, i1: number, length: number, layout: BridgeLayout, piers: readonly number[],
+  style: { style?: Exclude<BridgeStyle, 'short'>; arch?: BridgeArch }) => number;
 /** How the span-depth problem's title starts: evaluate.ts recognises it by this (to say why Auto could not
  * lift it), so the wording and the logic cannot drift apart. */
 export const SPAN_TOO_LOW = 'A long bridge span is too low';
@@ -92,7 +103,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
    * crossing): a run made only of such cells is left as it is. */
   held?: ArrayLike<number>,
   /** A railway's own track at a raster point near station i (EvalOptions.railTieIn / railRetired). */
-  ownTrack?: OwnTrack): {
+  ownTrack?: OwnTrack,
+  /** Bridge styles: those the player asked for per station (STYLE_CODES), and the price of a layout. Without a
+   * price, the first style that fits (short spans, else long spans, else an arch). */
+  styles?: { asked?: ArrayLike<number>; price?: BridgePrice }): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
   /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
    * routine never changes grade, profile controls, or any explicitly requested structure. */
@@ -217,74 +231,234 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     return { ...part, kind: part.kind as 1 | 2, s0, s1, length: s1 - s0,
       forced: r.runs.some(run => run.forced && run.i0 <= part.i1 && run.i1 >= part.i0) };
   });
-  for (const run of runs) {
-    if (run.kind !== KIND.bridge || heldRun(run)) continue;
-    const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
-    // The player chooses a bridge, not its piers: only a given support arrangement stays fixed.
-    const fixedSupports = isManual && run.pierStations !== undefined;
-    const ordinary = bridgeLayout(run.length), spans = Math.max(1, Math.round(run.length / ordinary.span));
-    const originalPiers = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + (k + 1) * ordinary.span);
-    let piers: number[] = [];
+  const gradeAt = (x: number) => {
+    const j = Math.max(0, Math.min(r.n - 2, Math.floor(x / r.ds))), t = Math.max(0, Math.min(1, (x - r.s[j]) / r.ds));
+    return r.grade[j] * (1 - t) + r.grade[j + 1] * t;
+  };
+  /** Piers moved off what lies below: each to the nearest free place within `reach` (disjoint
+   * neighbourhoods preserve their order); a fully obstructed neighbourhood becomes a priced longer clear span,
+   * never a hidden missing pier at the old standard price. `bounds` (long spans): a pier whose neighbourhood
+   * is blocked goes on to the nearest free place between the last pier and the next one, so a long span ends
+   * at the edges of what it crosses. */
+  const placePiers = (base: readonly number[], reach: number, fixed: boolean, bounds?: readonly [number, number]) => {
+    const piers: number[] = [];
     let changed = false;
-    for (const s of originalPiers) {
-      if (fixedSupports || !blocked(s, true)) { piers.push(s); continue; }
+    for (let k = 0; k < base.length; k++) {
+      const s = base[k];
+      if (fixed || !blocked(s, true)) { piers.push(s); continue; }
       changed = true;
-      // Seek the nearest free support in this pier's own half-span neighbourhood. Disjoint
-      // neighbourhoods preserve ordering. A fully obstructed neighbourhood becomes a priced
-      // longer clear span, never a hidden missing pier at the old standard price.
       let found = false;
-      for (let shift = 1; shift < ordinary.span / 2 && !found; shift++) for (const sign of [-1, 1]) {
+      for (let shift = 1; shift < reach && !found; shift++) for (const sign of [-1, 1]) {
         const candidate = s + sign * shift;
         if (!blocked(candidate, true)) { piers.push(candidate); found = true; break; }
       }
+      if (found || !bounds) continue;
+      const lo = (piers.length ? piers[piers.length - 1] : bounds[0]) + MIN_PIER_GAP, hi = (k + 1 < base.length ? base[k + 1] : bounds[1]) - MIN_PIER_GAP;
+      for (let shift = Math.max(1, Math.ceil(reach)); !found && (s - shift >= lo || s + shift <= hi); shift++) for (const candidate of [s - shift, s + shift]) {
+        if (candidate < lo || candidate > hi || blocked(candidate, true)) continue;
+        piers.push(candidate); found = true; break;
+      }
     }
-    // Manual choices freeze support geometry, not clearance validation. Even an unchanged
-    // support pattern can exceed the nominal 1.2 m structural-depth allowance.
-    let layout = supportBridgeLayout(run.s0, run.s1, piers);
-    if (changed && layout.span > SUPPORT_LIMITS.spanM) {
-      // Retain the original, fully billed supports; the downstream screen must still flag
-      // their collisions. Do not fabricate an arbitrarily long feasible bridge from a price proxy.
-      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0, requiredSpanM: layout.span,
-        cells: [run.i0, run.i1], automatic: !isManual });
-      piers = [...originalPiers];
-      layout = supportBridgeLayout(run.s0, run.s1, piers);
-      changed = false;
-    }
-    if (changed) { run.pierStations = piers; run.layout = layout; }
-    // The sourced cost model's span/20 depth proxy is not a feasibility certificate. Check
-    // additional depth against actual terrain and protected features under the deck. These
-    // are clearance queries, NOT solid-deck footprint conflicts or relocation charges.
-    const supports = [run.s0, ...piers, run.s1];
-    let raiseM = 0, worstI = run.i0, requiredZ = r.grade[run.i0];
-    const regrade = [0, 0];
+    return { piers, changed };
+  };
+  /** equal spans of `span` at most between a and b (exclusive) */
+  const equalPiers = (a: number, b: number, span: number) => {
+    const k = Math.max(1, Math.ceil((b - a) / span - 1e-9));
+    return Array.from({ length: k - 1 }, (_, j) => a + (b - a) * (j + 1) / k);
+  };
+  interface Plan {
+    style: BridgeStyle; piers: number[]; layout: ReturnType<typeof supportBridgeLayout>; changed: boolean;
+    /** the longest span it needs where it is longer than its style allows */
+    tooLong?: number; arch?: BridgeArch & { rib: (s: number) => number };
+    raiseM: number; worstI: number; requiredZ: number; required: Map<number, number>; regrade: [number, number]; price?: number;
+  }
+  /** The span-depth check of a plan: the clearance under each span, plus a deck about 1/20 of the span deep;
+   * under an arch, its rib's clearance (an arch that would need lifting does not fit). */
+  const depthCheck = (run: Run, plan: Plan, isManual: boolean): boolean => {
+    const supports = [run.s0, ...plan.piers, run.s1];
     for (let k = 0; k + 1 < supports.length; k++) {
       const a = supports[k], b = supports[k + 1], span = b - a;
+      const underArch = plan.arch && a >= plan.arch.s0 - 1e-6 && b <= plan.arch.s1 + 1e-6;
       const extraDepth = Math.max(0, span / 20 - 1.2);
       const i0 = Math.max(run.i0, Math.floor(a / r.ds + 0.5)), i1 = Math.min(run.i1, Math.floor(b / r.ds + 0.5));
       for (let i = i0; i <= i1; i++) {
         const left = Math.max(a, r.s[i] - r.ds / 2), right = Math.min(b, r.s[i] + r.ds / 2);
         if (right <= left) continue;
         const cell = cellAt(r, (left + right) / 2, (right - left) / 2, r.crownWidth / 2);
+        if (underArch) {
+          // the rib (its soffit) clears the ground and what lies below it as a deck would
+          const rib = plan.arch!.rib((left + right) / 2);
+          if (rib < r.ground[i] - 0.01 || rib < obstacle(cell) - 1.2 - 0.01) return false;
+          continue;
+        }
         // In an end cell the bank in front of the abutment is regraded under the first span
         // (priced excavation, ≤ abutmentCutM), instead of lifting the whole grade line.
         const end = !isManual && (i === run.i0 || i === run.i1) && run.i1 > run.i0;
         const terrainDepth = r.ground[i] + span / 20 - r.grade[i];
         if (end && terrainDepth > 0.01 && terrainDepth <= SUPPORT_LIMITS.abutmentCutM)
-          regrade[i === run.i0 ? 0 : 1] += terrainDepth / 2 * r.crownWidth * (right - left);
+          plan.regrade[i === run.i0 ? 0 : 1] += terrainDepth / 2 * r.crownWidth * (right - left);
         // Clearance stays demanded over a minor road even where its abutment conflict is relocated:
         // the relocated pavement may still pass under this span (conservative; may cost a lift).
         const required = Math.max(r.ground[i] + span / 20 - (end ? SUPPORT_LIMITS.abutmentCutM : 0), obstacle(cell) + extraDepth);
         const shortfall = required - r.grade[i];
-        if (shortfall > 0.01) requiredElevations.set(r.s[i], Math.max(required, requiredElevations.get(r.s[i]) ?? -Infinity));
-        if (shortfall > raiseM) { raiseM = shortfall; worstI = i; requiredZ = required; }
+        if (shortfall > 0.01) plan.required.set(r.s[i], Math.max(required, plan.required.get(r.s[i]) ?? -Infinity));
+        if (shortfall > plan.raiseM) { plan.raiseM = shortfall; plan.worstI = i; plan.requiredZ = required; }
       }
     }
-    if (regrade[0] + regrade[1] > 0) run.regradeM3 = regrade as [number, number];
+    return true;
+  };
+  /** An arch for the bridge (BRIDGE_STYLES.arch): springings on the ground, the arch 1/1.8–1/2.8 of the
+   * bridge, its rise 1/10–1/5 of its span, its rib clear of the ground. The longest such arch, then the most
+   * even; undefined where none fits. O(cells² · cells) on bridges of 180–700 m only. */
+  const archFor = (run: Run): Plan['arch'] => {
+    const A = BRIDGE_STYLES.arch, depth = A.columnSpan / 20;
+    const aMin = Math.max(A.minArch, run.length / A.lengthMax), aMax = Math.min(A.maxArch, run.length / A.lengthMin);
+    if (aMin > aMax + 1e-9) return undefined;
+    let best: Plan['arch'], bestA = 0, bestEven = Infinity, height = -Infinity;
+    for (let i = run.i0; i <= run.i1; i++) height = Math.max(height, r.grade[i] - r.ground[i]);
+    for (let ia = run.i0 + 1; ia < run.i1; ia++) for (let ib = ia + 1; ib < run.i1; ib++) {
+      const sa = r.s[ia], sb = r.s[ib], a = sb - sa;
+      if (a < aMin - 1e-9) continue;
+      if (a > aMax + 1e-9) break;
+      const za = r.ground[ia], zb = r.ground[ib], sm = (sa + sb) / 2, zc = gradeAt(sm) - depth, rise = zc - (za + zb) / 2;
+      if (rise < a * A.riseMin || rise > a * A.riseMax) continue;
+      const even = Math.abs(za - zb);
+      if (a < bestA - 1e-9 || (a < bestA + 1e-9 && even >= bestEven)) continue;
+      const rib = (x: number) => { const chord = za + (zb - za) * (x - sa) / a, t = (x - sm) / (a / 2); return chord + (zc - (za + zb) / 2) * (1 - t * t); };
+      let clear = true;
+      for (let k = ia + 1; k < ib && clear; k++) if (rib(r.s[k]) < r.ground[k] - 0.01) clear = false;
+      if (!clear || blocked(sa, true) || blocked(sb, true)) continue;
+      best = { s0: sa, s1: sb, height, rib }; bestA = a; bestEven = even;
+    }
+    return best;
+  };
+  for (const run of runs) {
+    if (run.kind !== KIND.bridge || heldRun(run)) continue;
+    const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
+    // The player chooses a bridge, not its piers: only a given support arrangement stays fixed.
+    const fixedSupports = isManual && run.pierStations !== undefined;
+    let asked: BridgeStyle | undefined;
+    if (styles?.asked) for (let i = run.i0; i <= run.i1 && !asked; i++) asked = STYLE_CODES[styles.asked[i]];
+    const blank = (style: BridgeStyle, piers: number[], changed: boolean): Plan => ({ style, piers, changed,
+      layout: supportBridgeLayout(run.s0, run.s1, piers), raiseM: 0, worstI: run.i0, requiredZ: r.grade[run.i0], required: new Map(), regrade: [0, 0] });
+    const ordinary = bridgeLayout(run.length), spans = Math.max(1, Math.round(run.length / ordinary.span));
+    const originalPiers = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + (k + 1) * ordinary.span);
+    const plansOf = (style: BridgeStyle): Plan[] => {
+      if (style === 'short') {
+        const { piers, changed } = placePiers(originalPiers, ordinary.span / 2, fixedSupports);
+        const plan = blank('short', piers, changed);
+        if (changed && plan.layout.span > BRIDGE_STYLES.short.maxSpan) plan.tooLong = plan.layout.span;
+        return [plan];
+      }
+      if (style === 'long') {
+        // Over what lies below, the long span the short-span supports already need, with side spans of at
+        // least SIDE_SPAN × it next to it (a cantilevered or launched main span; the short spans beyond stay);
+        // where nothing is below, equal spans of 45–60 m throughout.
+        const short = placePiers(originalPiers, ordinary.span / 2, fixedSupports).piers;
+        const supports = [run.s0, ...short, run.s1], main = (k: number) => supports[k] - supports[k - 1] > ordinary.span * 1.5 + 1e-6;
+        let any = false;
+        for (let k = 1; k < supports.length; k++) any ||= main(k);
+        if (any) {
+          const keep = supports.map(() => true), mains: [number, number][] = [];
+          for (let k = 1; k < supports.length; k++) if (main(k)) mains.push([supports[k - 1], supports[k]]);
+          const isEnd = (x: number) => mains.some(([a, b]) => a === x || b === x);
+          for (const [a, b] of mains) {
+            const need = BRIDGE_STYLES.long.sideSpan * (b - a);
+            for (const dir of [-1, 1]) {
+              const at = supports.indexOf(dir < 0 ? a : b);
+              for (let j = at + dir; j > 0 && j < supports.length - 1; j += dir) {
+                if (Math.abs(supports[j] - supports[at]) >= need - 1e-6 || isEnd(supports[j])) break;
+                keep[j] = false;
+              }
+            }
+          }
+          const plan = blank('long', supports.slice(1, -1).filter((_, k) => keep[k + 1]), true);
+          if (plan.layout.span > BRIDGE_STYLES.long.maxSpan) plan.tooLong = plan.layout.span;
+          return [plan];
+        }
+        return (styles?.price ? longLayouts(run.length) : longLayouts(run.length).slice(0, 1)).map(layout => {
+          const { piers } = placePiers(equalPiers(run.s0, run.s1, layout.span + 1e-6), layout.span / 2, false, [run.s0, run.s1]);
+          const plan = blank('long', piers, true);
+          if (plan.layout.span > BRIDGE_STYLES.long.maxSpan) plan.tooLong = plan.layout.span;
+          return plan;
+        });
+      }
+      const arch = archFor(run);
+      if (!arch) return [];
+      const span = BRIDGE_STYLES.arch.columnSpan;
+      const left = placePiers(equalPiers(run.s0, arch.s0, span), span / 2, false), right = placePiers(equalPiers(arch.s1, run.s1, span), span / 2, false);
+      const plan = blank('arch', [...left.piers, arch.s0, arch.s1, ...right.piers], true);
+      plan.arch = arch;
+      // (the approach spans as short spans)
+      const supports = [run.s0, ...left.piers, arch.s0], after = [arch.s1, ...right.piers, run.s1];
+      let approach = 0;
+      for (const list of [supports, after]) for (let k = 1; k < list.length; k++) approach = Math.max(approach, list[k] - list[k - 1]);
+      if (approach > BRIDGE_STYLES.short.maxSpan) plan.tooLong = approach;
+      plan.layout = { span: approach, pierDensity: plan.layout.pierDensity };
+      return [plan];
+    };
+    const priced = (plan: Plan) => {
+      if (styles?.price && plan.price === undefined)
+        plan.price = styles.price(run.i0, run.i1, run.length, plan.layout, plan.piers,
+          plan.style === 'short' ? {} : { style: plan.style, ...(plan.arch ? { arch: { s0: plan.arch.s0, s1: plan.arch.s1, height: plan.arch.height } } : {}) });
+      return plan.price ?? 0;
+    };
+    // every style's plans that can stand (an arch whose rib would need lifting does not)
+    const fits: Plan[] = [], unfit: Plan[] = [];
+    const consider = (style: BridgeStyle) => {
+      for (const plan of plansOf(style)) {
+        if (plan.tooLong !== undefined) { unfit.push(plan); continue; }
+        if (depthCheck(run, plan, isManual)) fits.push(plan); else unfit.push(plan);
+      }
+    };
+    if (styles?.price) for (const style of BRIDGE_STYLE_ORDER) consider(style);
+    else for (const style of asked ? [asked, ...BRIDGE_STYLE_ORDER.filter(x => x !== asked)] : BRIDGE_STYLE_ORDER) { consider(style); if (fits.length) break; }
+    // a player's style that does not fit here: said, and the bridge is built as Auto would
+    const mine = asked ? fits.filter(p => p.style === asked) : [];
+    if (asked && !mine.length) {
+      const tooLong = unfit.find(p => p.style === asked)?.tooLong;
+      const why = tooLong === undefined ? `An arch of ${BRIDGE_STYLES.arch.minArch}–${BRIDGE_STYLES.arch.maxArch} m does not fit this valley` : `Its spans would have to be ${Math.round(tooLong)} m long`;
+      violations.push({ kind: 'structure', basis: 'game', s0: run.s0, s1: run.s1, title: `This bridge cannot be built with ${STYLE_WORDS[asked]}`,
+        fix: 'Choose another bridge style, or set it back to Automatic',
+        rule: asked === 'arch' && tooLong === undefined ? `An arch springs from the valley sides: the bridge ${BRIDGE_STYLES.arch.lengthMin}–${BRIDGE_STYLES.arch.lengthMax} times as long as the arch, which rises 1/10–1/5 of its span`
+          : `Game rule: ${STYLE_WORDS[asked]} reach at most ${asked === 'long' ? BRIDGE_STYLES.long.maxSpan : BRIDGE_STYLES.short.maxSpan} m`,
+        detail: `${why}. It is built as Auto would build it.` });
+    }
+    const pool = mine.length ? mine : fits;
+    // Auto: the cheapest that needs no lift, else the least lift
+    const rank = (p: Plan) => [p.raiseM > 0.01 ? p.raiseM : 0, priced(p)];
+    let chosen: Plan | undefined;
+    for (const plan of pool) {
+      if (!chosen) { chosen = plan; continue; }
+      const [l, c] = rank(plan), [l0, c0] = rank(chosen);
+      if (l < l0 - 1e-9 || (Math.abs(l - l0) <= 1e-9 && c < c0 - 1e-6)) chosen = plan;
+    }
+    if (!chosen) {
+      // Retain the original, fully billed supports; the downstream screen must still flag
+      // their collisions. Do not fabricate an arbitrarily long feasible bridge from a price proxy.
+      const plan = blank('short', [...originalPiers], false);
+      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0,
+        requiredSpanM: Math.min(...unfit.map(p => p.tooLong ?? Infinity)), cells: [run.i0, run.i1], automatic: !isManual });
+      depthCheck(run, plan, isManual);
+      chosen = plan;
+    }
+    if (chosen.changed) { run.pierStations = chosen.piers; run.layout = chosen.layout; }
+    if (chosen.style !== 'short') run.style = chosen.style;
+    if (chosen.arch) run.arch = { s0: chosen.arch.s0, s1: chosen.arch.s1, height: chosen.arch.height };
+    if (asked && chosen.style === asked) run.styleChosen = asked;
+    if (styles?.price) {
+      const prices: Partial<Record<BridgeStyle, number>> = {};
+      for (const plan of fits) if (plan.raiseM <= 0.01 || plan === chosen) prices[plan.style] = Math.min(prices[plan.style] ?? Infinity, priced(plan));
+      run.styles = prices;
+    }
+    for (const [s, z] of chosen.required) requiredElevations.set(s, Math.max(z, requiredElevations.get(s) ?? -Infinity));
+    if (chosen.regrade[0] + chosen.regrade[1] > 0) run.regradeM3 = chosen.regrade;
+    const raiseM = chosen.raiseM, worstI = chosen.worstI;
     if (raiseM > 0.01) {
-      diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ });
+      diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ: chosen.requiredZ });
       violations.push({ kind: 'structure', basis: 'game', s0: r.s[worstI], s1: r.s[worstI],
         title: `${SPAN_TOO_LOW} over what it crosses`,
-        fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${(Math.ceil(raiseM * 10 - 1e-9) / 10).toFixed(1)} m, or move the route so the ${layout.span.toFixed(0)} m span can be shorter`,
+        fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${(Math.ceil(raiseM * 10 - 1e-9) / 10).toFixed(1)} m, or move the route so the ${chosen.layout.span.toFixed(0)} m span can be shorter`,
         rule: 'Game rule: the clearance under the bridge, plus a deck about 1/20 of the span deep',
         detail: 'To keep its supports off the roads, railways or water below, this bridge has a long span; a long span needs a deeper deck, which eats into the clearance.' });
     }
