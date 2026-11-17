@@ -158,3 +158,19 @@ export function equalSpanRunCost(price: ReturnType<typeof bridgeRunCost>) {
     return best;
   };
 }
+
+/** An arch's rib (its underside; the rib is ARCH_RIB_DEPTH deep, PROVISIONAL: drawn and checked, not priced), m: a parabola from the springings at sa, sb (ground za, zb) up to its crown
+ * zc at the middle; shared by the support check and the drawing. */
+export function archRib(sa: number, sb: number, za: number, zb: number, zc: number): (s: number) => number {
+  const a = sb - sa, sm = (sa + sb) / 2, rise = zc - (za + zb) / 2;
+  return (s: number) => { const t = (s - sm) / (a / 2); return za + (zb - za) * (s - sa) / a + rise * (1 - t * t); };
+}
+/** the underside of an arch's rib at its crown is this far under the road: the deck on its columns
+ * (BRIDGE_STYLES.arch.columnSpan / 20) and the rib itself, ARCH_RIB_DEPTH */
+export const ARCH_RIB_DEPTH = 2;
+export const ARCH_DECK_DEPTH = S.arch.columnSpan / 20 + ARCH_RIB_DEPTH;
+/** the columns standing on an arch's rib, at most BRIDGE_STYLES.arch.columnSpan apart (not its springings) */
+export function archColumns(arch: { s0: number; s1: number }): number[] {
+  const k = Math.max(1, Math.ceil((arch.s1 - arch.s0) / S.arch.columnSpan - 1e-9));
+  return Array.from({ length: k - 1 }, (_, j) => arch.s0 + (arch.s1 - arch.s0) * (j + 1) / k);
+}

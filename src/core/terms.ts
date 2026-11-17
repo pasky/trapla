@@ -203,6 +203,13 @@ export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overb
   ['underpass', 'Underpass', `The crossed track or local road passes through our embankment in a concrete box (5 × 4.5 m inside for tracks, 8 × 4.5 m for local roads). It needs 5.5 / 5.65 m of embankment above the road; where there is less, the road is lowered into a cutting, by up to ${LOWERING_RULES.maxDepth} m.`],
 ];
 
+/** A bridge's style, the bridge card's choice: [value, button label, how it is built]. */
+export const BRIDGE_STYLE_TEXT: readonly ['short' | 'long' | 'arch', string, string][] = [
+  ['short', 'Short spans', 'Piers about every 30 m, a thin deck: the usual bridge. A span over a road, railway or river can be up to 60 m.'],
+  ['long', 'Long spans', 'Fewer, taller piers 45–60 m apart and a deeper deck, or one long span with longer spans beside it over what lies below.'],
+  ['arch', 'Arch', 'One arch springing from the valley sides, the deck on columns; only where the valley fits an arch of 100–250 m.'],
+];
+
 /** Footprint outcomes (things our earthworks cover beside the road). */
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
   const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : 'stream';

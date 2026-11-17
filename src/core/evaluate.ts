@@ -3,11 +3,12 @@
 // a Web Worker in the app.
 
 import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
-import { footprintConflicts, type FootprintConflict } from './footprint';
+import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
-import { bridgeModel, bridgeRunCost, equalSpanRunCost } from './bridge';
+import { bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost } from './bridge';
+import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
@@ -24,7 +25,7 @@ import { bendRules, horizontalRules, speedNorms } from './data/norms';
 import { hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
+import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { groundWorksPerM, treatedSubgrade } from './earthengineering';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
@@ -139,6 +140,8 @@ export interface Result {
    * construction working strip beside one of them (`strip`) */
   /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
   demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean;
+    /** under a high deck, where one of its piers stands */
+    pier?: true;
     /** a small structure standing within this demolished building, which goes with it */
     host?: number }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
@@ -1885,8 +1888,25 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
  * demolitions and their cost, the player's Keep and Buy out choices. */
 function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>) {
   const { n, w, st, ds } = setup;
-  const { kind, sec, grade, cutCover, h } = quantities;
+  const { kind, sec, grade, cutCover, h, runs } = quantities;
   const crown = CATEGORIES[d.category].crownWidth;
+  // Under a high deck a building stays (BUILDING_RULES.underDeck*), unless a pier stands on it: the deck's
+  // underside per cell (its local span's depth), and the piers of the bridges.
+  const soffit = new Float64Array(n).fill(NaN);
+  for (const run of runs) if (run.kind === KIND.bridge) {
+    const supports = [run.s0, ...(run.pierStations ?? []), run.s1];
+    for (let i = run.i0, k = 0; i <= run.i1; i++) {
+      while (k + 2 < supports.length && supports[k + 1] <= st.s[i]) k++;
+      const span = run.pierStations ? supports[k + 1] - supports[k] : bridgeLayout(run.length).span;
+      soffit[i] = grade[i] - Math.max(1.2, (run.arch && st.s[i] > run.arch.s0 && st.s[i] < run.arch.s1 ? BRIDGE_STYLES.arch.columnSpan : span) / 20);
+    }
+  }
+  const underDeck = (i: number, j: number) => {
+    // (a garage or shed goes: storage under a bridge is a fire risk to it, BUILDING_RULES.underDeck*)
+    if (ctx.buildings!.kind[j] === BUILDING_KIND.minor) return false;
+    const items = ctx.buildings!.items, free = soffit[i] - ctx.terrain.heightAt(items[j][0], items[j][1]);
+    return free >= Math.max(BUILDING_RULES.underDeckFalsework, ctx.buildings!.levels[j] * NOISE.storeyHeight + BUILDING_RULES.underDeckGap);
+  };
   // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges, the pit of a
   // cut-and-cover tunnel), plus a working strip on either side ---
   const buildingCost = new Float64Array(n);
@@ -1899,7 +1919,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
   const buildingViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
-    const best = new Map<number, { i: number; along: number; core: boolean }>();
+    const best = new Map<number, { i: number; along: number; core: boolean; pier?: true }>();
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel && !cutCover[i]) continue;
       const pit = cutCover[i] ? cutCoverPitHalfWidth(-h[i], crown) : 0;
@@ -1909,11 +1929,21 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       const cx = x - ty * off, cy = y + tx * off;
       bld.near(x, y, Math.max(left, right) + BUILDING_RULES.clearance + ds, (j) => {
         if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
+        if (kind[i] === KIND.bridge && underDeck(i, j)) return;
         const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
         // the slopes / deck themselves, not only the working strip beside them (what the card names)
         const core = bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half - BUILDING_RULES.clearance);
         const p = best.get(j);
         if (!p) best.set(j, { i, along, core }); else if ((core && !p.core) || (core === p.core && along < p.along)) { p.i = i; p.along = along; p.core = core; }
+      });
+    }
+    // the piers (and an arch's springings) under a high deck, with their working strip
+    for (const f of structureFootprints({ n, ds, s: st.s, x: st.x, y: st.y, tx: st.tx, ty: st.ty, runs, crownWidth: crown })) {
+      if (f.structure !== 'pier' || kind[f.i] !== KIND.bridge) continue;
+      bld.near(f.x, f.y, f.left + f.along + BUILDING_RULES.clearance, (j) => {
+        if (!underDeck(f.i, j) || !bld.hits(j, f.x, f.y, f.tx, f.ty, f.along + BUILDING_RULES.clearance, f.left + BUILDING_RULES.clearance)) return;
+        const p = best.get(j), along = Math.abs((items[j][0] - st.x[f.i]) * st.tx[f.i] + (items[j][1] - st.y[f.i]) * st.ty[f.i]);
+        if (!p) best.set(j, { i: f.i, along, core: true, pier: true }); else if (!p.core) { p.i = f.i; p.along = along; p.core = true; p.pier = true; }
       });
     }
     for (const [j, p] of best) {
@@ -1931,7 +1961,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
       const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
       const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
-      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core });
+      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core, ...(p.pier ? { pier: true as const } : {}) });
     }
     // a chimney, silo or tower standing within a demolished building's outline goes with it
     for (const p of demolished.slice()) bld.near(items[p.j][0], items[p.j][1], items[p.j][2], (k) => {

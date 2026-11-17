@@ -1,5 +1,5 @@
 // Local, deterministic study-stage support remedies. No road/water network-wide scans.
-import { BRIDGE_STYLE_ORDER, bridgeLayout, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
+import { ARCH_DECK_DEPTH, archRib, BRIDGE_STYLE_ORDER, bridgeLayout, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
 import { BRIDGE_STYLES } from './data/bridges';
 import type { Violation } from './checks';
 import { STRUCTURE_RULES as R } from './data/prices';
@@ -311,7 +311,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
    * bridge, its rise 1/10–1/5 of its span, its rib clear of the ground. The longest such arch, then the most
    * even; undefined where none fits. O(cells² · cells) on bridges of 180–700 m only. */
   const archFor = (run: Run): Plan['arch'] => {
-    const A = BRIDGE_STYLES.arch, depth = A.columnSpan / 20;
+    const A = BRIDGE_STYLES.arch, depth = ARCH_DECK_DEPTH;
     const aMin = Math.max(A.minArch, run.length / A.lengthMax), aMax = Math.min(A.maxArch, run.length / A.lengthMin);
     if (aMin > aMax + 1e-9) return undefined;
     let best: Plan['arch'], bestA = 0, bestEven = Infinity, height = -Infinity;
@@ -324,7 +324,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       if (rise < a * A.riseMin || rise > a * A.riseMax) continue;
       const even = Math.abs(za - zb);
       if (a < bestA - 1e-9 || (a < bestA + 1e-9 && even >= bestEven)) continue;
-      const rib = (x: number) => { const chord = za + (zb - za) * (x - sa) / a, t = (x - sm) / (a / 2); return chord + (zc - (za + zb) / 2) * (1 - t * t); };
+      const rib = archRib(sa, sb, za, zb, zc);
       let clear = true;
       for (let k = ia + 1; k < ib && clear; k++) if (rib(r.s[k]) < r.ground[k] - 0.01) clear = false;
       if (!clear || blocked(sa, true) || blocked(sb, true)) continue;

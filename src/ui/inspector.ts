@@ -6,15 +6,15 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, speedNorms } from '../core/data/norms';
 import { bendSpeed, hairpinSpeed } from '../core/design-speed';
-import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
+import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
-import type { StructureKind } from '../core/overrides';
+import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
 import { KIND } from '../core/structures';
 import { TUNNEL_RULES } from '../core/data/prices';
@@ -37,8 +37,9 @@ export type Sel =
 export interface InspectorEvents {
   close?: () => void;
   select?: (sel: Sel) => void;
-  /** bridge / tunnel / earthwork / Auto (null) on a station range; a tunnel's method ('cut': cut and cover) */
-  structure?: (kind: StructureKind | null, s0: number, s1: number, method?: 'cut') => void;
+  /** bridge / tunnel / earthwork / Auto (null) on a station range; a tunnel's method ('cut': cut and cover) or
+   * a bridge's style */
+  structure?: (kind: StructureKind | null, s0: number, s1: number, method?: StructureChoice) => void;
   /** walls on these sides of a station range: height in m, 0 = none, null = Auto */
   wall?: (sides: ('L' | 'R')[], height: number | null, s0: number, s1: number) => void;
   pin?: (s: number, z: number | null) => void;
@@ -338,6 +339,18 @@ export class Inspector {
         (tunnel.tubes ?? 1) >= 2 ? 'two tubes (heavy traffic)' : (tunnel.tubes ?? 1) > 1 ? 'with an escape tunnel beside it' : ''].filter(Boolean).join(' · ');
       method = `<div class="sub">${cap(how)}</div><div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
     }
+    // a bridge: its style as a choice, each with its price against this one
+    const bridge = sel.piece === 'bridge' ? r.runs.find((q) => q.kind === KIND.bridge && q.s1 > s0 && q.s0 < s1) : undefined;
+    if (bridge?.styles) {
+      const now = bridge.style ?? 'short', here = bridge.styles[now] ?? 0;
+      const buttons = BRIDGE_STYLE_TEXT.map(([v, label, title]) => {
+        const p = bridge.styles![v], diff = p === undefined || v === now ? '' : ` <small>${p >= here ? '+' : '−'}${czk(Math.abs(p - here)).replace(' CZK', '')}</small>`;
+        return `<button type="button" data-style="${v}" class="${v === now ? 'on' : ''}" aria-pressed="${v === now}" ${p === undefined && v !== now ? 'disabled' : ''} title="${esc(p === undefined && v !== now ? `${title} Does not fit this bridge.` : title)}">${label}${diff}</button>`;
+      }).join('');
+      const span = bridge.layout?.span ?? r.ds * 3, arch = bridge.arch ? `arch ${m0(bridge.arch.s1 - bridge.arch.s0)}` : '';
+      method = `<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
+        <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
+    }
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = Math.max(0, Math.min(r.n - 1, Math.round(pinAt / r.ds)));
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
@@ -536,6 +549,9 @@ export class Inspector {
       why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is demolished, km ${km(r.s[removed.i])}, and goes with it.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
+        : removed.pier ? `A pier of our bridge stands on it, km ${km(r.s[removed.i])}.`
+        : removed.in === 'bridge' ? `Under our bridge, km ${km(r.s[removed.i])}: ${this.ctx.building(j).kind === BUILDING_KINDS[BUILDING_KIND.minor].label
+          ? 'a garage or shed may not stay under a bridge (fire).' : `the deck is too low above it (less than ${BUILDING_RULES.underDeckFalsework} m up, it is built on scaffolding standing on the ground; higher, it needs ${BUILDING_RULES.underDeckGap} m over the roof).`}`
         : `${removed.in === 'cut' ? 'In' : 'Under'} ${ours}, km ${km(r.s[removed.i])}.`;
     }
     else if (bought) {
@@ -653,6 +669,11 @@ export class Inspector {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }
       // Mined on Auto's tunnel is what it is: nothing to paint
       if (b.dataset.method !== undefined && !b.classList.contains('on')) { this.ev.structure?.(KIND.tunnel, sel.s0, sel.s1, b.dataset.method === 'cut' ? 'cut' : undefined); return; }
+      // a bridge's style: painted over the whole bridge
+      if (b.dataset.style !== undefined && !b.classList.contains('on')) {
+        const run = this.r?.runs.find((q) => q.kind === KIND.bridge && q.s1 > sel.s0 && q.s0 < sel.s1);
+        this.ev.structure?.(KIND.bridge, run?.s0 ?? sel.s0, run?.s1 ?? sel.s1, b.dataset.style as StructureChoice); return;
+      }
     }
     for (const side of ['L', 'R'] as const) {
       const v = b.dataset[`wall${side}`];

@@ -5,7 +5,7 @@
 import { paintWallOverride, setBuildingOverride } from '../core/build-controls';
 import type { LinkVia } from '../core/crossings';
 import { normalizeVpis, type Design, type Result } from '../core/evaluate';
-import { paintOverride, type StructureKind } from '../core/overrides';
+import { paintOverride, type StructureChoice, type StructureKind } from '../core/overrides';
 import { cellsInRange } from '../core/range';
 import type { ActiveRouteStore } from './active-route-store';
 import { bendStations } from './bend-stations';
@@ -26,7 +26,7 @@ export function createDesignEdits(app: DesignEditContext) {
     const [i0, i1] = cellsInRange(app.last, Math.max(0, s0), Math.min(s1, app.last.length));
     return { s0: Math.max(0, (i0 - 0.5) * app.last.ds), s1: Math.min(app.last.length, (i1 + 0.5) * app.last.ds) };
   };
-  const setStructure = (kind: StructureKind | null, a: number, b: number, method?: 'cut') => {
+  const setStructure = (kind: StructureKind | null, a: number, b: number, method?: StructureChoice) => {
     const range = cellsRange(a, b);
     if (!range) return;
     const previous = app.store.design.structureOverrides ?? [];
