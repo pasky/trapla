@@ -826,6 +826,8 @@ Research: research/65.
   worked out from the designs either side of the step when the button is pointed at (`core/history-label.ts`); the
   profile's tooltip says "River under our bridge, and 1 more".
 - **Bills**: frozen single-road fixtures identical; multi-road projects change (credits, railway crossings): model 39.
+- Screenshots `docs/screenshots/310…314-qa3fix-*.png`: the new road's card (−48 M), the new railway on its bridge
+  over ours, III/3012's old corner built anew (R 176 m, auto), the profile's river tooltip, *Back to Auto*.
 - **Known issue (audit)**: a box lowered under our road for a road of the project (our road too low over it) bills
   the lowered approach ramps on our road while the held road stays at the ground through the box: its hold should be
   the box floor, but where the held road ends within the ramps (D11 km 4.03 service road) it cannot reach it, and the
