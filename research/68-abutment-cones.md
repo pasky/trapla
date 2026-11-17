@@ -330,7 +330,7 @@ The same at h_a = 30 m:
   of at most 10 m, billed as the wall it is: a cantilever retaining wall across the fill's end section (crest at full
   height, the side slopes' triangles falling to nothing), priced per metre at its height (data/remedies.ts
   `retainingAssembly`, OTSKP April 2026, research/18; the shape **PROVISIONAL**, Derived from §1.4); on a 9.5 m crest
-  a 10 m wall ≈ 5 M CZK. Above 10 m Auto's bridge goes on to an end that is clear or low enough for a wall; where none
+  a 10 m wall ≈ 4.2 M CZK (245 m², ≈ 17,000 CZK/m²). Above 10 m Auto's bridge goes on to an end that is clear or low enough for a wall; where none
   is within reach (or the player's bridge), the cone stands and what it covers is a problem. A fill between two
   bridges closed off by a wall at an end is bridged where its deck costs less than the fill, its walls and cones.
 - **Cross slopes:** the cone's fill is summed row by row out to where it meets the ground on either side (the grid
