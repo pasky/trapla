@@ -137,3 +137,24 @@ export function underpassAssembly(size: UnderpassSize, roadPerM: number) {
     + outer * s.bedding * UNDERPASS_RATES.bedding + roadPerM;
   return { ...s, concrete, perM, minHeight: s.height + s.roof + s.cover };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Crossed roads raised over us, straightened, rerouted or rebuilt beside us: game limits of their geometry
+// (crossing-geometry.ts, crossing-works.ts, link-route.ts, road-realignment.ts).
+// ---------------------------------------------------------------------------------------------
+/** Clear height under a bridge that carries a crossed road over ours, m: the 4.8 m in the note of
+ * CROSSING_RULES.overHeight (data/urban.ts: ČSN 73 6201, UNVERIFIED, research/08); the rest of
+ * CROSSING_RULES.underDepth is its deck. */
+export const OVERBRIDGE_CLEARANCE = 4.8;
+/** PROVISIONAL game limit: longest ramp on either side of a bridge over our road, m. */
+export const MAX_RAMP_LENGTH = 250;
+/** Auto straightens a crossed road meeting ours at less than this angle (degrees) and keeps the
+ * cheaper buildable variant: research/44, ŘSD R 111 treats crossings under 70° as non-standard
+ * (signing); no Czech norm gives a minimum bridge angle (game rule). */
+export const SQUARE_BELOW = 70;
+/** Deepest cut or fill the profile of a new side road may need, m: one PROVISIONAL support limit for
+ * reroutes (link-route.ts), roads rebuilt beside ours (road-realignment.ts) and the ramps of a bridge over us. */
+export const LINK_MAX_SUPPORT = 10;
+/** Earth slopes of a raised or lowered side road (1 : 1.5, as drawn: render/crossing-surface.ts), and the
+ * least height difference that has a slope at all, m. */
+export const SIDE_ROAD_SLOPE = 1.5, SIDE_ROAD_FLAT = 0.15;

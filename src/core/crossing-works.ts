@@ -5,7 +5,7 @@
 // retaining wall. Where neither fits, the treatment is infeasible and Auto must choose another.
 import type { CrossingPoint } from './crossings';
 import { ROAD_CLASSES } from './data/urban';
-import { retainingAssembly, RETAINING_RULES } from './data/remedies';
+import { retainingAssembly, RETAINING_RULES, SIDE_ROAD_FLAT as FLAT, SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
 import type { RoadNet, RoadSegment } from './roadnet';
 
 type XY = { x: number; y: number };
@@ -13,10 +13,6 @@ type XY = { x: number; y: number };
 export const WORKS_COVER_ROAD = 'Approach earthworks would cover another road';
 export const WORKS_TIE_TOO_LONG = 'A side road joining the approach cannot be regraded to meet it';
 export const WORKS_TIE_SHARED = 'Two crossings would regrade the same side road';
-/** Same 1:1.5 earth slopes as the drawn crossing surfaces (render/crossing-surface.ts). */
-const SLOPE = 1.5;
-/** Below this the drawn surface has no slope (render/crossing-surface.ts). */
-const FLAT = 0.15;
 /** Earth this thin over another road's edge is the engine's draped-road tolerance (crossing-geometry.ts
  * returns rebuilt road ends within 0.3 m of the ground to the ground), not a buried road, m. */
 const DRAPED = 0.3;
