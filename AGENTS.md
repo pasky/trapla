@@ -53,6 +53,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   gitignored: copy them from the main checkout into a new worktree, otherwise results are wrong (older packs
   lack e.g. watercourses).
 - Never use `git stash`: it is shared across all worktrees and has swapped work between agents.
+- Before finishing, delete your scratch files in the worktree (untracked files make the side-agent tool skip it
+  instead of reusing it) and `git worktree remove` any /tmp checkouts you made; commit or note anything worth keeping.
 - Screenshot galleries in `docs/screenshots/` are numbered; continue after the highest number and update
   README references.
 - Browser scripts start vite on the working tree: an edit in `src/` while smoke / playtest runs reloads the
