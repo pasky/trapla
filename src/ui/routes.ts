@@ -214,9 +214,12 @@ export function createRoutes(app: RoutesContext) {
   syncEnds();
   syncDirections();
 
+  // the snapshot each change starts from: the score's change line compares with its full result
+  const stepOf = () => `${app.projectStore.snapshot.epoch}:${app.projectStore.snapshot.revision}`;
+  let stepBefore = stepOf();
   app.store.on((d, committed) => {
     if (committed) evals.endGesture();
-    hideToast(); app.hud.noteEdit(committed);
+    hideToast(); app.hud.noteEdit(committed, stepBefore); stepBefore = stepOf();
     if (committed) {
       const ids = separateStretches();
       if (!historyStep && !app.store.oneDirection && [...stretchIds].some(id => !ids.has(id))) toast(DIRECTIONS_TEXT.togetherAgain, 'Undo', () => app.store.undo());
