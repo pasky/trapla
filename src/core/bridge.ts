@@ -151,11 +151,18 @@ export function bridgeRunCost(model: BridgeModel, h: ArrayLike<number>, ds: numb
 /** A run's price before its supports are placed (the structure choice): the cheaper of short spans and the
  * long-span layouts (support-layout then places the supports and picks the style). */
 export function equalSpanRunCost(model: BridgeModel, h: ArrayLike<number>, price: ReturnType<typeof bridgeRunCost>) {
+  // (a run's price depends on its cells only: the structure choice asks for the same runs at every fill value)
+  const memo = new Map<number, number>();
   return (i0: number, i1: number, length: number) => {
-    let best = price(i0, i1, length), top = -Infinity;
+    const key = i0 * h.length + i1;
+    let best = memo.get(key);
+    if (best !== undefined) return best;
+    best = price(i0, i1, length);
+    let top = -Infinity;
     for (let i = i0; i <= i1; i++) if (h[i] > top) top = h[i];
     for (const layout of longLayouts(length)) if (longMayPay(model, top, length, layout))
       best = Math.min(best, price(i0, i1, length, layout, undefined, { style: 'long' }));
+    memo.set(key, best);
     return best;
   };
 }

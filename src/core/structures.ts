@@ -241,10 +241,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       'Game rule: rivers, railways and roads that must be crossed at a different level cannot be buried under earthworks');
   }
   // cut and cover chosen for Auto's tunnel (overrides.ts `auto`): as deep as it can be dug, as for the player's own
-  if (inp.cutMethod) {
+  const cut = inp.cutMethod;
+  if (cut && cut.length && Array.prototype.some.call(cut, (v: number) => v === 1)) {
     const deepest = rules.portalDepth + TUNNEL_RULES.cutCoverMaxCover;
+    const bad = (j: number) => kind[j] === KIND.tunnel && !!cut[j] && !(inp.overrides && inp.overrides[j] >= 0) && -inp.h[j] > deepest + 1e-9;
     for (let i = 0; i < n; i++) {
-      const bad = (j: number) => kind[j] === KIND.tunnel && !!inp.cutMethod![j] && !(inp.overrides && inp.overrides[j] >= 0) && -inp.h[j] > deepest + 1e-9;
       if (!bad(i)) continue;
       let j = i;
       while (j + 1 < n && bad(j + 1)) j++;
