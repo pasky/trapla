@@ -141,6 +141,9 @@ export interface CrossingResult {
   /** Culverts carrying streams under a reroute (count, and their pre-surcharge CZK, included in cost). */
   culverts?: number;
   culvertCost?: number;
+  /** A cut way's pieces that still reach the road network over other ways and just end here ([right, left] of our
+   * road), and, where both do, how much further its traffic goes round over the network, m (way-pieces.ts). */
+  closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number };
   /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
   houses?: number[];
   houseCost?: number;
@@ -309,7 +312,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.closure;
     delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);

@@ -73,7 +73,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -112,6 +112,17 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; nearby it is laid on a new line crossing at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what}).` : '';
   const joinedTo = c.targetRoadId === undefined ? 'the road our road joins at its end' : `the road that crosses at km ${km(c.targetS ?? 0)}`;
   const crossesAt = c.targetRoadId === undefined ? 'the road at our road\'s end' : `the crossing at km ${km(c.targetS ?? 0)}`;
+  // A cut way whose pieces still reach other roads just ends at our earthworks (way-pieces.ts); a piece cut off is led on.
+  if (c.closure && (c.type === 'reconnection' || c.type === 'diversion')) {
+    const [right, left] = c.closure.connected, both = right && left, round = c.closure.extra !== undefined ? `${km(c.closure.extra)} km further round` : '';
+    const ends = ROAD_CLASSES[c.cls]?.label === 'track' || c.cls === 'service' ? 'just ends at our earthworks' : 'ends at our earthworks in a turning area';
+    if (both || !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: `Closed here${round ? ` (${round})` : ''}`,
+      explain: `The ${what} is cut by our road. ${both ? `Both parts still reach other roads, so each ${ends}${round ? `; its traffic goes round, ${round}` : ''}`
+        : `The ${right ? c.closure.sides[0] : c.closure.sides[1]} part still reaches other roads, so it ${ends}; nothing is left of the other beyond our earthworks`}.${link}` };
+    const kept = right ? c.closure.sides[0] : c.closure.sides[1], led = right ? c.closure.sides[1] : c.closure.sides[0];
+    return { tag: 'rerouted', label: `The ${led} part led to ${crossesAt} (+${m(c.linkLength)} m of new ${c.cls === 'track' ? 'track' : 'road'})`,
+      explain: `The ${what} is cut by our road. The ${kept} part still reaches other roads, so it ${ends}; the ${led} part, cut off, is led to ${crossesAt} by a new piece of ${c.cls === 'track' ? 'track' : 'road'} along the outside of the earthworks.${link}` };
+  }
   // (its cut ends lie on the road that crosses there: nothing new to build)
   if ((c.type === 'reconnection' || c.type === 'diversion') && !c.moved && !Math.round(c.linkLength ?? 0)) return { tag: c.type === 'diversion' ? 'rerouted' : 'reconnected',
     label: `Joined to ${crossesAt} (no new road needed)`,

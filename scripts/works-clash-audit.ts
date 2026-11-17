@@ -87,9 +87,9 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       protectedRasterCells(ctx.terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: left - 0.25, right: right - 0.25 }, f => {
         if (f.feature === 'railway' && !ours(f.x, f.y)) add('railway', f.x, f.y);
       });
-      // our own body (formation, slopes): a crossed way's slopes and pavement stay out of it, except where it
-      // meets our road (a junction) or passes through it (an underpass's box)
-      if (c.type !== 'junction' && !(c.type === 'underpass' && !surface.link && !surface.tie)) {
+      // our own body (formation, slopes): a bridge over us and a reroute keep their slopes out of it (a junction
+      // meets our road, a box's way passes through our embankment, by design)
+      if (c.type === 'overbridge' || surface.link) {
         // (the slope's own height there beyond the drape tolerance: a toe grazing our slope's edge is not a body in it)
         for (const q of [a, b]) for (const k of [0, 1] as const) for (const t of [0.25, 0.5, 0.75]) {
           if (Math.abs(q.edge[k].z - natural(q.edge[k].x, q.edge[k].y)) * (1 - t) < DRAPED) continue;
