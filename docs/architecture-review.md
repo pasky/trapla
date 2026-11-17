@@ -343,7 +343,19 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   `edited-network.test.ts` (13.5 s alone; then `noise-stages` 8.6 s), so ≈ 17 s → ≈ 14 s; **on this host at
   load 20 the suite takes 25 s before and after** (every file slows down together, and four more workers
   load the pack: the files' times sum to ≈ 230 s instead of ≈ 160 s). The real limit now is the amount of
-  real-pack evaluation in the suite (≈ 10 files of 6–14 s), not one test. UI modules have no unit tests (no DOM in vitest); the
+  real-pack evaluation in the suite (≈ 10 files of 6–14 s), not one test.
+  Looked at and not worth doing (2026-11-17): **a cached, pre-parsed pack would save nothing to speak of.**
+  `loadPack` takes 0.4 s for D11, 0.4 s for the D3 section, 0.7 s for the whole D3 and 0.1 s for D35 (gunzip,
+  decode, JSON, the building and road indexes): 3–7 % of a file that then evaluates for 6–14 s. What a worker
+  does pay besides the evaluations is a cold JIT (the first evaluation in `evaluate-costs` takes 2.0 s, the
+  following ones 0.4–0.7 s), which no cache carries over. `vitest --no-isolate` (workers keep their modules
+  between files) passes all 728 tests but takes the same time (29 s / 28 s against 30 s / 29 s at load 24–28):
+  the heavy files land on different workers anyway. What would shorten the wall time **on an idle host** is
+  the same split as player-text's for the next longest files: `edited-network.test.ts` (13.5 s alone: tests
+  of 6.0, 4.7 and 2.4 s) and `noise-stages.test.ts` (8.6 s alone: one test of 7 s), after which the longest
+  file is a single test (`merged-crossings`, 6 s): ≈ 14 s → ≈ 8 s. Not done: both files are edited by the
+  agents fixing multi-road and noise problems, and on this host it buys nothing. The thing that shortens the
+  suite everywhere is a faster evaluation (docs/evaluate-performance.md). UI modules have no unit tests (no DOM in vitest); the
   modules moved out of main.ts take their dependencies as an interface, so they can be tested with a fake
   context once a DOM (happy-dom) is added.
 
