@@ -19,9 +19,24 @@ export const PIECE_SEARCH = 1500;
 const MINOR = new Set(['track', 'service']);
 
 interface Graph { x: number[]; y: number[]; adj: number[][]; /** per edge: a, b, way, length */ edges: number[]; cls: Map<number, string> }
-/** The mapped network within PIECE_SEARCH (+ a margin) of a point: ways' vertices, junctions where ends meet. */
+/** Region graphs per network, by REGION cell: each covers its cell and PIECE_SEARCH (+ a margin) around it; the
+ * REGIONS last used kept (memory: the cells of a route's crossings). */
+const REGION = 1000, REGIONS = 48;
+const regions = new WeakMap<RoadNet, Map<number, Graph>>();
 function regionGraph(net: RoadNet, at: XY): Graph {
-  const r = PIECE_SEARCH + 100, ids = new Map<number, number[]>(), g: Graph = { x: [], y: [], adj: [], edges: [], cls: new Map() };
+  let cache = regions.get(net);
+  if (!cache) regions.set(net, cache = new Map());
+  const cx = Math.floor(at.x / REGION), cy = Math.floor(at.y / REGION), k = cx * 1_000_003 + cy;
+  let g = cache.get(k);
+  if (g) { cache.delete(k); cache.set(k, g); return g; }
+  g = buildRegion(net, { x: (cx + 0.5) * REGION, y: (cy + 0.5) * REGION }, PIECE_SEARCH + REGION);
+  cache.set(k, g);
+  if (cache.size > REGIONS) cache.delete(cache.keys().next().value!);
+  return g;
+}
+/** The mapped network within r of a point: ways' vertices, junctions where ends meet. */
+function buildRegion(net: RoadNet, at: XY, r: number): Graph {
+  const ids = new Map<number, number[]>(), g: Graph = { x: [], y: [], adj: [], edges: [], cls: new Map() };
   const key = (cx: number, cy: number) => cx * 1_000_003 + cy;
   const node = (x: number, y: number) => {
     const cx = Math.round(x / SNAP), cy = Math.round(y / SNAP);
@@ -42,10 +57,17 @@ function regionGraph(net: RoadNet, at: XY): Graph {
   });
   // A way ending on another's line between its vertices (each way is simplified on its own, so a T-junction's
   // node may be gone from the through way): joined to that segment's ends (roadnet.ts JUNCTION_UNCERTAINTY).
-  const count = g.edges.length / 4;
+  const count = g.edges.length / 4, CELL = 50, grid = new Map<number, number[]>();
+  for (let e = 0; e < count; e++) {
+    const a = g.edges[e * 4], b = g.edges[e * 4 + 1];
+    for (let cx = Math.floor((Math.min(g.x[a], g.x[b]) - SNAP) / CELL); cx <= Math.floor((Math.max(g.x[a], g.x[b]) + SNAP) / CELL); cx++)
+      for (let cy = Math.floor((Math.min(g.y[a], g.y[b]) - SNAP) / CELL); cy <= Math.floor((Math.max(g.y[a], g.y[b]) + SNAP) / CELL); cy++) {
+        const k = key(cx, cy), list = grid.get(k); if (list) list.push(e); else grid.set(k, [e]);
+      }
+  }
   for (let n = 0, nodes = g.x.length; n < nodes; n++) if (g.adj[n].length === 1) {
     const x = g.x[n], y = g.y[n];
-    for (let e = 0; e < count; e++) {
+    for (const e of grid.get(key(Math.floor(x / CELL), Math.floor(y / CELL))) ?? []) {
       const a = g.edges[e * 4], b = g.edges[e * 4 + 1];
       if (a === n || b === n) continue;
       const ax = g.x[a], ay = g.y[a], dx = g.x[b] - ax, dy = g.y[b] - ay;
