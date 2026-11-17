@@ -52,7 +52,7 @@ export function historyLabel(before: ProjectDesign, after: ProjectDesign): strin
   const added = after.routes.filter(r => !before.routes.some(q => q.id === r.id));
   const removed = before.routes.filter(r => !after.routes.some(q => q.id === r.id));
   // (a motorway's two directions come and go together)
-  if (added.length && !removed.length) {
+  if (added.length && !removed.length && added.every(r => r.kind === 'motorway' || added.length === 1)) {
     const r = added[0];
     return r.source ? `changing ${r.name}` : `a new ${lineWord(r)}`;
   }
