@@ -1939,7 +1939,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
     return out;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0,
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
     streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
     left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i])),

@@ -140,6 +140,8 @@ export interface CrossingResult {
   /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
   houses?: number[];
   houseCost?: number;
+  /** How many of those are homes (the rest are sheds, garages, barns …). */
+  homes?: number;
   /** A reroute that needed its class's justified-case steepest grade (research/20) somewhere. */
   linkGrade?: number;
   /** Laid on a new line near our road so that it crosses square (research/44): requested (by Auto's
@@ -302,7 +304,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade;
     delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);
@@ -477,6 +479,8 @@ export interface CrossingRoute {
   /** Houses still standing under a new road from a to b, and what buying one out costs. */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
   houseCost?: (j: number) => number;
+  /** A home (not a shed, garage or barn): a reroute takes one only where nothing else can be built (research/60). */
+  dwelling?: (j: number) => boolean;
 }
 
 export { buildCrossingGeometry, crossingCache, crossingPlanLength, auditCrossingGeometry, underpassFits, type CrossingCache } from './crossing-geometry';

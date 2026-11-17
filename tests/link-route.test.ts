@@ -106,4 +106,26 @@ describe('a reroute built as a designer builds it', () => {
     buildCrossingGeometry(cs, route, () => 400, roads);
     expect(cs[1].type).toBe('underpass'); expect(cs[1].issues ?? []).toEqual([]);
   });
+
+  it('buys out a shed in its way, but takes a home only where nothing else can be built (research/60)', () => {
+    // a track crossing our road in a 3 m cutting, 150 m from a junction; a building beside the reroute's line
+    const s = Float64Array.from({ length: 901 }, (_, i) => i * 10);
+    const run = (home: boolean | null) => {
+      const route: CrossingRoute = { s, x: s, y: new Float64Array(s.length), tx: new Float64Array(s.length).fill(1),
+        ty: new Float64Array(s.length), grade: new Float64Array(s.length).fill(397), width: new Float64Array(s.length).fill(40), kind: new Uint8Array(s.length),
+        ...(home === null ? {} : { houses: (a, b) => (Math.min(a.x, b.x) <= 3720 && Math.max(a.x, b.x) >= 3720 ? [7] : []), houseCost: () => 2e6, dwelling: () => home }) };
+      const roads = new RoadNet({ cls: ['primary', 'track'], ways: [[0, 3650, -300, 3650, 300], [1, 3800, -300, 3800, 300]] });
+      const cross = (roadId: number, x: number, cls: string): CrossingResult => ({ roadId, s: x, cls, h: -3, i: Math.round(x / 10), x, y: 0, type: 'atGrade', cost: 0 });
+      const cs = [cross(0, 3650, 'primary'), cross(1, 3800, 'track')];
+      resolveCrossings(cs, 9000, route.kind!, route.width, new Float64Array(s.length), new Float64Array(s.length), [{ roadId: 0, type: 'junction' }]);
+      buildCrossingGeometry(cs, route, () => 400, roads);
+      return cs[1];
+    };
+    const free = run(null), shed = run(false), home = run(true);
+    expect(free.type).toBe('diversion'); expect(free.houses).toBeUndefined();
+    expect(shed.type).toBe('diversion'); expect(shed.houses).toEqual([7]); expect(shed.homes).toBeUndefined();
+    expect(shed.cost).toBeCloseTo(free.cost + 2e6, -3);
+    // the bridge over us costs more than the reroute with the home, and is built
+    expect(home.type).toBe('overbridge'); expect(home.cost).toBeGreaterThan(shed.cost); expect(home.issues ?? []).toEqual([]);
+  });
 });
