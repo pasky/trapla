@@ -159,6 +159,16 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
 /** A mission end's place name without its note in brackets ("Hostěradice (on to 0303)" → "Hostěradice"):
  * what a motorway direction leads towards. */
 export const placeName = (label: string) => label.replace(/\s*\([^()]*\)\s*$/, '');
+/** Selecting a road before dragging it (a drag on a road not selected moves the map): `line` is road / motorway / railway. */
+export const SELECT_TEXT = {
+  /** the map's hover label over a road a click would select */
+  hover: 'click to select',
+  /** how to bend the line: the first-run intro, the cards' hint, Help */
+  howTo: (line: string) => `Click the ${line}, then drag it to bend it.`,
+  /** …once it is selected */
+  selected: (line: string) => `Drag the ${line} to bend it.`,
+} as const;
+
 /** The motorway's two directions: edited together, or each on its own (split) and joined again. */
 export const DIRECTIONS_TEXT = {
   heading: 'Edit',

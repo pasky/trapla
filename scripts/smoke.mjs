@@ -1,5 +1,5 @@
-// Interaction smoke test with real mouse events: a click on empty ground adds nothing, dragging the road
-// adds a bend, drag it, the inspector for a stretch (buttons + keys), By hand height points, undo,
+// Interaction smoke test with real mouse events: a click on empty ground adds nothing and lets go of the road,
+// a drag on the road not selected moves the map, a click selects it and dragging it then adds a bend, drag it, the inspector for a stretch (buttons + keys), By hand height points, undo,
 // right-click delete, double-click add, persistence.
 import { startGame } from './lib/browser.mjs';
 
@@ -21,6 +21,7 @@ ok(s.s.violations.every((v) => v.goal || v.kind !== 'gradient'), 'the start prof
 const struck = () => page.evaluate(() => document.getElementById('total').classList.contains('invalid'));
 ok(await struck() === !s.s.valid, `cost is struck through exactly when the design is not valid (valid: ${s.s.valid})`);
 ok(await page.locator('#intro').isVisible(), 'the first-run intro is shown');
+ok(await page.evaluate(() => window.trapla.roadSelected()), 'a first-time player finds our road selected (the intro says to drag it)');
 ok(await page.locator('#inspector .money li').count() === 5, 'with nothing selected the inspector lists where the money goes');
 
 // 1. a click on empty ground adds nothing (and dismisses the intro)
@@ -29,9 +30,34 @@ await page.mouse.click(view.x + empty.x, view.y + empty.y);
 await idle();
 ok(await page.locator('#intro').isHidden(), 'the first click on the map dismisses the intro');
 ok((await st()).d.pis.length === 0, 'a click on empty ground adds no bend');
+ok(!(await page.evaluate(() => window.trapla.roadSelected())) && await page.locator('#overlay.road-idle').count() === 1, 'a click on empty ground lets go of the road');
 
-// 2. drag the road: a new bend follows the mouse
-const road = await page.evaluate(() => window.trapla.roadScreen(window.trapla.result().length * 0.45));
+// 2. the road not selected: a drag that starts on it moves the map like one on open ground, and adds nothing
+const camera = () => page.evaluate(() => { const p = window.trapla.cameraPose(), t = window.trapla.cameraTarget(); return [p.distance, p.pitch, t.x, t.y]; });
+const before = await camera();
+let road = await page.evaluate(() => window.trapla.roadScreen(window.trapla.result().length * 0.45));
+await page.mouse.move(view.x + road.sx, view.y + road.sy);
+await page.waitForTimeout(100);
+const hoverText = () => page.evaluate(() => document.querySelector('.hover-dot')?.textContent ?? '');
+const tipIdle = await hoverText();
+await page.mouse.down();
+for (let k = 1; k <= 10; k++) await page.mouse.move(view.x + road.sx + 12 * k, view.y + road.sy + 3 * k);
+await page.mouse.up();
+await idle();
+const after = await camera();
+ok((await st()).d.pis.length === 0 && after.some((v, k) => Math.abs(v - before[k]) > 1e-3), `a drag on the road not selected moves the map, adds no bend (hover: "${tipIdle}")`);
+ok(/click to select/.test(tipIdle), 'over the road not selected the pointer says "click to select"');
+await page.evaluate(() => window.trapla.resetCamera());
+await game.still();
+
+// 3. a click selects the road (its piece); a drag on it now adds a bend that follows the mouse
+road = await page.evaluate(() => window.trapla.roadScreen(window.trapla.result().length * 0.45));
+await page.mouse.click(view.x + road.sx, view.y + road.sy);
+await idle();
+await page.mouse.move(view.x + road.sx + 1, view.y + road.sy);
+await page.waitForTimeout(100);
+ok(await page.evaluate(() => window.trapla.roadSelected()) && (await page.evaluate(() => window.trapla.selection()))?.kind === 'stretch', 'a click on the road selects it (its piece)');
+ok(/drag to bend/.test(await hoverText()), `over the selected road the pointer says "drag to bend" (${await hoverText()})`);
 await page.mouse.move(view.x + road.sx, view.y + road.sy);
 await page.mouse.down();
 for (let k = 1; k <= 10; k++) await page.mouse.move(view.x + road.sx + 12 * k, view.y + road.sy + 3 * k);
@@ -41,7 +67,7 @@ s = await st();
 ok(s.d.pis.length === 1, `dragging the road adds a bend (${s.d.pis.length})`);
 ok((await page.evaluate(() => window.trapla.selection()))?.kind === 'bend' && await page.locator('#inspector.k-bend').isVisible(), 'the new bend is selected, its card is open');
 
-// 3. drag the bend marker
+// 3b. drag the bend marker
 await frames();
 const box = await page.locator('.pi').first().boundingBox();
 const p0 = { ...s.d.pis[0] };
@@ -157,8 +183,13 @@ ok(sel !== null, `clicking the alignment band selects a tangent / curve (${sel &
 await page.click('#inspector .x');
 ok(await page.evaluate(() => window.trapla.range()) === null, '✕ deselects');
 
-// 9. right-click deletes the bend; double-click on empty ground adds one
+// 9. ✕ let go of the road: its bends show no handles until a click selects it; right-click deletes the bend;
+// double-click on empty ground adds one
 await frames();
+ok(await page.locator('.pi').first().isHidden(), 'the road not selected shows no bend handles');
+const road3 = await page.evaluate(() => window.trapla.roadScreen(window.trapla.result().length * 0.2));
+await page.mouse.click(view.x + road3.sx, view.y + road3.sy);
+await idle(); await frames();
 const b2 = await page.locator('.pi').first().boundingBox();
 await page.mouse.click(b2.x + b2.width / 2, b2.y + b2.height / 2, { button: 'right' });
 await idle();

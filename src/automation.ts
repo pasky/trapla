@@ -38,6 +38,8 @@ export interface AutomationContext {
   readonly transportIndex: ProjectTransportIndex | null; readonly transportGraph: TransportGraphData | null;
   readonly sourceEditor: MappedRoadCard | null;
   readonly sel: Sel | null; readonly qualifiedSelection: RouteSelection | null;
+  /** the active road is selected (a drag on it bends it) */
+  readonly roadSelected: boolean;
   /** id of the newest handled worker result */
   readonly received: number;
   readonly handlerTiming: Record<string, number>;
@@ -48,6 +50,8 @@ export interface AutomationContext {
   switchRoute(id: RouteId, created?: boolean, oneDirection?: boolean): boolean;
   select(next: Sel | null, fly?: boolean): void;
   selectPiece(s: number, fly?: boolean): void;
+  /** the active road itself selected (ui/selection.ts) */
+  selectRoad(): void;
   placeAt(clientX: number, clientY: number, x: number, y: number): Placement;
   ensureTransport(): Promise<void>;
   /** forget what a hitRoad probe grabbed */
@@ -143,7 +147,8 @@ export function installAutomation(c: AutomationContext): void {
     lookAtSource: (id: string, s: number, dist = 900) => { const p = c.transportIndex?.position(id, s); if (p) c.view.lookAt(p.x, p.y, dist, 0, 55); },
     proposalLines: () => c.view.proposalCount,
     photoWithNetwork: () => c.view.photoWithNetwork,
-    setActiveRoute: c.switchRoute,
+    /** make a road the active one and select it, as the road list does */
+    setActiveRoute: (id: RouteId, created?: boolean, oneDirection?: boolean) => { const ok = c.switchRoute(id, created, oneDirection); if (ok) c.selectRoad(); return ok; },
     projectSelection: () => structuredClone(c.qualifiedSelection),
     setProject: (design: ProjectDesign) => {
       c.select(null);
@@ -166,6 +171,8 @@ export function installAutomation(c: AutomationContext): void {
     select: (t: Sel | null) => c.select(t),
     selectPiece: (s: number) => c.selectPiece(s),
     selection: () => c.sel && JSON.parse(JSON.stringify(c.sel)),
+    /** the active road is selected: a drag on it bends it (else the drag moves the map; a click selects it) */
+    roadSelected: () => c.roadSelected,
     selectPi: (i: number | null) => c.select(i === null ? null : { kind: 'bend', i }),
     selectStation: (s: number) => c.select({ kind: 'pin', s }),
     selectCrossing: (roadId: number) => c.select({ kind: 'crossing', roadId }, true),

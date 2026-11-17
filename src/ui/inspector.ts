@@ -29,7 +29,7 @@ import { activeStructure } from './structure-bar';
 import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 import { stationIndex } from '../core/range';
 import { CULVERT_RULES } from '../core/data/culverts';
-import { culvertCard } from '../core/terms';
+import { culvertCard, SELECT_TEXT } from '../core/terms';
 import { culvertSection } from '../render/culvert-geometry';
 
 export type Sel =
@@ -125,6 +125,8 @@ export class Inspector {
   private more = false;
   /** one direction of a split motorway is shown: its pieces are that direction's, not the total's */
   oneDirection = false;
+  /** the road is selected: a drag on it bends it (else a click selects it first) */
+  roadSelected = true;
   private r: Result | null = null;
   private d: Design | null = null;
   private networkPending = false;
@@ -310,10 +312,10 @@ export class Inspector {
   private money(r: Result) {
     const top = topPieces(r, 5);
     // a rebuilt stretch still wholly on its old road builds nothing
-    if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. Drag it to change its line.</div>`;
+    if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. ${this.roadSelected ? 'Drag it' : 'Click it, then drag it'} to change its line.</div>`;
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
-      <div class="sub hint">Drag the ${this.d ? CATEGORIES[this.d.category].mode : 'road'} to bend it. Click anything to inspect it.</div>`;
+      <div class="sub hint">${(this.roadSelected ? SELECT_TEXT.selected : SELECT_TEXT.howTo)(this.d ? CATEGORIES[this.d.category].mode : 'road')} Click anything to inspect it.</div>`;
   }
 
   // ---- a piece of road / a dragged stretch ----
@@ -396,8 +398,8 @@ export class Inspector {
       const cones = (r.cones ?? []).filter((c) => c.i >= bridge.i0 && c.i <= bridge.i1);
       const ends = cones.length ? `<div class="sub">${cones.length === 2 ? `Its ends stand on fills ${cones.map((c) => c.height.toFixed(0)).join(' and ')} m high` : `One end stands on a fill ${cones[0].height.toFixed(0)} m high`}, sloping on under the bridge: ${Math.round(cones.reduce((t, c) => t + c.volume, 0)).toLocaleString('en-US')} m³ of fill, ${czk(cones.reduce((t, c) => t + conePavingCost(c), 0))} of paving.</div>` : '';
       // an end whose fill would cover what lies below: a wall down to the ground there (support-layout.ts)
-      const closed = bridge.closedEnds?.filter(Boolean).length ?? 0;
-      const walls = closed ? `<div class="sub">${closed === 2 ? 'Both ends are walls' : 'One end is a wall'} down to the ground, so the fill does not cover what lies below.</div>` : '';
+      const walled = (bridge.endWalls ?? []).filter((w, k) => bridge.closedEnds?.[k] && w.height > 0);
+      const walls = walled.length ? `<div class="sub">${walled.length === 2 ? `Both ends are walls ${walled.map((w) => w.height.toFixed(0)).join(' and ')} m high` : `One end is a wall ${walled[0].height.toFixed(0)} m high`} down to the ground, so the fill does not cover what lies below: ${czk(walled.reduce((t, w) => t + w.cost, 0))}.</div>` : '';
       method = `${ends}${walls}<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;

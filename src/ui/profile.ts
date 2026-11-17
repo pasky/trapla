@@ -46,6 +46,9 @@ export interface ProfileEvents {
   onSelect?: (r: StationRange | null) => void;
   /** a click at station s (select the piece of road there) */
   onPick?: (s: number) => void;
+  /** a left press anywhere on the chart: the profile is the active road's, so this selects it (the map's rule:
+   *  a road is selected before it is dragged; a left drag here never moves anything else) */
+  onPress?: () => void;
   /** Auto: the road line dragged up / down at station s — pin it there at height z (transient), and released */
   onLineDrag?: (s: number, z: number) => void;
   /** the visible stretch changed (zoom buttons, the floating selection bar) */
@@ -1101,6 +1104,7 @@ export class ProfilePanel {
         return;
       }
       if (e.button !== 0) return;
+      this.ev.onPress?.();
       if (u.kind === 'bend') { this.ev.onBendSelect?.(u.i); return; }
       if (u.kind === 'pin' && this.mode === 'manual') { this.ev.onStationSelect?.(u.s); return; }
       if (u.kind === 'crossing') { this.ev.onCrossingSelect?.(u.roadId); return; }
