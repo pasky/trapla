@@ -1,5 +1,108 @@
 # Evaluate performance regression
 
+## A retry builds only the crossings near what it changed (cost model 37, 2026-11-17)
+
+Finding 23 of docs/architecture-review.md ("a retry pass engineers the whole route again"), its first part.
+Code: `src/core/crossings-kept.ts`, called from `finishCrossings` (evaluate.ts); reference and checks:
+`scripts/local-retry-report.ts` (a full gate), `scripts/dev/local-retry-check.ts`, `tests/crossings-kept.test.ts`.
+
+**What repeats is a finish, not a pass.** A pass finishes its design up to three times (first, the stream
+retry, the strict retry), and each finish builds every crossing of the route. The 177 cases of `exact.ts` hold
+72 full evaluations with 313 finishes, 241 of them after the first of their evaluation; the whole D3 starter
+is 10 finishes in 4 passes (and 18 `engineer()` calls). On the whole D3 one finish spends ≈ 55 ms building
+crossings and ≈ 20–60 ms in the footprint screen; one `engineer()` ≈ 40–50 ms (retaining 25, selection 14).
+
+**Where a later finish differs from an earlier one** (scratch study on main `1ba513d`: each later finish
+against the earlier one with the fewest changed input stations): of 5267 differing crossings, footprint
+conflicts and crossing issues, 161 lie away from a changed input station, 132 of them within 2 km, none of the
+rest beyond 620 m but for one finish (D11 random-1-10's regrade retry). That one is the crossing engine's
+rollback: when a crossing that could be built at first cannot after the others were reconsidered,
+`buildCrossingGeometry` puts every crossing of the route back to its first treatment (3 of 313 builds). Stations
+within 2 km of a change are 33 % of the route on average (500 m: 15 %).
+
+**What is done.** Each finish keeps what the crossing build read of our road per station (grade, kind, width,
+left, right, urban), the houses our road had demolished, each crossing as `resolveCrossings` left it, and each
+crossing as built. A later finish of the same evaluation takes the kept finish that differs from it at the
+fewest stations (a resolved crossing that differs, is new or is gone counts at its station; a house at the
+station that took it), builds again the crossings within `LOCAL_CORE` = 2 km (`linkHardReach`: how far a reroute
+is led and a crossed way traced) of a changed station, together with those up to `LOCAL_CONTEXT` = 2 km further
+out (what the rebuilt ones may be led to and are weighed against), and takes every other crossing as the kept
+finish built it (copies, on this finish's own objects). `resolveCrossings` stays whole-route (0.4 ms). The
+whole route is built instead when
+
+- the kept finish's build rolled back, or the local one does (`CrossingCache.rolledBack`);
+- the crossings to build are over 90 % of all (`LOCAL_MAX_SHARE`);
+- a crossing built again is led to a context crossing that came out other than it was kept (a context
+  crossing at the outer edge has its own carriers outside the subset: its result is never taken);
+- a kept crossing is led to one built again that changed.
+
+The grade line, the engineering passes, quantities, buildings and the footprint screen of a retry are whole-route
+as before. **This is not the plan's "evaluate the window as its own route and splice"**: the grade solve of a
+retry was already block-local, and a window evaluation would have spliced per-station arrays, structure runs and
+walls at its ends; this splices only crossings, which are separate objects, on the retry's own whole-route
+arrays. A variant that kept the context crossings fixed at their final treatments (not reconsidered) was tried
+and is less faithful: the engine is greedy and order-dependent, a crossing that sees its neighbours' final
+treatments decides otherwise than one that sees them mid-pass (7 of 241 finishes differed).
+
+**What it changes: nothing found.** `LOCAL_RETRY.local = false` is the reference (every finish whole);
+`LOCAL_RETRY.check` builds both ways in each later finish on the same inputs and reports the differences.
+
+| inputs | local builds | differ from the whole route's | results |
+|---|---|---|---|
+| `exact.ts`, 177 cases (every pack's straight, saved designs, starters, 12 random D11) | 220 of 241 later finishes (18 whole for the share, 3 for the rollback) | 0 | 177 / 177 identical to main `1ba513d` |
+| `local-retry-report.ts --only d11 --random 100 --seed 5` | 526 of 553 | 0 | 221 / 221 identical |
+| `outcome-audit.ts --straight scripts/*-design.json --random 24` | 128 of 136 | 0 | output identical to main's but for the times (32 bills, every flag) |
+| `edit-locality.ts` (random edits: D11, D3 sections, whole D3 / D35, the railway) | 335 of 356 | 0 | exit 0 |
+| `choice-audit.ts`, `straighten-audit.ts`, `bench.ts scripts/*.json`, `eval-regression.ts` | 87, 51, 12, 14 | 0 | exit 0 |
+| `scenarios/check.ts`, ten packs | 750 | 0 | exit 0 |
+
+No bill, validity or other field of any result moved. It is still a model change, not a refactor: nothing
+proves that a crossing 2 km from every change cannot come out differently (see the seams), so it carries a
+cost model version and the report stays a gate.
+
+**Timing**, interleaved against main `1ba513d` (`scripts/dev/interleave.ts`, host load 3–13; minima; four runs
+of the whole D3 and three of D11, the first of each on the prototype, the others on the commit that turned it on):
+
+| design | main, ms | this, ms | ratio | CPU ratio |
+|---|---|---|---|---|
+| whole D3 starter | 2325–2513 | 1962–2102 | 0.82–0.85 | 0.86–0.91 |
+| direct-80 (one regrade retry, 66 % of its crossings built again) | 213–224 | 206–214 | 0.92–0.98 | |
+| best, demo, direct-90, town-centre (no retry pass) | | | 0.97–1.03, noise | D11 sum 0.96–1.01 |
+
+The whole D3 gains ≈ 340–425 ms (−15 … −18 %; the estimate from the share of crossings built was ≈ −250 ms).
+direct-80's gain is small and near the noise (−2 … −8 %). The plan's −30 % counted the engineering passes too,
+which this leaves alone.
+
+**The seams, reviewed.**
+
+- *What the build reads.* The six arrays, the houses and the resolved crossings are compared exactly; everything
+  else the build reads is the same in every pass of an evaluation (stationing, terrain, road network, the
+  player's choices, kept buildings, other roads' works). A per-pass input added to `CrossingRoute` must be added
+  to `CrossingInputs` (noted there); the gate sees an omission only where a case exercises it.
+- *Reach.* 2 km covers a reroute's target, the crossed way's traced line (2 km from the crossing) and ramps and
+  ties. It is not a proven bound on what a build reads of our road: a reroute's own path, or a way on a hairpin
+  of ours, can come nearer to a station further along. The study found no difference beyond 620 m.
+- *Order.* The engine reconsiders the dearest crossings first, among the crossings it is given. The subset keeps
+  that order; what a context crossing would have become on the whole route may differ at the subset's outer
+  edge, which is why context results are not taken and a target among them is checked.
+- *A strict retry or a split triggered elsewhere* changes the engineering or the resolved crossings there: those
+  stations count as changed. *A remedy weighed against a crossing outside the subset* cannot happen: targets
+  are within 2 km of a crossing built again, the subset reaches 4 km from the change.
+- *Structure runs, walls, `regionCount`*: nothing but crossings is spliced; the footprint screen and every check
+  run on the complete crossing list of the finish.
+- *Later writes.* A result's crossings are written to after the build (`raised`, a split motorway's shared
+  crossings, an issue's text): kept crossings and their issues are copies, taken right after the build.
+- *Issue order.* The build's issues are listed in crossing order, a failed straightening's last, as a rebuilt
+  whole route lists them; a whole-route build that reconsidered nothing lists a failed straightening with its
+  crossing. Same issues, another order, only with a player's straightening that failed.
+
+**Left of finding 23** (whole D3 profile with this, ≈ % of an evaluation, read off `profile.mjs --tree 2`): the
+crossing build 15 (the first finish's whole build 6), the footprint screen 11 (`planRoadRealignment` most of
+it), `engineer()` 19, the grade solve 14, noise 19, GC 11. Next: the footprint screen the same way (its ledger of rebuilt roads is order-
+dependent across hits: study its reach first), and a memo of the engineering passes over runs of unchanged
+stations (retaining replay is half of `engineer()`). A tighter core than 2 km needs the engine to say what each
+crossing's build read of our road (the reroute cache records it for reroutes: `spatial.reads`).
+
 ## Bridge styles, cost model 35 (2026-11-17)
 
 Each bridge run now gets a plan per style in support-layout (short spans; long spans: up to three equal layouts, or
