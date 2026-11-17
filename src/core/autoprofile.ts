@@ -533,6 +533,36 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     return false;
   };
   /**
+   * Whether every line a pass on grid `u` within `padM` of the ground envelope could find over range `r` misses a
+   * clearance the law demands (`hardClearance`): the pass's own height range at each knot (solveIn's) narrowed by
+   * its grade steps, with no curves; so a pass it rules out would find no line meeting it.
+   */
+  const surelyMissesHard = (lut: CostLut, r: Range, u: number, padM: number) => {
+    if (!hard || hasPins) return false;
+    let miss = false;
+    solveIn(lut, opt.maxGradient, u, padM, null, r, 1, false, (zlo, zhi, dzMaxK, corrAt) => {
+      const n = r.kb - r.ka + 1, lo = new Float64Array(n), hi = new Float64Array(n);
+      for (let k = r.ka; k <= r.kb; k++) { lo[k - r.ka] = zlo[k]; hi[k - r.ka] = zhi[k]; }
+      for (let j = 1; j < n; j++) { lo[j] = Math.max(lo[j], lo[j - 1] - dzMaxK[r.ka + j - 1]); hi[j] = Math.min(hi[j], hi[j - 1] + dzMaxK[r.ka + j - 1]); }
+      for (let j = n - 2; j >= 0; j--) { lo[j] = Math.max(lo[j], lo[j + 1] - dzMaxK[r.ka + j]); hi[j] = Math.min(hi[j], hi[j + 1] + dzMaxK[r.ka + j]); }
+      for (let j = 0; j < n; j++) if (!(lo[j] <= hi[j])) return;
+      for (let k = r.ka; k < r.kb && !miss; k++) {
+        const j = k - r.ka, c0 = corrAt(k), c1 = corrAt(k + 1);
+        const la = zA + lo[j] * u + c0, ha = zA + hi[j] * u + c0, lb = zA + lo[j + 1] * u + c1, hb = zA + hi[j + 1] * u + c1;
+        for (let q = clrStart[k]; q < clrStart[k + 1] && !miss; q++) {
+          const i = clrIdx[q];
+          if (!hard[i]) continue;
+          const t = (clrX[q] - knotS[k]) / Dk(k);
+          const hLo = (1 - t) * (t <= 1 ? la : ha) + t * (t >= 0 ? lb : hb) - g[i] - 1e-6;
+          const hHi = (1 - t) * (t <= 1 ? ha : la) + t * (t >= 0 ? hb : lb) - g[i] + 1e-6;
+          if ((minH && hHi < minH[i] + CLEARANCE_MARGIN) || (maxH && hLo > maxH[i] - CLEARANCE_MARGIN)
+            || (opt.eitherH && hHi < opt.eitherH.above[i] + CLEARANCE_MARGIN && hLo > opt.eitherH.below[i] - CLEARANCE_MARGIN)) miss = true;
+        }
+      }
+    });
+    return miss;
+  };
+  /**
    * coarse pass: normal band, then a wide one (deep tunnels / high viaducts); if the coarse grid finds
    * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
    * the fine grid over the whole band. On a gentle gradient (a railway: kilometres to climb out of a
@@ -551,9 +581,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     // Where the law demands a clearance in the range (a protected area, `hardClearance`), a line that misses it is
     // only a fallback while a wider band or the finer grid may meet it (its grade steps are half as large, which
     // matters near a grade limit).
+    // (a pass whose band surely misses it is solved only if it is that fallback)
     const lawful = hardIn(r);
-    let fallback: Solved | null = null;
-    for (const [u, pd] of passes) {
+    let fallback: Solved | null = null, skipped = -1;
+    for (let p = 0; p < passes.length; p++) {
+      const [u, pd] = passes[p];
+      if (lawful && fallback === null && skipped < 0 && surelyMissesHard(lut, r, u, pd)) { skipped = p; continue; }
       const x = solve(lut, opt.maxGradient, u, pd, null, r);
       if (!check(x)) continue;
       if (lawful && missesHard(x, r)) { fallback ??= x; continue; }
@@ -562,6 +595,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         if (check(wide) && wide.cost < x.cost) return wide;
       }
       return x;
+    }
+    if (skipped >= 0) {
+      const x = solve(lut, opt.maxGradient, passes[skipped][0], passes[skipped][1], null, r);
+      if (check(x)) return x;
     }
     return fallback;
   };
@@ -820,7 +857,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     if (!plain?.tunnel) return plain;
     return solveIn(table, gmax, u, padM, around, range, step, true) ?? plain;
   }
-  function solveIn(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step: number, tunnelMode: boolean): Solved | null {
+  /** `probe`: only the height range each knot's line may take (grid units from zA, with B's correction `corrAt`)
+   * and the steepest grade step of each interval, handed to it; no line is searched. */
+  function solveIn(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step: number, tunnelMode: boolean,
+    probe?: (zlo: Int32Array, zhi: Int32Array, dzMaxK: Int32Array, corrAt: (k: number) => number) => void): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
     // the end correction below spreads ≤ u/2 over the knots after corrFrom: keep that much grade in
@@ -880,6 +920,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       }
       zlo[k] = a; zhi[k] = b;
     }
+    if (probe) { probe(zlo, zhi, dzMaxK, corrAt); return null; }
     if (hasPins) {
       // Hard preflight budgets per pass: ≤16 MB of parent indices and ≤60 M estimated inner
       // iterations. Four coarse attempts + refinement/balance are bounded; never allocate a
