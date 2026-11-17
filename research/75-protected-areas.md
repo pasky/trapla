@@ -74,8 +74,8 @@ width and the rock-cover factor (research/73 §5, too weak), running costs (rese
   only where the area is at most 180 m long along the road; or 14 m under it, mined); within a dug tunnel end's
   reach of it (≈ 30 m), a tunnel end is avoided (an ordinary clearance penalty). Bridge supports and ends stand clear (support-layout.ts); a wall keeps a slope
   out, else a bridge or tunnel (retaining.ts); rebuilt roads and reroutes do not enter.
-- Results (model 43 → 44): every starter VALID; d35 stage-1 Auto builds a 3,159 m tunnel under Pod skálou at
-  ≤ 3 %, out of its forest (research/73 §6); the D3 Sázava viaduct's piers leave EVL Dolní Sázava (820 → 929 m).
+- Results (model 43 → 44): every starter VALID; d35 stage-1 Auto builds a 3,209 m tunnel under Pod skálou at
+  ≤ 3 %, out of its forest (research/73 §6); the D3 Sázava viaduct's piers leave EVL Dolní Sázava .
 - Not modelled: the QA's new lines across Královec run through EVL Krkonoše and are problems there (their crossing
   tests load the pack without areas); Auto's tunnel of a steep road may still exceed 5 % where its structure choice
   tunnels a deep cut on a steep grade (said on the card).

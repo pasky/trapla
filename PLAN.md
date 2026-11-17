@@ -1059,16 +1059,16 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
   tunnel line (its coarse grade steps miss 3 % by a step).
 - **A stream under an embankment a bridge's height above it**, with no bridge near, gets a short bridge of its own
   (the D11 starter's tunnel, now 3 %, left a stream at its toe under 13 m of fill).
-- **The real D35** (research/73): Auto's stage-1 motorway now builds a 3,159 m tunnel under Pod skálou at 2.6–3.0 %,
-  out of the protected forest, and 740 m of bridges (real: 3,983 m, ≈ 700 m): 20,029 M. The real-portal line bills
-  21,155 M (+6 %).
-- **Bills** (model 43 → 44): D11 frozen fixtures and the Královec railway unchanged; D11 starter (QA tests) 8,978 →
-  9,052 M; d35 stage-1 19,050 → 20,029, d35 road 6,561 → 9,468 (a 3.1 km tunnel and its escape tunnel where its line
-  ended in the monument), d35-full 32,380 → 34,177, D3 motorway 14,284 → 15,017 (the Sázava viaduct 820 → 929 m, its
-  piers out of the Natura 2000 river), d3-0302 7,045 → 7,026, d3-0304 10,133 → 10,112, d3-full 37,865 → 36,378 (its
+- **The real D35** (research/73): Auto's stage-1 motorway now builds a 3,209 m tunnel under Pod skálou at ≤ 3 %, out of
+  the protected forest, and 880 m of bridges (real: 3,983 m, ≈ 700 m): 20,084 M. The real-portal line bills 21,319 M
+  (+6 %).
+- **Bills** (model 43 → 44): D11 frozen fixtures and the Královec railway unchanged; D11 starter (QA tests) 9,005 →
+  9,131 M; d35 stage-1 19,203 → 20,084, d35 road 6,590 → 9,468 (a 3.1 km tunnel and its escape tunnel where its line
+  ended in the monument), d35-full 32,738 → 34,414, D3 motorway 14,446 → 15,248 (the Sázava viaduct's piers out of the
+  Natura 2000 river), D3 road 3,973 → 3,947, d3-0302 7,051 → 7,032, d3-0304 10,195 → 10,173, d3-full 38,077 → 36,530 (its
   800 m tunnel at km 9.7 was 3.8 % steep; without it the line stays higher on a longer bridge, 1.5 bn cheaper by our
-  prices), the rest unchanged. Outcome audit (24 random D11 lines): VALID and problem counts unchanged, flags 76 → 74,
-  lines with tunnels −1.1 … +0.6 bn.
+  prices), the rest unchanged. Outcome audit (24 random D11 lines, against model 41): VALID and problem counts
+  unchanged, flags 76 → 74, lines with tunnels −1.1 … +0.6 bn.
 - **Known limits.** A protection zone is a note only; ventilation shafts, groundwater protection zones and the Act's
   exemptions are not modelled; a national park's villages are the land cover's built-up areas; an area near our road
   but outside the crown holds no grade limit (a wall or a structure keeps the slope out; a cut 9–14 m deep within

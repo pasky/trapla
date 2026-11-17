@@ -170,9 +170,9 @@ Recommendations #1 and #2 implemented (research/75; #3, #4 and running costs not
 
 | | Tunnel | Bridges | Bill |
 |---|---|---|---|
-| Auto, model 43 | 1.9 km at 3.8 %, its east end in PP Pod skálou | 2.3 km | 19,050 M |
-| **Auto, model 44** | **3,159 m (km 3.94–7.10) at 2.6–3.0 %, out of the protected forest** | 740 m | **20,029 M** |
-| Real-portal line (514 → 439 m), tunnel painted | 3,948 m | 550 m | 21,155 M (+5.6 %) |
+| Auto, model 43 | 1.9 km at 3.8 %, its east end in PP Pod skálou | 2.3 km | 19,203 M |
+| **Auto, model 44** | **3,209 m at ≤ 3 %, out of the protected forest** | 880 m | **20,084 M** |
+| Real-portal line (514 → 439 m), tunnel painted | 3,948 m | 640 m | 21,319 M (+6.1 %) |
 | Real D35 (ŘSD estimate, incl. the I/35 feeder) | 3,983 m | ≈ 700 m | 17,694 M |
 
 Auto now chooses the layout the real designers chose: a long tunnel at a gentle grade, exiting below the protected
