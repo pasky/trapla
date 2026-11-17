@@ -768,7 +768,14 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         // a narrower band first (it only fixes the corridor), the full passes where that finds nothing
         // (not where the law demands a clearance in the window: a protected area's tunnel lies deeper than the corridor)
         const w = gentle || hardIn(r) ? null : solve(pre, opt.maxGradient, coarseGrid, WINDOW_PAD, null, r, 2);
-        const c = w && ok(w) && !missesHard(w, r) ? w : coarse(pre, r);
+        let c = w && ok(w) && !missesHard(w, r) ? w : coarse(pre, r);
+        // (a corridor whose boundary heights lie at its band's edge was held there by the band, not by the prices:
+        // the wide band's line is taken where it is cheaper; d3-full km 11.67, a pin 16 m low put an 800 m tunnel
+        // in, 1.66 bn dearer)
+        if (w && c === w && [K - 1, K, K + 1].some(k => w.z[k] <= gmin[k] - WINDOW_PAD || w.z[k] >= gmaxEnv[k] + WINDOW_PAD)) {
+          const wide = solve(pre, opt.maxGradient, coarseGrid, pad * 5, null, r, 2);
+          if (ok(wide) && !missesHard(wide, r) && wide.cost < w.cost) c = wide;
+        }
         // the corridor pass suffices: its heights are on the fine grid too
         pins = c ? [c.z[K - 1], c.z[K], c.z[K + 1]] : null;
         if (key) memo!.set(key, pins);
