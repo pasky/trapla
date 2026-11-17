@@ -406,9 +406,26 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const first = evaluateProjectOnce(ctx, snapshot, new Map(), yields);
   if (!yields.size) return first;
   // (kept where it leaves fewer things unsettled between the roads)
-  const again = evaluateProjectOnce(ctx, snapshot, yields), unsettled = (r: ProjectResult) => r.issues.filter(i => i.check === 'not-checked').length;
-  return again.cost.total !== null || unsettled(again) < unsettled(first) ? again : first;
+  const unsettled = (r: ProjectResult) => r.issues.filter(i => i.check === 'not-checked').length;
+  let best = first;
+  // A road keeping its earthworks clear of another's behind walls (KeepClear `wall`) may come too close a little
+  // further on once walled: again with those works too, at most WALL_PASSES times.
+  for (let pass = 0; pass < WALL_PASSES; pass++) {
+    const more = new Map<string, KeepClear>();
+    const again = evaluateProjectOnce(ctx, snapshot, yields, more);
+    if (again.cost.total !== null || unsettled(again) < unsettled(best)) best = again;
+    if (again.cost.total !== null) break;
+    let grown = false;
+    for (const [id, list] of more) {
+      const walls = list.filter(c => c.wall);
+      if (walls.length) { yields.set(id, [...yields.get(id) ?? [], ...walls]); grown = true; }
+    }
+    if (!grown) break;
+  }
+  return best;
 }
+/** re-runs of a project whose roads keep clear of each other's works behind walls (evaluateProject) */
+const WALL_PASSES = 3;
 /** Stage 1 of evaluateProjectOnce: the empty result, the order the roads are evaluated in (a road after the
  * roads its ends join and the roads drawn through it; what is left of a cycle last) and the maps the stages
  * fill (each road's Result, the heights it holds for others, replacements, works, junctions). */
@@ -770,7 +787,7 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
     // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
     // another road, which a road crossing it changes on its own)
     const ownWay = ownWayOf(route);
-    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(ownWay !== undefined ? { ownWays: [ownWay, ...remnantOf(route) !== undefined ? [remnantOf(route)!] : []] } : {}),
+    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(route.kind === 'railway' ? { railway: true } : {}), ...(ownWay !== undefined ? { ownWays: [ownWay, ...remnantOf(route) !== undefined ? [remnantOf(route)!] : []] } : {}),
       ...(corridor ? { profile: 'motorway' as const } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
       // its other works on the ground: the links that reconnect side roads. (The old road where it is

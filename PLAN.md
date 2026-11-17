@@ -958,6 +958,27 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   32,380 (its 2:1 sandstone faces not presplit: −177 M). Outcome audit (24 random D11 lines): 14 → 13 VALID, 72 → 79 problems (random-22's service road at km 11.74
   under our embankment and random-19's street appear with either the slopes or the cones; random-18's stream bank at
   km 14.99 under our slope where a bridge stood; random-13 / 15 / 17 tunnel cuts of 56–67 m, +1.3–2.3 bn each).
+- **Where the bills come from** (mechanisms switched on one by one, M CZK): straight +623 = 30 m rule +417 (no tunnel:
+  the grade search lifts the line off a 42 m cut at km 4.5–5.0 and a 39 m one at km 10.0–10.5, fills of 23–28 m and
+  bridges at km 4.0–5.5, +382 M of bridges) + presplit +119 + cones +93 + bridge ends +29 − rock by kind 35;
+  direct-90 +745 = presplit +440 (its own price on the old line ≈ +50; the grade search then takes a line 391 M dearer
+  than holding the old one: a miss of the search, not fixed here) + 30 m rule +220 (a 37 m cut at km 10.5–11.0 lifted to
+  29 m, fills and bought fill at km 9.5–11.5) + cones +130 − rock 54 + bridge ends 9; town-centre +412 = cones +250 +
+  presplit +208 (its own price) − 30 m rule 25 − rock 16 − bridge ends 5; d35-full +3.0 bn = 30 m rule +2.54 bn (a 460 m
+  tunnel at km 19.07–19.53 for a 54 m cut in Cretaceous sandstone / marl, lines lifted at km 19.5–20.5) + cones +289 +
+  bridge ends +122 + rock +44 + presplit +21; d3-full +5.7 bn = 30 m rule +4.24 bn (an 800 m tunnel at km 9.67–10.47 for
+  a 45 m cut, where the real D3 has the Luka tunnel) + cones +1.03 bn + presplit +408. No 31–35 m cut becomes a tunnel
+  anywhere checked (fixtures, starters, 24 random lines): the grade search treats a cut past 29 m as a tunnel and lifts
+  the line where that is cheaper, and the tunnels it keeps are for cuts of 42–220 m.
+- **Owner's review**: a stream's bank brushing our slope beside the culvert that carries the same stream under us is
+  held by that culvert's headwall and wing walls (random-18's km 14.99); a way whose end meets a road Auto's junction
+  rebuilds, inside what it rebuilds, is rejoined to it there (its last ≤ 30 m under our works, PROVISIONAL; random-22's
+  service road at km 11.74): 14 VALID of 24 again, as on model 38. Two roads of a project whose earthworks come
+  within the working strip (10 m): the later keeps clear of the other's works behind a retaining wall, again until
+  settled (at most 3 times): the QA's new railway across the Královec line is priced (11.15 bn). The wing walls of an
+  abutment on a cone follow the cone's surface down to the ground (a straight edge to the embankment's toe left a
+  sky-coloured sliver beside the cone). Left: random-12 / random-19 (already invalid) bury a track / street that
+  cannot be moved aside on the 30 m rule's new line (steep ground, a side road it would cut off).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 

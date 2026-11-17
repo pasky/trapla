@@ -49,10 +49,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   it('a new railway across our railway passes over it on its own bridge; ours stays where it was', async () => {
     const design = fixture('rail-new-railway-across'), r = run(design);
     // (both lines carry the track at km 12.05 over themselves, 500 m apart along it: two changes of it that do
-    // not meet, priced. Since cost model 41 our line tunnels its 54 m cut at km 6.6–8.6 and, short of that cut's
-    // spoil, balances its earth 3 m lower here: at km 12.58 its embankment comes 9 m from the new line's, past that
-    // line's bridge, which the screen of several roads does not yet price: an engine limit, the project unpriced)
-    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere' && i.code !== 'shared-land').map(i => i.violation.title)).toEqual([]);
+    // not meet, priced. Since cost model 41 our line, short of the spoil of the cut it now tunnels at km 6.6–8.6, runs
+    // 3 m lower here, and the new line past its bridge keeps the working strip from our embankment at km 12.58
+    // behind a wall: evaluateProject)
+    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere').map(i => i.violation.title)).toEqual([]);
+    expect(r.cost.total).not.toBeNull();
     const ours = r.routes['route:railway'].legacy!, held = r.routes[design.routes[1].id].legacy!;
     const c = ours.crossings.find(c => c.crossedRoute?.id === design.routes[1].id)!;
     expect(c).toMatchObject({ type: 'overbridge', approachLength: 0 });

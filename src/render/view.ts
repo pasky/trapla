@@ -1015,7 +1015,24 @@ export class View {
       const dl = again(station.dl), dr = again(station.dr);
       const wl = station.wl === undefined ? undefined : again(station.wl), wr = station.wr === undefined ? undefined : again(station.wr);
       quad(el, l, er, rr);
-      idx.push(wl ?? dl, l, el, er, rr, wr ?? dr);
+      if (cone) {
+        // (the wing walls down to the cone's surface: level across the berm, then its 1:1.5 slope to the ground,
+        // then the ground out to the embankment's toe; a straight edge to the toe left a sky-coloured sliver over it)
+        const edge = (sgn: number) => {
+          const out: number[] = [], at = (v: number, zz: number) => push(x + nx * sgn * v, y + ny * sgn * v, zz, concrete, zz);
+          const crest = cone.half + CONE.berm;
+          out.push(at(crest, cone.top));
+          for (let v = crest + 1; v < crest + 300; v += 1) {
+            const g = natural(x + nx * sgn * v, y + ny * sgn * v), zc = coneSurface(cone, 0, v);
+            if (zc <= g) { out.push(at(v, g)); break; }
+            out.push(at(v, zc));
+          }
+          return out;
+        };
+        const left = [l, ...edge(1), wl ?? dl], right = [rr, ...edge(-1), wr ?? dr];
+        for (let k = left.length - 1; k > 0; k--) idx.push(left[k], left[k - 1], el);
+        for (let k = 0; k + 1 < right.length; k++) idx.push(er, right[k], right[k + 1]);
+      } else idx.push(wl ?? dl, l, el, er, rr, wr ?? dr);
       // Retained toes need the lower part of the end cap too, otherwise the bridge
       // transition exposes a hole between the vertical wall and ground under the crown.
       if (wl !== undefined) idx.push(dl, l, wl);

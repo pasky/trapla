@@ -2,7 +2,10 @@
 // player's road came too close to one of our automatic reroutes, that reroute is planned again around it
 // (project-evaluate.ts). Capsules: a centreline piece and the reach to keep from it (the other road's own
 // reach plus the whole clearance between two roads' works, project-ledger.ts INDEPENDENCE_SCREEN).
-export type KeepClear = readonly { ax: number; ay: number; bx: number; by: number; r: number }[];
+export type KeepClear = readonly { ax: number; ay: number; bx: number; by: number; r: number;
+  /** our earthworks keep clear of it too, behind a retaining wall where the slope would reach it (its road a
+   * railway: `railway`); else only Auto's reroutes do */
+  wall?: true; railway?: true }[];
 
 /** Grid cell of the capsule index, m. */
 const CELL = 50;
