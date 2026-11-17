@@ -49,10 +49,10 @@ scratch harness): 589 plans of `exact.ts`, 361 of `outcome-audit.ts --straight s
 exercise every key (a record that ignored the barrels, or a crossing stretch that ignored its owned stretches,
 was not caught by any of the 589 plans), so `tests/retaining.test.ts` plans thirteen variants of one scene (a
 lift, a crossing way gone or elsewhere, another barrel, narrowed sections, the grade alone) with a shared
-cache and with a fresh one; ten mutants of the keys die on it. Three survive: a record that ignores the left
+cache and with a fresh one; ten mutants of the keys die on it. Four survive: a record that ignores the left
 width alone (the right width and the grade change with it), one not dropped when candidates are asked again
-(the wider candidates give the same events in the scene), a wall memo that ignores the room on the other side
-or wet / dry (no scene built: a watertight wall over 9 m that does not fit).
+(the wider candidates give the same events in the scene), a wall memo that ignores the room on the other side,
+and one that ignores wet / dry (no scene built for these two: a watertight wall over 9 m that does not fit).
 
 **Timing**, interleaved against main `6017767` (`scripts/dev/interleave.ts`; host load 2–4; two runs each):
 
@@ -188,8 +188,9 @@ which this leaves alone.
 
 **Left of finding 23** (whole D3 profile with this, ≈ % of an evaluation, read off `profile.mjs --tree 2`): the
 crossing build 15 (the first finish's whole build 6), the footprint screen 11 (`planRoadRealignment` most of
-it), `engineer()` 19, the grade solve 14, noise 19, GC 11. Next: the footprint screen the same way (its ledger of rebuilt roads is order-
-dependent across hits: study its reach first). The memo of the engineering passes is done (the section above). A tighter core than 2 km needs the engine to say what each
+it), `engineer()` 19, the grade solve 14, noise 19, GC 11. The memo of the engineering passes is done (the section above). The footprint screen is studied, not
+built (differences reach 195 m from a changed input; a bit-exact memo of `planRoadRealignment` is the
+recommended form, ≈ −10 % of the whole D3: docs/architecture-review.md "Planned next performance lever"). A tighter core than 2 km needs the engine to say what each
 crossing's build read of our road (the reroute cache records it for reroutes: `spatial.reads`).
 
 ## Side roads, lifts on grades, cost model 37 (2026-11-17)
