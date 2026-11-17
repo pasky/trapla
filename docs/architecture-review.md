@@ -52,6 +52,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 20 | Orphan "foundation" modules only tests import (307 lines), unused contract surface | low | none | owner |
 | 21 | `data/scenario.ts` mixes scenario content (presets with their bends) with engine thresholds | low | low | next, when scenarios grow |
 | 22 | `Result` is one flat interface of ≈ 100 fields (geometry arrays, bill, UI extras) | medium | high | later, with #4 |
+| 23 | A retry pass engineers the whole route again (40–65 % of a first pass where nothing changed; three such passes on the whole D3) | high (long routes) | a model change | planned after M3 (§ Planned next performance lever); bit-exact part done: the passes share their setup |
 
 ### 1–2, 6, 12–13. Tooling (done unless noted)
 
@@ -358,6 +359,33 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   suite everywhere is a faster evaluation (docs/evaluate-performance.md). UI modules have no unit tests (no DOM in vitest); the
   modules moved out of main.ts take their dependencies as an interface, so they can be tested with a fake
   context once a DOM (happy-dom) is added.
+
+## Planned next performance lever: a retry that re-engineers only its stretch (a reviewed model change)
+
+Scheduled after bridge styles (design-realism M3). Not a refactor: it changes results on some designs, so it
+takes a `COST_MODEL_VERSION` and a review of every bill that moves. Measurements and why the bit-exact route
+ends where it does: docs/evaluate-performance.md "What a retry pass costs".
+
+- **What it is worth.** A retry pass (separation, narrowing, regrade, split ways) re-solves only the blocks its
+  new constraint reaches, then engineers the whole route again: 40–65 % of a first pass even where nothing
+  changed. The whole D3 spends 566 + 397 + 310 ms of ≈ 2.5 s in three such passes; with each cut to its grade
+  solve (24–71 ms) plus the engineering of its own stretch, an estimated **−0.8 s (≈ −30 %)**. D35 and the D3
+  sections in proportion to their retries. direct-80's regrade retry (85 ms) would gain little (≈ −20 ms): on a
+  19 km route the 5 km boundary windows re-solve about half the line anyway. Designs without a retry gain
+  nothing. (Estimates from the per-pass times, not measured.)
+- **How.** A pass keeps its per-station arrays, crossings and conflicts. A retry compares its re-solved grade
+  line with the kept pass's, takes the chainages where they differ plus a margin (a reroute reaches
+  `linkHardReach` = 2 km; walls, structure runs and supports end within a block), evaluates that window as
+  the preview does (`EvalOptions.window`, `stationWindow`, the grades of the kept line at both ends) but with
+  the full engineering, and splices the result into the kept pass's (`result-stitch.ts` already does this
+  for previews; the bill's parts are per station, each block balances its own earth). `passSetup` (done) is the
+  first step: a pass that starts from another pass's state.
+- **What must be reviewed.** The seams: a structure run, a wall, a reroute or a merged crossing that crosses a
+  window end; a far effect the window cannot see (a strict retry it triggers elsewhere, a remedy weighed
+  against a crossing outside it); `regionCount` judged on a spliced result. Gates beyond the usual: every saved
+  design's bill before / after with the reasons for each difference, `scripts/outcome-audit.ts`,
+  `scripts/edit-locality.ts`, and a whole-route evaluation of each kept retry as the reference while it is
+  being built (the difference should be zero outside the margins).
 
 ## How to make a behaviour-preserving change here
 

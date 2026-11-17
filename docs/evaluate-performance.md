@@ -164,6 +164,25 @@ Measured with each `evaluateRoute` call timed (a scratch wrapper; min of 8 evalu
   (the reroute cache's footprint signature is the pattern). Candidates, by what a retry would save: one
   crossing's candidate builds (≈ 18 % of a pass that changes nothing), the setup shared by all passes (≈ 5 %).
 
+Done of those (2026-11-17, bit-exact: 177 / 177): **the setup is shared** (`passSetup`: a retry pass takes the
+first pass's stationed line, ground and clearances from the pass cache, with its own timing and its own copy of
+`clearanceS`, the one array a pass writes to; `tests/pass-setup.test.ts` hashes the shared setup when made and
+after every pass). Interleaved against main `5ea8d7e` (load 4–5): direct-80 min 220.1 → 214.8 and 215.5 →
+212.4 ms (the 3–5 ms of one setup), the other D11 designs and the whole D3 (min ratio 0.99 / 1.00) within the
+noise: it is ≈ 1 % and mostly groundwork for a pass that starts from another pass's state.
+
+Not done: **a memo of one crossing's candidate builds.** A candidate (a box or a bridge over us weighed against
+the present remedy) reads our road through more than the tracked `spatial` queries: `route.grade`, `width`,
+`left`, `right`, `kind` by index at 19 places in the 840-line `buildCrossingGeometryOnce`, and the houses still
+standing through a closure over the pass's demolitions. A key that misses one of them is a wrong result that no
+frozen bill need show. Its place is after that function has been cut into stages with their inputs as
+parameters (docs/architecture-review.md § Core): then each stage's key can be read off its signature. Expected
+then: ≤ 18 % of a retry pass where the footprint near the crossing is unchanged (on a 19 km route a regrade
+changes about half of it), i.e. ≈ 5 ms on direct-80 and ≈ 2–3 % of the whole D3.
+
+The large lever (a retry that re-engineers only its stretch, ≈ −0.8 s of the whole D3's 2.5 s) is a model
+change: docs/architecture-review.md "Planned next performance lever".
+
 
 ## Crossing remedies, cost model 28 (2026-11-16)
 
