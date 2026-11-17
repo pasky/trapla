@@ -250,10 +250,9 @@ export const PROFILE_KIND = { open: 3, inTunnel: 4 } as const;
 /** CZK per required-clearance station that is not met */
 export const CLEARANCE_PENALTY = 1e8;
 /** CZK per metre of a line in a tunnel for each 0.1 % it is steeper than `tunnelMaxGrade` (PROVISIONAL weight, no
- * price: the extra safety measures are not costed in any source): a 4 % tunnel pays 1 M CZK per metre, about a
- * twin tube's own price, so Auto keeps to the limit unless that would leave a stream or road unbridged (a missed
- * clearance, 10 M CZK per metre). */
-const TUNNEL_STEEP_PENALTY = 1e5;
+ * price: the extra safety measures are not costed in any source): 0.1 % over pays 1 M CZK per metre, about a twin
+ * tube's own price, so Auto keeps to the limit wherever its grid and the heights fixed around a block allow. */
+const TUNNEL_STEEP_PENALTY = 1e6;
 /** extra clearance asked of the polyline grade: vertical curves later shave up to ~1 m off crests */
 export const CLEARANCE_MARGIN = 1.0;
 /** the DP evaluates the cost on every k-th station only (≈ 20 m) */
