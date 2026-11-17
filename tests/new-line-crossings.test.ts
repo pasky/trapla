@@ -9,8 +9,10 @@ import type { ProjectDesign, ProjectResult } from '../src/core/project';
 
 const D11 = 'public/scenarios/d11';
 const fixture = (name: string) => JSON.parse(readFileSync(`tests/fixtures/qa-final/${name}.json`, 'utf8')) as ProjectDesign;
-/** what keeps the project from a total, or makes it invalid, other than the new line's own free ends */
-const problems = (r: ProjectResult) => r.issues.filter(i => !['road-ends-nowhere', 'motorway-needs-interchange'].includes(i.code)).map(i => i.violation.title);
+/** what keeps the project from a total, or makes it invalid, other than the new line's own free ends and the engine
+ * limit of two roads changing one old road (these lines and ours each reroute or bridge a track or road the other
+ * also changes elsewhere: shown since a free end is priced, cost model 39) */
+const problems = (r: ProjectResult) => r.issues.filter(i => !['road-ends-nowhere', 'motorway-needs-interchange', 'shared-road'].includes(i.code)).map(i => i.violation.title);
 
 describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`${D11}/${f}`)))('new lines across our railway', async () => {
   const { projectContext } = await import('../scripts/eval-project');

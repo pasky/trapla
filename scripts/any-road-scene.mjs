@@ -264,8 +264,9 @@ try {
   assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
   const r3 = await page.evaluate(() => window.trapla.projectResult());
   assert(r3.issues.some(i => i.code === 'road-ends-nowhere'), 'a free end is reported');
-  assert.equal(r3.cost.total, null, 'a road that ends nowhere is not priced');
-  // not priced withholds the total only: houses under our road are gone from the map and say so
+  assert(r3.issues.filter(i => i.code === 'road-ends-nowhere').every(i => i.blocking === 'invalid' && r3.cost.unpriced.every(u => u.reason !== 'road-ends-nowhere')), 'a road that ends nowhere is priced, not valid');
+  assert.equal(r3.valid, false, 'a road that ends nowhere is not valid');
+  // priced or not, houses under our road are gone from the map and say so
   {
     const result = r3, own = result.routes[mission].legacy.demolished.map(b => b.j);
     assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');

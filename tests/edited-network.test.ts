@@ -165,11 +165,11 @@ describe('the edited network follows the project as it is now', () => {
     const alone = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
     expect(alone.complete).toBe(true);
     expect(alone.buildings.filter(b => b.action === 'demolish')).toMatchObject([{ buildingIndex: 0, routeId: mission }]);
-    // a new road that ends nowhere keeps the project unpriced; it stands on a house too
-    project.routes.push(road('side', [300, 420], [900, 420]));
+    // a new road on a house, and another too close to it (the engine does not design two roads that close
+    // together yet: not priced)
+    project.routes.push(road('side', [300, 420], [900, 420]), road('other', [300, 436], [900, 436]));
     const r = evaluateProject(ctx, { epoch: 'e', revision: 2, design: project });
     expect(r.complete).toBe(false); expect(r.cost.total).toBeNull();
-    expect(r.issues.map(i => i.code)).toContain('road-ends-nowhere');
     const gone = r.buildings.filter(b => b.action === 'demolish');
     expect(gone).toMatchObject([{ buildingIndex: 0, routeId: mission }, { buildingIndex: 1, routeId: 'side' }]);
     expect(gone.every(b => b.cost > 0)).toBe(true);

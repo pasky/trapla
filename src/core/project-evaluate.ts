@@ -341,11 +341,13 @@ const junctionsPending = (routeIds: string[], rail: boolean): ProjectIssue => ({
     fix: rail ? 'Where this railway joins another railway, the junction (its switches) is not built or priced yet'
       : 'Where this road joins another road, the junction is not built or priced yet',
     rule: 'Engine limit: junctions where a new or rebuilt road meets another road are not designed or priced yet.' } });
-const endsNowhere = (routeId: string, rail: boolean): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete', check: 'violation',
-  scope: { routeIds: [routeId] }, locations: [],
+/** A free end of a new road or railway: priced as built (it simply ends there: nothing more is built or billed
+ * at it), but not valid until it joins a road (a railway: a railway) or a scenario end. */
+const endsNowhere = (routeId: string, rail: boolean, s: number, at: { x: number; y: number }): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'invalid', check: 'violation',
+  scope: { routeIds: [routeId] }, locations: [{ routeId, s0: s, s1: s }], at,
   violation: { kind: 'crossing', basis: 'game', title: rail ? 'Railway ends nowhere' : 'Road ends nowhere',
-    fix: rail ? 'Connect both ends to a railway' : 'Connect both ends to a road',
-    rule: 'Game rule: a new road is priced only when both ends join a road or a scenario end.' } });
+    fix: rail ? 'Connect this end to a railway' : 'Connect this end to a road',
+    rule: 'Game rule: a new road must join a road or a scenario end at both ends; until then it is priced but not valid.' } });
 
 /** Two roads that meet in plan one above the other as built: the upper on its bridge (or the lower in its
  * tunnel) the whole way, with the clearance a bridge needs over the lower road (CROSSING_RULES.overHeight;
@@ -699,13 +701,16 @@ function projectNetwork(ctx: ProjectEvalContext, start: ReturnType<typeof projec
     const rail = [...joined].every(id => design.routes.find(r => r.id === id)?.kind === 'railway');
     result.issues.push(junctionsPending([...joined], rail)); unprice([...joined], 'connection-pending');
   }
-  // A new road that ends nowhere is not a project: every end must reach a road or a scenario end.
-  // (A motorway's ends wait for interchanges: that issue already says so.)
-  for (const r of design.routes) if (r.role !== 'mission' && ROUTE_KINDS[r.kind].endsNowhere && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
-    result.issues.push(endsNowhere(r.id, r.kind === 'railway')); unprice([r.id], 'road-ends-nowhere');
+  // A new road that ends nowhere is not valid: every end must reach a road or a scenario end. It is priced as
+  // built (it is the player's problem, not something the engine cannot price; nothing is built at the free end).
+  // (A motorway's ends wait for interchanges: that issue already says so, unpriced: an engine limit.)
+  const nowhere: ProjectIssue[] = [];
+  for (const r of design.routes) if (r.role !== 'mission' && ROUTE_KINDS[r.kind].endsNowhere) for (const end of ['a', 'b'] as const) {
+    const e = r.endpoints[end]; if (e.anchor.kind !== 'free') continue;
+    nowhere.push(endsNowhere(r.id, r.kind === 'railway', end === 'a' ? 0 : legacyOf.get(r.id)?.length ?? 0, { x: e.position.x, y: e.position.y }));
   }
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
-  return { unprice };
+  return { unprice, nowhere };
 }
 
 /** Stage 6, several roads: the screen of whether anything one builds, buys, closes or makes loud reaches another. */
@@ -760,7 +765,8 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
   const screen = screenIndependence(units.map(({ route, legacy }) => {
     const spec = route.specification, corridor = corridorOfRoute(design, route.id);
     const op = corridor ? corridorOperations(design, corridor) : ROUTE_KINDS[route.kind].operations(route);
-    const halfWidth = corridor || (spec.kind === 'road' && spec.crossSection !== 'existing') ? crownOf(route) / 2 : Infinity;
+    // (a railway its formation's; a road kept at its mapped width: unknown, fails closed)
+    const halfWidth = corridor || (spec.kind === 'road' && spec.crossSection !== 'existing') || route.kind === 'railway' ? crownOf(route) / 2 : Infinity;
     // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
     // another road, which a road crossing it changes on its own)
     const ownWay = ownWayOf(route);
@@ -914,6 +920,11 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   const { units } = grouped;
   const network = projectNetwork(ctx, start);
   const { unprice } = network;
+  // a road that ends nowhere: its unit is priced and not valid (a road not priced for another reason: listed)
+  for (const i of network.nowhere) {
+    const unit = units.find(u => u.members.includes(i.scope.routeIds[0]));
+    if (unit) { unit.issues.push(i); unit.valid = false; } else result.issues.push(i);
+  }
   const finish = () => {
     // priced units' issues (incl. a split corridor's ledger), and every other engineered road's own problems
     const listed = new Set<Result>();
