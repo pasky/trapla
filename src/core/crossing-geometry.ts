@@ -519,12 +519,12 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
   return out;
 }
 
-function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
-  heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
-  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>, routed: Map<string, LinkPlan>,
-  linkMemo: NonNullable<LinkEnv['memo']>,
-  sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>,
-  memo: BuildMemo = buildMemo()): CrossingIssue[] {
+type AnchorSample = Readonly<WayPoint> | CrossingPoint;
+/** Stage 1 of buildCrossingGeometryOnce: the crossings' last build is cleared (issues, works) and the tools of
+ * this build are made: the crossed ways' lines (`getPath`), their stretch through our earthworks (`cutOf`), the
+ * line of a way laid square across us (`squarePath`), the reroute environment, and what the stages hand on
+ * to each other per crossing (raw paths, surviving sides, anchors, squared lines). */
+function crossingTools(crossings: CrossingResult[], route: CrossingRoute, heightAt: (x: number, y: number) => number, roads: RoadNet | undefined, spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, linkMemo: NonNullable<LinkEnv['memo']>, memo: BuildMemo) {
   const { cuts, squares, anchorBuilds, anchorMemo, crossingWays } = memo;
   const { at, project, margin, reads } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
@@ -550,7 +550,6 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   const homesOf = (c: CrossingResult) => { const k = c.houses?.filter(j => route.dwelling?.(j)).length ?? 0; if (k) c.homes = k; else delete c.homes; };
   // Terrain-only source samples need elevations only at the selected anchors, not along the
   // entire bounded way. Engineered paths retain their full surface/support metadata.
-  type AnchorSample = Readonly<WayPoint> | CrossingPoint;
   const rawPaths = new Map<CrossingResult, () => readonly AnchorSample[]>(), rawMade = new Map<CrossingResult, readonly AnchorSample[]>();
   const rawOf = (c: CrossingResult) => {
     let made = rawMade.get(c);
@@ -718,6 +717,18 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     const notes: string[] = [];
     return { path: denseWay(out, message => notes.push(message)), notes, p0: start - centre, p1: end - centre, culvertCost, removed: [a.d, b.d] as [number, number] };
   };
+  return { cuts, squares, anchorBuilds, anchorMemo, at, project, margin, reads, terrainPoint, diagnose, homesOf,
+    rawPaths, rawOf, squaredPaths, survivingSides, anchors, maxLinkWidth, getPath, linkEnv, cutOf,
+    squarePath };
+}
+
+/** Stage 2: each crossing's own geometry on the crossed way's real line: how the way meets our road (angle,
+ * same side), its line laid square where asked or weighed, a bridge over us with its deck and ramps, a box
+ * under us (lowered where our embankment is low), the cut way's ends; what a reroute needs of it (the way's
+ * raw line, the sides that survive) is left in the tools' maps. */
+function crossingStructures(crossings: CrossingResult[], route: CrossingRoute, heightAt: (x: number, y: number) => number, sidesOf: Map<string, [boolean, boolean]>, anchorOnly: ReadonlySet<CrossingResult> | undefined, tools: ReturnType<typeof crossingTools>) {
+  const { maxLinkWidth, anchorBuilds, rawPaths, survivingSides, getPath, diagnose, cuts, cutOf, squarePath,
+    squares, squaredPaths, project, margin, terrainPoint, linkEnv } = tools;
   for (const c of crossings) {
     const anchorKey = anchorOnly?.has(c) ? `${c.roadId}:${c.x},${c.y}:${c.cls}:${c.type}:${c.square ? 1 : 0}:${maxLinkWidth(c)}` : undefined;
     const reuse = anchorKey ? anchorBuilds.get(anchorKey) : undefined;
@@ -1080,7 +1091,14 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     if (anchorKey) anchorBuilds.set(anchorKey, { g, raw: rawPaths.get(c)!, sides: survivingSides.get(c)! });
   }
+}
 
+/** Stage 3: the new roads. Ground anchors on the crossed ways, then the roads moved beside ours and the
+ * reroutes led to another crossing (smoothed, engineered, priced; reused from the pass cache while our
+ * footprint along them is unchanged). */
+function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roads: RoadNet | undefined, smoothed: Map<string, CrossingPoint[]>, routed: Map<string, LinkPlan>, budget: number, persist: CrossingCache | undefined, anchorOnly: ReadonlySet<CrossingResult> | undefined, tools: ReturnType<typeof crossingTools>) {
+  const { project, terrainPoint, margin, anchors, rawPaths, rawOf, maxLinkWidth, anchorMemo, at, diagnose, reads,
+    linkEnv, getPath, cutOf, homesOf, survivingSides } = tools;
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
   // and beyond the footprint plus half the incoming road width and a physical setback.
   const isTerrain = (q: AnchorSample) => !('surface' in q) || q.surface === 'terrain';
@@ -1340,6 +1358,12 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     homesOf(c);
     if (steepest) c.linkGrade = steepest; else delete c.linkGrade;
   }
+}
+
+/** Stage 4: terrain-only spans refined against the ground between their samples, the works on each crossing
+ * (regrades, walls) measured, and the diagnostics turned into the crossings' issues (returned). */
+function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heightAt: (x: number, y: number) => number, roads: RoadNet | undefined, anchorOnly: ReadonlySet<CrossingResult> | undefined, tools: ReturnType<typeof crossingTools>) {
+  const { terrainPoint, diagnose, project, squaredPaths, getPath, margin } = tools;
   // Refine terrain-only spans against interior elevations, not just their endpoints. This prevents
   // a nominally draped 10 m chord from floating over a sharp gully between its stored samples.
   // Original OSM vertices and engineered boundaries retain object identity; recursion and output
@@ -1414,6 +1438,18 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     (c.issues ??= []).push(issue); issues.push(issue);
   }
   return issues;
+}
+
+function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
+  heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
+  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>, routed: Map<string, LinkPlan>,
+  linkMemo: NonNullable<LinkEnv['memo']>,
+  sidesOf: Map<string, [boolean, boolean]> = new Map(), budget: number = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>,
+  memo: BuildMemo = buildMemo()): CrossingIssue[] {
+  const tools = crossingTools(crossings, route, heightAt, roads, spatial, paths, linkMemo, memo);
+  crossingStructures(crossings, route, heightAt, sidesOf, anchorOnly, tools);
+  crossingReroutes(crossings, route, roads, smoothed, routed, budget, persist, anchorOnly, tools);
+  return crossingFinish(crossings, route, heightAt, roads, anchorOnly, tools);
 }
 
 /** Geometry-aware, bounded Auto feedback. Explicit choices are never changed. Candidate links
