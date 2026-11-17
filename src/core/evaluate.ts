@@ -425,15 +425,25 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const meets = (r: Result) => (needs.some(q => q.asked) ? regionCount(r, at) < regionCount(result, at) : regionCount(r, at) <= regionCount(result, at))
         && (needs.every(q => q.asked) || homes(r) < homes(result));
       let best: { r: Result; o: EvalOptions } | undefined, dearer = Infinity;
+      const bridgeAsked = needs.some(q => q.asked && result.crossings.some(c => c.roadId === q.roadId && c.requestedType === 'bridge'));
       // (the new solve first: where it works, the lift is not tried — evaluate time)
       for (const [k, o] of [{ ...used, choiceFloors: needs }, { ...used, choiceLifts: needs }].entries()) {
         if (best) break;
         const r = evaluateRoute(ctx, d, o);
         r.timing['count.regradeRetry'] = k + 1;
-        if (meets(r) && r.cost.total - result.cost.total <= price(result, false) + price(r, true)) best = { r, o };
+        // (our bridge over a road the player chose is met at its price, which its crossing then says: our road
+        // going up over the road is what was chosen)
+        if (meets(r) && (r.cost.total - result.cost.total <= price(result, false) + price(r, true) || bridgeAsked)) best = { r, o };
         else if (meets(r)) dearer = Math.min(dearer, r.cost.total - result.cost.total);
       }
-      if (best) { result = best.r; used = best.o; }
+      if (best) {
+        if (bridgeAsked) for (const c of best.r.crossings) if (c.requestedType === 'bridge' && near(c)) {
+          let m = 0;
+          for (let i = 0; i < Math.min(best.r.n, result.n); i++) if (Math.abs(best.r.s[i] - c.s) <= REGION) m = Math.max(m, best.r.grade[i] - result.grade[i]);
+          c.raised = { m, cost: best.r.cost.total - result.cost.total };
+        }
+        result = best.r; used = best.o;
+      }
       // not in proportion: the player's choice says what meeting it would cost (our bridge over a road in our cutting)
       else if (Number.isFinite(dearer)) for (const c of result.crossings) if (near(c) && c.requestedType && c.issues?.length) {
         const v = c.issues[0];
