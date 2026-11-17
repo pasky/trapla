@@ -467,7 +467,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
       const again = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, turned.flatMap(heldBands), endsOf, routeClear(route));
       if (again.route.legacy && heldChecks(again.route.legacy, turned, route.kind).violations.length < heldChecks(proposal.route.legacy!, holds, route.kind).violations.length) {
         proposal = again; holds = turned;
-        for (const h of turned) if (h.over) h.crossing.above = true;
+        for (const h of turned) if (h.over && h.crossing.type === 'bridge') h.crossing.above = true;
       } else if (corridorId && kept) corridorCache.set(corridorId, kept);
     }
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
@@ -1069,11 +1069,14 @@ function gradeAt(r: Result, s: number): number {
   return r.grade[k] + (r.grade[k + 1] - r.grade[k]) * t;
 }
 /** A held road that stays high above the owner's bridge where it crosses (both cross a valley on bridges)
- * passes over that bridge on its own bridge: held above it instead of under it (none: nothing to turn over). */
+ * passes over that bridge on its own bridge: held above it instead of under it. One that stays high above
+ * the deck the owner's crossing set for it over the owner (a railway that cannot dip to it, a road on its own
+ * embankment) passes over the owner on that bridge built higher: held at least clear of the owner, its deck
+ * still a bridge (none: nothing to turn over). */
 function overBridge(r: Result, holds: readonly (Hold & ReturnType<typeof placedHold>)[]) {
-  const high = holds.filter(h => h.crossing.type === 'bridge' && !h.over && h.s >= 0 && h.s <= r.length
-    && gradeAt(r, h.s) > h.max + HOLD_SLACK && r.kind[Math.round(h.s / r.ds)] === KIND.bridge);
-  return high.length ? holds.map(h => high.includes(h) ? { ...h, min: h.z + clearOver(h.owner), max: Infinity, over: true as const } : h) : null;
+  const high = holds.filter(h => !h.over && h.s >= 0 && h.s <= r.length && gradeAt(r, h.s) > h.max + HOLD_SLACK
+    && (h.crossing.type === 'bridge' && r.kind[Math.round(h.s / r.ds)] === KIND.bridge || h.crossing.type === 'overbridge'));
+  return high.length ? holds.map(h => high.includes(h) ? { ...h, min: h.z + clearOver(h.owner), max: Infinity, over: true as const, ends: undefined } : h) : null;
 }
 /** A held road that misses its crossing's height (By hand), and the part of its bill the owner's bridge over
  * the owner already pays (its deck and ramps are billed with that crossing). */
@@ -1094,7 +1097,8 @@ function heldChecks(r: Result, holds: readonly (Hold & ReturnType<typeof placedH
     // on the owner's deck: the worst of its middle and its two ends
     const off = [h, ...h.ends ?? []].map(miss).reduce((a, b) => Math.abs(b) > Math.abs(a) ? b : a, 0);
     if (off) { const v = { kind: 'crossing', s0: h.s, s1: h.s, basis: 'game',
-      title: type === 'bridge' ? (h.over ? `Too low over ${name}’s bridge` : `Too high under ${name}’s bridge`) : type === 'overbridge' ? `Not on its bridge over ${name}` : `Not level with ${name} where they cross`,
+      title: type === 'bridge' ? (h.over ? `Too low over ${name}’s bridge` : `Too high under ${name}’s bridge`)
+        : type === 'overbridge' ? (h.over ? `Too low over ${name}` : `Not on its bridge over ${name}`) : `Not level with ${name} where they cross`,
       fix: `${off > 0 ? 'Lower' : 'Raise'} this ${line} here by ${Math.abs(off).toFixed(1)} m`,
       rule: 'Game rule: where roads cross, the crossing is built once, by the more important road; the other road keeps the height it was built for.' } as Result['violations'][number];
       WORDED.add(v); violations.push(v); }

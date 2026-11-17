@@ -18,6 +18,7 @@ import type { PI } from './horizontal';
 import { applyKept, plannedKept } from './project-kept';
 import type { ReplacementWork } from './project-replacement';
 import { CATEGORIES } from './data/categories';
+import { KIND } from './structures';
 
 export const RAILWAY_POLICY = 'conventional-new';
 /** PROVISIONAL game prior: freight trains run at 100 km/h, never faster than the line. */
@@ -195,7 +196,7 @@ export type RailwayEvaluation = { status: 'evaluated'; result: Result; unpriced?
   keptWork?: ReplacementWork } | { status: 'incomplete'; reason: 'unsupported-policy'
   | 'unsupported-alignment' | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign, routeId: string, objectData: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue' | 'keepClear'> & { railPaths?: RailPaths } = {}): RailwayEvaluation {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue' | 'keepClear' | 'holds'> & { railPaths?: RailPaths } = {}): RailwayEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route || route.kind !== 'railway') throw new Error('Unknown railway');
   const { railPaths, ...evalOptions } = options;
@@ -240,6 +241,9 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   // An end on an existing railway joins it there (a station): its first metres share that track's space.
   const onRail = (p: typeof a) => [-1, 0, 1].some(i => [-1, 0, 1].some(j => ctx.terrain.crossing(p.x + i * ctx.terrain.cell, p.y + j * ctx.terrain.cell) === 2));
   const design = railwayDesign(project, route);
+  // On its bridge over a higher-ranking line this railway is that bridge (the player's own structures win).
+  const decks = (options.holds ?? []).flatMap(h => h.bridge ? [{ s0: h.bridge[0], s1: h.bridge[1], kind: KIND.bridge }] : []);
+  if (decks.length) design.structureOverrides = [...decks, ...design.structureOverrides ?? []];
   // Where a rebuilt stretch's line stays on its old track, the old track is kept as it is (project-kept.ts):
   // nothing is built there, so the kernel neither lifts it for a new structure nor meets the old line's own
   // level crossings, culverts and neighbours there; the new parts are tied to the old track's heights.

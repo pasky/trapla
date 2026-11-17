@@ -40,4 +40,17 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(owned).toBeGreaterThan(0);
     expect(Math.abs(alone - expected)).toBeLessThan(1);
   }, 60_000);
+  // Královec railway, the new railway across our line where it runs through a cutting: a 12.5 ‰ line cannot
+  // dip 7.7 m to a deck at ground level; it passes over our railway on that bridge built higher, at least
+  // clear of our line, and its stretch over our cutting is a bridge.
+  it('a new railway across our railway passes over it on its own bridge', () => {
+    const design = fixture('rail-new-railway-across'), r = run(design);
+    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere').map(i => i.violation.title)).toEqual([]);
+    const ours = r.routes['route:railway'].legacy!, held = r.routes[design.routes[1].id].legacy!;
+    const c = ours.crossings.find(c => c.crossedRoute?.id === design.routes[1].id)!;
+    expect(c.type).toBe('overbridge');
+    let k = 0; for (let q = 1; q < held.n; q++) if (Math.hypot(held.x[q] - c.x, held.y[q] - c.y) < Math.hypot(held.x[k] - c.x, held.y[k] - c.y)) k = q;
+    expect(held.kind[k]).toBe(1);
+    expect(held.grade[k] - ours.grade[c.i]).toBeGreaterThanOrEqual(7.5 - 0.5);
+  }, 60_000);
 });
