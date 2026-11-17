@@ -420,6 +420,10 @@ here](docs/screenshots/230-town-centre-long-span-over-railway.png),
 for it cost](docs/screenshots/231-d3-motorway-our-bridge-over-track-raised.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
+Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses
+over, VALID](docs/screenshots/233-nova-paka-drag-class-iii-over-our-cutting.png) (it used to rise 5 m for a lift a
+kilometre away and bury a road beside the ramps), [a random D11 line: the track at the tunnel portal carried over a
+12 m cutting instead of a 540 m tunnel](docs/screenshots/234-random-15-track-over-the-cutting.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
