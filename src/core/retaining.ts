@@ -6,7 +6,7 @@ import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
 import type { BuildingIndex } from './buildings';
 import { STRUCTURE_RULES } from './data/prices';
 import { retainingAssembly, RETAINING_RULES as R } from './data/remedies';
-import { sideSection, slopeSurfaceAt, slopeSurfaceFn, type Sections } from './sections';
+import { sideSection, slopeSurfaceAt, slopeSurfaceFn, type Sections, type SideResult } from './sections';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
@@ -45,12 +45,31 @@ export interface WalledBuilding { j: number; s0: number; s1: number; side: 'L' |
   /** the wall's estimated price and what demolishing the building would have cost, CZK */
   wall: number; demolition: number; kept: boolean }
 export type RetainingFeatureCache = Map<number, { left: number; right: number; roads: RoadSegment[]; water: WaterSegment[];
-  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memo?: StationMemo }>;
+  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memos?: StationMemo[] }>;
 /** One station's screening outcome, replayed in order when every input it read is unchanged:
- * this candidate set (same object), section widths, grade, barrels and crossing-way map. */
+ * this candidate set (same object), section widths, grade, barrels and crossing-way map. A station keeps
+ * its last few (the two passes of a plan differ in their barrels, a strict retry in its crossing ways). */
 interface StationMemo { left: number; right: number; grade: number; barrels: string; ways: number[]; events: StationEvent[] }
 type StationEvent = [0, Request] | [1, ClearanceRequest] | [2, BridgeRequest] | [3, number] | [4, WaterSegment['reach'], number, number, number]
-  | [5, FootprintCell, RoadSegment, number, number, [number, number]];
+  | CrossingHit;
+/** A crossing way's stretch inside a station's footprint: cell, segment, half width, way, the stretch; and what
+ * screening it made of it last time (`made`: for this grade and these owned stretches of the way). */
+type CrossingHit = [5, FootprintCell, RoadSegment, number, number, [number, number], { made?: { grade: number; owned: [number, number][]; events: StationEvent[] } }];
+/** The stations of the last screening pass with one set of crossing ways (`ways`) that read no barrel (no
+ * water near them): what each read of our road and the events it made. A later pass with the same ways
+ * replays every such station whose three numbers are unchanged without asking its candidates again.
+ * `grade` is NaN where the station is not held (it reads barrels, or its candidates were asked again). */
+interface PassRecord { ways: string; left: Float64Array; right: Float64Array; grade: Float64Array; events: StationEvent[][] }
+/** A wall's place on one side of a station as last found (from this grade, limit, room on the other side
+ * and whether it holds back water), and the section it leaves. */
+interface WallMemo { grade: number; limit: number; otherFoot: number; wet: boolean;
+  placed: { limit: number; surface: number; height: number; watertight: boolean; rate: ReturnType<typeof retainingAssembly> }; after?: SideResult }
+/** What a feature cache remembers beyond its stations' candidates (kept beside it: the cache is a plain map).
+ * `walls`: per constraint set (all, firm) and side, by station. */
+interface PassMemo { records: PassRecord[]; walls: (WallMemo | undefined)[][] }
+const passMemos = new WeakMap<RetainingFeatureCache, PassMemo>();
+/** Crossing-way sets whose pass is kept, and outcomes kept per station. */
+const PASS_RECORDS = 4, STATION_MEMOS = 4;
 type Request = { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number };
 type ClearanceRequest = { i: number; z: number; id?: number };
 type BridgeRequest = { i: number; id?: number };
@@ -154,8 +173,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         break;
       }
       case 5: {
-        const [, c, seg, pad, way, hit] = e;
-        crossingHits.push({ c, seg, pad });
+        const [, , , , way, hit] = e;
+        crossingHits.push(e);
         const list = crossingIntervals.get(way);
         if (list) list.push(hit); else crossingIntervals.set(way, [hit]);
         break;
@@ -213,7 +232,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   // per metre than twice their own SPK relocation rate (e.g. a low toe wall at a grazing track,
   // not a 12 m wall keeping a doomed stub). Separable roads may still force a bridge over them.
   // Other stretches of the same way remain ordinary obstacles; the final screen validates all.
-  const crossingHits: { c: FootprintCell; seg: RoadSegment; pad: number }[] = [];
+  const crossingHits: CrossingHit[] = [];
   const crossingIntervals = new Map<number, [number, number][]>();
   // Barrels read by a station: those connected to its water candidates (all of them for raster streams).
   const barrelSig = barrels.map(b => `${water.indexOf(b.c)}:${b.i}:${b.left}:${b.right}:${b.cover}|`);
@@ -237,7 +256,24 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     for (let j = 0; j < roads.length; j++) if (crossingWays?.has(roads[j].way)) { if (list[k] !== j) return false; k++; }
     return k === list.length;
   };
+  let held = cache && passMemos.get(cache);
+  if (cache && !held) passMemos.set(cache, held = { records: [], walls: [[], [], [], []] });
+  // This pass's record: the one made with the same crossing ways, or a new one.
+  const ways = crossingWays ? [...crossingWays.keys()].join(',') : '';
+  let record = held?.records.find(x => x.ways === ways && x.grade.length === n);
+  if (held) {
+    if (record) held.records.splice(held.records.indexOf(record), 1);
+    else record = { ways, left: new Float64Array(n), right: new Float64Array(n), grade: new Float64Array(n).fill(NaN), events: new Array(n) };
+    held.records.unshift(record);
+    if (held.records.length > PASS_RECORDS) held.records.length = PASS_RECORDS;
+  }
   for (let i = 1; i < n - 1; i++) {
+    const grade = r.grade[i];
+    if (record && record.grade[i] === grade && record.left[i] === r.dayL[i] && record.right[i] === r.dayR[i]) {
+      const events = record.events[i];
+      for (let k = 0; k < events.length; k++) apply(events[k]);
+      continue;
+    }
     const c: FootprintCell = { i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i], along: ds / 2,
       left: r.dayL[i], right: r.dayR[i] };
     let candidates = cache?.get(i);
@@ -248,20 +284,27 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       terrain.watercourses?.nearSegments(cellBounds(query, terrain.watercourses.maxHalfWidth), seg => candidates!.water.push(seg));
       protectedRasterCells(terrain, query, p => candidates!.raster.push(p));
       cache?.set(i, candidates);
+      // what any record holds of this station was made of the earlier candidates
+      if (held) for (const x of held.records) if (x.grade.length === n) x.grade[i] = NaN;
     }
     // Which candidate roads are crossing ways (a strict retry removes some) is all the station reads.
-    const memo = candidates.memo, barrelKey = stationBarrels(candidates);
-    if (memo && memo.left === c.left && memo.right === c.right && memo.grade === r.grade[i] && memo.barrels === barrelKey && sameWays(candidates.roads, memo.ways)) {
-      for (const e of memo.events) apply(e);
+    const barrelKey = stationBarrels(candidates), near = candidates.roads;
+    const memo = candidates.memos?.find(m => m.left === c.left && m.right === c.right && m.grade === grade && m.barrels === barrelKey && sameWays(near, m.ways));
+    const events: StationEvent[] = memo?.events ?? [];
+    if (record && !candidates.water.length && !candidates.raster.length) {
+      record.left[i] = c.left; record.right[i] = c.right; record.grade[i] = grade; record.events[i] = events;
+    }
+    if (memo) {
+      for (const e of events) apply(e);
       continue;
     }
-    const events: StationEvent[] = recording = [];
+    recording = events;
     for (const seg of candidates.roads) {
       const pad = roadHalfWidth(seg.cls);
       if (!crossingWays?.has(seg.way)) { segment(c, seg, pad, 'road'); continue; }
       const hit = clipFootprint(seg, c, pad);
       if (!hit) continue;
-      apply([5, c, seg, pad, seg.way, hit]);
+      apply([5, c, seg, pad, seg.way, hit, {}]);
     }
     candidates.water.forEach(seg => {
       const pad = waterWidth(seg.reach) / 2;
@@ -282,9 +325,10 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       }
     recording = null;
     if (cache) {
-      const ways: number[] = [];
+      const ways: number[] = [], memos = candidates.memos ??= [];
       candidates.roads.forEach((seg, j) => { if (crossingWays?.has(seg.way)) ways.push(j); });
-      candidates.memo = { left: c.left, right: c.right, grade: r.grade[i], barrels: barrelKey, ways, events };
+      memos.unshift({ left: c.left, right: c.right, grade, barrels: barrelKey, ways, events });
+      if (memos.length > STATION_MEMOS) memos.length = STATION_MEMOS;
     }
   }
   for (const [way, intervals] of crossingIntervals) {
@@ -297,9 +341,18 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const at = crossingWays!.get(way)!;
     crossingIntervals.set(way, merged.filter(([a, b]) => at.some(d => d >= a - 0.5 && d <= b + 0.5)));
   }
-  for (const { c, seg, pad } of crossingHits) {
-    const row = ROAD_CLASSES[seg.cls];
-    segment(c, seg, pad, 'road', undefined, crossingIntervals.get(seg.way), row.separable ? 1 : 2, row.separable ? Infinity : 2 * row.roadPerKm[0] / 1000);
+  for (const hit of crossingHits) {
+    // (beyond its cell, which the station's events are replayed for unchanged, the screening of a crossing
+    // way's stretch reads the grade there and the stretches of the way that its crossings own)
+    const [, c, seg, pad, , , kept] = hit, owned = crossingIntervals.get(seg.way)!, made = kept.made;
+    if (made && made.grade === r.grade[c.i] && made.owned.length === owned.length && made.owned.every((o, k) => o[0] === owned[k][0] && o[1] === owned[k][1])) {
+      for (const e of made.events) apply(e);
+      continue;
+    }
+    const row = ROAD_CLASSES[seg.cls], events: StationEvent[] = recording = [];
+    segment(c, seg, pad, 'road', undefined, owned, row.separable ? 1 : 2, row.separable ? Infinity : 2 * row.roadPerKm[0] / 1000);
+    recording = null;
+    if (cache) kept.made = { grade: r.grade[c.i], owned: owned.map(o => [o[0], o[1]]), events };
   }
   if (buildingWalls) requests.push(...buildingWalls.requests);
   const walledBuildings = buildingWalls?.walled ?? [];
@@ -358,8 +411,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   }
   const walls: RetainingWall[] = [], tpl = { crownWidth: r.crownWidth };
   const sets = all === firm ? [all] : [all, firm];
-  for (let i = 1; i < n - 1; i++) for (let side = 1; side >= -1; side -= 2) for (const set of sets) {
-    const t = set[side > 0 ? 0 : 1], other = all[side > 0 ? 1 : 0];
+  for (let i = 1; i < n - 1; i++) for (let side = 1; side >= -1; side -= 2) for (let k = 0; k < sets.length; k++) {
+    const set = sets[k], t = set[side > 0 ? 0 : 1], other = all[side > 0 ? 1 : 0];
     let limit = t.limit[i];
     const day = side > 0 ? r.dayL : r.dayR, zDay = side > 0 ? r.zDayL : r.zDayR;
     if (!Number.isFinite(limit) || limit >= day[i] - 0.05) break;
@@ -368,21 +421,31 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const geology = (o: number) => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o);
     const fill = r.grade[i] >= ground(w), feature = t.cause[i] ?? t.cause[i - 1] ?? t.cause[i + 1] ?? 'road';
     const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], other.limit[i]));
-    const surfaceAt = slopeSurfaceFn(r.grade[i], w, ground, geology, limit);
-    const wallAt = (at: number) => {
-      const surface = surfaceAt(at);
-      const height = Math.abs(surface - ground(at)), watertight = surface < ground(at) && (feature === 'water' || feature === 'stream');
-      return { surface, height, watertight, rate: retainingAssembly(height, watertight) };
-    };
-    let { surface, height, watertight, rate } = wallAt(limit);
-    // Too high where the feature begins (ground falling away beside a bank): the wall stands nearer the road,
-    // where it is lower, wherever it fits (a wall further in protects the feature as well).
-    if (height > R.maxHeight || rate.baseWidth > limit + otherFoot) {
-      for (let at = limit - 1; at >= w + R.minimumOffset; at -= 1) {
-        const tried = wallAt(at);
-        if (tried.height <= R.maxHeight && tried.rate.baseWidth <= at + otherFoot) { limit = at; ({ surface, height, watertight, rate } = tried); break; }
+    // (where the wall stands and the section it leaves are found once per grade, limit and room: the
+    // screening comes to most walls again in every pass)
+    const wet = feature === 'water' || feature === 'stream', slots = held?.walls[(side > 0 ? 0 : 1) + 2 * k];
+    let slot = slots?.[i];
+    if (!slot || slot.grade !== r.grade[i] || slot.limit !== limit || slot.otherFoot !== otherFoot || slot.wet !== wet) {
+      const surfaceAt = slopeSurfaceFn(r.grade[i], w, ground, geology, limit);
+      const wallAt = (at: number) => {
+        const surface = surfaceAt(at);
+        const height = Math.abs(surface - ground(at)), watertight = surface < ground(at) && wet;
+        return { limit: at, surface, height, watertight, rate: retainingAssembly(height, watertight) };
+      };
+      let placed = wallAt(limit);
+      // Too high where the feature begins (ground falling away beside a bank): the wall stands nearer the road,
+      // where it is lower, wherever it fits (a wall further in protects the feature as well).
+      if (placed.height > R.maxHeight || placed.rate.baseWidth > limit + otherFoot) {
+        for (let at = limit - 1; at >= w + R.minimumOffset; at -= 1) {
+          const tried = wallAt(at);
+          if (tried.height <= R.maxHeight && tried.rate.baseWidth <= at + otherFoot) { placed = tried; break; }
+        }
       }
+      slot = { grade: r.grade[i], limit, otherFoot, wet, placed };
+      if (slots) slots[i] = slot;
     }
+    const { surface, height, watertight, rate } = slot.placed;
+    limit = slot.placed.limit;
     // The footing points inward, below our acquired corridor; no free foundation under a protected neighbour.
     const crossing = t.crossing[i];
     if (rate.perM > t.cap[i]) continue; // dearer than relocating that track: try the firm constraints
@@ -400,7 +463,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       break;
     }
     const sideCache = side > 0 ? r.sideL : r.sideR;
-    const before = sideCache?.[i] ?? sideSection(r.grade[i], w, tpl, ground, geology), after = sideSection(r.grade[i], w, tpl, ground, geology, limit);
+    const before = sideCache?.[i] ?? sideSection(r.grade[i], w, tpl, ground, geology), after = slot.after ??= sideSection(r.grade[i], w, tpl, ground, geology, limit);
     if (after.day >= before.day - 0.05) break;
     r.cut[i] += after.cut - before.cut; r.fill[i] += after.fill - before.fill;
     r.cutI[i] += after.cutI - before.cutI; r.cutII[i] += after.cutII - before.cutII;
