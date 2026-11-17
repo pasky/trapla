@@ -16,7 +16,7 @@ import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
 import type { StationRange } from '../state';
 import type { View } from './view';
-import { culvertPlans, type CulvertPlan } from './culvert-geometry';
+import { culvertPlans, sightBlocked, type CulvertPlan } from './culvert-geometry';
 import { culvertMeshData } from './culverts';
 
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
@@ -123,15 +123,19 @@ export class RouteExtras {
     if (!this.visible || this.view.metresPerPixel > 1.5) return null;
     const rect = this.view.renderer.domElement.getBoundingClientRect();
     const mx = clientX - rect.left, my = clientY - rect.top;
-    let best: CulvertPlan | null = null, bestD = Infinity;
+    const hits: { p: CulvertPlan; at: { x: number; y: number; z: number }; d: number }[] = [];
     for (const p of this.culvertPlans) for (const e of p.ends) {
       // the end's middle, out over its apron, and its reach on screen (its half-width)
-      const mid = this.view.project(e.x + e.ox, e.y + e.oy, e.z + p.height / 2), side = this.view.project(e.x - e.oy * (p.width / 2 + 1.5), e.y + e.ox * (p.width / 2 + 1.5), e.z + p.height / 2);
+      const at = { x: e.x + e.ox, y: e.y + e.oy, z: e.z + p.height / 2 };
+      const mid = this.view.project(at.x, at.y, at.z), side = this.view.project(e.x - e.oy * (p.width / 2 + 1.5), e.y + e.ox * (p.width / 2 + 1.5), e.z + p.height / 2);
       if (!mid.vis) continue;
       const d = Math.hypot(mid.sx - mx, mid.sy - my), reach = Math.max(tol, Math.hypot(side.sx - mid.sx, side.sy - mid.sy));
-      if (d <= reach && d < bestD) { bestD = d; best = p; }
+      if (d <= reach) hits.push({ p, at, d });
     }
-    return best;
+    // the nearest one in sight (an end behind our embankment or a hill is not under the pointer)
+    const eye = this.view.eye, natural = (x: number, y: number) => this.view.groundHeight(x, y);
+    for (const h of hits.sort((a, b) => a.d - b.d)) if (!this.r || !sightBlocked(this.r, this.crown / 2, eye, h.at, natural)) return h.p;
+    return null;
   }
 
   /** Dotted surface overlay distinguishes manual earth/bridge/tunnel ranges, even if invalid. */

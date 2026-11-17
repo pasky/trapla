@@ -52,7 +52,7 @@ describe('player-facing text', () => {
     // a stream culvert's card: pipe, frame, buried bridge, under each kind of line
     for (const size of [{ type: 'pipe', width: 1, height: 1 }, { type: 'box', width: 4, height: 2.5 }, { type: 'box', width: 2, height: 2, buried: true }] as const)
       for (const line of ['road', 'motorway', 'railway'] as const) {
-        const card = culvertCard({ size, length: 42.3, h: 14.2, q100: 2.7, catchmentKm2: 0.9, truncated: true, frameCover: 7, vaultWidth: 4 }, line);
+        const card = culvertCard({ size, length: 42.3, h: 14.2, q100: 2.7, catchmentKm2: 0.9, truncated: true, frameCover: 7, vaultSpan: 3.5 }, line);
         for (const text of [card.title, card.state, ...card.why, ...card.more]) { expect(text.trim()).not.toBe(''); check(`culvert card ${size.type} ${line}`, text); }
         if (line !== 'road') expect([...card.why, ...card.more].join(' ')).not.toMatch(/our road/);
       }

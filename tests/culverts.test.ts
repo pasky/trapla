@@ -4,18 +4,23 @@ import { describe, expect, it } from 'vitest';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LC, Terrain, syntheticTerrain } from '../src/core/terrain';
-import { culvertPlans } from '../src/render/culvert-geometry';
+import { culvertPlans, sightBlocked } from '../src/render/culvert-geometry';
 import { culvertMeshData } from '../src/render/culverts';
 
 /** a valley across a straight east–west road at y = 250, a stream down it crossing the road at 1250 at an angle */
-function scene(depth: number, slant: number) {
+function scene(depth: number, slant: number, split = false) {
   const source = syntheticTerrain(500, 100, 5, x => 400 - depth * Math.min(1, Math.max(0, Math.min(x - 250, 2250 - x)) / 300));
   const q = new Uint16Array(500 * 100);
   for (let r = 0; r < 100; r++) for (let c = 0; c < 500; c++) q[r * 500 + c] = Math.round(source.sample(c, r) * 100);
   const points = [[1250 - slant, 0], [1250, 250], [1250 + slant, 500]];
+  const reach = (id: number, points: number[][]) => ({ id, kind: 'stream' as const, width: null, points,
+    catchmentKm2: points.map(() => 0.3), truncated: points.map(() => false) });
+  const at = (y: number) => [1250 - slant + 2 * slant * y / 500, y];
+  // (split: the same channel mapped as two ways meeting under our embankment, 8 m off our axis, the second
+  // turning there)
+  const reaches = split ? [reach(7, [points[0], points[1], at(258)]), reach(8, [at(258), [at(258)[0] + 30, 300], [at(258)[0] + 30, 500]])] : [reach(7, points)];
   const terrain = new Terrain({ nx: 500, ny: 100, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length).fill(LC.none),
-    watercourses: { version: 1, method: 'synthetic', reaches: [{ id: 7, kind: 'stream', width: null, points,
-      catchmentKm2: points.map(() => 0.3), truncated: points.map(() => false) }] } });
+    watercourses: { version: 1, method: 'synthetic', reaches } });
   const design: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }] };
   const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 250, y: 250 }, b: { x: 2250, y: 250 } }, design);
   return { r, terrain, natural: (x: number, y: number) => terrain.heightAt(x, y) };
@@ -43,6 +48,22 @@ describe('stream culverts as drawn', () => {
     }
     const [a, b] = p.ends;
     expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeCloseTo(c.length, 0);
+  });
+
+  it('follows a stream mapped in two pieces that meet under our embankment', () => {
+    const { r, terrain, natural } = scene(6, 0, true);
+    const [p] = culvertPlans(r, terrain.watercourses, natural), north = p.ends.find(e => e.y > 250)!;
+    // on the second piece (x = 1250 + 30 (y − 258) / 42), not on the first one's line carried on (x = 1250)
+    expect(Math.abs(north.x - (1250 + 30 * (north.y - 258) / 42))).toBeLessThan(0.05);
+    expect(north.x - 1250).toBeGreaterThan(2);
+  });
+
+  it('an end is in sight from its own side, hidden behind our embankment from the other', () => {
+    const { r, terrain, natural } = scene(6, 0);
+    const [p] = culvertPlans(r, terrain.watercourses, natural), north = p.ends.find(e => e.y > 250)!;
+    const at = { x: north.x, y: north.y + 1, z: north.z + 1 };
+    expect(sightBlocked(r, 4.75, { x: 1300, y: 320, z: 410 }, at, natural)).toBe(false);
+    expect(sightBlocked(r, 4.75, { x: 1300, y: 180, z: 410 }, at, natural)).toBe(true);
   });
 
   it('each end stands in the ground: the footing below it, nothing above the headwall, wing tips down at the ground', () => {

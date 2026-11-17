@@ -343,16 +343,17 @@ export interface CulvertFacts {
   length: number; h: number; q100: number; catchmentKm2: number;
   /** its land runs off the map (the flood is a rougher guess) */
   truncated?: boolean;
-  /** a buried bridge: the most fill a precast frame takes, m; its billed width, m */
-  frameCover?: number; vaultWidth?: number;
+  /** a buried bridge: the most fill a precast frame takes, m; its vault's clear span (billed width less its walls), m */
+  frameCover?: number; vaultSpan?: number;
 }
 /** The culvert card in plain words: title, the one-line state, why (lines), and what "More" adds. */
 export function culvertCard(c: CulvertFacts, line: OurLine = 'road'): { title: string; state: string; why: string[]; more: string[] } {
   const m = (v: number) => v.toFixed(1);
   const title = c.size.buried ? 'Buried bridge' : c.size.type === 'pipe' ? 'Pipe culvert' : 'Box culvert';
-  const what = c.size.type === 'pipe' ? `${Math.round(c.size.width * 1000)} mm pipe` : `${m(c.size.width)} × ${m(c.size.height)} m opening`;
+  const what = c.size.type === 'pipe' ? `${Math.round(c.size.width * 1000)} mm pipe` : c.size.buried ? `vault spanning ${m(c.vaultSpan ?? c.size.width)} m`
+    : `${m(c.size.width)} × ${m(c.size.height)} m opening`;
   const why = [`Carries a stream under our road's embankment, ${m(c.h)} m below our road.`,
-    c.size.buried ? `With that much earth over it (a precast frame takes ${m(c.frameCover ?? 7)} m), it is built as a concrete vault ${m(c.vaultWidth ?? c.size.width)} m wide.`
+    c.size.buried ? `With that much earth over it (a precast frame takes ${m(c.frameCover ?? 7)} m), the ${m(c.size.width)} × ${m(c.size.height)} m opening the flood needs is built as a concrete vault spanning ${m(c.vaultSpan ?? c.size.width)} m.`
       : c.size.type === 'pipe' ? 'A precast concrete pipe, with a wall at each end.' : 'A precast concrete frame, with a wall at each end.',
     `Sized for a 100-year flood of about ${c.q100 < 10 ? c.q100.toFixed(1) : Math.round(c.q100)} m³/s.`];
   const more = [`${m(c.catchmentKm2)} km² of land drains into it${c.truncated ? ' (some of it off the map: a rougher guess)' : ''}.`,

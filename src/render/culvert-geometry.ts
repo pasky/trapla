@@ -74,18 +74,29 @@ function insideTest(r: Route, start: number): (x: number, y: number) => boolean 
   };
 }
 
-const reachIndex = new WeakMap<WaterNet, Map<number, WaterReach>>();
+/** each reach by id, and the reaches at each vertex (OSM splits one channel into several ways that share
+ * vertices: WaterNet joins them the same way) */
+const netIndex = new WeakMap<WaterNet, { byId: Map<number, WaterReach>; at: Map<string, { w: WaterReach; k: number }[]> }>();
+const vertexKey = (p: readonly number[]) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`;
+function indexOf(water: WaterNet) {
+  let index = netIndex.get(water);
+  if (!index) {
+    const at = new Map<string, { w: WaterReach; k: number }[]>();
+    for (const w of water.data.reaches) w.points.forEach((p, k) => { const key = vertexKey(p), list = at.get(key); if (list) list.push({ w, k }); else at.set(key, [{ w, k }]); });
+    netIndex.set(water, index = { byId: new Map(water.data.reaches.map(w => [w.id, w])), at });
+  }
+  return index;
+}
 function reachOf(water: WaterNet | undefined, id: number): WaterReach | undefined {
-  if (!water || id < 0) return undefined;
-  let index = reachIndex.get(water);
-  if (!index) reachIndex.set(water, index = new Map(water.data.reaches.map(w => [w.id, w])));
-  return index.get(id);
+  return water && id >= 0 ? indexOf(water).byId.get(id) : undefined;
 }
 
-/** A path out of the crossing point: along the mapped stream (`dir` +1 downstream of its points, −1 up), or a
+/** A path out of the crossing point: along the mapped stream (`dir` +1 along its points, −1 against), or a
  * straight line. Returns the point `d` metres along it, or null past its end. */
 type Path = (d: number) => { x: number; y: number } | null;
-function streamPath(w: WaterReach, x: number, y: number, dir: number): Path {
+/** how far a stream's path is followed, m; through how many joined reaches at most */
+const STREAM_REACH = 400, STREAM_JOINS = 8;
+function streamPath(water: WaterNet, w: WaterReach, x: number, y: number, dir: number): Path {
   // the segment the crossing lies on (the nearest)
   let j = 0, best = Infinity;
   for (let k = 0; k + 1 < w.points.length; k++) {
@@ -93,10 +104,31 @@ function streamPath(w: WaterReach, x: number, y: number, dir: number): Path {
     const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)), e = Math.hypot(ax + t * dx - x, ay + t * dy - y);
     if (e < best) { best = e; j = k; }
   }
-  // distances along the reach from the crossing to each vertex in the walking direction
-  const verts: [number, number][] = [[x, y]];
-  if (dir > 0) for (let k = j + 1; k < w.points.length; k++) verts.push([w.points[k][0], w.points[k][1]]);
-  else for (let k = j; k >= 0; k--) verts.push([w.points[k][0], w.points[k][1]]);
+  // the vertices from the crossing on in the walking direction, on through the reaches joined at an end (where the
+  // channel branches: the one going on most nearly straight)
+  const verts: [number, number][] = [[x, y]], seen = new Set<WaterReach>([w]);
+  let reach = w, k = dir > 0 ? j + 1 : j, step = dir > 0 ? 1 : -1, length = 0;
+  for (let joins = 0; ; joins++) {
+    for (; k >= 0 && k < reach.points.length && length < STREAM_REACH; k += step) {
+      const [px, py] = verts[verts.length - 1], q = reach.points[k];
+      length += Math.hypot(q[0] - px, q[1] - py); verts.push([q[0], q[1]]);
+    }
+    if (length >= STREAM_REACH || joins >= STREAM_JOINS || verts.length < 2) break;
+    const [ex, ey] = verts[verts.length - 1], [fx, fy] = verts[verts.length - 2];
+    const hx = ex - fx, hy = ey - fy, hl = Math.hypot(hx, hy) || 1;
+    let next: { w: WaterReach; k: number; step: number } | null = null, straight = -Infinity;
+    for (const o of indexOf(water).at.get(vertexKey([ex, ey])) ?? []) {
+      if (seen.has(o.w)) continue;
+      for (const s of [1, -1]) {
+        const q = o.w.points[o.k + s];
+        if (!q) continue;
+        const c = ((q[0] - ex) * hx + (q[1] - ey) * hy) / (hl * (Math.hypot(q[0] - ex, q[1] - ey) || 1));
+        if (c > straight) { straight = c; next = { w: o.w, k: o.k + s, step: s }; }
+      }
+    }
+    if (!next) break;
+    seen.add(next.w); reach = next.w; k = next.k; step = next.step;
+  }
   const cum = [0];
   for (let k = 1; k < verts.length; k++) cum.push(cum[k - 1] + Math.hypot(verts[k][0] - verts[k - 1][0], verts[k][1] - verts[k - 1][1]));
   return (d) => {
@@ -140,7 +172,7 @@ export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'>, w
     const tx = c.channelTx ?? r.tx[i] * cos - r.ty[i] * c.sine, ty = c.channelTy ?? r.ty[i] * cos + r.tx[i] * c.sine;
     const reach = Math.max(60, 3 * c.length), cells = Math.ceil(reach / r.ds) + 2;
     const w = reachOf(water, c.id);
-    const ends = ([1, -1] as const).map(dir => (w && exit(streamPath(w, c.x, c.y, dir), insideTest(r, i), reach))
+    const ends = ([1, -1] as const).map(dir => (w && exit(streamPath(water!, w, c.x, c.y, dir), insideTest(r, i), reach))
       || exit(straightPath(c.x, c.y, tx * dir, ty * dir), insideTest(r, i), reach));
     if (!ends[0] || !ends[1]) continue;
     const [a, b] = ends as { x: number; y: number }[], len = Math.hypot(b.x - a.x, b.y - a.y);
@@ -162,4 +194,28 @@ export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'>, w
     out.push({ s: c.s, id: c.id, ...culvertSection(c.size), ends: [end(a, ux, uy), end(b, -ux, -uy)] });
   }
   return out;
+}
+
+/**
+ * Something drawn stands between an eye and a point near a culvert's end: the ground, or our embankment (its crown
+ * at the road's height, its slopes straight from the crown's edge to the daylight points; `half`: half the crown).
+ * Sampled every metre or so from 2 m off the point (its own end does not hide it) up to 1 km.
+ */
+export function sightBlocked(r: Route & Pick<Result, 'grade' | 'zDayL' | 'zDayR'>, half: number, eye: { x: number; y: number; z: number },
+  p: { x: number; y: number; z: number }, natural: (x: number, y: number) => number): boolean {
+  const len = Math.hypot(eye.x - p.x, eye.y - p.y), reach = Math.min(len, 1000), step = Math.max(1, reach / 400);
+  let i = 0, best = Infinity;
+  for (let k = 0; k < r.n; k += 8) { const d = (r.x[k] - p.x) ** 2 + (r.y[k] - p.y) ** 2; if (d < best) { best = d; i = k; } }
+  const d2 = (k: number, x: number, y: number) => (r.x[k] - x) ** 2 + (r.y[k] - y) ** 2;
+  for (let d = 2; d < reach; d += step) {
+    const t = d / len, x = p.x + (eye.x - p.x) * t, y = p.y + (eye.y - p.y) * t, z = p.z + (eye.z - p.z) * t;
+    if (z < natural(x, y) - 0.2) return true;
+    while (i > 0 && d2(i - 1, x, y) < d2(i, x, y)) i--;
+    while (i + 1 < r.n && d2(i + 1, x, y) < d2(i, x, y)) i++;
+    if (r.kind[i] !== KIND.earth || !insideNear(r, i, x, y)) continue;
+    const off = -(x - r.x[i]) * r.ty[i] + (y - r.y[i]) * r.tx[i], day = off >= 0 ? r.dayL[i] : r.dayR[i], zDay = off >= 0 ? r.zDayL[i] : r.zDayR[i];
+    const u = Math.max(0, Math.min(1, (Math.abs(off) - half) / Math.max(0.01, day - half)));
+    if (z < r.grade[i] + u * (zDay - r.grade[i]) - 0.2) return true;
+  }
+  return false;
 }

@@ -26,6 +26,7 @@ import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 import { stationIndex } from '../core/range';
 import { CULVERT_RULES } from '../core/data/culverts';
 import { culvertCard } from '../core/terms';
+import { culvertSection } from '../render/culvert-geometry';
 
 export type Sel =
   | { kind: 'stretch'; s0: number; s1: number; piece?: PieceKind }
@@ -475,7 +476,7 @@ export class Inspector {
     const c = culvertAt(r, id, s);
     if (!c?.size || c.size.type === 'bridge') return '';
     const card = culvertCard({ ...c, size: { ...c.size, type: c.size.type }, ...(c.size.buried ? { frameCover: CULVERT_RULES.maxFrameCover,
-      vaultWidth: Math.max(CULVERT_RULES.buriedMinSpan, c.size.width + 2 * CULVERT_RULES.buriedWall) } : {}) }, CATEGORIES[d.category].mode as OurLine);
+      vaultSpan: culvertSection(c.size).width } : {}) }, CATEGORIES[d.category].mode as OurLine);
     // the alternative: a bridge over the stream and its banks (the span the game would need, as in the problem's fix)
     const half = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, c.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine) / 2 + r.ds;
     const s0 = Math.max(0, c.s - half), s1 = Math.min(r.length, c.s + half);

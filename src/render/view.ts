@@ -564,6 +564,8 @@ export class View {
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
   groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
   get watercourses() { return this.terrain.watercourses; }
+  /** the camera's position in map coordinates (m; its height without the relief exaggeration) */
+  get eye() { const c = this.camera.position; return { x: c.x + this.cx, y: this.cy - c.z, z: c.y / this.exag }; }
   replacementHeight = (x: number, y: number) => this.drape(x, y);
   crossingGeology(x: number, y: number, z: number) {
     const profile = this.terrain.groundAt(x,y), depth = this.terrain.heightAt(x,y)-z;
