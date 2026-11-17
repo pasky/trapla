@@ -12,7 +12,7 @@
         "vpis": []
       },
       "expected": {
-        "geometryHash": "83c9a361f7242f47d83505551c8a40b1bab88a35a4949557dbe81be52f8ed243",
+        "geometryHash": "ac50c0149544825e57abd688354ab1fad89b52b1aaae170e74e1b0c4412f3bee",
         "cost": {
           "roadBase": 575561501.1948184,
           "earthworks": 923187105.1262954,
@@ -496,7 +496,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "cad7cc0fc587d3c995d668872407bff56d1b4ff136d871261236f25e58c3f880",
+        "geometryHash": "ea2b8d495a892fb5a75fd0582319624169dab914ff6ec528bd9fb1bda24a4c8d",
         "cost": {
           "roadBase": 821347385.2683175,
           "earthworks": 612644776.398535,
@@ -975,7 +975,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "beac59d5b9f8c116dabb7aa1188f869a094c6b374ad069397d2e961edc757686",
+        "geometryHash": "dc261f0762452ca2774751d16afe948210bae485bd94720795cfc22c312b9464",
         "cost": {
           "roadBase": 823017647.3790262,
           "earthworks": 613605032.0212418,
@@ -1465,7 +1465,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "0ebc722a760d0bf54518dc2ed7c5013138326a3d13f401fa7113ca9efe5296b2",
+        "geometryHash": "158ea48a54d58ec2c7085114eff60079ec0bbfc21a393d26a6d12e12e795ac45",
         "cost": {
           "roadBase": 821347385.2683175,
           "earthworks": 625070156.154623,
@@ -1956,7 +1956,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "c892c58570f3fdcc8d10c63ad1ddd1cf48e965265b48fbb8c1a7da1559e21dae",
+        "geometryHash": "77f7e7ee87736c4bccb3a59073c106f8d8a53c6e42f19b3669856222732c72bb",
         "cost": {
           "roadBase": 817146377.4037362,
           "earthworks": 628241962.48864,
@@ -2771,7 +2771,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "8b6f61cb62cc2fd9640ecf8a58f779221f4216380ca34333ea4bbb786c96ed26",
+        "geometryHash": "d1720159db6284777ad5ec3cdbb22201053b6e411dc1ef0142e2e908de5491d8",
         "cost": {
           "roadBase": 821347385.2683175,
           "earthworks": 608713109.6830299,
@@ -3261,7 +3261,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "31bebddbd9700bc2fd71567494da1899f6bdd0dc126e9c9dab2060aae0da38c9",
+        "geometryHash": "764c8376c78ada8a066a796819b2ab1404f633636be540a4ae3527829a280e8e",
         "cost": {
           "roadBase": 837001145.7080213,
           "earthworks": 1023105210.7002379,
@@ -3770,7 +3770,7 @@
         "vpis": []
       },
       "expected": {
-        "geometryHash": "3f34ab2434098bfca294546806c545924f22c0a796dce0cd2172d2a6e6092ad0",
+        "geometryHash": "14f6f08624965a8bc36d6a46a31d795738da0c00b9f2251a4e5ea5d4fce03f91",
         "cost": {
           "roadBase": 741820638.5048895,
           "earthworks": 556659096.0251113,
@@ -4264,7 +4264,7 @@
         "vpis": []
       },
       "expected": {
-        "geometryHash": "d25b643e847a467f2fa8898826f33238f9016a563107b11078f85b0dc1a38b44",
+        "geometryHash": "fe8f58a2ebc56a2a91b41095be5e28b4bc9f7bc12f0afe44b55095de8fcf4f79",
         "cost": {
           "roadBase": 727096838.6729134,
           "earthworks": 1281902989.3252614,
@@ -4638,7 +4638,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "bc028297a92b63f608c3220bf2dc7cca732a3ffb05a86fb124e6e7ae2b139d8b",
+        "geometryHash": "213d3b4744d8d9c64033af18154d1e52924b44af91c7ac86aa329f523085ce98",
         "cost": {
           "roadBase": 595962874.9197224,
           "earthworks": 1447671210.2053874,
@@ -5037,7 +5037,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "c37c5fd8722de14f1383333bd4e85472a165f4d7021703b646ca3b95c240f374",
+        "geometryHash": "49afe2b5d8c62dfa43755ab8ca6c84ed539fa61eb5f1aafae1d7731d6dd04cab",
         "cost": {
           "roadBase": 595962874.9197224,
           "earthworks": 1447671210.2053874,
