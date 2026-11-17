@@ -11,6 +11,7 @@ import type { TransportGraphData } from './core/project-transport';
 import { KIND } from './core/structures';
 import type { ProjectStore } from './project-store';
 import { routeIndicationHeight } from './render/route-indication';
+import { culvertPlans } from './render/culvert-geometry';
 import type { View } from './render/view';
 import type { Pack } from './scenario';
 import type { ActiveRouteStore } from './ui/active-route-store';
@@ -82,6 +83,8 @@ export function installAutomation(c: AutomationContext): void {
     routeEndpoints: () => structuredClone(c.store.route?.endpoints ?? null),
     renderRoutes: () => c.view.routeGeometryStats(),
     groundHeight: (x: number, y: number) => c.pack.terrain.heightAt(x, y),
+    /** the active road's stream culverts as drawn (render/culvert-geometry.ts) */
+    culverts: () => c.last ? culvertPlans(c.last, c.pack.terrain.watercourses, (x, y) => c.pack.terrain.heightAt(x, y)) : [],
     routeScreen: (id: RouteId, s: number) => {
       const route = c.projectFull?.routes[id], r = route?.legacy;
       if (!r) { // an unaccepted proposal: its drawn reference line
@@ -166,6 +169,7 @@ export function installAutomation(c: AutomationContext): void {
     selectPi: (i: number | null) => c.select(i === null ? null : { kind: 'bend', i }),
     selectStation: (s: number) => c.select({ kind: 'pin', s }),
     selectCrossing: (roadId: number) => c.select({ kind: 'crossing', roadId }, true),
+    selectCulvert: (id: number, s: number) => c.select({ kind: 'culvert', id, s }, true),
     selectBuilding: (j: number) => c.select({ kind: 'building', j }),
     maxRadius: (i: number) => c.curveEdit.maxRadius(i),
     pick: (clientX: number, clientY: number) => c.view.pick(clientX, clientY),

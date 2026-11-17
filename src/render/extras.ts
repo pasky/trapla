@@ -16,6 +16,8 @@ import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
 import type { StationRange } from '../state';
 import type { View } from './view';
+import { culvertPlans, type CulvertPlan } from './culvert-geometry';
+import { culvertMeshData } from './culverts';
 
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
 /**
@@ -36,6 +38,9 @@ export class RouteExtras {
   private wallHits: { w: WallStretch; pts: number[] }[] = [];
   private highlight = new THREE.Group();
   private manual = new THREE.Group();
+  /** stream culverts (culverts.ts), and where they stand for picking */
+  private culverts = new THREE.Group();
+  private culvertPlans: CulvertPlan[] = [];
   private r: Result | null = null;
   private crown = 9.5;
   private range: StationRange | null = null;
@@ -47,27 +52,64 @@ export class RouteExtras {
     this.symbols.name = 'noise-wall-symbols';
     this.highlight.name = 'range-highlight';
     this.manual.name = 'manual-structures';
-    view.world.add(this.walls, this.symbols, this.highlight, this.manual);
+    this.culverts.name = 'culverts';
+    view.world.add(this.walls, this.symbols, this.highlight, this.manual, this.culverts);
     this.removeFrame = view.addRenderListener(() => this.updateSymbols());
   }
 
   setVisible(visible: boolean) {
     this.visible = visible;
-    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) group.visible = visible;
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual, this.culverts]) group.visible = visible;
     if (visible) this.symbolScale = -1;
     this.view.requestRender();
   }
   reset() {
-    this.r = null; this.range = null; this.wallHits = [];
-    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) this.clear(group);
+    this.r = null; this.range = null; this.wallHits = []; this.culvertPlans = [];
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual, this.culverts]) this.clear(group);
   }
   dispose() {
     this.reset(); this.removeFrame();
-    this.view.world.remove(this.walls, this.symbols, this.highlight, this.manual); this.view.requestRender();
+    this.view.world.remove(this.walls, this.symbols, this.highlight, this.manual, this.culverts); this.view.requestRender();
   }
 
   setResult(r: Result, crownWidth: number, overrides: readonly StructureOverride[] = [], wallOverrides: readonly WallOverride[] = []) {
+    const culverts = this.r?.waterCrossings !== r.waterCrossings;
     this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildManual(overrides, wallOverrides); this.buildHighlight();
+    if (culverts) this.buildCulverts();
+  }
+
+  /** the stream culverts of the settled result (culverts.ts) */
+  private buildCulverts() {
+    this.clear(this.culverts);
+    const r = this.r;
+    this.culvertPlans = r ? culvertPlans(r, this.view.watercourses, (x, y) => this.view.groundHeight(x, y)) : [];
+    if (!this.culvertPlans.length) return;
+    const data = culvertMeshData(this.culvertPlans, (x, y) => this.view.groundHeight(x, y), (x, y, z) => this.view.local(x, y, z));
+    const g = new THREE.BufferGeometry();
+    for (const [name, size] of [['position', 3], ['color', 3], ['elev', 1], ['ink', 1], ['ewKind', 1], ['ewGeo', 3]] as const)
+      g.setAttribute(name, new THREE.Float32BufferAttribute(data[name], size));
+    g.computeVertexNormals(); g.computeBoundingSphere();
+    // the earthwork material: the earth over the ends textured and lit as our slopes are, the concrete as structures
+    const mesh = new THREE.Mesh(g, this.view.crossingEarthMaterial());
+    mesh.name = 'culvert-structures';
+    this.culverts.add(mesh);
+    this.view.requestRender();
+  }
+
+  /** the culvert whose end (headwall, wings, apron) is drawn under a screen point, if close enough to see it */
+  culvertAt(clientX: number, clientY: number, tol = 8): CulvertPlan | null {
+    if (!this.visible || this.view.metresPerPixel > 1.5) return null;
+    const rect = this.view.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - rect.left, my = clientY - rect.top;
+    let best: CulvertPlan | null = null, bestD = Infinity;
+    for (const p of this.culvertPlans) for (const e of p.ends) {
+      // the end's middle, out over its apron, and its reach on screen (its half-width)
+      const mid = this.view.project(e.x + e.ox, e.y + e.oy, e.z + p.height / 2), side = this.view.project(e.x - e.oy * (p.width / 2 + 1.5), e.y + e.ox * (p.width / 2 + 1.5), e.z + p.height / 2);
+      if (!mid.vis) continue;
+      const d = Math.hypot(mid.sx - mx, mid.sy - my), reach = Math.max(tol, Math.hypot(side.sx - mid.sx, side.sy - mid.sy));
+      if (d <= reach && d < bestD) { bestD = d; best = p; }
+    }
+    return best;
   }
 
   /** Dotted surface overlay distinguishes manual earth/bridge/tunnel ranges, even if invalid. */

@@ -24,6 +24,8 @@ import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './
 import { activeStructure } from './structure-bar';
 import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 import { stationIndex } from '../core/range';
+import { CULVERT_RULES } from '../core/data/culverts';
+import { culvertCard } from '../core/terms';
 
 export type Sel =
   | { kind: 'stretch'; s0: number; s1: number; piece?: PieceKind }
@@ -32,6 +34,8 @@ export type Sel =
   | { kind: 'vpi'; i: number }
   | { kind: 'crossing'; roadId: number }
   | { kind: 'building'; j: number }
+  /** a stream culvert under our road (Result.waterCrossings): its stream and station */
+  | { kind: 'culvert'; id: number; s: number }
   /** a mission end that meets an interchange or a road (scenario data) */
   | { kind: 'end'; end: 'a' | 'b' };
 
@@ -234,6 +238,7 @@ export class Inspector {
     else if (sel?.kind === 'crossing') html = this.crossing(r, d, sel.roadId);
     else if (sel?.kind === 'building') html = this.building(r, d, sel.j);
     else if (sel?.kind === 'end') html = this.end(r, sel.end);
+    else if (sel?.kind === 'culvert') html = this.culvert(r, d, sel.id, sel.s);
     const shown = html ? sel : null;
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
@@ -463,6 +468,21 @@ export class Inspector {
     const card = endCard(info, end);
     return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
       <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+  }
+
+  // ---- a stream culvert ----
+  private culvert(r: Result, d: Design, id: number, s: number) {
+    const c = culvertAt(r, id, s);
+    if (!c?.size || c.size.type === 'bridge') return '';
+    const card = culvertCard({ ...c, size: { ...c.size, type: c.size.type }, ...(c.size.buried ? { frameCover: CULVERT_RULES.maxFrameCover,
+      vaultWidth: Math.max(CULVERT_RULES.buriedMinSpan, c.size.width + 2 * CULVERT_RULES.buriedWall) } : {}) }, CATEGORIES[d.category].mode as OurLine);
+    // the alternative: a bridge over the stream and its banks (the span the game would need, as in the problem's fix)
+    const half = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, c.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine) / 2 + r.ds;
+    const s0 = Math.max(0, c.s - half), s1 = Math.min(r.length, c.s + half);
+    return `${this.head(card.title, `km ${km(c.s)}`)}
+      <div class="ctx-state"><b>${esc(card.state)} · ${czk(c.cost)}</b>${card.why.map(t => `<div class="why">${esc(t)}</div>`).join('')}</div>
+      <div class="more-box">${card.more.map(t => `<div class="sub">${esc(t)}</div>`).join('')}</div>
+      <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${CATEGORIES[d.category].mode} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
   }
 
   // ---- height point (By hand) ----
@@ -721,6 +741,13 @@ export class Inspector {
     if (sel?.kind === 'vpi' && t.id === 'vpi-auto') this.ev.vpiRadius?.(sel.i, t.checked ? null : Math.round(this.r?.vcurves[sel.i - 1]?.r ?? 0));
     if (t.id === 'pin-z') this.el.querySelector<HTMLButtonElement>('#pin-set')?.click();
   }
+}
+
+/** the culvert of stream `id` nearest station s (a pipe or a box under our earthworks), if any within 100 m */
+export function culvertAt(r: Pick<Result, 'waterCrossings'>, id: number, s: number) {
+  let best: Result['waterCrossings'][number] | undefined;
+  for (const c of r.waterCrossings) if (c.size && c.id === id && Math.abs(c.s - s) < 100 && (!best || Math.abs(c.s - s) < Math.abs(best.s - s))) best = c;
+  return best;
 }
 
 /** every crossed road once, in route order */

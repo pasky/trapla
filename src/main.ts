@@ -219,7 +219,7 @@ async function main() {
   decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });
-  annotations.onCulvert = (s) => selectPiece(s);
+  annotations.onCulvert = (id, s) => select({ kind: 'culvert', id, s });
 
   // ---- evaluation: what happens with the workers' results (ui/result-display.ts) ----
   const results = createResultDisplay({

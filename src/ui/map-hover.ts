@@ -65,13 +65,16 @@ export function installMapHover(app: MapHoverContext): { highlightBend(i: number
       cursor = 'grab'; key = 'mapped';
       if (key !== mapHoverKey) { const g = app.view.pick(at.x, at.y); if (g) app.view.setHover({ x: g.x, y: g.y, z: app.view.drape(g.x, g.y) }, 'drag to change'); }
     } else if (at && r && !app.buildTool.active) {
-      const cross = app.crossingAt(at.x, at.y);
-      const k = cross ? -1 : app.roadAt(at.x, at.y, 10);
+      const cross = app.crossingAt(at.x, at.y), culvert = cross ? null : app.extras.culvertAt(at.x, at.y);
+      const k = cross || culvert ? -1 : app.roadAt(at.x, at.y, 10);
       const building = cross || k >= 0 ? null : app.buildingAt(at.x, at.y);
       let works: ReturnType<typeof app.crossingWorksAt> = null, src: ReturnType<typeof app.sourceAt> = null;
       if (cross) {
         cursor = 'pointer'; key = `x${cross.roadId}`;
         if (key !== mapHoverKey) { app.view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); app.profile.setHover(cross.s, true); }
+      } else if (culvert) {
+        cursor = 'pointer'; key = `c${culvert.s}`;
+        if (key !== mapHoverKey) { app.view.setHover(null); app.profile.setHover(culvert.s, true); }
       } else if (k >= 0) {
         cursor = 'grab'; key = `r${k}`;
         if (key !== mapHoverKey) { app.view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, app.bendLabel()); app.profile.setHover(r.s[k], true); }
@@ -98,7 +101,7 @@ export function installMapHover(app: MapHoverContext): { highlightBend(i: number
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     if (key === mapHoverKey) return;
-    if (!key.startsWith('x') && !key.startsWith('r') && key !== 'mapped' && key !== 'grab-source') { app.view.setHover(null); app.profile.setHover(null, true); }
+    if (!key.startsWith('x') && !key.startsWith('r') && !key.startsWith('c') && key !== 'mapped' && key !== 'grab-source') { app.view.setHover(null); app.profile.setHover(null, true); }
     mapHoverKey = key;
   };
   app.view.renderer.domElement.addEventListener('pointermove', (e) => {

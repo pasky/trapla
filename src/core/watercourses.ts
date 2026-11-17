@@ -36,6 +36,8 @@ export interface WaterSize {
 export interface WaterResult extends WaterCrossing {
   i: number; bed: number; h: number; q100: number; structure: 'pipe' | 'box' | 'bridge' | 'tunnel' | 'blocked';
   opening: string; length: number; cost: number; requiredBridge: boolean;
+  /** a culvert's (pipe / box) billed size: what the 3D view draws */
+  size?: Pick<WaterSize, 'type' | 'width' | 'height' | 'buried'>;
 }
 
 /** No area-only law is a validated Czech Q100 estimator. Keep this explicitly provisional. */

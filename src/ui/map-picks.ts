@@ -105,6 +105,9 @@ export function createMapPicks(app: MapPickContext) {
   const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | null => {
     const c = crossingAt(clientX, clientY);
     if (c) return { kind: 'crossing', roadId: c.roadId! };
+    // a culvert's end (close up: its headwall, wings and apron at the slope's toe)
+    const culvert = app.extras.culvertAt(clientX, clientY);
+    if (culvert) return { kind: 'culvert', id: culvert.id, s: culvert.s };
     const hit = routeAt(clientX, clientY, 10);
     if (hit) return { kind: 'route-hit', routeId: hit.routeId, s: hit.s };
     // a crossing's own works before the rest of the mapped road (whose card is the base road's)

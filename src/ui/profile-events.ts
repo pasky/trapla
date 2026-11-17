@@ -29,6 +29,7 @@ export function profileEvents(app: ProfileEventContext): ProfileEvents {
   const events: ProfileEvents = {
     onStationSelect: (s) => app.select({ kind: 'pin', s }, true),
     onCrossingSelect: (roadId) => app.select({ kind: 'crossing', roadId }, true),
+    onCulvertSelect: (id, s) => app.select({ kind: 'culvert', id, s }, true),
     onPick: (s) => app.selectPiece(s, true),
     onVpiDrag: (i, s, z, a, b) => app.store.update((d) => {
       app.takeProfile(d);
