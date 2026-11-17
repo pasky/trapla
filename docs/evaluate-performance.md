@@ -175,9 +175,9 @@ Not done: **a memo of one crossing's candidate builds.** A candidate (a box or a
 the present remedy) reads our road through more than the tracked `spatial` queries: `route.grade`, `width`,
 `left`, `right`, `kind` by index at 19 places in the 840-line `buildCrossingGeometryOnce`, and the houses still
 standing through a closure over the pass's demolitions. A key that misses one of them is a wrong result that no
-frozen bill need show. Its place is after that function has been cut into stages with their inputs as
-parameters (docs/architecture-review.md § Core): then each stage's key can be read off its signature. Expected
-then: ≤ 18 % of a retry pass where the footprint near the crossing is unchanged (on a 19 km route a regrade
+frozen bill need show. Its place is after that function is in stages (done since: docs/architecture-review.md
+§ Core) and the loop body of `crossingStructures` is a function of one crossing that is handed what it reads of
+our road, so that the key can be read off its signature. Expected then: ≤ 18 % of a retry pass where the footprint near the crossing is unchanged (on a 19 km route a regrade
 changes about half of it), i.e. ≈ 5 ms on direct-80 and ≈ 2–3 % of the whole D3.
 
 The large lever (a retry that re-engineers only its stretch, ≈ −0.8 s of the whole D3's 2.5 s) is a model
