@@ -43,6 +43,9 @@ export interface StructureInput {
   cutCoverExtraPerM?: ArrayLike<number>;
   /** a tunnel's tubes and escape provision for its length, against one tube (default 1) */
   tunnelFactor?: (length: number) => number;
+  /** the bill's price of a tunnel this long against `tunnelPerM` / `cutCoverPerM` (the ≤ 500 m rows): the long
+   * rows, a long mined tube's length factor (default 1) */
+  tunnelRate?: (length: number, cut: boolean) => number;
   /** 1 = the player chose cut and cover for the tunnel painted here */
   cutMethod?: ArrayLike<number>;
   /** stations that must be bridged (river / railway crossings), unless deep in cut */
@@ -96,9 +99,10 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
    * its tubes times its tubes / escape provision (`cell`: the length of station i's cell) */
   const tunnelRunCost = (i0: number, i1: number, length: number, cell: (i: number) => number) => {
     let tubes = 0, extra = 0;
+    const mined = inp.tunnelRate ? inp.tunnelRate(length, false) : 1, cut = inp.tunnelRate ? inp.tunnelRate(length, true) : 1;
     for (let i = i0; i <= i1; i++) {
       const cc = cutCoverAt(inp.h, i0, i1, i, portal, !!inp.cutMethod?.[i], rules);
-      tubes += (cc ? cutCoverPerMAt(i) : tunnelAt(i)) * cell(i);
+      tubes += (cc ? cutCoverPerMAt(i) * cut : tunnelAt(i) * mined) * cell(i);
       if (cc && inp.cutCoverExtraPerM) extra += inp.cutCoverExtraPerM[i] * cell(i);
     }
     return tubes * (inp.tunnelFactor ? inp.tunnelFactor(length) : 1) + extra;

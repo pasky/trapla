@@ -3,7 +3,7 @@
 // method; escape provision; the grade search's tunnel mode.
 import { describe, expect, it } from 'vitest';
 import { autoProfile, PROFILE_KIND } from '../src/core/autoprofile';
-import { costParts, cutCoverPitPerM, sumParts, tunnelTubeFactor } from '../src/core/cost';
+import { costParts, cutCoverPitPerM, sumParts, tunnelLengthFactor, tunnelPerKm, tunnelTubeFactor } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { PRICES, STRUCTURE_RULES, TUNNEL_RULES } from '../src/core/data/prices';
 import { cutMethodMask, normalizeOverrides, overrideMask, paintOverride } from '../src/core/overrides';
@@ -83,7 +83,24 @@ describe('tunnel prices', () => {
     expect(tunnelTubeFactor(CATEGORIES['D27.5'], 2000, 30_000)).toBe(1); // two tubes already
     expect(tunnelTubeFactor(CATEGORIES['R1'], 2000, 30_000)).toBe(1); // railway: its own price book
     const n = 62, h = new Float64Array(n).fill(-30);
-    expect(sumParts(tunnelBill(h, new Uint8Array(n), 1.3)).tunnels).toBeCloseTo(1.3 * 0.6 * PRICES.tunnelLongPerKm, 0);
+    expect(sumParts(tunnelBill(h, new Uint8Array(n), 1.3)).tunnels).toBeCloseTo(1.3 * 0.6 * PRICES.tunnelLongPerKm * tunnelLengthFactor(600), 0);
+  });
+
+  it("a long mined tube is cheaper per metre (Hessen's curve), cut and cover and short tubes are not", () => {
+    expect(tunnelLengthFactor(500)).toBe(1);
+    expect(tunnelLengthFactor(1000)).toBeCloseTo(0.957, 3);
+    expect(tunnelLengthFactor(2000)).toBeCloseTo(0.935, 3);
+    expect(tunnelLengthFactor(10_000)).toBe(TUNNEL_RULES.lengthFactor.min);
+    expect(tunnelPerKm(2000)).toBeCloseTo(PRICES.tunnelLongPerKm * tunnelLengthFactor(2000), 0);
+    expect(tunnelPerKm(2000, 0, true)).toBe(PRICES.cutCoverLongPerKm);
+    expect(tunnelPerKm(400)).toBe(PRICES.tunnelShortPerKm);
+    // the structure choice weighs the bill's rows for the run's length, not the ≤ 500 m row it seeds with: a 600 m
+    // mined tube is 2.7 % dearer than that row, so an earthwork 1 % dearer than it stays an earthwork
+    const n = 62, h = new Float64Array(n).fill(-40), runs = (rate?: (L: number, cut: boolean) => number) => chooseStructures({ ds: 10, h,
+      earthPerM: new Float64Array(n).fill(1010), bridgePerM: 1e12, tunnelPerM: 1000, tunnelRate: rate }).runs.length;
+    expect(tunnelPerKm(600) / tunnelPerKm(0)).toBeGreaterThan(1.02);
+    expect(runs()).toBe(1);
+    expect(runs((L, cut) => tunnelPerKm(L, 0, cut) / tunnelPerKm(0, 0, cut))).toBe(0);
   });
 });
 
