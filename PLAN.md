@@ -571,7 +571,8 @@ starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
   deep, at a portal box in the slope (what research/49 found at D11 Poříčí / Opevňení, Radejčín, Mezno).
   Cut and cover is billed at SPK A.3.H (+7.5 %; urban PROVISIONAL: the urban bored row × the same premium),
   railways at their SPOŽES row (no method split); its pit beyond 5 m of cover is excavation + backfill (OTSKP
-  17411) under Earthworks. Land over a tunnel is not bought (as before: the pit's land is returned).
+  17411) under Earthworks. Buildings over the pit are demolished (as over a cut); its land is returned (not
+  bought; the temporary occupation is not priced).
 - **Auto sees the ends.** The structure choice prices a tunnel run as built (bored, cut and cover, tubes) against
   the earthworks over the same stretch, so a tunnel not worth its ends is an open cut (tests/tunnels.test.ts).
   The grade search has a tunnel mode (autoprofile.ts): where its station-by-station line would take a tunnel, it
@@ -579,8 +580,9 @@ starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
   entered and left at shallow knots. Where the line takes no tunnel (every D11 design), nothing changes.
 - **Streams** keep a tunnel a structure height below their bed (was 14 m): cut and cover puts the channel back.
   (Without it the Křálovec railway left two streams in a shallow cut between two tunnels.)
-- **Method on the tunnel card**: Mined (Auto) / Cut and cover (the player's, painted over the tunnel; at most
-  7.5 m of ground over it, deeper: "Too deep to dig from above"). The card says how it is built ("Mined 1,039 m
+- **Method on the tunnel card**: Mined (Auto) / Cut and cover (the player's, painted over the tunnel, any part of it; at
+  most 13 m of ground over it, the Radejčín card's maximum, deeper: "Too deep to dig from above"; buildings over
+  its pit are demolished as over a cut). The card says how it is built ("Mined 1,039 m
   · cut and cover 70 m at its ends · with an escape tunnel beside it"). A tunnel the player paints may start in
   a cut up to 30 m deep (the deepest Czech portal pits, PROVISIONAL); deeper is a violation that says where Auto's
   portal would be.

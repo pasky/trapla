@@ -27,6 +27,21 @@ describe('buildings in the structure choice', () => {
     expect(town.cost.total).toBeLessThan(earth.cost.total);
   });
 
+  it('a cut-and-cover tunnel demolishes the buildings over its pit (a mined one passes under them)', () => {
+    // 16 m below the ground over km 0.35–0.85, a tunnel painted over km 0.4–0.8
+    const deep: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual',
+      vpis: [{ s: 0, z: 400, r: null }, { s: 200, z: 400, r: null }, { s: 350, z: 384, r: null }, { s: 850, z: 384, r: null }, { s: 1000, z: 400, r: null }, { s: 1200, z: 400, r: null }] };
+    const house = new BuildingIndex([[700, 208, 6]], [[400, 2, 0, 700, 208, 5, 5, 0]]);
+    const tunnel = (method?: 'cut') => ({ ...deep, structureOverrides: [{ s0: 400, s1: 800, kind: KIND.tunnel as 2, ...(method ? { method } : {}) }] });
+    const cut = evaluate({ ...ctx, buildings: house }, tunnel('cut'));
+    expect(cut.demolished.map(p => [p.j, p.in])).toEqual([[0, 'cut']]);
+    expect(cut.parts.buildings.reduce((a, b) => a + b, 0)).toBeCloseTo(house.cost[0], 0);
+    const kept = evaluate({ ...ctx, buildings: house }, { ...tunnel('cut'), buildingOverrides: [{ j: 0, action: 'keep' }] });
+    expect(kept.violations.map(v => v.title)).toContain('Road through a kept building');
+    // mined (the default) except its portal blocks: the house in the middle stays
+    expect(evaluate({ ...ctx, buildings: house }, tunnel()).demolished).toEqual([]);
+  });
+
   it('a chimney standing within a demolished hall goes with it, billed', () => {
     const flat: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 1200, z: 400, r: null }] };
     // the hall reaches the road (its south wall 5 m from the axis); the chimney stands 55 m off, inside it

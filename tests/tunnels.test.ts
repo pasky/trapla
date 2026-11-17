@@ -99,16 +99,30 @@ describe("the player's tunnel method", () => {
     expect(Array.from(cutMethodMask(s, o).slice(9, 32))).toEqual([0, ...Array(20).fill(1), 0, 0]);
   });
 
-  it('cut and cover throughout as chosen, and too deep to dig from above beyond 7.5 m of cover', () => {
-    const n = 41, ds = 10, h = new Float64Array(n).fill(-20);
+  it('cut and cover where chosen, and too deep to dig from above beyond 13 m of cover', () => {
+    const n = 41, ds = 10, h = new Float64Array(n).fill(-25);
     const s = Float64Array.from({ length: n }, (_, i) => i * ds);
     const ranges = [{ s0: 95, s1: 305, kind: KIND.tunnel as 2, method: 'cut' as const }];
     const input = { ds, h, earthPerM: new Float64Array(n).fill(1), bridgePerM: 1e9, tunnelPerM: 100, overrides: overrideMask(s, ranges), cutMethod: cutMethodMask(s, ranges) };
     const r = chooseStructures(input);
     expect(Array.from(cutCoverMask(r.kind, r.runs, h, ds, input.cutMethod).slice(10, 31)).every(Boolean)).toBe(true);
     expect(r.violations.map(v => v.title)).toEqual(['Too deep to dig from above']);
-    const shallow = chooseStructures({ ...input, h: new Float64Array(n).fill(-12) });
+    const shallow = chooseStructures({ ...input, h: new Float64Array(n).fill(-20) });
     expect(shallow.violations).toEqual([]);
+    // part of a tunnel: cut and cover there, mined (but for its portal blocks) on
+    const part = [{ s0: 95, s1: 205, kind: KIND.tunnel as 2, method: 'cut' as const }, { s0: 205, s1: 305, kind: KIND.tunnel as 2 }];
+    const mixed = chooseStructures({ ...input, h: shallow.kind.map(() => -20) as unknown as Float64Array, overrides: overrideMask(s, part), cutMethod: cutMethodMask(s, part) });
+    expect(Array.from(cutCoverMask(mixed.kind, mixed.runs, new Float64Array(n).fill(-20), ds, cutMethodMask(s, part)).slice(10, 31)))
+      .toEqual([...Array(11).fill(1), ...Array(8).fill(0), 1, 1]);
+  });
+
+  it("a long tunnel's escape provision multiplies its tubes, not its pit", () => {
+    // cut and cover throughout: tubes 100 a metre, two of them, its pit 50: 250 a metre against an earthwork's 275
+    const n = 81, ds = 10, h = new Float64Array(n).fill(-30);
+    const runs = (extra: number) => chooseStructures({ ds, h, earthPerM: new Float64Array(n).fill(275), bridgePerM: 1e9, tunnelPerM: 100,
+      cutCoverPerM: 100, cutCoverExtraPerM: new Float64Array(n).fill(extra), tunnelFactor: () => 2, cutMethod: new Uint8Array(n).fill(1) }).runs;
+    expect(runs(50)).toHaveLength(1);
+    expect(runs(80)).toEqual([]); // 280 a metre
   });
 
   it('a tunnel the player chose may start in a deep cut, but not deeper than any Czech portal', () => {

@@ -33,8 +33,11 @@ export interface StructureInput {
   bridgeRunCost?: (i0: number, i1: number, length: number) => number;
   /** tunnel cost per m (short-tunnel rate; long rate applied in the bill), number or per station */
   tunnelPerM: number | ArrayLike<number>;
-  /** cut-and-cover tunnel cost per m incl. any pit earthworks it needs (default: the bored price) */
+  /** cut-and-cover tunnel cost per m of its tubes (default: the bored price) */
   cutCoverPerM?: number | ArrayLike<number>;
+  /** what else a cut-and-cover station costs per m, whatever the tubes: its pit beyond the priced cover, the
+   * buildings over it */
+  cutCoverExtraPerM?: ArrayLike<number>;
   /** a tunnel's tubes and escape provision for its length, against one tube (default 1) */
   tunnelFactor?: (length: number) => number;
   /** 1 = the player chose cut and cover for the tunnel painted here */
@@ -57,7 +60,7 @@ export function portalCells(ds: number, rules = STRUCTURE_RULES): number {
 }
 
 /** Is station i of the tunnel i0…i1 cut and cover? Where the cover is too thin to mine (anywhere along it),
- * the first and last `portal` stations (each portal's block), or all of it when chosen so. */
+ * the first and last `portal` stations (each portal's block), or where the player chose so (`cut`). */
 export function cutCoverAt(h: ArrayLike<number>, i0: number, i1: number, i: number, portal: number, cut: boolean, rules = STRUCTURE_RULES): boolean {
   return cut || -h[i] < rules.tunnelMinDepth || i - i0 < portal || i1 - i < portal;
 }
@@ -66,18 +69,16 @@ export function cutCoverAt(h: ArrayLike<number>, i0: number, i1: number, i: numb
 export function cutCoverMask(kind: ArrayLike<number>, runs: readonly Run[], h: ArrayLike<number>, ds: number, cutMethod?: ArrayLike<number>, rules = STRUCTURE_RULES): Uint8Array {
   const out = new Uint8Array(kind.length), portal = portalCells(ds, rules);
   for (const r of runs) if (r.kind === KIND.tunnel) {
-    const cut = runMethodCut(r.i0, r.i1, cutMethod);
-    for (let i = r.i0; i <= r.i1; i++) if (kind[i] === KIND.tunnel && cutCoverAt(h, r.i0, r.i1, i, portal, cut, rules)) out[i] = 1;
+    for (let i = r.i0; i <= r.i1; i++) if (kind[i] === KIND.tunnel && cutCoverAt(h, r.i0, r.i1, i, portal, !!cutMethod?.[i], rules)) out[i] = 1;
   }
   return out;
 }
 
-/** a tunnel is cut and cover throughout where the player chose so for most of it */
-export function runMethodCut(i0: number, i1: number, cutMethod?: ArrayLike<number>): boolean {
+/** the player chose cut and cover for all of the tunnel i0…i1 */
+export function allCut(i0: number, i1: number, cutMethod?: ArrayLike<number>): boolean {
   if (!cutMethod) return false;
-  let c = 0;
-  for (let i = i0; i <= i1; i++) c += cutMethod[i] ? 1 : 0;
-  return 2 * c > i1 - i0 + 1;
+  for (let i = i0; i <= i1; i++) if (!cutMethod[i]) return false;
+  return true;
 }
 
 export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[]; violations: Violation[] } {
@@ -89,12 +90,15 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   const cutCoverPerMAt = typeof cp === 'number' ? () => cp : (i: number) => cp[i];
   const portal = portalCells(inp.ds, rules);
   /** a tunnel i0…i1's whole price: bored where the cover allows, cut and cover elsewhere and at the portals,
-   * times its tubes / escape provision (`cell`: the length of station i's cell) */
+   * its tubes times its tubes / escape provision (`cell`: the length of station i's cell) */
   const tunnelRunCost = (i0: number, i1: number, length: number, cell: (i: number) => number) => {
-    const cut = runMethodCut(i0, i1, inp.cutMethod);
-    let c = 0;
-    for (let i = i0; i <= i1; i++) c += (cutCoverAt(inp.h, i0, i1, i, portal, cut, rules) ? cutCoverPerMAt(i) : tunnelAt(i)) * cell(i);
-    return c * (inp.tunnelFactor ? inp.tunnelFactor(length) : 1);
+    let tubes = 0, extra = 0;
+    for (let i = i0; i <= i1; i++) {
+      const cc = cutCoverAt(inp.h, i0, i1, i, portal, !!inp.cutMethod?.[i], rules);
+      tubes += (cc ? cutCoverPerMAt(i) : tunnelAt(i)) * cell(i);
+      if (cc && inp.cutCoverExtraPerM) extra += inp.cutCoverExtraPerM[i] * cell(i);
+    }
+    return tubes * (inp.tunnelFactor ? inp.tunnelFactor(length) : 1) + extra;
   };
   for (let i = 0; i < n; i++) {
     const h = inp.h[i];

@@ -123,7 +123,7 @@ export const PRICES = {
  * in an open pit that is backfilled, so the ground is put back over it and only about one structure height
  * of approach cut stays open (D11 Poříčí / Opevnění, Radejčín, Mezno, Valík: 12–50 m per portal, cover
  * 0 m at the portal). Cut and cover is also the method where the ground is too thin to mine (any cover up to
- * 7.5 m, Radejčín / Prackovice backfill); SPK prices its pit up to 5 m of cover, earthworks beyond that are
+ * 13 m, the Radejčín card); SPK prices its pit up to 5 m of cover, earthworks beyond that are
  * billed (excavation + backfill). Escape provision: NV 264/2009 (tunnels over 500 m) requires emergency
  * exits ≤ 500 m apart above 2,000 veh/day/lane and two tubes above 10,000; for one 2-lane tube that is an
  * escape gallery, ≈ 1.3 × the tube (Hessen Mobil 2006 Fig. 3-6: 121–135 %, research/51 §3).
@@ -134,8 +134,10 @@ export const TUNNEL_RULES = {
   structureHeight: 9,
   /** each portal is at least this much cut and cover, m (one D11 block; typical 12–50 m) */
   portalCutCoverMin: 12,
-  /** cut and cover is dug from above with at most this much cover over the structure, m (Radejčín 7.5 m) */
-  cutCoverMaxCover: 7.5,
+  /** cut and cover is dug from above with at most this much cover over the structure, m (TKP-D kap. 7 annex,
+   * the Radejčín tunnel card: "hloubená část min 0 m, max 13 m"; backfill over the vault 7.0–7.5 m at
+   * Prackovice / Radejčín, research/49 §2, §5) */
+  cutCoverMaxCover: 13,
   /** SPK's cut-and-cover rows include the pit up to this cover, m: earthworks beyond are billed */
   cutCoverPricedCover: 5,
   /** PROVISIONAL: the pit's side slopes, horizontal per vertical: 1:1 on average over its steep (3:1–5:1,

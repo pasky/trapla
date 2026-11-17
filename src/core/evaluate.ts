@@ -13,7 +13,7 @@ import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, 
 import { noiseControlViolations } from './noise-control-violations';
 import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, ROAD_TOO_LOW, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
 import {
-  basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, cutCoverPitPerM, tunnelTubeFactor, decisionPrices, dividedRoad, landPerM2, sumParts, surchargeRate,
+  basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, cutCoverPitHalfWidth, cutCoverPitPerM, tunnelTubeFactor, decisionPrices, dividedRoad, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
 import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
@@ -42,7 +42,7 @@ import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
-import { chooseStructures, cutCoverMask, KIND, runMethodCut, type Run } from './structures';
+import { allCut, chooseStructures, cutCoverMask, KIND, type Run } from './structures';
 import { cutMethodMask, overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
@@ -975,7 +975,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
     const z = elevations(p, S);
     const sc = computeSections(terrain, m, X, Y, TX, TY, z, tpl);
     const dp = decisionPrices(materialValue);
-    const hh = new Float64Array(m), earth = new Float64Array(m), bp = new Float64Array(m), tunnel = new Float64Array(m), cutCover = new Float64Array(m);
+    const hh = new Float64Array(m), earth = new Float64Array(m), bp = new Float64Array(m), tunnel = new Float64Array(m), cutCover = new Float64Array(m), pit = new Float64Array(m);
     const must = new Uint8Array(m);
     for (let k = 0; k < m; k++) {
       hh[k] = z[k] - G[k];
@@ -986,7 +986,8 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
         + crossingCost(sw[k], wd, z[k]) / w) * su + wd * land;
       bp[k] = bridge.perM(hh[k]) * (mk ? 1 + surB(u) : su) + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelKm(u) / 1000) * (mk ? 1 + surT(u) : su);
-      cutCover[k] = (cat.tunnelTubes * tunnelKm(u, true) / 1000 + cutCoverPitPerM(-hh[k], b)) * (mk ? 1 + surT(u) : su);
+      cutCover[k] = (cat.tunnelTubes * tunnelKm(u, true) / 1000) * (mk ? 1 + surT(u) : su);
+      pit[k] = cutCoverPitPerM(-hh[k], b) * (mk ? 1 + surT(u) : su);
       if (mustBase[k] && hh[k] > 0) must[k] = 1;
     }
     forceWater(must, S, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]));
@@ -1003,7 +1004,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
         else must[k] = 1;
       });
     }
-    const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, tunnelFactor, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
+    const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
       bridgeRunCost: bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i])) };
     const firstChoice = chooseStructures(input);
     forceWater(must, S, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
@@ -1429,7 +1430,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   const selectionStart = performance.now();
   const h = new Float64Array(n);
   const geotechnicalPerM = new Float64Array(n), culverts = new Float64Array(n);
-  const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n), cutCoverPerM = new Float64Array(n);
+  const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n), cutCoverPerM = new Float64Array(n), cutCoverExtraPerM = new Float64Array(n);
   const earthBase = new Float64Array(n), earthMul = new Float64Array(n), earthLand = new Float64Array(n), earthBox = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
@@ -1443,7 +1444,9 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     earthLand[i] = wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2) + retention.landPerCell[i] / cellLength(i, n, ds) + earthBuildings[i];
     bridgePerM[i] = bridge.perM(h[i]) * (1 + surB(ud)) + b * landPerM2(ud) + deckBuildings[i];
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelKm(ut) / 1000) * (1 + surT(ut));
-    cutCoverPerM[i] = (cat.tunnelTubes * tunnelKm(ut, true) / 1000 + cutCoverPitPerM(-h[i], b)) * (1 + surT(ut));
+    cutCoverPerM[i] = (cat.tunnelTubes * tunnelKm(ut, true) / 1000) * (1 + surT(ut));
+    // its pit, and the buildings over it (those over the cut it replaces: a slightly wider footprint)
+    cutCoverExtraPerM[i] = cutCoverPitPerM(-h[i], b) * (1 + surT(ut)) + earthBuildings[i];
   }
   // Rivers / water / railways and watercourses exceeding practical culvert limits need bridges.
   // Inadequate clearance stays a violation, never a fake buried bridge.
@@ -1519,7 +1522,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
         + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
     }
     const forcedAt = forced.slice();
-    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, tunnelFactor, cutMethod, forced: forcedAt, forcedTunnel, overrides: manualStructures, ...(heldDeck ? { held: heldDeck } : {}),
+    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, cutCoverExtraPerM, tunnelFactor, cutMethod, forced: forcedAt, forcedTunnel, overrides: manualStructures, ...(heldDeck ? { held: heldDeck } : {}),
       bridgeRunCost: noBridgeAny ? (i0: number, i1: number, length: number) => noBridge.subarray(i0, i1 + 1).some(Boolean) && !forcedAt.subarray(i0, i1 + 1).some(Boolean) ? Infinity : runCost(i0, i1, length) : runCost };
     let chosen = chooseStructures(input);
     // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
@@ -1761,7 +1764,7 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
     if (r.kind !== KIND.tunnel) return r;
     let cc = 0;
     for (let i = r.i0; i <= r.i1; i++) cc += cutCover[i];
-    return { ...r, tubes: prices.tunnelFactor(r.length), cutCoverM: cc * ds, ...(cc === r.i1 - r.i0 + 1 && runMethodCut(r.i0, r.i1, cutMethod) ? { method: 'cut' as const } : {}) };
+    return { ...r, tubes: prices.tunnelFactor(r.length), cutCoverM: cc * ds, ...(allCut(r.i0, r.i1, cutMethod) ? { method: 'cut' as const } : {}) };
   });
   // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
   // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
@@ -1815,9 +1818,10 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
  * demolitions and their cost, the player's Keep and Buy out choices. */
 function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>) {
   const { n, w, st, ds } = setup;
-  const { kind, sec, grade } = quantities;
-  // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges), plus a
-  // working strip on either side ---
+  const { kind, sec, grade, cutCover, h } = quantities;
+  const crown = CATEGORIES[d.category].crownWidth;
+  // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges, the pit of a
+  // cut-and-cover tunnel), plus a working strip on either side ---
   const buildingCost = new Float64Array(n);
   const demolished: Result['demolished'] = [];
   const bld = ctx.buildings;
@@ -1830,8 +1834,9 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
     const items = bld.items;
     const best = new Map<number, { i: number; along: number; core: boolean }>();
     for (let i = 0; i < n; i++) {
-      if (kind[i] === KIND.tunnel) continue;
-      const left = kind[i] === KIND.earth ? sec.dayL[i] : w, right = kind[i] === KIND.earth ? sec.dayR[i] : w;
+      if (kind[i] === KIND.tunnel && !cutCover[i]) continue;
+      const pit = cutCover[i] ? cutCoverPitHalfWidth(-h[i], crown) : 0;
+      const left = kind[i] === KIND.earth ? sec.dayL[i] : pit || w, right = kind[i] === KIND.earth ? sec.dayR[i] : pit || w;
       const x = st.x[i], y = st.y[i], tx = st.tx[i], ty = st.ty[i];
       const off = (left - right) / 2, half = (left + right) / 2 + BUILDING_RULES.clearance;
       const cx = x - ty * off, cy = y + tx * off;
@@ -1849,7 +1854,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
         buildingViolations.push({ kind: 'building', basis: 'game', s0: st.s[p.i], s1: st.s[p.i],
           title: 'Road through a kept building',
           fix: 'Buy it out, or move the road',
-          detail: `Kept: it cannot be demolished. The road's slopes and its ${BUILDING_RULES.clearance} m working strip touch it.`,
+          detail: `Kept: it cannot be demolished. The road's ${cutCover[p.i] ? 'tunnel pit' : 'slopes'} and its ${BUILDING_RULES.clearance} m working strip touch it.`,
           target: { buildings: [j] },
           rule: 'Game rule: a building you keep must stay clear of our road, its slopes and its working strip.' });
         continue;
@@ -1859,7 +1864,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
       const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
       const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
-      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : cutSide ? 'cut' : 'embankment', strip: !p.core });
+      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core });
     }
     // a chimney, silo or tower standing within a demolished building's outline goes with it
     for (const p of demolished.slice()) bld.near(items[p.j][0], items[p.j][1], items[p.j][2], (k) => {

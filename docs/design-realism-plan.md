@@ -65,7 +65,8 @@ grade-solve hunk if the P1 agent is mid-change there.
 
 *Done (cost model 32, 2026-11-17): PLAN.md "Tunnels as they are built". As planned, plus: the grade search's
 tunnel mode (a deep stretch all tunnel or all open), streams over cut and cover, and a 30 m limit on the cut in
-front of a tunnel the player paints.*
+front of a tunnel the player paints. The player's cut and cover may have up to 13 m of cover (the Radejčín card in
+TKP-D 7; 7.5 m was its backfill over the vault).*
 
 - A tunnel run continues as **cut-and-cover** from where mining starts (cover ≥ 6 m) out to where the ground is one
   structure height above the grade (≈ 9 m: cover ≈ 0–1 m), at least 12 m per portal, priced at SPK A.3.H rows

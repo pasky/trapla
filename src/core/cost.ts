@@ -66,13 +66,19 @@ export function tunnelTubeFactor(cat: Category, length: number, aadt: number): n
   return perLane > T.twinTubesFromLaneTraffic ? 2 : perLane > T.escapeFromLaneTraffic ? T.escapeGalleryFactor : 1;
 }
 
+/** Half the width of a cut-and-cover pit at the surface, m: the structure (crown and walls), its sides at
+ * pitSlope up from the grade. `depth` = ground − grade, m. */
+export function cutCoverPitHalfWidth(depth: number, crownWidth: number): number {
+  return crownWidth / 2 + TUNNEL_RULES.wallThickness + TUNNEL_RULES.pitSlope * Math.max(0, depth);
+}
+
 /** Cut-and-cover pit beyond what the SPK row includes (cover over the structure above 5 m), CZK per m of
  * tunnel: excavation (class II) and backfill of the pit's top layer. `depth` = ground − grade, m. */
 export function cutCoverPitPerM(depth: number, crownWidth: number): number {
   const T = TUNNEL_RULES, extra = depth - T.structureHeight - T.cutCoverPricedCover;
   if (extra <= 0) return 0;
   // pit bottom: the structure; sides at pitSlope; the extra layer is its top `extra` metres
-  const top = crownWidth + 2 * T.wallThickness + 2 * T.pitSlope * depth;
+  const top = 2 * cutCoverPitHalfWidth(depth, crownWidth);
   const area = extra * (top - T.pitSlope * extra);
   return area * (EXCAVATION_BY_CLASS.II + PRICES.pitBackfill);
 }
