@@ -57,8 +57,13 @@ try {
 
   // 4. a mapped road: "click to select", a drag moves the map; selected, its stretch highlighted, "drag to change"
   await T(() => window.trapla.whenTransport());
-  const road = (await T(() => window.trapla.baseRoads(400))).find((b) => b.rebuildable && b.clear > 200 && b.clear < 2000);
-  const s = road.length / 2;
+  // a rebuildable road near ours, at a place on the map (its middle, else a bit off it)
+  let road = null, s = 0;
+  for (const b of (await T(() => window.trapla.baseRoads(400))).filter((b) => b.rebuildable && b.clear > 200 && b.clear < 2000)) {
+    for (const f of [0.5, 0.4, 0.6, 0.3]) if (await T(([id, s]) => window.trapla.sourcePoint(id, s), [b.id, b.length * f])) { road = b; s = b.length * f; break; }
+    if (road) break;
+  }
+  assert(road, 'a mapped road to select');
   const look = async () => { await T(([id, s]) => window.trapla.lookAtSource(id, s, 900), [road.id, s]); await still(); const q = await T(([id, s]) => window.trapla.sourceScreen(id, s), [road.id, s]); return { x: view.x + q.sx, y: view.y + q.sy }; };
   p = await look();
   await hover(p);
