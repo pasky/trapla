@@ -24,7 +24,7 @@ import { buildCrossings, type KeptCrossings } from './crossings-kept';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
-import { geometryPis, hairpinFixes, hairpinPavementPerM2, hairpinViolations, hairpinWidening, raisedBendSpeeds, slowedSteps, speedStretches, travelMinutes, verticalLimits } from './design-speed';
+import { geometryCandidates, geometryPis, hairpinFixes, hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
@@ -589,11 +589,11 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   // A stretch slowed below the road's speed only relaxes its rules: Auto keeps a faster stretch's curves and
   // heights where the bill finds them cheaper with no more problems (design-speed.ts raisedBendSpeeds).
-  if (!opts.preview && !opts.window && !asked.geometrySpeeds && d.profileMode === 'auto') {
+  // (By hand too: a bend's Auto radius is Auto's choice there as well, and a line taken by hand from Auto's was
+  // built on the geometry Auto kept)
+  if (!opts.preview && !opts.window && !asked.geometrySpeeds) {
     const own = result;
-    for (let k = 1; k <= slowedSteps(d.pis, d.speed, d.category); k++) {
-      const speeds = raisedBendSpeeds(d.pis, d.speed, d.category, k);
-      if (!speeds) break;
+    for (const speeds of geometryCandidates(d.pis, d.speed, d.category)) {
       const r = evaluate(ctx, d, { ...asked, geometrySpeeds: speeds });
       if (r.cost.total < result.cost.total && r.violations.length <= own.violations.length) result = { ...r, geometrySpeeds: speeds };
     }

@@ -68,6 +68,33 @@ export function slowedSteps(pis: readonly PI[], roadSpeed: number, category: Cat
   return k;
 }
 
+/** The geometries Auto weighs for a design with slowed bends (evaluate.ts): every combination of each slowed
+ * bend's speeds from its own up to the road's (so slowing one more bend can cost no more than before: the
+ * geometry the design had is among them), the all-own one left out; where that would be more than `cap`
+ * evaluations, each slowed bend raised the same number of steps (raisedBendSpeeds). Fixed order. */
+export function geometryCandidates(pis: readonly PI[], roadSpeed: number, category: CategoryId, cap = GEOMETRY_CANDIDATES): (number | null)[][] {
+  const speeds = designSpeeds(category).filter(v => v <= roadSpeed).sort((a, b) => a - b);
+  const choices = pis.map(p => {
+    const v = bendSpeed(p, roadSpeed, category);
+    return p.hairpin || v >= roadSpeed || !speeds.includes(v) ? null : speeds.slice(speeds.indexOf(v));
+  });
+  let size = 1;
+  for (const c of choices) if (c) size *= c.length;
+  if (size <= 1) return [];
+  if (size - 1 > cap) {
+    const out: (number | null)[][] = [];
+    for (let k = 1; k <= slowedSteps(pis, roadSpeed, category); k++) { const g = raisedBendSpeeds(pis, roadSpeed, category, k); if (g) out.push(g); }
+    return out;
+  }
+  let all: (number | null)[][] = [[]];
+  for (const c of choices) all = all.flatMap(g => c ? c.map(v => [...g, v]) : [[...g, null]]);
+  // (the bends' own geometry is the design's own evaluation; a bend at its own speed builds as it is)
+  return all.slice(1).map(g => g.map((v, k) => v === null || v === bendSpeed(pis[k], roadSpeed, category) ? null : v));
+}
+/** the most geometries weighed for one design (each a full evaluation): one bend two steps below its road (2),
+ * two bends one or two steps below (3, 8); beyond, the steps are raised together */
+export const GEOMETRY_CANDIDATES = 8;
+
 /** the bends as the geometry is built for them (`speeds`: raisedBendSpeeds; absent: as they are) */
 export function geometryPis(pis: readonly PI[], speeds?: readonly (number | null)[] | null): PI[] {
   if (!speeds) return pis as PI[];

@@ -829,12 +829,13 @@ Shots 290–297 (`scripts/qa3-fixes-shots.mjs`).
   bend at 70: every block cheaper by its estimate, 4,398 → 4,171 M), but it prices no crossed roads: at 70 it took a
   line 10 m higher at km 9, where a field track 17 m under the fill forced a bridge that joined the stream bridge
   (800 m, +284 M on the bill). Every line built for a faster speed meets a slower stretch's rules, so Auto now also
-  evaluates the design with each slowed bend's curves and heights built for the faster speeds (every slowed bend
-  raised the same number of speed steps, up to the road's) and keeps the cheapest with no more problems
+  evaluates the design with the slowed bends' curves and heights built for faster speeds (every mix of each slowed
+  bend's speeds up to the road's, at most 8; beyond, the steps raised together; By hand too) and keeps the cheapest
+  with no more problems
   (`EvalOptions.geometrySpeeds`, `Result.geometrySpeeds / geometrySaving`; previews build what the last full result
   kept). D11 one bend 90 / 80 / 70: 8,782 / 8,782 / 8,782 M (was 9,067 at 70); best design, 36 single-bend
-  slow-downs: none dearer (was 14). Price: one more evaluation per speed step a bend lies below the road (D11:
-  0.3 / 0.74 / 1.2 s at 90 / 80 / 70); designs without slowed bends unchanged. The bend card says which km its
+  slow-downs: none dearer (was 14). Price: one more evaluation per candidate geometry (D11 one bend:
+  0.3 / 0.74 / 1.2 s at 90 / 80 / 70; two bends at 70: 1.6 s); designs without slowed bends unchanged. The bend card says which km its
   stretch covers ("Its stretch is the whole road" with one bend) and what Auto kept.
 - **No bend faster than its road.** ČSN 73 6101:2018 lowers a stretch's design speed; a railway's line speed is its
   mission's: the railway mission's bend card offers 120 · 100 · 80 · 60, "no faster than the whole line, 120 km/h".

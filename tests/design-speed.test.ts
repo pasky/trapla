@@ -65,6 +65,15 @@ describe('a slowed stretch (playtest sweep 3, P1 #1)', () => {
     expect(raisedBendSpeeds(p, 90, 'S9.5', 2)).toEqual([90, null, 90, null]);
     expect(raisedBendSpeeds([{ x: 0, y: 0, r: null }], 90, 'S9.5', 1)).toBeNull();
   });
+  it('weighs every mix of the slowed bends\' faster geometries (the design before one more slow-down is among them)', async () => {
+    const { geometryCandidates } = await import('../src/core/design-speed');
+    const two: PI[] = [{ x: 0, y: 0, r: null, speed: 70 }, { x: 1, y: 0, r: null }, { x: 2, y: 0, r: null, speed: 80 }];
+    expect(geometryCandidates(two, 90, 'S9.5')).toEqual([[null, null, 90], [80, null, null], [80, null, 90], [90, null, null], [90, null, 90]]);
+    expect(geometryCandidates([{ x: 0, y: 0, r: null }], 90, 'S9.5')).toEqual([]);
+    // three bends two steps down: 26 mixes, more than are weighed: the steps raised together
+    const three: PI[] = [0, 1, 2].map(x => ({ x, y: 0, r: null, speed: 70 }));
+    expect(geometryCandidates(three, 90, 'S9.5')).toEqual([[80, 80, 80], [90, 90, 90]]);
+  });
 });
 
 // QA3 P1 #1: a stretch slowed only relaxes its rules, so Auto's road may not cost more for it (the grade search
