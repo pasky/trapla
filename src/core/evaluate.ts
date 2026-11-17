@@ -515,7 +515,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
     }
   };
-  if (!opts.preview && !opts.window && !opts.separate && d.profileMode === 'auto') separation(opts);
+  if (!opts.preview && !opts.window && !opts.separate && d.profileMode === 'auto') separation(used);
   // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
   // designer lowers the grade there (or raises it out of a cutting) so the slope stays off the road: once
   // more with Auto asked for NARROW_STEP less embankment (cutting) there, kept per stretch where it

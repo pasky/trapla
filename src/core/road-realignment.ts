@@ -309,7 +309,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1]))) && !joined()) return removal(lo, hi);
   if (dead[0] && dead[1]) return failure('no surviving branch outside the acquired footprint');
   /** chainage of the junction with other roads nearest the dead end (`reverse`: the path's last point),
-   * clear of our earthworks */
+   * outside our earthworks (the other roads' pavement there is theirs: their own hits) */
   const firstJunction = (reverse: boolean): number | undefined => {
     const end = reverse ? source[source.length - 1] : source[0];
     let best: number | undefined;
@@ -360,7 +360,9 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     // A dead end with no room for a turning area before the first road it joins is cut back to that
     // junction: its traffic turns there, and what it led to lies under our road.
     const junction = firstJunction(reverse);
-    if (junction !== undefined && (!turn || (reverse ? turn.d < junction : turn.d > junction))) return reverse ? removal(junction, hi) : removal(lo, junction);
+    // (only where the whole stretch under our earthworks goes with it)
+    if (junction !== undefined && (reverse ? junction <= h.a : junction >= h.b) && (!turn || (reverse ? turn.d < junction : turn.d > junction)))
+      return reverse ? removal(junction, hi) : removal(lo, junction);
     if (!turn) return failure('no clear turnaround on the surviving branch within real-way reach');
     if (reverse) { removedHi = hi; hi = turn.d; } else { removedLo = lo; lo = turn.d; }
   }
