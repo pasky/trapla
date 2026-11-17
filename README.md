@@ -60,18 +60,21 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 
 ## How to play
 
-One rule for the whole interface: **drag the road to bend it, click anything to inspect it.** What you click
+One rule for the whole interface: **click anything to inspect (select) it; drag the selected road to bend it.** A
+drag that starts on a road not selected moves the map like one on open ground. What you click
 opens one card under the score (the *inspector*) that says what it is, what the game decided and why, what it
 costs, and offers the alternatives as buttons. The map and the profile always show the same selection.
 Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/interface-rethink.md).
 
-- **Reshape a reroute:** drag the new road of a crossed road that was cut and rerouted — a bend point appears
+- **Reshape a reroute:** click the crossed road that was cut and rerouted, then drag its new road — a bend point appears
   under the mouse and follows it, like bending our road. Drag a bend point to move it, click it for *Remove
   bend point*; *Automatic path* in the crossing's card takes the shape back. The game checks it (off our
   earthworks, not too steep, not across a motorway, railway, water or house) and prices it as drawn.
-- **Bend the road:** drag the orange road on the map — a new bend appears under the mouse and follows it
-  (the cursor turns into a hand over the road). Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
-  or *Delete* in its card removes it. **Double-click** the ground adds a bend there (for big detours). A click
+- **Bend the road:** click the orange road to select it (its numbered bends show), then drag it — a new bend
+  appears under the mouse and follows it (the cursor turns into a hand over the selected road; over one not
+  selected it says *click to select*). <kbd>Esc</kbd> or a click on open ground lets go of it. A first-time player
+  (the intro is up) finds our road already selected. Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
+  or *Delete* in its card removes it. **Double-click** the ground adds a bend to the selected road there (for big detours). A click
   on empty ground only deselects — nothing is ever added by a single click.
 - **Inspect anything** — on the map or in the profile: the **road** (selects the piece under the mouse: a
   bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road** (anything its crossing built

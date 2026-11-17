@@ -40,6 +40,8 @@ export interface RoutesContext {
   readonly curveEdit: CurveEditor; readonly linkEdit: LinkEditor | undefined; readonly works: CrossingHighlight | undefined;
   readonly links: RoadLinks; readonly results: ResultDisplay;
   select(next: Sel | null, fly?: boolean): void;
+  /** the active road itself selected (ui/selection.ts) */
+  selectRoad(): void;
   selectedPi(): number | null;
   /** the score in the HUD; `pending`: a result is still awaited */
   projectScore(pending: boolean): void;
@@ -112,6 +114,9 @@ export function createRoutes(app: RoutesContext) {
     const one = oneDirection ?? (!!here && here === corridorOfRoute(design, id) && app.store.oneDirection);
     const shown = app.store.activeRouteId, shownOne = app.store.oneDirection;
     if (!app.store.switchRoute(id, created, one)) return false;
+    // another line is not selected until something selects it (a click on it, the road list); a motorway's
+    // other direction stays as selected as the one before
+    if (id !== shown && (!here || here !== corridorOfRoute(design, id))) app.session.roadSelected = false;
     syncDirections();
     evals.endGesture(); app.session.activePreviewPrice = null;
     frameEnds();
@@ -162,7 +167,7 @@ export function createRoutes(app: RoutesContext) {
       const next = made.project;
       app.store.editProject(d => { for (const key of Object.keys(d)) delete (d as unknown as Record<string, unknown>)[key]; Object.assign(d, next); });
     } catch (error) { console.warn('New road was not created', error); toast('This road could not be made here.'); return; }
-    switchRoute(made.activeRouteId); app.select(null);
+    switchRoute(made.activeRouteId); app.select(null); app.selectRoad();
     toast(`Drag the ${building.kind === 'road' ? 'road' : building.kind} to bend it.`);
   };
   /** the kind being built (Build menu), which decides where its ends may go */
@@ -197,6 +202,7 @@ export function createRoutes(app: RoutesContext) {
   // a road chosen in the list comes into view when none of it is on screen
   app.routeBar.onSelect = id => {
     if (!switchRoute(id)) return;
+    app.selectRoad();
     const route = app.store.route, r = app.session.projectFull?.routes[id]?.legacy;
     if (!route) return;
     const a = route.endpoints.a.position, b = route.endpoints.b.position;

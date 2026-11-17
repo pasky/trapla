@@ -40,8 +40,17 @@ export interface SelectionContext {
   routeCard(): void;
 }
 
+/** Selecting these selects the road itself (a drag on it then bends it); anything else (a crossed road, a culvert,
+ * a house) leaves it unselected, so a drag that starts on it moves the map. */
+const ROAD_KINDS: ReadonlySet<Sel['kind']> = new Set(['stretch', 'bend', 'end', 'pin', 'vpi']);
+
 export function createSelection(app: SelectionContext) {
   const selectedPi = () => (app.session.sel?.kind === 'bend' ? app.session.sel.i : null);
+  /** the road's selected look: its bend handles (and a rebuilt stretch's end handles) only while it is selected */
+  const showRoadSelected = () => {
+    document.getElementById('overlay')?.classList.toggle('road-idle', !app.session.roadSelected);
+    app.inspector.roadSelected = app.session.roadSelected;
+  };
   const stationNear = (x: number, y: number) => {
     if (!app.session.last) return 0;
     let bd = Infinity, s = 0;
@@ -88,6 +97,8 @@ export function createSelection(app: SelectionContext) {
     }
     app.session.qualifiedSelection = app.store.activeRouteId ? qualifySelection(app.store.activeRouteId, next) : null;
     app.session.sel = activeSelection(app.store.activeRouteId, app.session.qualifiedSelection);
+    if (next) app.session.roadSelected = ROAD_KINDS.has(next.kind);
+    showRoadSelected();
     if (next) app.intro.hide();
     const range = next?.kind === 'stretch' ? { s0: next.s0, s1: next.s1 } : null;
     app.profile.setSelection(range); app.extras.setRange(range); app.hud.setRange(range);
@@ -159,8 +170,19 @@ export function createSelection(app: SelectionContext) {
     if (app.session.sel.kind === 'stretch' && app.session.sel.piece) { app.session.sel = { ...app.session.sel, piece: pieceAt(r, (app.session.sel.s0 + app.session.sel.s1) / 2).kind }; app.inspector.sel = app.session.sel; }
   };
 
+  /** Esc, a click on open ground or on another thing: nothing selected, the road included */
+  const deselect = () => { app.session.roadSelected = false; select(null); };
+  /** the road itself selected (a pick in the road list, a new road, a press in its profile), with what is
+   *  selected on it */
+  const selectRoad = () => {
+    if (app.session.roadSelected) return;
+    const sel = app.session.sel;
+    app.session.roadSelected = true;
+    select(sel && ROAD_KINDS.has(sel.kind) ? sel : null);
+  };
+  showRoadSelected();
   return {
-    selectedPi, placeOf, select, frameSelection, selectPiece, revalidate,
+    selectedPi, placeOf, select, frameSelection, selectPiece, revalidate, deselect, selectRoad,
     /** counts selections: a deferred pick yields to any later one */
     get generation() { return selectGeneration; },
   };

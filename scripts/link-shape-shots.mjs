@@ -30,7 +30,9 @@ try {
   const at = async (q) => { const p = await T(q => window.trapla.project(q.x, q.y, q.z), q); return { x: box.x + p.sx, y: box.y + p.sy }; };
   const p0 = await at(link), r0 = await at(link.road), len = Math.hypot(p0.x - r0.x, p0.y - r0.y) || 1;
   const ux = (p0.x - r0.x) / len, uy = (p0.y - r0.y) / len;
-  await page.mouse.move(p0.x, p0.y); await page.waitForTimeout(300);
+  // a click selects the crossing (its card); then its new road can be grabbed
+  await page.mouse.click(p0.x, p0.y); await idle();
+  await page.mouse.move(p0.x + 1, p0.y); await page.mouse.move(p0.x, p0.y); await page.waitForTimeout(300);
   assert.equal(await T(() => document.querySelector('#view canvas').style.cursor), 'grab');
   await page.mouse.down();
   for (let k = 1; k <= 12; k++) await page.mouse.move(p0.x + ux * 3.5 * k, p0.y + uy * 3.5 * k);

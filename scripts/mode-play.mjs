@@ -92,10 +92,13 @@ try {
   await shot('built-railway');
   await page.locator('#undo').click(); await idle();
 
-  // 3. a mapped railway, not selected: the pointer says it can be dragged, and a drag rebuilds it
+  // 3. a mapped railway, not selected: the pointer says a click selects it; selected, a drag rebuilds it
   p = await at('sourceScreen', 'osm:way:277838071', 1600);
   await page.mouse.move(p.x - 3, p.y); await page.mouse.move(p.x, p.y); await page.waitForTimeout(300);
-  assert.equal(await page.evaluate(() => document.querySelector('#view canvas').style.cursor), 'grab', 'an unselected railway can be grabbed');
+  assert.equal(await page.evaluate(() => document.querySelector('#view canvas').style.cursor), 'pointer', 'an unselected railway: a click selects it');
+  await page.mouse.click(p.x, p.y); await page.locator('#inspector.k-source').waitFor({ timeout: 5000 });
+  await page.mouse.move(p.x - 1, p.y); await page.mouse.move(p.x, p.y); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.querySelector('#view canvas').style.cursor), 'grab', 'a selected railway can be grabbed');
   await page.mouse.down(); await page.mouse.move(p.x + 40, p.y - 30, { steps: 12 }); await page.mouse.up(); await idle();
   const project = await page.evaluate(() => window.trapla.getProject());
   console.log('rebuilt', JSON.stringify(project.routes.map(r => [r.kind, r.name, r.source?.intervals[0]])));
