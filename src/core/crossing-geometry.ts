@@ -208,6 +208,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       railway: 'it would have to cross a railway on the ground', water: 'it would have to run through a pond or river',
       river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
       works: 'another road you build is in the way',
+      none: 'no crossing within reach carries traffic over or under our road',
     } as Record<string, string>)[problem] ?? problem);
     const reason = reasons.join('; ');
     // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting;
@@ -1251,6 +1252,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   for (const c of crossings) if (c.targetS !== undefined && !c.moved && (c.type === 'reconnection' || c.type === 'diversion')) {
     const g = c.geometry!;
     const target = crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId && !t.issues?.length && !ROAD_CLASSES[t.cls].noAtGrade);
+    // (a crossing moved beside our earthworks carries nothing across our road)
+    if (target?.moved) diagnose(g, `${REROUTE_FAILS}none`);
     let finish = target ? anchorOf(target) : undefined;
     if (!target) {
       const key = `${c.targetS}:${g.width}`, p = at(c.targetS);
@@ -1702,6 +1705,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     let total = move.cost;
     for (const x of followers) {
       const t = nearestCarrier(x, [c, ...followers]);
+      // (the player's own "Cut and reroute" with nowhere else to go does not keep this crossing for it: its
+      // reroute then has no crossing to lead to, and says so)
+      if (!t && x.requestedType === 'reconnection') { total += x.cost; moves.push({ ...x }); continue; }
       if (!t) { total = Infinity; break; }
       const link = clone(x); link.targetS = t.s; link.targetRoadId = t.roadId;
       const anchor = clone(t); anchor.square = t.square;
@@ -1719,7 +1725,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const issues = build(crossings);
   // A new target treatment can move the ground anchor of a dependent link. Do not buy a cheaper
   // local option by breaking a previously feasible connection elsewhere in the network.
-  if (crossings.some((c,i) => baseline[i].feasible && !feasible(c))) {
+  // (the player's own "Cut and reroute" left without a crossing to lead to is not such a connection: it says so)
+  if (crossings.some((c,i) => baseline[i].feasible && !feasible(c) && !(c.requestedType === 'reconnection' && c.via === undefined))) {
     crossings.forEach((c,i) => {
       for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','homes','linkGrade','lowered','drainage','drainCost','square','squared','realignLength','realignCost','moved'] as const) delete c[key];
       Object.assign(c, baseline[i].state);

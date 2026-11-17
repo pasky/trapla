@@ -86,7 +86,9 @@ function mergeIntervals(intervals: RoadSourceInterval[]): RoadSourceInterval[] {
 }
 function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | undefined {
   const g = c.geometry;
-  if (!g || g.clipped || c.roadId === undefined || c.issues?.some(issue => issue.crossing.code === 'geometry')) return;
+  // (a crossing the player chose owns its way's stretch also where it cannot be built: its own problems say so,
+  // the way is not also a buried road to be moved aside)
+  if (!g || c.roadId === undefined || (!c.requestedType && (g.clipped || c.issues?.some(issue => issue.crossing.code === 'geometry')))) return;
   const cached = crossingSources.get(g);
   if (cached?.roads === roads) return cached.source;
   let path: WayPoint[] = [], targets: CrossingPoint[] = [];
