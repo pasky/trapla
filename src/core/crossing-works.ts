@@ -120,7 +120,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
   // (the side roads regraded to meet it have slopes of their own: the same screen)
   if (ctx.beside || ctx.body) for (const tie of works.ties) {
     const own = slopeWorks(tie.path, ROAD_CLASSES[tie.cls].width, ctx);
-    for (const [i, wall] of own.walls) tie.path[i] = { ...tie.path[i], wall };
+    for (const [i, wall] of own.walls) tie.path[i] = { ...tie.path[i], wall: [wall[0], wall[1]] };
     works.wallLength += own.wallLength; works.wallArea += own.wallArea; works.cost += own.cost;
     for (const m of own.problems) if (!works.problems.includes(m)) works.problems.push(m);
     for (const j of own.houses) if (!works.houses.includes(j)) works.houses.push(j);

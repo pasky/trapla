@@ -2,65 +2,69 @@
 // research/45): a piece that still reaches the road network over other ways needs nothing (it just ends); only a
 // piece cut off from it needs access (a reroute to a crossing that carries traffic over or under us). Where both
 // pieces still reach the network, the way is closed here and its traffic goes round: how far round is measured
-// over the mapped network, crossing our road only where a crossing carries traffic.
+// over the mapped network.
+//
+// What it reads of our road: only where our earthworks stand (a way under them is cut, whatever is built for it:
+// the conservative reading, so that a crossing's pieces never depend on another crossing's treatment), within
+// PIECE_SEARCH of the crossing; the local retry rebuilds every crossing within LOCAL_CORE (≥ that) of a change.
 import type { RoadNet } from './roadnet';
 
 type XY = { x: number; y: number };
-/** Graph pieces are at most this long, so that our earthworks cut a way where they do, m. */
-const PIECE = 25;
 /** Way ends this close are one junction (pack ways are simplified by 1 m and rounded to metres, roadnet.ts). */
 const SNAP = 2;
-/** How far over the network a piece is followed before it counts as part of it, m (engine bound). */
-export const PIECE_SEARCH = 3000;
+/** How far over the network a piece is followed, m (engine bound; within the local retry's core, crossings-kept.ts):
+ * a piece that meets no public road within it counts as cut off. */
+export const PIECE_SEARCH = 1500;
 /** Ways that are no public road: a piece of one reaches the network only where it meets a public road. */
 const MINOR = new Set(['track', 'service']);
 
-interface Graph { x: Float64Array; y: Float64Array; adj: number[][]; /** per edge: [a, b, way, length] */ edges: Float64Array; ways: Int32Array; cls: (way: number) => string; byWay: Map<number, number[]> }
-const graphs = new WeakMap<RoadNet, Graph>();
-function graphOf(net: RoadNet): Graph {
-  const hit = graphs.get(net);
-  if (hit) return hit;
-  const ids = new Map<number, number[]>(), xs: number[] = [], ys: number[] = [], adj: number[][] = [], edges: number[] = [], ways: number[] = [];
+interface Graph { x: number[]; y: number[]; adj: number[][]; /** per edge: a, b, way, length */ edges: number[]; cls: Map<number, string> }
+/** The mapped network within PIECE_SEARCH (+ a margin) of a point: ways' vertices, junctions where ends meet. */
+function regionGraph(net: RoadNet, at: XY): Graph {
+  const r = PIECE_SEARCH + 100, ids = new Map<number, number[]>(), g: Graph = { x: [], y: [], adj: [], edges: [], cls: new Map() };
   const key = (cx: number, cy: number) => cx * 1_000_003 + cy;
   const node = (x: number, y: number) => {
     const cx = Math.round(x / SNAP), cy = Math.round(y / SNAP);
     for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++)
-      for (const id of ids.get(key(cx + dx, cy + dy)) ?? []) if (Math.hypot(xs[id] - x, ys[id] - y) <= SNAP) return id;
-    const id = xs.length; xs.push(x); ys.push(y); adj.push([]);
+      for (const id of ids.get(key(cx + dx, cy + dy)) ?? []) if (Math.hypot(g.x[id] - x, g.y[id] - y) <= SNAP) return id;
+    const id = g.x.length; g.x.push(x); g.y.push(y); g.adj.push([]);
     const k = key(cx, cy), list = ids.get(k);
     if (list) list.push(id); else ids.set(k, [id]);
     return id;
   };
-  const clsOf: string[] = [];
-  net.eachWay((way, cls, xy) => {
-    clsOf[way] = cls;
-    for (let j = 0; j + 3 < xy.length; j += 2) {
-      const ax = xy[j], ay = xy[j + 1], bx = xy[j + 2], by = xy[j + 3], len = Math.hypot(bx - ax, by - ay);
-      const count = Math.max(1, Math.ceil(len / PIECE));
-      let prev = node(ax, ay);
-      for (let m = 1; m <= count; m++) {
-        // (inner pieces' ends are never snapped onto other ways: only real vertices are junctions)
-        let next: number;
-        if (m === count) next = node(bx, by);
-        else { next = xs.length; xs.push(ax + (bx - ax) * m / count); ys.push(ay + (by - ay) * m / count); adj.push([]); }
-        const e = ways.length;
-        edges.push(prev, next, way, len / count); ways.push(way);
-        adj[prev].push(e); adj[next].push(e);
-        prev = next;
+  const seen = new Set<string>();
+  net.nearSegments([at.x - r, at.y - r, at.x + r, at.y + r], s => {
+    const k = `${s.way}:${s.ax},${s.ay},${s.bx},${s.by}`;
+    if (seen.has(k) || !(s.length > 0)) return;
+    seen.add(k);
+    const a = node(s.ax, s.ay), b = node(s.bx, s.by), e = g.edges.length / 4;
+    g.edges.push(a, b, s.way, s.length); g.adj[a].push(e); g.adj[b].push(e); g.cls.set(s.way, s.cls);
+  });
+  // A way ending on another's line between its vertices (each way is simplified on its own, so a T-junction's
+  // node may be gone from the through way): joined to that segment's ends (roadnet.ts JUNCTION_UNCERTAINTY).
+  const count = g.edges.length / 4;
+  for (let n = 0, nodes = g.x.length; n < nodes; n++) if (g.adj[n].length === 1) {
+    const x = g.x[n], y = g.y[n];
+    for (let e = 0; e < count; e++) {
+      const a = g.edges[e * 4], b = g.edges[e * 4 + 1];
+      if (a === n || b === n) continue;
+      const ax = g.x[a], ay = g.y[a], dx = g.x[b] - ax, dy = g.y[b] - ay;
+      if (Math.min(ax, ax + dx) - SNAP > x || Math.max(ax, ax + dx) + SNAP < x || Math.min(ay, ay + dy) - SNAP > y || Math.max(ay, ay + dy) + SNAP < y) continue;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+      if (Math.hypot(x - ax - t * dx, y - ay - t * dy) > SNAP) continue;
+      const len = g.edges[e * 4 + 3], way = g.edges[e * 4 + 2];
+      for (const [m, w] of [[a, t * len], [b, (1 - t) * len]] as const) {
+        const f = g.edges.length / 4; g.edges.push(n, m, way, w); g.adj[n].push(f); g.adj[m].push(f);
       }
     }
-  });
-  const byWay = new Map<number, number[]>();
-  ways.forEach((w, e) => { const list = byWay.get(w); if (list) list.push(e); else byWay.set(w, [e]); });
-  const graph: Graph = { x: Float64Array.from(xs), y: Float64Array.from(ys), adj, edges: Float64Array.from(edges), ways: Int32Array.from(ways), cls: w => clsOf[w] ?? '', byWay };
-  graphs.set(net, graph);
-  return graph;
+  }
+  return g;
 }
 
 export interface PieceContext {
   net: RoadNet;
-  /** Is a piece of `way` at q under our earthworks with nothing carrying it across (cut)? */
-  severed: (way: number, q: XY) => boolean;
+  /** Is the stretch a–b of a way under our earthworks (cut there)? */
+  severed: (a: XY, b: XY) => boolean;
   /** Measure how far round up to this far (a public road: whether it may be closed), m; a track or service
    * road just ends, however far round. */
   round?: number;
@@ -72,45 +76,52 @@ export interface PieceAccess {
   round: number;
 }
 
-/** The two pieces of `way` beyond its cut ends `ends` (on the way, just outside the cut). */
+/** The two pieces of `way` beyond its cut ends `ends` (on the way or a way continuing it, just outside the cut). */
 export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): PieceAccess {
-  const g = graphOf(ctx.net);
+  const g = regionGraph(ctx.net, { x: (ends[0].x + ends[1].x) / 2, y: (ends[0].y + ends[1].y) / 2 });
   const blocked = new Map<number, boolean>();
   const open = (e: number) => {
     let v = blocked.get(e);
     if (v === undefined) {
       const a = g.edges[e * 4], b = g.edges[e * 4 + 1];
-      v = ctx.severed(g.ways[e], { x: (g.x[a] + g.x[b]) / 2, y: (g.y[a] + g.y[b]) / 2 });
+      v = ctx.severed({ x: g.x[a], y: g.y[a] }, { x: g.x[b], y: g.y[b] });
       blocked.set(e, v);
     }
     return !v;
   };
-  /** The open graph edge of `way` nearest to p. */
+  /** The open graph edge nearest to cut end p (its own way's, else any way's within a few metres) and which of its
+   * nodes lie beyond the cut, with their distances along it. */
   const startOf = (p: XY) => {
-    let best = -1, gap = Infinity;
-    for (const e of g.byWay.get(way) ?? []) {
-      const a = g.edges[e * 4], b = g.edges[e * 4 + 1], d = Math.hypot((g.x[a] + g.x[b]) / 2 - p.x, (g.y[a] + g.y[b]) / 2 - p.y);
-      if (d < gap && open(e)) { gap = d; best = e; }
+    let best = -1, gap = 3;
+    for (let e = 0; e < g.edges.length / 4; e++) {
+      const a = g.edges[e * 4], b = g.edges[e * 4 + 1], ax = g.x[a], ay = g.y[a], dx = g.x[b] - ax, dy = g.y[b] - ay;
+      const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy || 1)));
+      const d = Math.hypot(p.x - ax - t * dx, p.y - ay - t * dy) - (g.edges[e * 4 + 2] === way ? 1 : 0);
+      if (d < gap) { gap = d; best = e; }
     }
     return best;
   };
-  /** From piece `start` (cut end p) over open edges: does it reach the network (another public road, or the search
-   * bound), and, given the other piece's edge `goal`, how far round to the other cut end. */
+  /** From cut end p on edge `start` over open stretches (only the part of `start` beyond the cut is the piece):
+   * does it meet a public road other than its own way, and, given the other cut end's edge `goal`, how far round. */
   const search = (start: number, p: XY, goal?: number, limit = PIECE_SEARCH) => {
     const dist = new Map<number, number>(), heap = new MinHeap();
-    for (const n of [g.edges[start * 4], g.edges[start * 4 + 1]]) { const d = Math.hypot(g.x[n] - p.x, g.y[n] - p.y); dist.set(n, d); heap.push(d, n); }
+    // (the start edge's nodes the piece reaches from p without crossing our earthworks)
+    for (const n of [g.edges[start * 4], g.edges[start * 4 + 1]]) {
+      const q = { x: g.x[n], y: g.y[n] };
+      if (ctx.severed(p, q)) continue;
+      const d = Math.hypot(q.x - p.x, q.y - p.y); dist.set(n, d); heap.push(d, n);
+    }
     let reached = false, round = Infinity;
     while (heap.size) {
       const [d, u] = heap.pop();
       if (d > (dist.get(u) ?? Infinity)) continue;
-      if (d >= round) break;
-      if (d > limit) { reached = goal === undefined; break; }
+      if (d >= round || d > limit) break;
       for (const e of g.adj[u]) {
+        if (e === goal && !ctx.severed({ x: g.x[u], y: g.y[u] }, ends[1])) round = Math.min(round, d + Math.hypot(g.x[u] - ends[1].x, g.y[u] - ends[1].y));
         if (e === start || !open(e)) continue;
-        const w = g.ways[e];
-        if (e === goal) round = Math.min(round, d + Math.hypot(g.x[u] - ends[1].x, g.y[u] - ends[1].y));
+        const w = g.edges[e * 4 + 2];
         // a piece reaches the network where it meets a public road other than its own way
-        if (w !== way && !MINOR.has(g.cls(w))) reached = true;
+        if (w !== way && !MINOR.has(g.cls.get(w) ?? '')) reached = true;
         const v = g.edges[e * 4] === u ? g.edges[e * 4 + 1] : g.edges[e * 4], nd = d + g.edges[e * 4 + 3];
         if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); heap.push(nd, v); }
       }
@@ -120,7 +131,7 @@ export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): Pie
   };
   const s0 = startOf(ends[0]), s1 = startOf(ends[1]);
   const connected: [boolean, boolean] = [s0 >= 0 && search(s0, ends[0]).reached, s1 >= 0 && search(s1, ends[1]).reached];
-  const round = ctx.round !== undefined && connected[0] && connected[1] && s0 !== s1 ? search(s0, ends[0], s1, ctx.round).round : Infinity;
+  const round = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 && s0 !== s1 ? search(s0, ends[0], s1, ctx.round).round : Infinity;
   return { connected, round };
 }
 
@@ -136,10 +147,13 @@ class MinHeap {
     const { k, v } = this, top: [number, number] = [k[0], v[0]], lk = k.pop()!, lv = v.pop()!;
     if (k.length) {
       let i = 0;
-      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i, mk = lk;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1; let m = i, mk = lk;
         if (l < k.length && k[l] < mk) { m = l; mk = k[l]; }
-        if (r < k.length && k[r] < mk) { m = r; }
-        if (m === i) break; k[i] = k[m]; v[i] = v[m]; i = m; }
+        if (r < k.length && k[r] < mk) m = r;
+        if (m === i) break;
+        k[i] = k[m]; v[i] = v[m]; i = m;
+      }
       k[i] = lk; v[i] = lv;
     }
     return top;

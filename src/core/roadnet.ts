@@ -105,10 +105,6 @@ export class RoadNet {
     } else for (let wi = 0; wi < data.ways.length; wi++) add(wi);
     this.segments = k;
   }
-  /** Every way of a road class: its index, class and points [x0, y0, x1, y1, …] (way-pieces.ts' network graph). */
-  eachWay(visit: (way: number, cls: string, xy: readonly number[]) => void): void {
-    for (let wi = 0; wi < this.ways.length; wi++) if (this.wayCls[wi] in ROAD_CLASSES) visit(wi, this.wayCls[wi], this.ways[wi].slice(1));
-  }
   /** Segments indexed in a grid cell. */
   private at(key: number): number[] | undefined { return this.override?.get(key) ?? this.map.get(key); }
 

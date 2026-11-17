@@ -73,7 +73,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -112,6 +112,12 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; nearby it is laid on a new line crossing at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what}).` : '';
   const joinedTo = c.targetRoadId === undefined ? 'the road our road joins at its end' : `the road that crosses at km ${km(c.targetS ?? 0)}`;
   const crossesAt = c.targetRoadId === undefined ? 'the road at our road\'s end' : `the crossing at km ${km(c.targetS ?? 0)}`;
+  // Led under our bridge beside it (crossing-geometry.ts c.under)
+  if (c.under !== undefined && (c.type === 'reconnection' || c.type === 'diversion')) {
+    const piece = c.cls === 'track' ? 'track' : 'road';
+    return { tag: 'under our bridge', label: `Led under our bridge at km ${km(c.under)} (+${m(c.linkLength)} m of new ${piece})`,
+      explain: `The ${what} is cut by our earthworks right beside our bridge; a new piece of ${piece} leads it along the earthworks and under the bridge, joining its two parts again.${link}` };
+  }
   // A cut way whose pieces still reach other roads just ends at our earthworks (way-pieces.ts); a piece cut off is led on.
   if (c.closure && (c.type === 'reconnection' || c.type === 'diversion')) {
     const [right, left] = c.closure.connected, both = right && left, round = c.closure.extra !== undefined ? `${km(c.closure.extra)} km further round` : '';

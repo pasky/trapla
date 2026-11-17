@@ -144,6 +144,8 @@ export interface CrossingResult {
   /** Culverts carrying streams under a reroute (count, and their pre-surcharge CZK, included in cost). */
   culverts?: number;
   culvertCost?: number;
+  /** Led under our bridge (Auto's reroute): the chainage where its new road passes under the deck, m. */
+  under?: number;
   /** Its bridge over us also spans the mapped railway it crossed at the same level beside us (crossing-geometry.ts). */
   overRailway?: true;
   /** A cut way's pieces that still reach the road network over other ways and just end here ([right, left] of our

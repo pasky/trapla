@@ -383,7 +383,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const before = ours.crossings.find(rerouted)!;
     const after = street.routes[design.routes[0].id].legacy!.crossings.find(rerouted)!;
     expect([after.type, after.targetRoadId]).toEqual([before.type, before.targetRoadId]);
-    expect(after.cost).not.toBe(before.cost);
+    // (since model 42 the track's west part still reaches other tracks and just ends at our earthworks: only its east
+    // part is led to the bridge, on the side away from the street, so the street leaves that reroute as it was)
+    expect(before.closure?.connected).toEqual([false, true]);
+    expect(after.geometry!.links!.map(l => l.length > 0)).toEqual([true, false]);
+    expect(after.cost).toBe(before.cost);
     // Rebuilt roads that end beside our embankment, where they stop short of it: their ends meet our works as
     // at a junction (reroute-takeover-audit): a street whose rest our road reroutes (a way of its own beyond
     // the stretch), a street whose closure's detour lies nowhere near the roads our road changes.

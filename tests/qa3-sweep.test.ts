@@ -73,6 +73,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const solo = run(alone).routes['route:railway'].legacy!;
     expect(Math.abs(ours.grade[c.i] - solo.grade[c.i])).toBeLessThan(1);
     expect(ours.cost.total - solo.cost.total).toBeLessThan(2 * c.cost);
+    // (each road's bill still counts that bridge once, the project total aside)
+    const { alone: bills, expected } = billedOnce(design, r);
+    expect(Math.abs(bills - expected)).toBeLessThan(1);
   }, 60_000);
 });
 

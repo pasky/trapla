@@ -2246,8 +2246,9 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     const lateralOf = (px: number, py: number) => sign * (-(px - x) * ty + (py - y) * tx), r = along + reach + terrain.cell;
     if (railwayNear(terrain, x - r, y - r, x + r, y + r)) protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along, left: sign > 0 ? reach : 0, right: sign > 0 ? 0 : reach }, f => {
       if (f.feature !== 'railway' || retiredAt?.(f.x, f.y)) return;
-      const lateral = lateralOf(f.x, f.y);
-      if (lateral >= 0 && lateral <= reach) out.push({ what: 'railway', x: f.x, y: f.y, lateral: Math.max(0, lateral - terrain.cell / 2) });
+      // (the cell's near edge: a cell only partly under the slope counts)
+      const lateral = lateralOf(f.x, f.y) - terrain.cell / 2;
+      if (lateral + terrain.cell >= 0 && lateral <= reach) out.push({ what: 'railway', x: f.x, y: f.y, lateral: Math.max(0, lateral) });
     });
     const cx = x - ty * sign * reach / 2, cy = y + tx * sign * reach / 2;
     if (bld) bld.near(cx, cy, along + reach / 2 + 5, j => {
@@ -2265,6 +2266,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     const len = Math.hypot(q.x - p.x, q.y - p.y);
     if (!(len > 0)) return false;
     let hit = false;
+    const r = len / 2 + half + terrain.cell, mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+    if (!railwayNear(terrain, mx - r, my - r, mx + r, my + r)) return false;
     protectedRasterCells(terrain, { i: 0, s: 0, x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half },
       f => { if (!hit && f.feature === 'railway' && !retiredAt?.(f.x, f.y)) hit = true; });
     return hit;

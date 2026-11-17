@@ -121,10 +121,12 @@
  * reroutes keep their slopes off houses (walled, else bought out), mapped railways and (bridges over us, reroutes)
  * our own body, behind walls where they can stand; a bridge over us spans the station tracks its way crosses beside
  * us; a cut way is judged piece by piece (way-pieces.ts): a piece still reaching the road network just ends, only a
- * piece cut off is led to a crossing, a public road is closed only where it goes round at most 500 m further
- * (game rule, research/45), its ends get billed turning areas; no reroute joins its own way's line. D11 frozen
- * −23 … −59 M (fewer reroutes of tracks whose pieces stay connected; straight +junction cleared over the Trutnov
- * level crossing). */
+ * piece cut off is led to a crossing, a track or service road right beside our bridge may be led under it, a public
+ * road is closed only where it goes round at most 500 m further (game rule, research/45), its ends get billed
+ * turning areas; no reroute joins its own way's line. D11 frozen vs model 41: straight +5 M, best −60, demo −51,
+ * direct-80 −25, direct-90 −125, town-centre −100 (tracks whose parts still reach the network closed instead of
+ * rerouted, tracks beside a bridge led under it; the straight design's junction approach over the Trutnov level
+ * crossing cleared by the grade). */
 export const COST_MODEL_VERSION = 42;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
