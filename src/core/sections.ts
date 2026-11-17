@@ -33,21 +33,24 @@ export interface SideResult {
   /** the slope's own surface at `day` (= zDay where it reached the ground; where a wall cut it short, the
    * height the wall retains is |zSlope − ground|) */
   zSlope: number;
-  /** A fill face that a straight line from the crown edge to the daylight point (bent once where its toe band
-   * begins, render/earthwork-surface.ts slopeKnee) would not draw truly (on ground falling away beside it the
-   * engine's face follows the ground down in its bands): its height at FACE_AT of the way out, else undefined. */
+  /** A face that a straight line from the crown edge to the daylight point (a fill's bent once where its toe band
+   * begins, render/earthwork-surface.ts slopeKnee) would not draw truly (a fill on ground falling away beside it
+   * follows the ground down in its bands; a cut steps back at its benches and steepens in rock): its height at
+   * FACE_AT of the way out, else undefined. */
   face?: number[];
 }
 
 /** Where a fill's face is sampled for drawing (fractions of the way from the crown edge to the daylight point). */
 export const FACE_AT = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9];
+/** A cut at least this deep at its daylight point has its face traced for drawing (a shallower one has no bench), m. */
+const CUT_FACE_FROM = 2;
 /** A face departing from the simple drawn slope by more than this is drawn from its samples, m. */
 const FACE_TOLERANCE = 0.25;
 /** The fill face's height at FACE_AT from a traced face (offset, height pairs), when the simple drawn slope (a
  * straight line, bent where the toe band begins) is off by more than FACE_TOLERANCE somewhere. */
 export function faceSamples(trace: readonly number[], w: number, z: number, day: number, zDay: number): number[] | undefined {
-  const run = day - w, height = zDay - z;
-  if (!(run > 0.5) || height >= -SIDE_SLOPES.fillToeHeight - 0.1) return undefined;
+  const run = day - w, height = zDay - z, cut = height > 0;
+  if (!(run > 0.5) || (cut ? height < CUT_FACE_FROM : height >= -SIDE_SLOPES.fillToeHeight - 0.1)) return undefined;
   const at = (o: number) => {
     for (let k = 2; k < trace.length; k += 2) if (trace[k] >= o) {
       const o0 = trace[k - 2], z0 = trace[k - 1], o1 = trace[k], z1 = trace[k + 1];
@@ -55,8 +58,9 @@ export function faceSamples(trace: readonly number[], w: number, z: number, day:
     }
     return trace[trace.length - 1];
   };
-  // the simple slope (as slopeKnee draws it)
-  const ok = day - SIDE_SLOPES.fillToeHeight * SIDE_SLOPES.fillToe, uk = (ok - w) / run, zk = zDay + SIDE_SLOPES.fillToeHeight;
+  // the simple slope (as slopeKnee draws a fill; a cut: straight, its rock face's bend aside — a stepped face's
+  // benches and a rock face are always drawn from the samples)
+  const ok = cut ? -1 : day - SIDE_SLOPES.fillToeHeight * SIDE_SLOPES.fillToe, uk = (ok - w) / run, zk = zDay + SIDE_SLOPES.fillToeHeight;
   const simple = (u: number) => !(uk > 0.02 && uk < 0.98) ? z + u * height : u <= uk ? z + (zk - z) * u / uk : zk + (zDay - zk) * (u - uk) / (1 - uk);
   const face = FACE_AT.map(u => at(w + u * run));
   return face.some((v, k) => Math.abs(v - simple(FACE_AT[k])) > FACE_TOLERANCE) ? face : undefined;
@@ -260,7 +264,7 @@ export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number
     // (the final engineering keeps each fill face's shape for drawing: traced once, kept with the cached side)
     const side = (sign: number, kept?: SideResult) => {
       const ground = (o: number) => terrain.heightAt(cx + nx * o * sign, cy + ny * o * sign), bands = (o: number) => terrain.groundAt(cx + nx * o * sign, cy + ny * o * sign);
-      if (kept && (!keepSides || kept.face !== undefined || 'face' in kept || kept.zDay >= z[i] - SIDE_SLOPES.fillToeHeight - 0.1)) return kept;
+      if (kept && (!keepSides || kept.face !== undefined || 'face' in kept || (kept.zDay >= z[i] - SIDE_SLOPES.fillToeHeight - 0.1 && kept.zDay < z[i] + CUT_FACE_FROM))) return kept;
       if (!keepSides) return sideSection(z[i], w, tpl, ground, bands);
       const trace: number[] = [], out = sideSection(z[i], w, tpl, ground, bands, Infinity, trace);
       out.face = faceSamples(trace, w, z[i], out.day, out.zDay);
