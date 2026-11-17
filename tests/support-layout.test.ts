@@ -3,6 +3,7 @@ import { bridgeLayout, bridgeModel, bridgeRunCost, supportBridgeLayout } from '.
 import { costParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { D11_SCENARIO } from '../src/core/data/scenario';
+import { STRUCTURE_RULES } from '../src/core/data/prices';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { RoadNet } from '../src/core/roadnet';
 import { remedyBridgeSupports, type SupportRoute } from '../src/core/support-layout';
@@ -151,7 +152,8 @@ describe('automatic bridge support remedies', () => {
     r.runs[0].forced = true;
     const forced = remedyBridgeSupports(r, terrain(), roadAt(195));
     expect(forced.runs).toEqual(r.runs);
-    expect(forced.diagnostics[0]).toMatchObject({ structure: 'portal', reason: 'terrain', extensionM: 10, lowerM: 9 });
+    // (the portal needs the ground a structure height above the grade: lowered by 9 − 5 m)
+    expect(forced.diagnostics[0]).toMatchObject({ structure: 'portal', reason: 'terrain', extensionM: 10, lowerM: STRUCTURE_RULES.portalDepth - 5 });
   });
 
   it('uses separated-road clearance before adding local span depth, without changing the supplied profile', () => {

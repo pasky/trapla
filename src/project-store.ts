@@ -152,7 +152,8 @@ export class ProjectStore implements ProjectStoreApi {
   canUndo(): boolean { return this.index > 0; }
   canRedo(): boolean { return this.index + 1 < this.history.length; }
   private moveHistory(index: number): void {
-    if (this.inTransaction) this.cancel();
+    // An undo (or redo) while a step is still open (a drag, a burst of + steps) takes back that step only.
+    if (this.inTransaction) { this.cancel(); return; }
     if (index < 0 || index >= this.history.length) return;
     const design = this.revised(this.history[index]);
     persistProjectSave(this.options, { schemaVersion: 1, design, best: this.savedBest });

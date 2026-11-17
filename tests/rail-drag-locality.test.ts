@@ -20,8 +20,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(drag.issues.map(i => i.violation.title)).toEqual([]);
     const r0 = base.routes['route:railway'].legacy!, r = drag.routes['route:railway'].legacy!;
     const at = (x: Result, s: number) => x.grade[Math.round(s / x.ds)];
-    // the plan moved from km 4.4 on; up to km 2.5 the grade is the starter's
-    for (let s = 0; s <= 2500; s += 50) expect(Math.abs(at(r, s) - at(r0, s))).toBeLessThan(0.1);
+    // the plan moved from km 4.4 on; up to km 1.75 the grade is the starter's (beyond it, the cut before the
+    // tunnel of km 1.98–4.5 and that tunnel follow its far end, which the drag moved: one structure)
+    for (let s = 0; s <= 1750; s += 50) expect(Math.abs(at(r, s) - at(r0, s))).toBeLessThan(0.1);
     // the track at km 6.29, too steep for a bridge over our cutting or a reroute, passes under our bridge
     const track = r.crossings.find(c => c.roadId === 3637);
     expect(track?.type).toBe('bridge');

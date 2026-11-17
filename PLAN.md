@@ -560,6 +560,90 @@ Plan and sources: docs/design-realism-plan.md (M1, M4), research/46–54.
   Whole D3 dragged at km 30: the 30 m span at km 16.66 stays 0.1 m short (the changed stretch, end of a 4 %
   climb; tests/merged-crossings notes it).
 
+### Bug-fix sweep: the player's crossing choices, reroutes and homes, undo, the top bars (cost model 32, 2026-11-17)
+
+Four findings of the architecture review, then a play of the D3 and D11 missions (research/60, screenshots 240–246,
+`node scripts/bugfix-sweep-shots.mjs`).
+- **The player's "Straighten it".** It failed on the D3 motorway's four most skewed ways, twice with "clashes
+  with our bridge or tunnel". The player's underpass now lets the way be lowered (as Auto and resolveCrossings
+  do) and keeps our road on earth over its box where one fits; a straightening that cannot be built leaves the
+  way on its own line with "The … cannot be straightened here" (why, and "Keep its line" on the card) and
+  nothing else changes; a box too low on the new line raises our grade by what it lacks (a retry); a way
+  crossing us again under our bridge passes there. The straightened line's new pieces are profiled like a
+  reroute (earthworks up to 10 m) instead of lying on the ground. `scripts/straighten-audit.ts` (gate): 27
+  skewed crossings of four designs, 9 done, 18 said, none with another new problem.
+- **A player's choice that cannot be built** (e.g. "Its bridge over us" over our 12 m embankment) no longer
+  makes the stream / strict / narrowing / separation retries put our road on a bridge over the way: its
+  problems say what cannot be built.
+- **Reroutes and houses.** D3 km 3.63 buys three sheds, truthfully drawn and billed; the card said "houses".
+  It now says "3 buildings", "a house" only for a home. A reroute takes a home only where nothing else can be
+  built (expropriation as the last resort, zákon 184/2006 Sb. § 3): D3 class I road km 0.65 goes round a house
+  (11.0 → 25.3 M), the whole D3 straight keeps 4 of 6 homes (+121 M).
+- **Undo.** An undo while a step is open (a burst of + steps, the radius slider) takes back that step only;
+  Ctrl+Z during a held drag takes the drag back and the rest of the gesture changes nothing.
+- **Top bars.** Measured (ui/toolbar-fit.ts): where Undo / Redo / Scenarios and the view buttons would overlap,
+  the key hints go, then the view buttons move under Undo / Redo. Disabled Undo / Redo are no longer
+  see-through. `scripts/toolbar-layout.mjs` (gate) at 1280–1920 px.
+- **Bills** (model 31 → 32): D11 frozen: direct-90 4,687 → 4,676 (km 8.26 straightened), town-centre 8,879 →
+  8,869 (km 10.05 straightened), the rest unchanged; D3 class I road 3,484 → 3,504; whole D3 straight +121 M.
+- **Seen while playing, then fixed (cost model 33, research/61):** a player's underpass / bridge choice no longer
+  forces the grade solve (no fixed point; D3 km 2.67's +41 M gone); where Auto's line leaves a crossing too little
+  room — the player's box or bridge, or a reroute through homes where a box would do — the line is lifted locally
+  solved again with that height (else lifted locally), only while it costs no more than the crossing's own
+  treatment (otherwise the problem says how much to raise our road: D3 km 1.76 +1.45 bn → 12.7 M and said);
+  D11 direct-80 km 6.83 is now a box, its three homes kept (4,183 → 4,157 M); a player's unbuildable crossing owns
+  its way's stretch (no phantom relocation); "Cut and reroute" no longer pins a road Auto moves beside ours (D3 km
+  15.29: +3.1 bn → said). `scripts/choice-audit.ts` (gate).
+- **Still open:** "Our bridge over it" in our cutting is met at any price (the painted bridge's support lifts,
+  D3 km 8.59 +1.26 bn); the player's "Cut and reroute" at D3 km 5.26 removes the crossing a class II road is led
+  to (Auto bridges both, a clash, +577 M); D3 km 0.43–0.53: a garage under a 7 m bridge deck demolished
+  (relayed to design-realism).
+
+### Tunnels as they are built: cut-and-cover portals, method, escape provision (cost model 34, 2026-11-17)
+
+Plan and sources: docs/design-realism-plan.md M2, research/49 (portals), /51 (methods). Model 31 ended Auto's
+tunnels wherever a tunnel stopped being cheaper per metre than the cut, in open cuts 12–110 m deep (d35's
+starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
+- **Portals.** Mining starts where the ground is 14 m above the grade (≈ 6 m of cover, unchanged); from there a
+  tunnel goes on as cut and cover (built in a pit that is filled in again) out to where the ground is a
+  structure height (9 m) above the grade, at least 12 m per portal (two stations). The approach cut ends ≈ 9 m
+  deep, at a portal box in the slope (what research/49 found at D11 Poříčí / Opevňení, Radejčín, Mezno).
+  Cut and cover is billed at SPK A.3.H (+7.5 %; urban PROVISIONAL: the urban bored row × the same premium),
+  railways at their SPOŽES row (no method split); its pit beyond 5 m of cover is excavation + backfill (OTSKP
+  17411) under Earthworks. Buildings over the pit are demolished (as over a cut); its land is returned (not
+  bought; the temporary occupation is not priced).
+- **Auto sees the ends.** The structure choice prices a tunnel run as built (bored, cut and cover, tubes) against
+  the earthworks over the same stretch, so a tunnel not worth its ends is an open cut (tests/tunnels.test.ts).
+  The grade search has a tunnel mode (autoprofile.ts): where its station-by-station line would take a tunnel, it
+  searches again with a second layer of states, a stretch deeper than a portal being all tunnel or all open,
+  entered and left at shallow knots. Where the line takes no tunnel (every D11 design), nothing changes.
+- **Streams** keep a tunnel a structure height below their bed (was 14 m): cut and cover puts the channel back.
+  (Without it the Křálovec railway left two streams in a shallow cut between two tunnels.)
+- **Method on the tunnel card**: Mined (Auto) / Cut and cover (the player's, painted over the tunnel, any part of it; at
+  most 13 m of ground over it, the Radejčín card's maximum, deeper: "Too deep to dig from above"; buildings over
+  its pit are demolished as over a cut). The card says how it is built ("Mined 1,039 m
+  · cut and cover 70 m at its ends · with an escape tunnel beside it"). A tunnel the player paints may start in
+  a cut up to 30 m deep (the deepest Czech portal pits, PROVISIONAL); deeper is a violation that says where Auto's
+  portal would be.
+- **Escape provision** (NV 264/2009, tunnels over 500 m): one two-lane tube gets an escape tunnel (× 1.3, Hessen
+  Mobil 121–135 %) above 2,000 veh/day/lane, two tubes above 10,000; motorways have two tubes already, a
+  motorway direction's tube has the other's beside it, railways follow their own price book.
+- **Minimum tunnel** 150 → 100 m (TKP-D 7): the outcome audit and every scenario pack unchanged by it.
+- **Bills** (model 33 → 34): every D11 design unchanged (no tunnels). Scenario starters, all VALID: d3-0304
+  8,524 → 10,152 (a 680 m twin tunnel instead of 240 m between 21–29 m cuts), d35 4,755 → 6,729 (1.1 km
+  instead of 740 m between 58–68 m cuts), d35-full 27,332 → 29,969, d35 stage-1 motorway 17,123 → 19,497 M CZK;
+  the others unchanged. Křálovec railway (QA fixture) 8.87 → 9.45 bn VALID (one 3.9 km tunnel where three
+  tunnels alternated with 25–53 m cuts). Outcome audit (24 random D11 lines): 6 VALID (6), 86 violations (86),
+  links > 1 km 20 (21), ramps > 250 m 5 (5); the lines with tunnels cost 11–28 % more (random-12: 9.51 → 12.13 bn,
+  its 960 m tunnel between 55 m cuts is 1.36 km with 8 m approach cuts; random-8 9.45 → 11.27 bn, 6 → 3 problems).
+- **A cutting whose slope never reaches the top of the hillside** is a tunnel where deep enough (as such an
+  embankment is a bridge): station by station a short tunnel used to cover it; a whole-run tunnel may not pay.
+- **Known limits.** The grade search prices the tube per metre; a long one's escape provision is weighed by
+  the structure choice only. Portals stand on the 10 m station grid. Pre-portal works (nailed faces, micropile
+  umbrellas) are not billed (research/49 §3; small beside a 9 m portal). No TBM (no Czech road case, no SPK row).
+  The drag at km 4.4 of the Křálovec railway moves the cut before the tunnel of km 1.98–4.5 (that tunnel's far end
+  is in the dragged stretch): tests/rail-drag-locality checks the grade to km 1.75.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout

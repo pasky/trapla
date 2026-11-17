@@ -1,5 +1,58 @@
 # Evaluate performance regression
 
+## Tunnels as built, cost model 34 (2026-11-17)
+
+The grade search's tunnel mode (autoprofile.ts) costs nothing where the line takes no tunnel: the plain search
+runs first and its line is kept when no sample on it takes a tunnel (checked only where deeper than a portal);
+only then a second search with two layers of states (≈ 2× the DP). On the D11 designs that is 1 solve in 32 on
+demo, none on the others (town-centre's profile phase 106 ms when the mode ran on every solve → 65 ms). The
+auto-profile cost tables now keep 24 material values instead of 8: one evaluation's balance searches visit 20–30
+(start, the fixed steps from it, interpolated ones; lifts and retries revisit them), so 20–35 % fewer table
+entries are computed on a repeated design (≈ 8 MB more heap).
+
+Interleaved against main 099a471 (`scripts/dev/interleave.ts`, 16 rounds, host load 3–8), min / median ms:
+
+| design | main | now |
+|---|---:|---:|
+| best | 113.1 / 153.2 | 112.1 / 134.9 |
+| demo | 110.7 / 123.8 | 107.0 / 124.7 |
+| direct-80 | 232.5 / 260.4 | 215.7 / 292.2 |
+| direct-90 | 139.0 / 162.0 | 143.0 / 177.6 |
+| town-centre | 225.6 / 303.3 | 230.5 / 281.6 |
+
+CPU per round −2 %, sum of minima −1.5 %, of medians +1 % (against d88a0db at load 13–18: CPU −7 %; phase
+timings, min of 8: profile 49–52 ms on both, demo +4 ms for its one tunnel-mode solve). Drag budgets pass in all six modes (road
+failed once at 61 ms median under load 24, passed at 45 ms).
+
+## Our line raised for a crossing, cost model 33 (2026-11-17)
+
+research/61: where Auto's first line leaves a crossing too little room (a reroute through homes where a box
+would do, a player's box or bridge that does not fit), evaluate solves the grade again with that height (and,
+where that does not do, lifts the line locally): one more full pass, two where the new solve fails, only for a
+design with such a crossing. Of the five saved D11 designs only direct-80 has one (km 6.83).
+
+Interleaved against main 3ee2fd9 (`scripts/dev/interleave.ts`, 12 rounds, host load ≈ 8), min / median ms:
+
+| design | main | now |
+|---|---:|---:|
+| best | 117.8 / 161.2 | 121.8 / 157.3 |
+| demo | 115.0 / 147.0 | 119.0 / 151.3 |
+| direct-80 | 147.9 / 189.2 | 233.0 / 273.9 |
+| direct-90 | 147.9 / 194.1 | 142.9 / 189.9 |
+| town-centre | 248.8 / 303.2 | 237.4 / 310.7 |
+
+direct-80 +85 ms (+58 %), the others within noise; sums of minima +10 %, CPU per round +9 % (all of it direct-80).
+The kept pass (the re-solved line) spends ≈ 73 ms in the grade solve, 33 ms in cross-sections, 41 ms in the
+crossings, 29 ms in noise and buildings (its own `timing` laps): a whole pass, sharing only the pass cache.
+
+Making it stretch-local was looked at and not done: the grade solve's only way to re-solve a stretch inside a
+fixed line (`EvalOptions.fixedProfile`, used for one direction of a separate motorway stretch) turns the block
+solve off, so its line would differ from the block solve's everywhere else; the windowed evaluation is
+preview-only (its result is not a full bill). A block-local re-solve needs the auto-profile's block API (and
+the engineering after it would still run on the whole route). The cost is bounded: the retry runs only where a
+reroute takes a home and a box could replace it, or a player's box / bridge does not fit, and is kept only when
+it meets the need in proportion (research/61).
+
 ## Design realism, cost model 31 (2026-11-16)
 
 Per-bend design speed, VL 1 slopes by ground layer, terrain class and buried-bridge culverts cost time; offsets,

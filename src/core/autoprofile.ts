@@ -98,6 +98,10 @@ export interface AutoProfileOptions {
   clearanceS?: ArrayLike<number>;
   /** −1 = automatic, otherwise earth/bridge/tunnel; selects the corresponding cost lookup. */
   structureKind?: ArrayLike<number>;
+  /** A tunnel goes on to where the ground is this far above the grade (its portal), m: with it the search
+   * has a tunnel mode (the cost function then answers kinds PROFILE_KIND.open / .inTunnel), else a tunnel is
+   * priced station by station. */
+  portalDepth?: number;
   /** optional upper h bound (manual tunnel cover); NaN = none */
   maxH?: ArrayLike<number>;
   /** search for the material value that balances cut and fill (see BalanceSearch) */
@@ -228,6 +232,13 @@ export function profileBlocks(straights: readonly PlanStraight[]): number[] {
 export const PROFILE_HEIGHT_MAX = 100;
 export const PROFILE_HEIGHT_STEP = 0.05;
 const H_MAX = PROFILE_HEIGHT_MAX, H_STEP = PROFILE_HEIGHT_STEP;
+/**
+ * Height tables per cost class: one per structure kind −1 (Auto: the cheapest of earthworks, bridge and
+ * tunnel), 0 earthworks, 1 bridge, 2 tunnel (the player's choices) and, for the tunnel mode below, 3 (Auto
+ * without a tunnel) and 4 (Auto inside a tunnel: a tunnel wherever the ground is deeper than its portal).
+ */
+export const PROFILE_KINDS = 6;
+export const PROFILE_KIND = { open: 3, inTunnel: 4 } as const;
 /** CZK per required-clearance station that is not met */
 export const CLEARANCE_PENALTY = 1e8;
 /** extra clearance asked of the polyline grade: vertical curves later shave up to ~1 m off crests */
@@ -278,7 +289,7 @@ function buildLut(costs: AutoProfileOptions['costPerM'][], classes: number): Cos
   // Sparse crossing classes used to price all 4,001 heights, even for narrow search bands.
   // Each solve fills its required envelope, retaining the identical grid and interpolation.
   // Allocate only class/kind blocks actually used by stations, not four blocks per class.
-  return { values: new Array(classes * 4 * costs.length), costs };
+  return { values: new Array(classes * PROFILE_KINDS * costs.length), costs };
 }
 
 /** does the grade line satisfy max gradient and the (effective) vertical radii? */
@@ -350,6 +361,13 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   /** B's height off the grid is corrected over the knots after this one */
   const corrFrom = anchored ? boundaryKnot[nb - 1] : 0, corrSpan = L - knotList[corrFrom];
   const knotS = Float64Array.from(knotList);
+  /** the ground at knot k (where a line may enter or leave a tunnel) */
+  const groundAtKnot = (k: number) => {
+    const x = knotS[k];
+    if (opt.groundAt) return opt.groundAt(x);
+    const f = Math.min(n - 1 - 1e-9, Math.max(0, x / ds)), fi = Math.floor(f);
+    return fi + 1 < n ? g[fi] + (g[fi + 1] - g[fi]) * (f - fi) : g[fi];
+  };
   /** interval k's length and block */
   const Dk = (k: number) => anchored ? knotS[k + 1] - knotS[k] : D;
   const blockOf = (k: number) => knotBlock[k];
@@ -390,7 +408,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   // samples. Manual ranges retain individual samples, with exactly the same total weight.
   const costStart = new Int32Array(nK + 1), costS: number[] = [], costG: number[] = [], costWeight: number[] = [], costOffset: number[] = [];
   const kinds = opt.structureKind, costClasses = opt.costClass;
-  const perBlock = classes * 4;
+  const perBlock = classes * PROFILE_KINDS;
   /** interval of a chainage */
   const intervalOf = (x: number) => {
     if (!anchored) return Math.max(0, Math.min(nK - 1, Math.ceil(x / D - 1e-9) - 1));
@@ -407,7 +425,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         const blockStart = costS.length;
         for (let j = i; j < Math.min(i + stride, last[k] + 1); j++) {
           const kind = kinds?.[j] ?? -1, cls = costClasses?.[j] ?? 0;
-          const off = cls * 4 + kind + 1;
+          const off = cls * PROFILE_KINDS + kind + 1;
           let same = -1;
           if (kind < 0) for (let q = blockStart; q < costS.length; q++) if (costOffset[q] === off) { same = q; break; }
           if (same >= 0) costWeight[same] += ds;
@@ -422,7 +440,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const base = blockOf(k) * perBlock;
     for (const p of pointsIn[k]) {
       const kind = kinds?.[Math.min(n - 1, Math.round(p.s / ds))] ?? -1;
-      costS.push(p.s); costG.push(p.g); costWeight.push(opt.pointWeight ?? ds); costOffset.push(base + p.cls * 4 + kind + 1);
+      costS.push(p.s); costG.push(p.g); costWeight.push(opt.pointWeight ?? ds); costOffset.push(base + p.cls * PROFILE_KINDS + kind + 1);
     }
     for (let j = 0; j < m; j++) {
       const x = s0 + (j + 0.5) * w;
@@ -430,7 +448,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const gx = opt.groundAt ? opt.groundAt(x) : fi + 1 < n ? g[fi] + (g[fi + 1] - g[fi]) * (f - fi) : g[fi];
       const near = Math.min(n - 1, Math.round(x / ds)), at = opt.classAt?.(x) ?? -1;
       if (at >= 0) {
-        costS.push(x); costG.push(gx); costWeight.push(w); costOffset.push(base + at * 4 + (kinds?.[near] ?? -1) + 1);
+        costS.push(x); costG.push(gx); costWeight.push(w); costOffset.push(base + at * PROFILE_KINDS + (kinds?.[near] ?? -1) + 1);
         continue;
       }
       const i0 = Math.max(0, Math.ceil((x - w / 2) / ds - 1e-9)), i1 = Math.min(n - 1, Math.ceil((x + w / 2) / ds - 1e-9) - 1);
@@ -438,7 +456,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const blockStart = costS.length;
       for (let i = lo; i <= Math.max(lo, i1); i++) {
         const kind = kinds?.[i] ?? -1, cls = costClasses?.[i] ?? 0;
-        const off = base + cls * 4 + kind + 1;
+        const off = base + cls * PROFILE_KINDS + kind + 1;
         let same = -1;
         for (let q = blockStart; q < costS.length; q++) if (costOffset[q] === off && costS[q] === x) { same = q; break; }
         if (same >= 0) costWeight[same] += w / count;
@@ -762,7 +780,23 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   /** the smallest crest / sag radius at knot k */
   function crestAtKnot(k: number) { return opt.crestAt ? opt.crestAt(knotS[Math.min(k, nK)]) : opt.minCrest; }
   function sagAtKnot(k: number) { return opt.sagAt ? opt.sagAt(knotS[Math.min(k, nK)]) : opt.minSag; }
+  /**
+   * Tunnel mode: a tunnel goes on out to its portals, where the ground is portalDepth above the grade
+   * (structures.ts), so a stretch deeper than that is all tunnel or all open, never a tunnel ending in a deep
+   * cut. Station by station the search would mix them (a short tunnel between deep cuts it could not build).
+   * Where its line takes no tunnel anywhere, that line is also the best under the rule (no other line is
+   * cheaper under it: an open line costs no less than station by station, and so does a line in a tunnel, as
+   * cut and cover costs more than the shallow cut it replaces), so it is kept; else the search runs again with a
+   * second layer of states (in a tunnel): an open line prices Auto without a tunnel, a line in a tunnel
+   * prices a tunnel wherever the ground is deeper than its portal, and a line enters or leaves a tunnel
+   * only at a knot where the ground is shallower than that.
+   */
   function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step = 1): Solved | null {
+    const plain = solveIn(table, gmax, u, padM, around, range, step, false);
+    if (!plain?.tunnel) return plain;
+    return solveIn(table, gmax, u, padM, around, range, step, true) ?? plain;
+  }
+  function solveIn(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step: number, tunnelMode: boolean): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
     // the end correction below spreads ≤ u/2 over the knots after corrFrom: keep that much grade in
@@ -854,15 +888,27 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         high[block] = Math.max(high[block], Math.max(1, Math.min(lutMax, Math.ceil((h1 + H_MAX) / H_STEP) + 1)));
       }
     }
-    for (let block = 0; block < low.length; block++) {
-      if (high[block] < 0) continue;
+    const fill = (block: number, lo: number, hi: number) => {
       const cost = table.costs[Math.floor(block / perBlock)], within = block % perBlock;
-      const kind = within % 4 - 1, cls = Math.floor(within / 4);
+      const kind = within % PROFILE_KINDS - 1, cls = Math.floor(within / PROFILE_KINDS);
       const values = lut[block] ??= cost.table?.(kind, cls) ?? new Float64Array(lutMax + 1).fill(NaN);
-      for (let j = low[block]; j <= high[block]; j++) if (Number.isNaN(values[j])) {
-        values[j] = cost(-H_MAX + j * H_STEP, kind, cls);
-      }
+      for (let j = lo; j <= hi; j++) if (Number.isNaN(values[j])) values[j] = cost(-H_MAX + j * H_STEP, kind, cls);
+      return values;
+    };
+    for (let block = 0; block < low.length; block++) if (high[block] >= 0) fill(block, low[block], high[block]);
+    const autoBlock = (block: number) => block % perBlock % PROFILE_KINDS === 0;
+    if (tunnelMode) for (let block = 0; block < low.length; block++) if (high[block] >= 0 && autoBlock(block)) {
+      fill(block + PROFILE_KIND.open + 1, low[block], high[block]);
+      fill(block + PROFILE_KIND.inTunnel + 1, low[block], high[block]);
     }
+    // the tables each sample reads on an open line / in a tunnel (the player's kinds: their own)
+    const oOpen = tunnelMode ? new Int32Array(cO.length) : cO, oTunnel = tunnelMode ? new Int32Array(cO.length) : cO;
+    if (tunnelMode) for (let q = 0; q < cO.length; q++) {
+      const a = autoBlock(cO[q]);
+      oOpen[q] = a ? cO[q] + PROFILE_KIND.open + 1 : cO[q];
+      oTunnel[q] = a ? cO[q] + PROFILE_KIND.inTunnel + 1 : cO[q];
+    }
+    const layers = tunnelMode ? 2 : 1, portalDepth = opt.portalDepth ?? Infinity;
     // Continuing grades at the route's ends, in grid units per knot (real-valued).
     const gA = ka === 0 ? opt.startGrade : undefined, gB = kb === nK ? opt.endGrade : undefined;
     const dzA = gA === undefined ? NaN : gA * Dk(0) / u, dzB = gB === undefined ? NaN : gB * Dk(nK - 1) / u;
@@ -870,10 +916,13 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const slack = (g: number | undefined, lim: number, k: number) => g === undefined ? lim : Math.min(lim, g * Dk(k) / u);
     const startCrest = slack(opt.startGradeSlack, crestK[0], 0), startSag = slack(opt.startGradeSlack, sagK[0], 0);
     const endCrest = slack(opt.endGradeSlack, crestK[nK - 1], nK - 1), endSag = slack(opt.endGradeSlack, sagK[nK - 1], nK - 1);
-    let cur = new Float64Array((zhi[ka] - zlo[ka] + 1) * ndAt(ka)).fill(Infinity);
-    for (let zi = 0; zi <= zhi[ka] - zlo[ka]; zi++) cur[zi * ndAt(ka) + dzMaxK[ka]] = 0; // first knot: dz is ignored there (any first grade)
+    /** states of one layer at knot k */
+    const layerSize = (k: number) => (zhi[k] - zlo[k] + 1) * ndAt(k);
+    let cur = new Float64Array(layers * layerSize(ka)).fill(Infinity);
+    // first knot: dz is ignored there (any first grade), in or out of a tunnel
+    for (let t = 0; t < layers; t++) for (let zi = 0; zi <= zhi[ka] - zlo[ka]; zi++) cur[t * layerSize(ka) + zi * ndAt(ka) + dzMaxK[ka]] = 0;
     const parents: Int32Array[] = [];
-    const seg = new Float64Array(ndMax);
+    const seg = new Float64Array(ndMax), segIn = tunnelMode ? new Float64Array(ndMax) : seg;
     const slopes = new Float64Array(ndMax);
     for (let k = ka; k < kb; k++) {
       const NDin = ndAt(k), ND = ndAt(k + 1), dzMax = dzMaxK[k], dzMaxIn = dzMaxK[Math.max(ka, k - 1)];
@@ -884,8 +933,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const dMin = Math.min(d, dIn), jointTol = u / (2 * Math.min(d, dIn)) + 1e-12;
       for (let d2 = 0; d2 < ND; d2++) slopes[d2] = ((d2 - dzMax) * u) / d;
       const Z0 = zhi[k] - zlo[k] + 1, Z1 = zhi[k + 1] - zlo[k + 1] + 1;
-      const next = new Float64Array(Z1 * ND).fill(Infinity);
-      const par = new Int32Array(Z1 * ND).fill(-1);
+      const inSize = Z0 * NDin, outSize = Z1 * ND;
+      const next = new Float64Array(layers * outSize).fill(Infinity);
+      const par = new Int32Array(layers * outSize).fill(-1);
+      const gKnot = tunnelMode ? groundAtKnot(k) : 0;
       const sk = knotS[k];
       const c0 = costStart[k], c1 = costStart[k + 1];
       const zk = (z: number) => zA + z * u + corrAt(k);
@@ -897,7 +948,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       for (let zi = 0; zi < Z0; zi++) {
         // Only grades some reachable incoming state can transition to are ever read below.
         let reachLo = ND, reachHi = -1;
-        for (let dd = 0; dd < NDin; dd++) if (cur[zi * NDin + dd] < Infinity) {
+        for (let dd = 0; dd < NDin; dd++) if (cur[zi * NDin + dd] < Infinity || (tunnelMode && cur[inSize + zi * NDin + dd] < Infinity)) {
           const dz = dd - dzMaxIn;
           const lo = first ? 0 : Math.max(0, outLo(dz) + dzMax), hi = first ? ND - 1 : Math.min(ND - 1, outHi(dz) + dzMax);
           if (lo < reachLo) reachLo = lo;
@@ -912,39 +963,56 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         const d2lo = Math.max(reachLo, zlo[k + 1] - z + dzMax), d2hi = Math.min(reachHi, zhi[k + 1] - z + dzMax);
         seg.fill(Infinity);
         for (let d2 = d2lo; d2 <= d2hi; d2++) seg[d2] = 0;
+        if (tunnelMode) { segIn.fill(Infinity); for (let d2 = d2lo; d2 <= d2hi; d2++) segIn[d2] = 0; }
         for (let q = c0; q < c1; q += step) {
           const dsq = cS[q] - sk, gi = cG[q] - cIn - cSlope * dsq, weight = step === 1 || q + 1 >= c1 ? cW[q] : cW[q] + cW[q + 1];
-          const values = lut[cO[q]];
+          const values = lut[oOpen[q]];
           // the LUT position at grade d2: one multiply-add from the sample's base
           const x0 = (zm - gi + H_MAX) / H_STEP, inc = (u * dsq) / (d * H_STEP);
-          for (let d2 = d2lo; d2 <= d2hi; d2++) {
+          if (!tunnelMode) for (let d2 = d2lo; d2 <= d2hi; d2++) {
             let x = x0 + (d2 - dzMax) * inc;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
             seg[d2] += (j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j)) * weight;
+          } else {
+            const inside = lut[oTunnel[q]];
+            for (let d2 = d2lo; d2 <= d2hi; d2++) {
+              let x = x0 + (d2 - dzMax) * inc;
+              if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
+              const j = x | 0;
+              const a = j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j);
+              seg[d2] += a * weight;
+              segIn[d2] += (inside === values ? a : j >= lutMax ? inside[lutMax] : inside[j] + (inside[j + 1] - inside[j]) * (x - j)) * weight;
+            }
           }
         }
         for (let d2 = d2lo; d2 <= d2hi; d2++) {
-          let c = seg[d2];
+          let c = seg[d2], ci = tunnelMode ? segIn[d2] : 0;
           const slope = slopes[d2];
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q], dx = clrX[q] - sk;
             const h = zm + slope * dx - g[i] + cIn + cSlope * dx;
             const pen = penaltyAt ? penaltyAt[i] : clearancePenalty;
-            if (minH && h < minH[i] + CLEARANCE_MARGIN) c += pen;
-            if (maxH && h > maxH[i] - CLEARANCE_MARGIN) c += pen;
-            if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) c += pen;
+            if (minH && h < minH[i] + CLEARANCE_MARGIN) { c += pen; ci += pen; }
+            if (maxH && h > maxH[i] - CLEARANCE_MARGIN) { c += pen; ci += pen; }
+            if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) { c += pen; ci += pen; }
           }
           // Last half-cell has no curve: the last tangent and the exact endpoint correction.
           if (knotPins && k === nK - 1) for (const p of knotPins[nK]) {
             const actual = zm + slope * (p.s - sk) + cIn + cSlope * (p.s - sk);
-            if (Math.abs(actual - p.z) > GRADE_PIN_TOLERANCE + 1e-9) { c = Infinity; break; }
+            if (Math.abs(actual - p.z) > GRADE_PIN_TOLERANCE + 1e-9) { c = ci = Infinity; break; }
           }
           seg[d2] = c;
+          if (tunnelMode) segIn[d2] = ci;
         }
-        for (let dd = 0; dd < NDin; dd++) {
-          const base = cur[zi * NDin + dd];
+        // a line may enter or leave a tunnel here where the ground is shallower than a portal
+        const free = tunnelMode && gKnot - (zm + cIn) < portalDepth;
+        for (let t = 0; t < layers; t++) for (let dd = 0; dd < NDin; dd++) {
+          let from = t * inSize + zi * NDin + dd;
+          if (free) { const other = (1 - t) * inSize + zi * NDin + dd; if (cur[other] < cur[from]) from = other; }
+          const base = cur[from];
           if (base === Infinity) continue;
+          const segT = t ? segIn : seg, out = t * outSize;
           const dz = dd - dzMaxIn;
           // the first knot has no incoming grade: any first grade is allowed (unless it continues a given one)
           const dmin = first ? (Number.isNaN(dzA) ? -dzMax : Math.max(-dzMax, Math.ceil(dzA - startCrest - 1e-9)))
@@ -954,7 +1022,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           const gIn = (dz * u) / dIn;
           for (let dz2 = dmin; dz2 <= dmax; dz2++) {
             const d2 = dz2 + dzMax;
-            const sc = seg[d2];
+            const sc = segT[d2];
             if (sc === Infinity) continue;
             // at a block joint the grids differ: the nearest grade on the next grid continues the line
             const turns = !first && (sameD ? dz2 !== dz : Math.abs((dz2 * u) / d - gIn) > jointTol);
@@ -972,9 +1040,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
               }
               if (!matches) continue;
             }
-            const st = (z + dz2 - zlo[k + 1]) * ND + d2;
+            const st = out + (z + dz2 - zlo[k + 1]) * ND + d2;
             const v = base + sc + (turns ? penalty : 0);
-            if (v < next[st]) { next[st] = v; par[st] = zi * NDin + dd; }
+            if (v < next[st]) { next[st] = v; par[st] = from; }
           }
         }
       }
@@ -994,12 +1062,28 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const dzs = new Int32Array(nK + 1);
     let st = bi;
     for (let k = kb; k > ka; k--) {
-      const ND = ndAt(k);
-      zs[k] = zlo[k] + Math.floor(st / ND);
-      dzs[k] = st % ND - dzMaxK[k - 1];
+      const ND = ndAt(k), local = st % layerSize(k);
+      zs[k] = zlo[k] + Math.floor(local / ND);
+      dzs[k] = local % ND - dzMaxK[k - 1];
       st = parents[k - 1 - ka][st];
     }
-    zs[ka] = zlo[ka] + Math.floor(st / ndAt(ka));
+    zs[ka] = zlo[ka] + Math.floor(st % layerSize(ka) / ndAt(ka));
+    // (a line found station by station: does it take a tunnel anywhere? Then the tunnel mode decides)
+    // (only where deeper than a portal: shallower, Auto takes no tunnel)
+    let tunnel = false;
+    const xPortal = (H_MAX - (opt.portalDepth ?? 0)) / H_STEP + 1;
+    if (!tunnelMode && opt.portalDepth !== undefined) for (let k = ka; k < kb && !tunnel; k++) {
+      const sk = knotS[k], d = Dk(k), cIn = corrAt(k), cSlope = (corrAt(k + 1) - cIn) / d, zm = zA + zs[k] * u, dz = zs[k + 1] - zs[k];
+      for (let q = costStart[k]; q < costStart[k + 1] && !tunnel; q += step) {
+        if (!autoBlock(cO[q])) continue;
+        const dsq = cS[q] - sk, gi = cG[q] - cIn - cSlope * dsq;
+        let x = (zm - gi + H_MAX) / H_STEP + dz * (u * dsq) / (d * H_STEP);
+        if (x > xPortal) continue;
+        if (x < 0) x = 0;
+        const j = x | 0, auto = lut[cO[q]], open = fill(cO[q] + PROFILE_KIND.open + 1, j, Math.min(lutMax, j + 1));
+        if (auto[j] !== open[j] || (j < lutMax && auto[j + 1] !== open[j + 1])) tunnel = true;
+      }
+    }
     // grid → metres, with B's correction
     const z = new Float64Array(nK + 1).fill(NaN);
     for (let k = ka; k <= kb; k++) z[k] = zA + zs[k] * u + corrAt(k);
@@ -1011,9 +1095,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (turns) vpis.push({ s: knotS[k], z: z[k], r: null });
     }
     vpis.push({ s: knotS[kb], z: z[kb], r: null });
-    return { vpis, cost: best, z };
+    return { vpis, cost: best, z, tunnel };
   }
 }
 
 /** a DP solution: the VPIs, the objective and the elevation at every knot (NaN outside its range) */
-interface Solved { vpis: VPI[]; cost: number; z: Float64Array }
+interface Solved { vpis: VPI[]; cost: number; z: Float64Array; /** a station-by-station line that takes a tunnel */ tunnel?: boolean }

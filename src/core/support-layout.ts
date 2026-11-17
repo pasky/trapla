@@ -141,7 +141,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
           target = r.s[index] + direction * r.ds / 2;
           if (manual[index]) reason ??= 'manual';
           if (kind[index] !== KIND.earth) { reason ??= 'boundary'; break; }
-          lowerM = Math.max(lowerM, R.tunnelMinDepth - (r.ground[index] - r.grade[index]));
+          lowerM = Math.max(lowerM, R.portalDepth - (r.ground[index] - r.grade[index]));
           if (lowerM > 0) reason ??= 'terrain';
           if (!blocked(target)) {
             if (manual[index + direction] && kind[index + direction] === KIND.tunnel) reason ??= 'manual';
@@ -163,7 +163,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
             candidate -= direction;
             const station = r.s[candidate] + direction * r.ds / 2;
             if (Math.abs(station - start) > SUPPORT_LIMITS.extensionM) break;
-            if (r.ground[candidate] - r.grade[candidate] < R.tunnelMinDepth || blocked(station)) continue;
+            if (r.ground[candidate] - r.grade[candidate] < R.portalDepth || blocked(station)) continue;
             if (direction < 0) { kind.fill(KIND.earth, i0, candidate); i0 = candidate; }
             else { kind.fill(KIND.earth, candidate + 1, i1 + 1); i1 = candidate; }
             shortened = true; break;

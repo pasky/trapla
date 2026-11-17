@@ -34,6 +34,7 @@ import { noLinksCard, proposalCard, routeHeadCard, type RouteCardDeps } from './
 import { ProfilePanel } from './ui/profile';
 import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
+import { installToolbarFit } from './ui/toolbar-fit';
 import { createDesignEdits } from './ui/design-edits';
 import { createSelection } from './ui/selection';
 import { createRoadLinks } from './ui/road-links';
@@ -120,6 +121,7 @@ async function main() {
   const profile = new ProfilePanel(profileCanvas);
   const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo());
   addScenariosButton(document.getElementById('editbar')!);
+  installToolbarFit(document.getElementById('view')!);
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
   const intro = new Intro(document.getElementById('view')!, scenario.mode ?? 'road');
@@ -300,6 +302,7 @@ async function main() {
   // ---- keyboard (ui/shortcuts.ts) ----
   installShortcuts({
     buildTool, intro, keyBox, showKey, select, setStructure, deletePi, undo: () => store.undo(), redo: () => store.redo(),
+    cancelDrag: () => { store.cancelStep(); view.cancelDrag(); }, releaseDrag: () => store.release(),
     get sel() { return session.sel; }, get mappedRoadSelected() { return !!links.editor?.selected; },
   });
 
