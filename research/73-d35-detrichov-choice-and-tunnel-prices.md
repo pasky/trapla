@@ -19,18 +19,20 @@ CZK excl. VAT unless stated. **Derived** = my arithmetic.
 2. **Our "real-like" line in research/63 was not the real profile.** The real tunnel falls from 514 to 439 m
    (ITA-AITES 2023). research/63 drew it from 500 to 472 m. With the real portal heights our bill for the real layout is
    **20.8 bn, +10 %** on Auto, not +17 %. Lines that keep their east portal out of the protected forest bill
-   **20.2–20.8 bn**. The real choice is within 3 % of the cheapest such line. That cheapest line has a 3.9 % grade in the
+   **20.2–20.8 bn**. The real choice is about 3 % above the cheapest such line. That cheapest line has a 3.9 % grade in the
    tunnel, which the tunnel safety rules discourage (§3).
 3. **Long rural twin tubes cost less per metre than our price.** Built Slovak twin-tube tunnels cost
    0.75–1.13 M CZK per tube-m in 2026 money (Slovak Ministry of Finance value-for-money unit, ÚHP, per tube-km from
-   contract data). The D35 estimate implies ≈ 1.05–1.14. Ours is 1.43–1.46. Two sourced mechanisms could close most
+   contract data; whether technology is included is not stated). The D35 estimate implies ≈ 1.09–1.14. Ours is
+   1.43–1.46. Two sourced mechanisms could close most
    of the gap; both are proposals with medium-low confidence (§4):
    - the SPK row is a T-9.0 tube, while Czech motorway tubes are T-8.0;
    - deep rock is cheaper (research/65).
 4. **Running costs do not explain the choice.** Per route-metre, a twin tunnel costs ≈ 2–4 × as much to run as a
    viaduct or an open road (research/74). Over 30 years at the CBA's 3 %, the real layout's running costs are
-   ≈ 0.85–1.4 bn above Auto's. Auto's summit is 50 m higher, which costs road users fuel worth ≈ 0.3–0.5 bn over the
-   same period (low confidence). Neither is the reason; the protected slope is.
+   ≈ 0.5–1.3 bn above Auto's (central 0.9). Auto's summit is 50 m higher, which costs road users fuel worth
+   ≈ 0.3–0.5 bn over the same period (low confidence). Neither explains the long tunnel. The protected forest rules
+   out Auto's portal and plausibly explains the length; no published document says so in as many words.
 
 ## 1. Why the long tunnel: what the documents say
 
@@ -47,8 +49,8 @@ CZK excl. VAT unless stated. **Derived** = my arithmetic.
 | 2026 PPP | The winning bid (ViAlliance35, 71.32 bn NPV of availability payments for 35.4 km incl. 22 years of O&M) cut cost by "zkrácení mostních konstrukcí" and "optimalizace portálových úseků" of Dětřichov; no details published. | [Ekonomický deník 12 Nov 2026](https://ekonomickydenik.cz/d35-ppp-cenovy-rozdil-nabidky/) | y |
 | Not found | Any cost comparison of tunnel lengths; the DÚR variant report; the PPP's public-sector comparator. | many searches (subagent logs) | — |
 
-**Reading.** The tunnel goes under the escarpment because the protected yew forest covers its steepest part. The east
-portal had to stay below that forest. From there a tunnel at a gentle grade (2.6 % in the EIA, ≈ 1.9 % on average
+**Reading (inference).** The EIA assessed an already chosen tunnel, not competing lengths. What it fixes is that the
+protected yew forest covers the escarpment's steepest part and that the east portal stays below it. From there a tunnel at a gentle grade (2.6 % in the EIA, ≈ 1.9 % on average
 in the 2023 design) needs about 4 km to reach the plateau. Nothing published says it was cheaper.
 
 **D3 0302 Luka (+645 m in 2019):** documented and different. Jílové asked for a lower line farther from homes; it was
@@ -83,7 +85,8 @@ The By-hand lines carry small local problems that the comparison can ignore:
 
 Auto's east portal (km 6.99) lies inside PP Pod skálou. Any portal below the protected forest is at ≈ km 7.2 or
 later, where the ground is ≈ 450 m. A line that has to reach that portal cannot keep Auto's 564 m summit within
-4.5 %, so it ends in a 3.6–4.0 km tunnel. **Missing mechanism: protected areas.**
+4.5 %, so it ends in a 3.6–4.0 km tunnel. **Missing mechanism: protected areas** (the most likely one; the
+documents do not rank reasons).
 
 ## 3. The tunnel grade rule
 
@@ -107,13 +110,13 @@ opened) × **1.07** for 2024 → 2026. That 1.07 is PROVISIONAL: ČSÚ construct
 
 | Tunnel | Tubes × length, width | Basis | Per tube-m (source money) | ≈ 2026 CZK / tube-m | Source |
 |---|---|---|---|---:|---|
-| Prešov (D1 SK) | 2 × 2.24 km, T-7.5 | ÚHP, from NDS contract data (signed 2017), CÚ 2024, civil + technology | 42 M€/tube-km | **1.13 M** | [ÚHP D1 Beharovce–Branisko 2025](https://www.mfsr.sk/files/sk/financie/hodnota-za-peniaze/hodnotenia/informatizacia/hodnotenie_d1_beharovce-branisko.pdf), Tab. 5 "Náklady na km tunelovej rúry" (opened) |
+| Prešov (D1 SK) | 2 × 2.24 km, T-7.5 | ÚHP, from NDS contract data (signed 2017), CÚ 2024; scope not stated (ÚHP's Branisko row in the same table, 168 M€, is civil only) | 42 M€/tube-km | **1.13 M** | [ÚHP D1 Beharovce–Branisko 2025](https://www.mfsr.sk/files/sk/financie/hodnota-za-peniaze/hodnotenia/informatizacia/hodnotenie_d1_beharovce-branisko.pdf), Tab. 5 "Náklady na km tunelovej rúry" (opened) |
 | Bikoš (R4 SK) | 2 × 1.15 km, T-7.5, flysch | same (signed 2019) | 31 | **0.83 M** | same |
 | Okruhliak (R4 SK) | 2 × 1.9 km, T-7.5 | same (signed 2023) | 28 | **0.75 M** | same |
 | Branisko 2nd tube (D1 SK), estimate | 1 × 5.2 km, T-8.0, beside an existing tube | ÚHP Tab. 4, V5: tunnel 167.5 + technology 19.4 M€, CÚ 2Q 2024 | 35.9 (derived) | **0.97 M** | same, Tab. 4 (opened) |
 | Korbeľka / Havran (D1 SK), DÚR estimates | 2 × 5.8 / 2 × 2.7 km, T-8.0 | ÚHP Tab. 5; ÚHP itself calls them ≈ 2 × too high (possible double counting, maximal water-proofing) | 61 / 63 | 1.64 / 1.69 M | same; [ÚHP Turany–Hubová 2024](https://www.mfsr.sk/files/sk/financie/hodnota-za-peniaze/hodnotenia-investicnych-projektov/doprava/hodnotenie_d1_turany_hubova.pdf) (opened) |
 | Homole (D35 CZ) | 525 + 569 m, 27 % cut and cover, under road I/17 | 2024 D&B contract 1,754 M incl. 1 bridge, 2 walls, design | 1.60 M CZK | **1.72 M** | research/51, /64 |
-| D35 Dětřichov, implied | 2 × 3.95 km, T-8.0 | ŘSD 17,694 M minus our non-tunnel bill on the real-portal line (20,810 − 11,380 × 1.306 = 5,948 M), ÷ 1.306 surcharges | — | **≈ 1.05–1.14 M** (derived; lower end if the I/35 feeder in the ŘSD figure is ≈ 0.5 bn) | §2 |
+| D35 Dětřichov, implied | 2 × 3.95 km, T-8.0 | ŘSD 17,694 M minus our non-tunnel bill on the real-portal line (20,810 − 11,380 × 1.306 = 5,948 M), ÷ 1.306 surcharges | — | **≈ 1.09–1.14 M** (derived; 1.09 if the I/35 feeder in the ŘSD figure is ≈ 0.5 bn) | §2 |
 | SPK CN 2026 A.3.R.2.NE.D | T-9.0 | min / standard / max | 1.166 / 1.550 / 2.049 M | — | research/51 |
 | **Ours on D35** | | SPK × length factor 0.924–0.935, incl. cut-and-cover ends | — | **1.44 (real) / 1.46 (Auto)** | §2 bills |
 
@@ -127,8 +130,9 @@ opened) × **1.07** for 2024 → 2026. That 1.07 is PROVISIONAL: ČSÚ construct
   roads and bridges; the tunnel standard says nothing). By analogy that is 8.0 / 9.0 = **0.89**. ÚHP puts 0.5 m of
   width (7.5 → 8.0) at ≈ 14 % of cost.
 - **Slovak tubes corrected to T-8.0** (+14 %, ÚHP): **0.86–1.29 M**.
-- **Length trend.** Within the three built Slovak tunnels the longer two are the cheaper ones, but scope and year
-  differ. No Czech or Slovak series confirms or refutes research/64's length factor.
+- **Length trend.** None among the three built Slovak tunnels: the longest (Prešov, 2.24 km) is the dearest, the
+  shortest (Bikoš) in the middle; scope and contract year differ. If their figures leave out technology, they rise by
+  ≈ 10–20 % (Branisko 10 %, SPK 20 %). No Czech or Slovak series confirms or refutes research/64's length factor.
 - **TBM:** in the Branisko study a TBM came out −7 % (5.3 km) to −26 % (5.0–7.0 km, own route) against cyclic
   excavation on the same line (ÚHP Tab. 4, opened). That is one estimate, not a tender.
 - **Technology share:** Branisko 19.4 / 186.9 = 10 % (estimate); SPK assumes 20 %; Hessen 3–12 %.
@@ -139,14 +143,14 @@ opened) × **1.07** for 2024 → 2026. That 1.07 is PROVISIONAL: ČSÚ construct
 |---|---|---|---|---|
 | 1 | **Protected areas** in every pack (AOPK open data: MZCHÚ, their protection zones, EVL/Natura as information). Auto keeps cuts, fills, portals and pits, piers and abutments out of an MZCHÚ (§36(2)-type bans) and out of its protection zone (consent needed; the Dětřichov EIA made it binding). Under it, a tunnel is fine. A player's works there are a violation with basis "law". | Zákon 114/1992; EIA MZP136 condition; the real line | **high** that it is the missing mechanism here; medium on the exact rule (protection zone as hard or as a cost) | Auto's east portal must leave the monument, so Auto's best becomes ≈ 20.2–20.8 bn, a 3.6–4.0 km tunnel (§2); real layout within ≈ 3 % |
 | 2 | **Tunnel grade.** Auto keeps tunnels ≤ 3 %. Above 3 % the player gets a note ("needs extra safety measures after a risk study"); above 5 % it is a violation unless geography forces it. | NV 264/2009 annex 2.2; Hessen 2006 | **medium-high** on the rule; no cost figure (rule, not price) | Rules out the 20.2 bn line; best ≈ 20.8 bn, the real one |
-| 3 | **Tube width.** Motorway (direction-split) tubes priced as T-8.0: × 8.0 / 9.0 = 0.89 on the SPK mined and cut-and-cover rows. | ITA 2023, D11 cross-sections; SPK's width rule for roads and bridges, by analogy | **medium-low** (rule extended by analogy; ÚHP's 14 % per 0.5 m says width matters at least this much) | Tunnel −11 %: Auto −0.8 bn, real −1.6 bn |
+| 3 | **Tube width.** Motorway (direction-split) tubes priced as T-8.0: × 8.0 / 9.0 = 0.89 on the SPK mined and cut-and-cover rows. | ITA 2023, D11 cross-sections; SPK's width rule for roads and bridges, by analogy | **medium-low**: an analogy, not a sourced tunnel rule. ÚHP only says 0.5 m of width "may explain" ≈ 14 % | Tunnel −11 %: Auto −0.8 bn, real −1.6 bn |
 | 4 | **Rock cover** (research/65 §4b): × 0.92 under > 20 m, × 1.12 under < 15 m. | OTSKP excavation classes; D11 class-by-cover rule | **medium-low** (unchanged). Dětřichov's own ground is poor (faults, coal seams), so the "deep rock = good rock" premise fails for this very tunnel. | ≈ −8 % on deep tunnels |
 | 5 | Keep research/64's length factor and SPK's 20 % technology share. No new Czech evidence. | — | — | — |
-| 6 | **Running costs** as a separate, optional line (research/74), not added to the construction bill by default. | Czech CBA method; ABBV; ŘSD; ASTRA | medium | real layout +0.85–1.4 bn over 30 years (present value) |
+| 6 | **Running costs** as a separate, optional line (research/74), not added to the construction bill by default. | Czech CBA method; ABBV; ŘSD; ASTRA | medium | real layout +0.5–1.3 bn over 30 years (present value; central 0.9) |
 | 7 | **Road users' costs** of grades: not now. They need an HDM-4-like speed and fuel model; the Czech CBA's flat rates ignore grade. | Rezortní metodika 2023 §8.1.10 | low | Auto's +50 m summit ≈ 0.3–0.5 bn (fuel only) |
 
 **With #1–#3 together** the three factors stay separate and sourced; none is fitted to D35. Our long-tube price would
-be ≈ 1.28 M per tube-m with #3, ≈ 1.18 with #3 + #4, against 1.05–1.14 implied by D35 and 0.86–1.29 for Slovak tubes
+be ≈ 1.28 M per tube-m with #3, ≈ 1.18 with #3 + #4, against 1.09–1.14 implied by D35 and 0.86–1.29 for Slovak tubes
 at T-8.0. At a uniform 0.75 × our present tube price (≈ 1.08 M) the real-portal line and Auto's present line tie
 (derived from §2: (11,380 − 5,532) × 1.306 × (1 − k) = 1,892 M gives k = 0.75).
 

@@ -9,20 +9,22 @@ viaducts or earthworks. Research subagents (research mode) searched; I opened th
 
 - **Per route-metre a twin tunnel costs ≈ 2–4 × as much to run as a viaduct or open road.** Swiss national roads
   (ASTRA research report, 2008) spend 246–286 k CHF per (virtual) km and year on a twin tunnel, against 63.5 k on
-  open motorway. This covers operational maintenance with the energy for lights and fans. Tunnel technology is renewed
+  open motorway (per *virtual* km, which counts widenings and junctions; ratios approximate). This covers operational
+  maintenance with the energy for lights and fans. Tunnel technology is renewed
   every 15–20 years at ≈ 0.15–0.19 M CZK per tube-m (Panenská + Libouchec 2025; Branisko study 2025).
 - **A Czech road CBA has no separate rate for tunnels or bridges.** The ministry method (Rezortní metodika 2017,
   updated 06/2023) prices road upkeep with HDM-4 standards per km of road class. Structures are to be costed
-  individually from the owner's data. The method's simplified life-cycle table (railway chapter; it lists bridges and
-  tunnels) is 1 % of the investment per year plus repairs at ¼, ½ and ¾ of the economic life. Conventions:
-  30 years, 3 % real social discount rate, residual value counted; economic life of road bridges 75 years, tunnels 90.
+  individually from the owner's data. The method's simplified table (railway chapter) gives bridges and tunnels
+  1 % a year plus repairs at ¼, ½ and ¾ of a 60–80-year cycle. These are percentages of a future major repair, not
+  of the original price, so they do not carry over directly. Conventions: 30 years, 3 % real social discount rate,
+  residual value counted; economic life of road bridges 75 years, tunnels 90.
 - **German ABBV (2010)** is the cleanest published table of lives and annual upkeep as % of construction cost:
   - mined tunnel shell 130 years, 0.9 %;
   - tunnel equipment 20 years, 2.0 %;
   - prestressed bridge deck 70 years, 1.3 %; substructure 110 years, 0.5 %;
   - energy excluded.
-- **D35 example:** over 30 years the real layout (3.95 km twin tunnel, 440 m of bridges) costs **≈ 0.85–1.4 bn more to
-  run** (present value) than Auto's 1.9 km tunnel with 2.3 km of bridges. Running costs favour the shorter tunnel.
+- **D35 example:** over 30 years the real layout (3.95 km twin tunnel, 440 m of bridges) costs **≈ 0.5–1.3 bn more to
+  run** (present value, central 0.9) than Auto's 1.9 km tunnel with 2.3 km of bridges. Running costs favour the shorter tunnel.
 
 ## 1. Tunnels
 
@@ -36,7 +38,7 @@ viaducts or earthworks. Research subagents (research mode) searched; I opened th
 | **Technology renewal**, D8 Panenská + Libouchec 2025 | 744 M CZK (Spel) after ≈ 19 years: technology plus some civil repairs | Tube lengths 2,058 + 2,030 + 535 + 454 m = 5,077 m gives **0.147 M CZK per tube-m** (derived) | research/51 |
 | **Technology renewal**, D1 Branisko (SK) study, ÚHP 2025 Tab. 4 ([PDF](https://www.mfsr.sk/files/sk/financie/hodnota-za-peniaze/hodnotenia/informatizacia/hodnotenie_d1_beharovce-branisko.pdf)) | existing 4,975 m tube after 33 years: technology 35.3 M€ + civil 39.7 M€ (CÚ 2Q 2024) | Technology 7.1 k€ per m, **≈ 0.19 M CZK per tube-m** (derived, × 25.119 × 1.07); with civil ≈ 0.40 M | y |
 | ABBV Anlage, Tab. 2 ([gesetze-im-internet](https://www.gesetze-im-internet.de/abbv/anlage.html)) | 2.1.1 mined, with drainage: **130 y, 0.9 %/y**; 2.1.2 without drainage 130 y, 0.6 %; 2.2 cut and cover 90 y, 0.6 %; 2.3 equipment (lighting, ventilation, safety, control): **20 y, 2.0 %/y**. §3.9: energy is *not* included | % of construction cost | y |
-| Czech CBA, Tab. 8.34 (railway chapter; generic rows) ([SFDI PDF](https://sfdi.gov.cz/wp-content/uploads/2024/06/2023-rezortni-metodika-textova-cast.pdf), p. 107) | "tunely": upkeep 1 % a year; repairs 5 % at ¼, 20 % at ½, 5 % at ¾ of the cycle; "mosty, propustky, zdi" the same | Used where the owner's data are missing ("Pokud tyto informace nejsou k dispozici") | y |
+| Czech CBA, Tab. 8.34 and 8.37 (railway chapter) ([SFDI PDF](https://sfdi.gov.cz/wp-content/uploads/2024/06/2023-rezortni-metodika-textova-cast.pdf), pp. 107–110) | "tunely": upkeep 1 % a year; repairs 5 % at ¼, 20 % at ½, 5 % at ¾ of the cycle (60 years national, 80 regional); "mosty, propustky, zdi" the same | % "z nákladů na budoucí celkovou komplexní obnovu"; for bridges and tunnels that renewal is "oprava většího rozsahu", not a rebuild. Used where the owner's data are missing. Cross-check only | y |
 
 **Technology share.** SPK assumes 20 % of the tube price; the Branisko estimate has 10 %; Hessen 3–12 %.
 
@@ -45,7 +47,7 @@ viaducts or earthworks. Research subagents (research mode) searched; I opened th
 | Source | Value | Opened |
 |---|---|---|
 | ABBV Tab. 1 | Substructure (concrete, RC) 110 y, 0.5 %/y. Deck: RC 70 y, 0.8 %; prestressed with internal tendons 70 y, **1.3 %**; external tendons 1.1 %; steel 100 y, 1.5 %; steel–concrete composite 70 y, 1.2 %. Bearings and joints are included in the deck row when built together | y |
-| Czech CBA Tab. 8.34 | bridges: 1 % a year + 5 / 20 / 5 % at ¼ / ½ / ¾ of 75 years | y |
+| Czech CBA Tab. 8.34 / 8.37 | bridges: 1 % a year + 5 / 20 / 5 % at ¼ / ½ / ¾ of a 60–80-year cycle, of a future major repair's cost (see §1) | y |
 | NKÚ audit 2020 ([k19010](https://www.nku.cz/assets/kon-zavery/k19010.pdf)) | No usable Czech annual CZK/m². Repair projects 3,812–161,260 CZK/m²; 10.1 % of motorway and class I bridges in poor to critical state (2019) | subagent |
 
 Tall viaducts cost more to inspect and repair. That shows in their price (research/50), so the % rates scale with it;
@@ -79,14 +81,14 @@ no extra factor is sourced.
 |---|---|---|---|---|
 | Tunnel operation (energy, control, washing, equipment upkeep) | **5 k CZK per tube-m** (range 3–10 k) | — | ŘSD 20 M per tunnel; Hessen 100–150 €/m; Swiss twin tube 4 × open road. PROVISIONAL central value | medium-low on the level, high that it is real and large |
 | Tunnel technology renewal | — | **0.17 M CZK per tube-m every 20 years** | Panenská 0.147, Branisko 0.19; ABBV / ŘSD 15–20 years | medium |
-| Tunnel shell | **1 % of the civil part** (80 % of the tube price) | 5 % at ¼ of 90 years | Czech CBA Tab. 8.34 (ABBV 0.9 %) | medium |
-| Bridge | **1 % of the bridge price** | 5 % at ¼ of 75 years | Czech CBA Tab. 8.34 (ABBV 0.5–1.3 %) | medium |
+| Tunnel shell | **0.9 % of the civil part** (80 % of the tube price) | included | ABBV 2.1.1 (% of construction cost, upkeep to its 130-year life); Czech Tab. 8.34 as a cross-check | medium |
+| Bridge | **≈ 1.0 % of the bridge price** (deck 1.3 %, substructure 0.5 %, a 60 / 40 split PROVISIONAL) | included | ABBV 1.2.2.1 / 1.1.1 | medium |
 | Open road | 1.07 M CZK per km, plus resurfacing | Tab. 8.40 | Czech CBA Tab. 8.39 (2017 prices, incl. VAT; to be converted) | high on the source; it mostly cancels between layouts |
 | Earthworks | 0 beyond the road | — | none sourced | — |
 
 **Presentation:** a separate figure, "Running costs, 30 years: … bn CZK". It is not in the construction bill or the
-score unless the owner turns it on. Discounting at 3 % follows the Czech method; residual value is left out (the
-same for every layout over 30 years).
+score unless the owner turns it on. Discounting at 3 % follows the Czech method. This is running costs only: a
+full CBA would also count residual value, which differs between layouts (more tunnel shell, more bridge).
 
 ## 6. Worked example: D35 (research/73 §2 bills)
 
@@ -95,9 +97,9 @@ same for every layout over 30 years).
 | Tube-m (twin) | 3,798 | 7,896 |
 | Tunnel bill before surcharges (civil 80 %) | 5,532 M | 11,380 M |
 | Bridge bill | 4,361 M | 728 M |
-| Per year at 5 k CZK/tube-m: operation + shell 1 % + bridges 1 % | 106.9 M | 137.8 M |
-| Present value, 30 years at 3 % (annuity 19.60), with renewal at year 20 and 5 % repairs at years 19 (bridges) and 23 (tunnels) | **2,688 M** | **3,696 M** |
-| Difference | | **+1,008 M** (3 k / tube-m: +847 M; 10 k: +1,408 M) |
+| Per year at 5 k CZK/tube-m: operation + shell 0.9 % + bridges 0.98 % | 101.6 M | 128.6 M |
+| Present value, 30 years at 3 % (annuity 19.60), technology renewed at year 20 | **2,348 M** | **3,263 M** |
+| Difference | | **+915 M**; range +526 M (3 k / tube-m, bridges 1.3 %) to +1,317 M (10 k, bridges 0.98 %) |
 
 All derived.
 
