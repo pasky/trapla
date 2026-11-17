@@ -150,6 +150,12 @@ export class ProjectStore implements ProjectStoreApi {
     if (key(baseline) !== key(this.current.design)) this.publish(this.revised(baseline), true);
   }
   canUndo(): boolean { return this.index > 0; }
+  historyStep(step: 'undo' | 'redo'): readonly [ProjectDesign, ProjectDesign] | null {
+    // (a step still open, a drag: an undo takes back that step only)
+    if (this.baseline) return step === 'undo' ? [this.baseline, this.current.design] : null;
+    const i = step === 'undo' ? this.index - 1 : this.index;
+    return i >= 0 && i + 1 < this.history.length ? [this.history[i], this.history[i + 1]] : null;
+  }
   canRedo(): boolean { return this.index + 1 < this.history.length; }
   private moveHistory(index: number): void {
     // An undo (or redo) while a step is still open (a drag, a burst of + steps) takes back that step only.

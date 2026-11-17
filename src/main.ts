@@ -120,7 +120,7 @@ async function main() {
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
   const profileCanvas = document.getElementById('profile-canvas') as HTMLCanvasElement;
   const profile = new ProfilePanel(profileCanvas);
-  const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo());
+  const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo(), (step) => step === 'undo' ? store.undoLabel() : store.redoLabel());
   addScenariosButton(document.getElementById('editbar')!);
   installToolbarFit(document.getElementById('view')!);
   const hud = new Hud(document.getElementById('hud')!, scenario);
@@ -311,7 +311,7 @@ async function main() {
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }
   projectScore(true);
-  editBar.set(store.undoLabel(), store.redoLabel());
+  editBar.set(projectStore.canUndo(), projectStore.canRedo());
   setStatus('computing…');
   requestEval();
 

@@ -7,12 +7,13 @@
 // road line up / down = pin its height there (Auto), drag a height point (By hand), wheel = zoom,
 // right/middle-drag = scroll. Hovering shows what is there and the place on the map.
 
-import { BRIDGE_STYLE_TEXT } from '../core/terms';
+import { BRIDGE_STYLE_TEXT, ourWords } from '../core/terms';
 import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
 import type { OurLine } from '../core/terms';
+import type { WaterResult } from '../core/watercourses';
 import { bendNo, lineFrame, shownGrade, shownS, shownText } from './chainage';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
@@ -65,6 +66,9 @@ type Under =
 
 /** narrowest zoom, m */
 const MIN_SPAN = 300;
+/** how a watercourse passes our road (the profile's tooltip) */
+const WATER_UNDER: Record<WaterResult['structure'], string> = { pipe: 'in a pipe under our road', box: 'in a box culvert under our road',
+  bridge: 'under our bridge', tunnel: 'over our tunnel', blocked: 'blocked by our road' };
 /** centre line of the bend markers, in the top padding */
 const BEND_Y = 12;
 
@@ -958,7 +962,7 @@ export class ProfilePanel {
       .filter(([, v]) => v > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 2);
     const facts: string[] = [];
     for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x, this.gradeRule.line)}`);
-    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(`${c.waterKind}: ${c.structure}`);
+    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(ourWords(`${c.waterKind.charAt(0).toUpperCase()}${c.waterKind.slice(1)} ${WATER_UNDER[c.structure]}`, this.gradeRule.line));
     let nb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) nb++;
     if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} demolished`);
@@ -970,7 +974,7 @@ export class ProfilePanel {
     else if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
     else this.tip.innerHTML = `<div><b>km ${(shownS(r.s[i]) / 1000).toFixed(2)}</b> · ${how}</div>
       <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${groupShort(gr, this.line)} ${perM(v)}`).join(' ')}</div>
-      ${v ? `<div class="tip-bad">⚠ ${e(shownText(v.title))}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? ` +${facts.length - 1}` : ''}</div>` : ''}`;
+      ${v ? `<div class="tip-bad">⚠ ${e(shownText(v.title))}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? `, and ${facts.length - 1} more` : ''}</div>` : ''}`;
     this.tip.style.display = '';
     // inside the profile, above the cursor (the map's spot it marks stays visible)
     const box = this.canvas.getBoundingClientRect();

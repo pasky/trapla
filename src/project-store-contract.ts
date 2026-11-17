@@ -60,6 +60,8 @@ export interface ProjectStoreApi {
   redo(): void;
   canUndo(): boolean;
   canRedo(): boolean;
+  /** The designs either side of the step an undo (redo) would take back (do again), for its label; null: none. */
+  historyStep?(step: 'undo' | 'redo'): readonly [ProjectDesign, ProjectDesign] | null;
   /** Requires current settled identity, complete validity, and no open transaction. */
   offerBest(result: ProjectResult): boolean;
   subscribe(listener: (snapshot: ProjectSnapshot, committed: boolean) => void): () => void;
