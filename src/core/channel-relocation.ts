@@ -5,7 +5,7 @@ import { ROAD_CLASSES } from './data/urban';
 import { PRICES } from './data/prices';
 import { landPerM2 } from './cost';
 import { NORM_CAP_I, NORM_CAP_II } from './ground';
-import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell } from './footprint-geometry';
+import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, touchesFootprint, type FootprintCell } from './footprint-geometry';
 import type { FootprintConflict } from './footprint';
 import type { CrossingPoint } from './crossings';
 import { estimateQ100, waterWidth, type WaterCrossing, type WaterReach } from './watercourses';
@@ -140,7 +140,7 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
       if (Math.hypot(p.x - original[j].x, p.y - original[j].y) > 0.25 || Math.hypot(a.x - original[j - 1].x, a.y - original[j - 1].y) > 0.25) {
         roads?.nearSegments(cellBounds(cell, 14), road => {
           const half = ROAD_CLASSES[road.cls].width / (road.cls === 'motorway' ? 4 : 2);
-          if (clipFootprint(road, cell, half)) invalid = true;
+          if (touchesFootprint(road, cell, half)) invalid = true;
         });
         terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), other => {
           if (other.reach.id === reach.id || other.length <= 0) return;
@@ -171,7 +171,7 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
       const cell: FootprintCell = { x: a.x + t * dx, y: a.y + t * dy, tx: dx / len, ty: dy / len,
         along: (hi - lo) / 2, left: 0.05, right: 0.05, i: hit.i0, s: r.s[hit.i0] };
       terrain.watercourses?.nearSegments(cellBounds(cell), other => {
-        if (other.reach.id !== reach.id && other.length > 0 && clipFootprint(other, cell)) invalid = true;
+        if (other.reach.id !== reach.id && other.length > 0 && touchesFootprint(other, cell)) invalid = true;
       });
       if (invalid) break;
     }

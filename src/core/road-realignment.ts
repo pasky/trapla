@@ -4,7 +4,7 @@ import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossing
 import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
-import { cellBounds, clipFootprint, insideFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
+import { cellBounds, clipFootprint, insideFootprint, touchesFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
 import { barrelLength, waterSize, waterWidth } from './watercourses';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
@@ -309,9 +309,15 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   const chordHits = (a: Point2, b: Point2, width = half): boolean => {
     const len = distance(a, b), count = Math.max(1, Math.ceil(len / STEP));
     const segment = { ax: a.x, ay: a.y, bx: b.x, by: b.y, d: 0, length: len };
+    // (the whole chord is tested against the cells near each sample: consecutive samples in one bucket of the
+    // grid would repeat the same tests)
+    let tested: readonly FootprintCell[] | undefined;
     for (let k = 0; k <= count; k++) {
       const t = k / count, q = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-      for (const c of grid.near(q)) if (clipFootprint(segment, c, width)) return true;
+      const cells = grid.near(q);
+      if (cells === tested) continue;
+      tested = cells;
+      for (const c of cells) if (touchesFootprint(segment, c, width)) return true;
     }
     return grid.hits(a, width) || grid.hits(b, width);
   };
@@ -548,7 +554,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         const cell: FootprintCell = { ...mid, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half };
         raster(cell);
         terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), channel => {
-          if (clipFootprint(channel, cell, waterWidth(channel.reach) / 2) && !ownStreams().has(channel.reach.id)) problems.add('path intersects water/rail');
+          if (touchesFootprint(channel, cell, waterWidth(channel.reach) / 2) && !ownStreams().has(channel.reach.id)) problems.add('path intersects water/rail');
         });
         // A stream the old road already crossed here is crossed again by the rebuilt one: its culvert
         // rebuilt where the new line meets it, sized like a reroute's (link-route.ts).
@@ -571,7 +577,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       // Conservative bounding square protects the whole disk, including its pavement apron.
       raster(diskCell);
       terrain.watercourses?.nearSegments(cellBounds(diskCell, terrain.watercourses.maxHalfWidth), channel => {
-        if (clipFootprint(channel, diskCell, waterWidth(channel.reach) / 2)) problems.add('turnaround intersects water/rail');
+        if (touchesFootprint(channel, diskCell, waterWidth(channel.reach) / 2)) problems.add('turnaround intersects water/rail');
       });
       const z = terrain.heightAt(turn.x, turn.y);
       const other = dead[0] ? path[1] : path[path.length - 2], norm = distance(turn, other) || 1;

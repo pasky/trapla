@@ -26,6 +26,55 @@ support lifts, a stream retry), demo plans one more overbridge and reconnection 
 auto-profile DP carries ≈ 12 % more height states on demo (its corridor of reachable heights is wider). Drag budgets pass in all six modes.
 
 
+## Where the time is on cost model 31, and four small bit-exact savings (2026-11-17)
+
+`node scripts/dev/profile.mjs` (new: it bundles the engine so that node's profiler can tell functions and
+lines apart, then prints own time, time with callees, a function's subtree or lines, or sampled allocation)
+on main `06dc5d3`:
+
+| | the five saved D11 designs | the whole D3 (56 km, one evaluation ≈ 2.5 s) |
+|---|---|---|
+| grade search (`autoprofile.ts`: `solve` and its cost tables) | 27 % | 10 % |
+| crossings (`buildCrossingGeometry`; about half of it weighing other remedies in `reconsider`) | 23 % | 24 % |
+| garbage collection | 10–12 % | 12 % |
+| retaining walls (`planRetainingWalls`) | 9 % | 10 % |
+| noise (`noiseOutcome`) | 8 % | 16 % |
+| footprint screen (`footprintConflicts`, mostly `planRoadRealignment`) | 4 % | 15 % |
+| allocated per evaluation | ≈ 280 MB | ≈ 5 GB |
+
+There is no single hot spot left outside the grade search: the profile is flat (the next own-time entries
+are 2–3 % each), and the crossing, noise and retaining code is already written around scratch arrays and
+memos. What the whole D3 pays for is passes: `evaluate` runs the whole route three times (the first pass 29 %,
+the separation retry 28 %, a further retry 13 %) before the noise (16 %). **The lever that would win back the
++11 % of model 31 is there and in the grade search** (a retry that re-engineers only the stretch it changes;
+fewer height states), i.e. in `evaluate.ts` and `autoprofile.ts`, which this pass did not touch (open work
+on both).
+
+Done, each bit-identical (`scripts/exact.ts`: 177 / 177 whole results; `tests/footprint-geometry.test.ts`
+holds the rewritten primitives to their earlier forms on 20,000 random cases each):
+
+- `road-realignment.ts` `chordHits` tested the whole chord against the footprint cells near *each* 5 m
+  sample of it; consecutive samples in one 100 m bucket repeated the same tests (≈ 5 % of the whole D3).
+  It tests a bucket once.
+- Screens that only ask *whether* a segment touches a cell (`chordHits`, the water / rail checks of a
+  rebuilt road and of a moved channel) use `touchesFootprint`, which makes no interval.
+- `FootprintGrid.hits` made a closure and, off the footprint, an empty array per query.
+- `watercourses.ts` `barrelIntervals` built ten small arrays per call (4 % of all allocation on D11).
+
+Interleaved against main `06dc5d3` (`scripts/dev/interleave.ts`, which now takes a pack and designs; host load
+8–16, so read the minima), now / main:
+
+| | rounds × runs | min | median | CPU |
+|---|---|---:|---:|---:|
+| five D11 designs | 30 × 4 | 0.97–0.99 | 0.97–1.03 | 0.98–1.03 |
+| D3 motorway starter (15 km) | 16 × 1 | 0.97 | 0.93 | 0.93 |
+| whole D3 (56 km) | 10 × 4 | 0.94–0.99 | 0.87–0.98 | 0.89–1.05 |
+| whole D35 | 10 × 1 | 0.94 | 0.93 | 0.99 |
+| Nová Paka | 16 × 1 | 0.99 | 1.07 | 1.05 |
+
+So ≈ 1–3 % on D11 and ≈ 3–6 % on the long routes: real, small, and not the +11 %.
+
+
 ## Crossing remedies, cost model 28 (2026-11-16)
 
 Straightened crossings, the consolidation pass, moving roads beside ours and reroutes joining their target's
