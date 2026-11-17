@@ -94,8 +94,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   style or method chosen on Auto's structure leaves it Auto's (`StructureOverride.auto`); painting a structure
   as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
   later. A long mined tube costs less per metre (cost model 36, research/64; the real D35 choice still 17 % dearer
-  in our model, research/63). The Nová Paka starter follows the mapped bypass; small drags on it often hit side
-  roads the real project rebuilt (PLAN.md, model 36).
+  in our model, research/63; a rock-cover factor is proposed in research/65 §4, not implemented). The Nová Paka
+  starter follows the mapped bypass. Since cost model 37, side roads no longer break its small drags: dead ends are
+  cut back to their junction, and the separation retry runs on every category. What still breaks them is its
+  hand-set radii at the norm's limit (S-bends 4–6, bend 9; PLAN.md, model 37).
 - Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
   in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
   boundary at km 11.21 sees that in its window; PLAN.md "Design realism").

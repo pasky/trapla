@@ -728,6 +728,47 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
   old starter 8 / 10 / 0): the real line threads between class III roads and streets it rebuilt, which our
   earthworks then cover (each with its concrete fix); the crossing engine's rebuilding of such roads is the lever.
 
+### Side roads under our earthworks, lifts on grades; the Štikov valley; tunnel rows (cost model 37, 2026-11-17)
+
+Research: research/65.
+- **Small drags of the Nová Paka starter** (24 seeded drags of ≤ 25 m, `scripts/small-drag-audit.ts`, `DUMP=dir`
+  writes the dragged designs). Invalid 16 / 15 / 9 → **8 / 15 / 7** at km 1.5 / 3.3 / 5.0. No crossing or footprint
+  problem is left except a stream's head 1 m under our toe (5 drags, all also failing on geometry). The rest is
+  geometry: the starter's hand-set mapped radii leave 2.7 / 2.3 / 0.9 m spare at bends 4→5, 5→6 and 9→B (the real
+  road is at the norm's limit), so a drag that turns them more breaks the S-bend rule, with a concrete fix. Options
+  (owner's call, research/65 §1): leave it as the player's override; a "mapped radius" Auto lowers just enough;
+  or the editor lowering a set radius a drag makes too large.
+- **An overbridge whose ramps would bury a road beside it** (or whose joining road cannot be regraded) counts as
+  stuck. **The separation retry** (the grade asked to clear the road: our cutting 6 m below it or our bridge above)
+  **now runs for every category**, not only motorways. An ordinary road's junctions are 1.5 km apart, so it
+  crosses the roads between them as a motorway does. Nová Paka km 1.84: a support lift a kilometre away raised our
+  line 5 m out of the cutting the class III road crosses over; now it stays in a 6 m cutting.
+- **A dead end our earthworks cut**, with no room for a turning area before the first road it joins, **is cut back
+  to that junction** (its traffic turns there). Before, the turning area went past the junction and severed the
+  third road. A dead end whose pavement (not only its centreline) reaches into our slope counts as one.
+- **Support lifts on grades**: a lift target moved onto the traced line's point (blocks, model 25) is raised by
+  what the line falls from there to the station that needs the height. On a 5 % descent the station 4.8 m off
+  missed it by 0.25 m in every round (outcome-audit random-3: VALID now).
+- **A split-off way** (a way merged into another crossing of the same way, which our earthworks still bury) is
+  judged together with the separation retry, which lets the grade clear it (random-15: the track at the tunnel
+  portal resolved, the 540 m tunnel replaced by a 12 m cutting with the track over it, 6,701 → 5,137 M).
+- **Bills** (model 36 → 37): D11 frozen fixtures (the lifts) straight 8,224.7 (same), best 3,616.7 → 3,618.5,
+  best-pin 3,612.4 → 3,614.2, best-structures 3,724.0 → 3,729.6, direct-80 4,142.4 → 4,144.7, direct-90 4,673.7 →
+  4,676.4, town-centre 8,968.3 → 8,972.7, demo / best-drag unchanged. Outcome audit (24 random D11 designs): 84 →
+  76 problems, 6 → 7 VALID, links > 1 km 17, ramps > 250 m 5 → 3.
+- **The Štikov valley** (research/65 §3). No public document gives the reason for the real 423 m estakáda. The 2017
+  EIA notification rules out a stream, a flood zone, a road below, landslides, NATURA 2000 and CHKO. A local
+  biocorridor (LBK 3) and a binding migration study came after the bridge was designed. The real grade runs ≈ 28 m
+  over the valley floor; Auto's runs 14 m over it. With our grade pinned at the real height, Auto bridges the valley
+  itself (180 m, 25 m high, +55 M). So the difference is the grade line, not a missing rule.
+- **The D35 tunnel gap** (research/65 §4):
+  - SPK's method does put the B surcharge on tunnel rows (PZ II.g–h; only rest areas are exempt). No change.
+  - Rock cover: SPK prices TT4 throughout. A derived factor of × 0.92 for more than 20 m of cover, 1.0 at 15–20 m
+    and 1.12 below 15 m comes from OTSKP 2026's excavation items by class and the D11 Poříčí class-by-cover
+    rule (confidence medium-low).
+  - That factor is recorded as a proposal and not implemented. It would remove ≈ 0.8–1.0 bn of the 3.3 bn D35
+    gap.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
