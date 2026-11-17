@@ -24,6 +24,7 @@ import { pieceAt } from './pieces';
 import type { ProfilePanel } from './profile';
 import { activeSelection, qualifySelection } from './route-selection';
 import { stationIndex } from '../core/range';
+import { corridorOfRoute } from '../core/project-motorway';
 
 export interface SelectionContext {
   readonly session: Session;
@@ -38,6 +39,8 @@ export interface SelectionContext {
   activeEndpoints(): RenderEndpoints;
   /** the active route's card when the road widgets cannot edit it */
   routeCard(): void;
+  /** our road starts selected (a first-time player: the intro is up) */
+  readonly startSelected: boolean;
 }
 
 /** Selecting these selects the road itself (a drag on it then bends it); anything else (a crossed road, a culvert,
@@ -46,10 +49,15 @@ const ROAD_KINDS: ReadonlySet<Sel['kind']> = new Set(['stretch', 'bend', 'end', 
 
 export function createSelection(app: SelectionContext) {
   const selectedPi = () => (app.session.sel?.kind === 'bend' ? app.session.sel.i : null);
+  /** a road as selected: a motorway's two directions are one road */
+  const roadKey = (id: RouteId | null) => id && (corridorOfRoute(app.projectStore.snapshot.design, id)?.id ?? id);
+  /** the active road is the selected one */
+  const roadSelected = () => !!app.store.activeRouteId && app.session.selectedRoad === roadKey(app.store.activeRouteId);
+  const setRoadSelected = (on: boolean) => { app.session.selectedRoad = on ? roadKey(app.store.activeRouteId) : null; };
   /** the road's selected look: its bend handles (and a rebuilt stretch's end handles) only while it is selected */
   const showRoadSelected = () => {
-    document.getElementById('overlay')?.classList.toggle('road-idle', !app.session.roadSelected);
-    app.inspector.roadSelected = app.session.roadSelected;
+    document.getElementById('overlay')?.classList.toggle('road-idle', !roadSelected());
+    app.inspector.roadSelected = roadSelected();
   };
   const stationNear = (x: number, y: number) => {
     if (!app.session.last) return 0;
@@ -97,7 +105,7 @@ export function createSelection(app: SelectionContext) {
     }
     app.session.qualifiedSelection = app.store.activeRouteId ? qualifySelection(app.store.activeRouteId, next) : null;
     app.session.sel = activeSelection(app.store.activeRouteId, app.session.qualifiedSelection);
-    if (next) app.session.roadSelected = ROAD_KINDS.has(next.kind);
+    if (next) setRoadSelected(ROAD_KINDS.has(next.kind));
     showRoadSelected();
     if (next) app.intro.hide();
     const range = next?.kind === 'stretch' ? { s0: next.s0, s1: next.s1 } : null;
@@ -171,17 +179,19 @@ export function createSelection(app: SelectionContext) {
   };
 
   /** Esc, a click on open ground or on another thing: nothing selected, the road included */
-  const deselect = () => { app.session.roadSelected = false; select(null); };
+  const deselect = () => { setRoadSelected(false); select(null); };
   /** the road itself selected (a pick in the road list, a new road, a press in its profile), with what is
    *  selected on it */
   const selectRoad = () => {
-    if (app.session.roadSelected) return;
+    if (roadSelected()) return;
     const sel = app.session.sel;
-    app.session.roadSelected = true;
+    setRoadSelected(true);
     select(sel && ROAD_KINDS.has(sel.kind) ? sel : null);
   };
+  if (app.startSelected) setRoadSelected(true);
   showRoadSelected();
   return {
+    showRoadSelected, get roadSelected() { return roadSelected(); },
     selectedPi, placeOf, select, frameSelection, selectPiece, revalidate, deselect, selectRoad,
     /** counts selections: a deferred pick yields to any later one */
     get generation() { return selectGeneration; },

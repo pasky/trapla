@@ -40,8 +40,8 @@ export interface RoutesContext {
   readonly curveEdit: CurveEditor; readonly linkEdit: LinkEditor | undefined; readonly works: CrossingHighlight | undefined;
   readonly links: RoadLinks; readonly results: ResultDisplay;
   select(next: Sel | null, fly?: boolean): void;
-  /** the active road itself selected (ui/selection.ts) */
-  selectRoad(): void;
+  /** the active road itself selected; nothing selected, the road included; the road's selected look (ui/selection.ts) */
+  selectRoad(): void; deselect(): void; showRoadSelected(): void;
   selectedPi(): number | null;
   /** the score in the HUD; `pending`: a result is still awaited */
   projectScore(pending: boolean): void;
@@ -114,12 +114,11 @@ export function createRoutes(app: RoutesContext) {
     const one = oneDirection ?? (!!here && here === corridorOfRoute(design, id) && app.store.oneDirection);
     const shown = app.store.activeRouteId, shownOne = app.store.oneDirection;
     if (!app.store.switchRoute(id, created, one)) return false;
-    // another line is not selected until something selects it (a click on it, the road list); a motorway's
-    // other direction stays as selected as the one before
-    if (id !== shown && (!here || here !== corridorOfRoute(design, id))) app.session.roadSelected = false;
     syncDirections();
     evals.endGesture(); app.session.activePreviewPrice = null;
     frameEnds();
+    // (a house's card goes with the road it was opened on: carried over, it would switch back to that road)
+    if (app.store.activeRouteId !== shown && app.session.qualifiedSelection?.kind === 'building') app.session.qualifiedSelection = null;
     app.session.sel = activeSelection(id, app.session.qualifiedSelection); app.session.qualifiedSelection = qualifySelection(id, app.session.sel);
     app.view.setHover(null); app.extras.setRange(null);
     // another line: its whole profile. The line the profile already shows (a click on our own road): the
@@ -174,7 +173,7 @@ export function createRoutes(app: RoutesContext) {
   let building: BuildKind = registeredBuildKinds()[0];
   app.routeBar.onBuild = kind => {
     const k = registeredBuildKinds().find(b => b.kind === kind); if (!k) return;
-    building = k; app.select(null); app.buildTool.begin(k.label); app.hud.revealContext('inspector');
+    building = k; app.deselect(); app.buildTool.begin(k.label); app.hud.revealContext('inspector');
     if (app.pack.transportMeta) void ensureTransport(); // ends may join mapped lines
   };
   /** where a click while building puts a road end: on a road (joins it), else free ground */
@@ -225,6 +224,7 @@ export function createRoutes(app: RoutesContext) {
     }
     frameEnds(); frameLine(lineFrame.length, true, d);
     app.session.sel = activeSelection(app.store.activeRouteId, app.session.qualifiedSelection);
+    app.showRoadSelected(); // (an undo may have removed the selected road: the one now active is not selected)
     if (d) {
       if (app.session.sel?.kind === 'bend' && app.session.sel.i >= d.pis.length) app.select(null);
       app.view.setDesign(d, app.selectedPi(), app.activeEndpoints()); app.hud.setDesign(d);

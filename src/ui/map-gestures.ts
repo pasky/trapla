@@ -116,13 +116,11 @@ export function createMapGestures(app: MapGestureContext) {
       // First click on a base road before the graph is parsed: parse it, then pick the road at the
       // clicked ground point (wherever the camera is by then), unless something else was selected meanwhile.
       const ground = !t && !app.transportGraph && app.pack.transportMeta ? app.view.pick(clientX, clientY) : null;
-      const wasSelected = app.roadSelected;
       if (t?.kind === 'route-hit') { if (app.switchRoute(t.routeId) && app.store.read()) app.selectPiece(t.s); }
       else if (t?.kind === 'source') app.showSource(t.hit);
       else if (!t && app.legacyRoadAt(_x, _y)) app.showNoLinks();
       else if (t) app.select(t);
-      else app.deselect();
-      if (wasSelected && !app.roadSelected) deselectedAt = performance.now();
+      else { if (app.roadSelected) deselectedAt = performance.now(); app.deselect(); }
       if (ground) {
         const generation = app.selectGeneration;
         void app.ensureTransport().then(() => {
@@ -140,9 +138,9 @@ export function createMapGestures(app: MapGestureContext) {
       if (app.roadSelected) deselectedAt = performance.now();
       app.deselect();
     },
-    // (on the selected road only; the first click of the double click may have left it unselected)
+    // (on the selected road only; the first click of the double click, on open ground, may have let go of it)
     onDoublePick: (x, y) => {
-      if (!app.store.read() || app.routeAt(app.lastClient.x, app.lastClient.y, 10)) return;
+      if (app.buildTool.active || !app.store.read() || app.routeAt(app.lastClient.x, app.lastClient.y, 10)) return;
       if (!app.roadSelected && performance.now() - deselectedAt > 800) return;
       app.selectRoad(); app.select({ kind: 'bend', i: insertBend(x, y, true) });
     },
@@ -153,12 +151,15 @@ export function createMapGestures(app: MapGestureContext) {
       grabbing = null;
       if (app.buildTool.active) return false;
       if (app.roadSelected && app.roadAt(clientX, clientY, 9) >= 0) return true;
+      // a designed road drawn there comes first (a click there picks it, as the hover says)
+      if (app.routeAt(clientX, clientY, 10)) return false;
       grabbing = mappedGrab(clientX, clientY);
       return !!grabbing;
     },
     onRoadDrag: (x, y) => {
       if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
-      if (!app.store.read()) return null; app.intro.hide(); return bendByDrag(x, y);
+      // (let go of between the press and the first move, e.g. Esc: the drag is the map's no more, nor the road's)
+      if (!app.store.read() || !app.roadSelected) return null; app.intro.hide(); return bendByDrag(x, y);
     },
     onPiSelect: (i) => { grabOffset = null; placedByDrag = null; app.select(i === null ? null : { kind: 'bend', i }); },
     onPiDrag: (i, x, y) => {

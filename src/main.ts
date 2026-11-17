@@ -126,9 +126,6 @@ async function main() {
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
   const intro = new Intro(document.getElementById('view')!, scenario.mode ?? 'road');
-  // A first-time player (the intro is up) finds our road selected, so the first drag bends it as the intro
-  // says; a returning player's drags move the map until a click selects a road (ui/selection.ts).
-  session.roadSelected = intro.visible;
   // The start view frames A and B in what the toolbar, legend and attribution leave, clear of the intro.
   view.frameSafe = () => {
     const host = document.getElementById('view')!.getBoundingClientRect();
@@ -188,6 +185,9 @@ async function main() {
     get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
     get sourceEditor() { return links.editor; },
     switchRoute: id => switchRoute(id), routeCard: () => routeCard(),
+    // A first-time player (the intro is up) finds our road selected, so the first drag bends it as the intro
+    // says; a returning player's drags move the map until a click selects a road.
+    startSelected: intro.visible,
   });
   const { selectedPi, select, selectPiece, revalidate, deselect, selectRoad } = selection;
   view.onEndClick = (end) => select({ kind: 'end', end });
@@ -254,7 +254,7 @@ async function main() {
   // every change of the design (ui/routes.ts) ----
   const { switchRoute, placeAt, bendLabel, joinStretch, directionsState } = createRoutes({
     session, store, projectStore, pack, scenario, view, profile, hud, inspector, extras, routeBar, editBar, buildTool, curveEdit, linkEdit, works,
-    links, results, select, selectRoad, selectedPi, projectScore, frameRoute, activeEndpoints, routeCard,
+    links, results, select, selectRoad, deselect, showRoadSelected: () => selection.showRoadSelected(), selectedPi, projectScore, frameRoute, activeEndpoints, routeCard,
     routeAt: (clientX, clientY, radius) => routeAt(clientX, clientY, radius), sourceAt: (clientX, clientY) => sourceAt(clientX, clientY),
   });
 
@@ -273,7 +273,7 @@ async function main() {
     get A() { return ends.a; }, get B() { return ends.b; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get sourceEditor() { return links.editor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
-    get roadSelected() { return session.roadSelected; }, get sel() { return session.sel; },
+    get roadSelected() { return selection.roadSelected; }, get sel() { return session.sel; },
     ensureTransport, select, selectPiece, deselect, selectRoad, switchRoute, showSource, showNoLinks, deletePi, placeAt, legacyRoadAt,
   });
   view.ev = mapEvents;
@@ -293,7 +293,7 @@ async function main() {
     view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
     get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
-    get roadSelected() { return session.roadSelected; }, get selectedCrossing() { return session.sel?.kind === 'crossing' ? session.sel.roadId : null; },
+    get roadSelected() { return selection.roadSelected; }, get selectedCrossing() { return session.sel?.kind === 'crossing' ? session.sel.roadId : null; },
     ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
   });
 
@@ -327,7 +327,7 @@ async function main() {
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; }, get sourceEditor() { return links.editor; },
     get sel() { return session.sel; }, get qualifiedSelection() { return session.qualifiedSelection; },
     get received() { return evals.received; }, get heavyStats() { return results.heavyStats; }, get idleWaiters() { return results.idleWaiters; },
-    get roadSelected() { return session.roadSelected; },
+    get roadSelected() { return selection.roadSelected; },
     sceneIdle, missionRouteId, switchRoute, select, selectPiece, selectRoad, placeAt, ensureTransport,
     releaseGrab,
   });

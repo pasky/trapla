@@ -453,11 +453,12 @@ try {
       const n0 = (await routes()).length;
       const at = await dragOn(motorway, 200, 60, -40);
       assert.equal((await routes()).length, n0, 'a mapped motorway is not rebuilt');
-      const still = await screen('sourceScreen', motorway, 200);
-      assert(Math.hypot(still.x - at.x, still.y - at.y) < 2, 'a drag on it does not pan the map');
+      // selected, it has no stretch to rebuild: a drag on it moves the map, its card still says why
+      const moved = await screen('sourceScreen', motorway, 200);
+      assert(Math.hypot(moved.x - at.x, moved.y - at.y) > 2, 'a drag on it moves the map');
       const card = await page.locator('#inspector').textContent();
       assert.match(card, /Motorways and expressways cannot be changed yet/);
-      console.log(`a drag on a mapped motorway: no pan, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
+      console.log(`a drag on a mapped motorway: the map moves, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
     } else console.log('no mapped motorway on the map: refusal not checked');
     // a mapped railway is grabbed like any road (main: rebuilt along its own line, as a railway)
     await page.keyboard.press('Escape');

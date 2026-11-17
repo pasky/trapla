@@ -80,6 +80,17 @@ try {
   await shot(385, 'select-mapped-selected');
   await drag(p, 40, -30);
   assert.equal((await T(() => window.trapla.getProject())).routes.length, 2, 'selected, a drag rebuilds its stretch');
+  assert.equal(await T(() => window.trapla.roadSelected()), true, 'the rebuilt road is selected');
+  // Undo takes the rebuilt road away: our road is active again, but not selected (a drag on it moves the map)
+  await page.locator('#undo').click(); await idle();
+  assert.equal((await T(() => window.trapla.getProject())).routes.length, 1);
+  assert.equal(await T(() => window.trapla.roadSelected()), false, 'after Undo removed the selected road, ours is not selected');
+  await T(() => window.trapla.resetCamera()); await still();
+  p = await roadAt(0.6);
+  const pis = JSON.stringify((await T(() => window.trapla.getDesign())).pis), cam3 = await camera();
+  await drag(p, 60, 30);
+  assert.notEqual(await camera(), cam3, 'a drag on our road then moves the map');
+  assert.equal(JSON.stringify((await T(() => window.trapla.getDesign())).pis), pis, 'and bends nothing');
   assert.deepEqual(errors, []);
   console.log(`select before drag: our road and ${road.name} — not selected a drag moves the map, a click selects, then a drag edits`);
 } finally { await game.close(); }
