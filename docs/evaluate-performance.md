@@ -23,6 +23,7 @@ Interleaved against main 099a471 (`scripts/dev/interleave.ts`, 16 rounds, host l
 CPU per round −2 %, sum of minima −1.5 %, of medians +1 % (against d88a0db at load 13–18: CPU −7 %; phase
 timings, min of 8: profile 49–52 ms on both, demo +4 ms for its one tunnel-mode solve). Drag budgets pass in all six modes (road
 failed once at 61 ms median under load 24, passed at 45 ms).
+
 ## Our line raised for a crossing, cost model 33 (2026-11-17)
 
 research/61: where Auto's first line leaves a crossing too little room (a reroute through homes where a box
