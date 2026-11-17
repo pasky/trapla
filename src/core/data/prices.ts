@@ -101,8 +101,13 @@
  * Frozen bills, starters and the outcome audit unchanged.
  * (No version: a later finish of an evaluation builds again only the crossings near where its road differs from
  * an earlier finish's, crossings-kept.ts. No bill, validity or other field moved on any checked design:
- * docs/evaluate-performance.md.) */
-export const COST_MODEL_VERSION = 38;
+ * docs/evaluate-performance.md.)
+ * 39: projects of several roads (playtest sweep 3): a road carried over ours is let off exactly what our road bills
+ * for that bridge (it was let off all it built within the ramps' reach); a railway of the project crossing ours follows
+ * our crossing's height (ours no longer digs under it as under a mapped railway; the crossing is its deck only); a held
+ * line high above the deck set for it passes over on that bridge built higher; a mapped road's own curve built anew
+ * is Auto's. Frozen single-road bills unchanged. */
+export const COST_MODEL_VERSION = 39;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
