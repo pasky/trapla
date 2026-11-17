@@ -80,7 +80,7 @@ export interface ViolationTarget {
   /** By hand: the player's height pins (profile point indices, the ends excluded) it is about */
   heightPins?: number[];
   /** By hand: a height pin moved to this chainage fixes it */
-  movePin?: { k: number; s: number };
+  movePin?: { k: number; s: number; z: number };
   /** By hand: the height pin whose radius back to the smallest fixes it */
   smallest?: number;
 }
@@ -579,15 +579,16 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
         });
         continue;
       }
-      // the pin to move: c, away from its neighbour, if there is room before its other one
+      // the pin to move: c, away from its neighbour along the slope behind it (that slope stays, the one between
+      // them becomes a mix of the two), if there is room before its other neighbour
       const away = c.s - w.dir * more, other = p.pts[c.index - w.dir].s;
       const room = c.index > 0 && c.index < last && (w.dir > 0 ? away - other : other - away) >= 20;
-      const move = room ? { k: c.index, s: away } : undefined;
+      const move = room ? { k: c.index, s: away, z: c.z - w.dir * more * (w.dir > 0 ? c.g1 : c.g2) } : undefined;
       const g = both ? (w.dir > 0 ? [c.g1, c.g2, w.nb!.g2] : [w.nb!.g1, c.g1, c.g2]) : [c.g1, c.g2];
       const slopes = `${signed(g[0])} to ${signed(g[1])}${both ? ` and on to ${signed(g[2])}` : ''}`;
       const nbName = w.j === 0 || w.j === last ? pin(w.j) : `your height pin at ${at(w.j)}`;
       out.push({
-        kind: 'vcOverlap', ...where,
+        kind: 'vcOverlap', ...where, s0: Math.min(c.s, p.pts[w.j].s), s1: Math.max(c.s, p.pts[w.j].s),
         title: both ? 'Two height pins too close' : `Height pin too close to ${w.j === 0 ? 'the start' : w.j === last ? 'the end' : 'the next one'}`,
         fix: both ? `Move ${pin(c.index)} at least ${fmt(more)} m away from the one at ${at(w.j)}, or delete one`
           : `Move ${pin(c.index)} at least ${fmt(more)} m further from ${nbName}`,
