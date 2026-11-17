@@ -103,7 +103,7 @@ export function rampLimit(cls: string, z: number, g0: number, g: number, run: nu
 
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */
 /** Issues this geometry pass raises (rebuilt from scratch on every build). */
-const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape' || v.crossing.code === 'reroute';
+const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape' || v.crossing.code === 'reroute' || v.crossing.code === 'square';
 /** Every diagnostic of a player's reroute shape starts so (issue code 'shape'). */
 const SHAPED = 'Shaped link';
 
@@ -175,6 +175,20 @@ const SHAPED_LINK: Record<LinkProblem, string> = {
   river: 'Shaped link crosses a river', far: LINK_TOO_FAR, works: 'Shaped link runs into another road of the project',
 };
 const linkMessage = (problem: LinkProblem, _shaped: true) => SHAPED_LINK[problem];
+
+/** The player's straightening that cannot be built (the way is built on its own line instead): why, from
+ * what the straightened build diagnosed. `lowered`: how deep the way would have to be lowered there, m (where
+ * the box on the new line lacks room: our road raised by what is missing would make it). */
+function squareIssue(c: CrossingResult, messages: readonly string[], lowered: number | undefined): CrossingIssue {
+  const what = ROAD_CLASSES[c.cls]?.label ?? 'road', square = messages.find(m => m.startsWith(SQUARE_FAILS));
+  const text = diagnosticText(square ?? messages[0], c), low = !square && messages.includes(UNDERPASS_TOO_LOW) && lowered !== undefined && lowered > LOWERING_RULES.maxDepth;
+  return { kind: 'crossing', s0: c.s, s1: c.s, basis: text.basis, rule: text.rule,
+    title: `The ${what} cannot be straightened here`,
+    fix: low ? `Raise our road here by ${(lowered - LOWERING_RULES.maxDepth).toFixed(1)} m, or choose "Keep its line" on the crossing card` : 'Choose "Keep its line" on the crossing card, or another kind of crossing',
+    detail: `${square ? text.detail : `On a new line at a right angle: ${text.title.charAt(0).toLowerCase()}${text.title.slice(1)}.`} It stays on its own line meanwhile.`,
+    crossing: { roadId: c.roadId, requested: c.requestedType!, code: 'square',
+      ...(low ? { actual: lowered, required: LOWERING_RULES.maxDepth } : {}) } };
+}
 
 /** Plain-language violation text for a geometry diagnostic (the diagnostic string stays internal). */
 function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue, 'title' | 'fix' | 'detail' | 'basis' | 'rule'> {
@@ -1405,8 +1419,26 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const paths = persist?.paths ?? new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
   // Engineered reroutes between the same anchors are the same within one call (terrain and route fixed).
   const routed = new Map<string, LinkPlan>(), linkMemo = { free: new Map<number, number>() }, memo = buildMemo(crossings.map(c => c.roadId));
-  const build = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) =>
+  const buildOnce = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) =>
     buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, routed, linkMemo, sidesOf, budget, persist, anchorOnly, memo);
+  // The player's straightening that cannot be built (the new line, or the box or ramps on it): the way is
+  // built on its own line instead where that works, and why it could not be straightened is said (issue
+  // 'square'). A request that cannot be met leaves the rest of the design as it was.
+  const build = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) => {
+    const issues = buildOnce(items, budget, anchorOnly);
+    const failed = items.filter(c => c.requestedType && c.square === true && c.geometry?.diagnostics?.length);
+    if (!failed.length) return issues;
+    const tried = new Map(failed.map(c => [c, { messages: [...c.geometry!.diagnostics!], lowered: c.lowered }]));
+    for (const c of failed) { delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; }
+    let plain = buildOnce(items, budget, anchorOnly);
+    for (const c of failed) c.square = true;
+    if (failed.some(c => c.geometry?.diagnostics?.length)) return buildOnce(items, budget, anchorOnly);
+    for (const c of failed) {
+      const { messages, lowered } = tried.get(c)!, issue = squareIssue(c, messages, lowered);
+      (c.issues ??= []).push(issue); plain = [...plain, issue];
+    }
+    return plain;
+  };
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => {
     const copy: CrossingResult = { ...c, geometry: undefined, cost: c.cost - (c.worksCost ?? 0),
@@ -1415,7 +1447,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     delete copy.square; delete copy.squared; delete copy.realignLength; delete copy.realignCost; delete copy.moved;
     return copy;
   };
-  const feasible = (c: CrossingResult) => !c.issues?.length && !c.geometry?.diagnostics?.length;
+  // (a way the player asked to straighten that is built on its own line instead still carries traffic)
+  const feasible = (c: CrossingResult) => !c.issues?.some(v => v.crossing.code !== 'square') && !c.geometry?.diagnostics?.length;
   const baseline = crossings.map(c => ({ state: { ...c }, feasible: feasible(c) }));
   const dependsOn = (target: CrossingResult, source: CrossingResult): boolean => {
     const visited = new Set<CrossingResult>();

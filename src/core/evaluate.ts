@@ -48,6 +48,7 @@ import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { carryCrossingPrices, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
+import { LOWERING_RULES } from './data/remedies';
 import { capsuleTest, type KeepClear } from './keep-clear';
 import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, waterCoverFits, type WaterCrossing, type WaterResult } from './watercourses';
 
@@ -266,6 +267,9 @@ export interface EvalOptions {
   /** Stretches where our earthworks buried a road: the grade at most (`fill`) or at least `z` there
    * (set by evaluate's retry, not by callers). */
   narrow?: readonly { s0: number; s1: number; fill: boolean; z: number }[];
+  /** The player's underpasses straightened across our road whose box on the new line lacked room: our grade
+   * at least `z` at their crossing `s` (set by evaluate's retry, not by callers). */
+  boxFloors?: readonly { s: number; z: number }[];
   /** A pass of evaluate's retries: its result leaves out the noise until `withNoise` (set by evaluate). */
   trial?: boolean;
   /** What the passes of one design's evaluation (its retries change only the grade) share: Auto's block
@@ -374,6 +378,19 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
   let used: EvalOptions = opts;
+  // The player's underpass straightened across our road where our embankment leaves its box on the new line
+  // too little room (the way would have to be lowered further than it may be): a designer raises our road
+  // there by what is missing. Once more with those floors, kept where it resolves more than it breaks.
+  if (!opts.preview && !opts.window && d.profileMode === 'auto') {
+    const low = result.crossings.flatMap(c => c.issues?.filter(v => v.crossing.code === 'square' && v.crossing.actual !== undefined && v.crossing.required !== undefined)
+      .map(v => ({ s: c.s, z: result.grade[c.i] + v.crossing.actual! - v.crossing.required! + BOX_FLOOR_MARGIN })) ?? []);
+    if (low.length) {
+      const raised: EvalOptions = { ...opts, boxFloors: low }, at = low.map(f => f.s);
+      const retry = evaluateRoute(ctx, d, raised);
+      retry.timing['count.boxFloorRetry'] = 1;
+      if (regionCount(retry, at) < regionCount(result, at)) { result = retry; used = raised; }
+    }
+  }
   // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
   // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
   // with Auto asked to clear those roads (kept only if it resolves more than it breaks). `base`: the
@@ -1036,9 +1053,11 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       const g = terrain.heightAt(c.x, c.y), i0 = Math.min(n - 1, Math.floor(c.s / ds));
       const box = choice === 'underpass' ? underpassPrice(c, 0, 0) : undefined;
       if (choice === 'underpass' && !box) continue;
+      const raised = box && opts.boxFloors?.find(f => f.s === c.s);
       for (const i of [i0, Math.min(n - 1, i0 + 1)]) {
         if (blocks) clearanceS[i] = c.s;
-        if (box) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + box.minHeight - ground[i]);
+        // (the way may be lowered into a cut to make room for the box, as resolveCrossings allows)
+        if (box) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + box.minHeight - LOWERING_RULES.maxDepth - ground[i], raised ? raised.z - ground[i] : -Infinity);
         else if (choice === 'bridge') {
           const need = ROAD_CLASSES[c.cls].noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight;
           minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + need - ground[i]);
@@ -1464,8 +1483,18 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     }
     if (inside) crossings.splice(k, 1);
   }
+  // The player's underpass is a box in our embankment: where one fits, our road stays on earth over it
+  // (no bridge of ours there), unless the player painted the stretch or a river, railway or stream within a
+  // shortest bridge's reach needs our bridge there.
+  let selectionOverrides: ArrayLike<number> = manualStructures;
+  const reach = Math.max(1, Math.ceil((STRUCTURE_RULES.minBridgeLength / ds - 1) / 2));
   for (const c of crossings) {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
+    if (choice === 'underpass' && manualStructures[c.i] < 0 && h[c.i] > 0 && underpassFits(c, sec.dayL[c.i] + sec.dayR[c.i])
+      && !forced.subarray(Math.max(0, c.i - reach), c.i + reach + 1).some(Boolean)) {
+      if (selectionOverrides === manualStructures) selectionOverrides = Int8Array.from(manualStructures);
+      (selectionOverrides as Int8Array)[c.i] = KIND.earth;
+    }
     if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0)) continue;
     // An Auto local road may instead keep its level in an underpass: the selector weighs that
     // box (estimated over the footprint width) against our bridge; crossings price the built one.
@@ -1494,7 +1523,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
         + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
     }
     const forcedAt = forced.slice();
-    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, forced: forcedAt, forcedTunnel, overrides: manualStructures, ...(heldDeck ? { held: heldDeck } : {}),
+    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, forced: forcedAt, forcedTunnel, overrides: selectionOverrides, ...(heldDeck ? { held: heldDeck } : {}),
       bridgeRunCost: noBridgeAny ? (i0: number, i1: number, length: number) => noBridge.subarray(i0, i1 + 1).some(Boolean) && !forcedAt.subarray(i0, i1 + 1).some(Boolean) ? Infinity : runCost(i0, i1, length) : runCost };
     let chosen = chooseStructures(input);
     // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
@@ -2338,6 +2367,9 @@ const SEPARATION_PENALTY = 1e11;
 /** A narrowing retry asks for this much less embankment (cutting) where our earthworks buried a road, m,
  * this far either side of it */
 const NARROW_STEP = 2, NARROW_REACH = 30;
+/** A box-floor retry raises our grade this much more than the box lacked, m (engine margin: the deeper
+ * embankment also widens the box's footprint a little). */
+const BOX_FLOOR_MARGIN = 0.25;
 /** …and at the clearance stations this close to a river or railway it failed to clear, m */
 const SEPARATION_REACH = 50;
 /** Support targets this close together are lifted as one stretch; a lift reaches this far, m. */
