@@ -439,7 +439,7 @@ export class Inspector {
     const stretch = bendStretch(r, d.pis, i, d.speed);
     const kept = r.geometrySpeeds?.[i] ?? null, line = CATEGORIES[d.category].mode === 'railway' ? 'line' : 'road';
     const stretchNote = stretch ? `<div class="sub">${stretch.s0 <= 1 && stretch.s1 >= r.length - 1 ? `Its stretch is the whole ${line}` : `Its stretch: km ${kmr(stretch.s0, stretch.s1)}`}${d.speed < Math.max(...designSpeeds(d.category)) ? `; no faster than the whole ${line}, ${d.speed} km/h` : ''}.</div>` : '';
-    const keptNote = kept !== null && kept > speed ? `<div class="why">Auto keeps the ${kept} km/h curves and heights here: ${czk(r.geometrySaving ?? 0)} cheaper.</div>` : '';
+    const keptNote = kept !== null && kept > speed ? `Auto keeps the ${kept} km/h curves and heights here: ${czk(r.geometrySaving ?? 0)} cheaper.` : '';
     const cv = r.curves.find((c) => c.index === i), n = speedNorms(speed, d.category);
     const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius, lowered = this.ctx.radiusNote?.(i, pi.r) ?? null;
     const road = CATEGORIES[d.category].mode === 'road' && !CATEGORIES[d.category].minor;
@@ -453,10 +453,10 @@ export class Inspector {
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: v.target?.hairpin ? this.fixes(v, d) : '' }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
+      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : keptNote && auto ? keptNote : auto ? 'Tightest the rules allow.' : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
       ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
-      ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole ${line}` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>${stretchNote}${keptNote}` : ''}
+      ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole ${line}` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>${stretchNote}${keptNote && !auto ? `<div class="why">${keptNote}</div>` : ''}` : ''}
       ${road && (pi.hairpin || (cv?.delta ?? 0) >= HAIRPIN.minTurn) ? `<div class="ctx-row">${this.choices('bend-type', 'data-hairpin', [['0', 'Curve', 'An ordinary curve'], ['1', 'Hairpin', `A ${HAIRPIN.radius} m hairpin with widened lanes, for steep mountain ground`]], pi.hairpin ? '1' : '0')}</div>` : ''}
       <div class="more-box">
         <div class="ctx-row"><label>Radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}"> m</label></div>
