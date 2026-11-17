@@ -72,10 +72,16 @@ try {
   const mid = { x: view.x + (route[1].sx + route[2].sx) / 2 + 220, y: view.y + (route[1].sy + route[2].sy) / 2 };
   await page.mouse.click(mid.x, mid.y); await idle();
   ok((await get()).pis.length === 0, 'A: a click on empty ground adds nothing');
-  // the road under the mouse can be grabbed
+  // the road not selected (the click let go of it): a click selects it, then it can be grabbed
   const r1 = at(await T(() => window.trapla.roadScreen(window.trapla.result().length * 0.4)));
+  const cursor = () => T(() => document.querySelector('#view canvas').style.cursor);
+  const label = () => T(() => document.querySelector('.hover-dot')?.textContent ?? '');
   await page.mouse.move(r1.x, r1.y); await page.waitForTimeout(250);
-  ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'grab', 'A: the road shows a grab cursor');
+  ok(await cursor() === 'pointer' && /click to select/.test(await label()), `A: the road not selected says "click to select" (${await cursor()}, "${await label()}")`);
+  await page.mouse.click(r1.x, r1.y); await idle();
+  await page.mouse.move(r1.x + 1, r1.y); await page.waitForTimeout(250);
+  ok(await cursor() === 'grab' && /drag to bend/.test(await label()), `A: selected, the road shows a grab cursor and "drag to bend" (${await cursor()}, "${await label()}")`);
+  await page.mouse.move(r1.x, r1.y);
   const cost0 = await T(() => window.trapla.result().cost.total);
   await page.mouse.down();
   for (let k = 1; k <= 12; k++) await page.mouse.move(r1.x + 6 * k, r1.y + 2 * k);
@@ -235,8 +241,8 @@ try {
   });
   if (works) {
     await page.mouse.move(view.x + works.sx, view.y + works.sy); await page.waitForTimeout(250);
-    // a reroute link can be dragged (grab cursor); the other works are clicked (pointer)
-    ok(await T(() => document.querySelector('#view canvas').style.cursor) === (works.link ? 'grab' : 'pointer'), `C: the crossed road's works under the mouse show a ${works.link ? 'grab' : 'pointer'} cursor (${works.type})`);
+    // the crossing not selected: its works (a reroute link too) are clicked first (pointer); a drag there moves the map
+    ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'pointer', `C: the crossed road's works under the mouse show a pointer cursor (${works.type})`);
     await page.mouse.click(view.x + works.sx, view.y + works.sy); await idle(400);
     const picked = await sel();
     ok(picked?.kind === 'crossing' && picked.roadId === works.roadId && await visible('#crossing-choice'), `C: a click on its ${works.type} works, away from the crossing, opens its card`);
@@ -254,7 +260,11 @@ try {
     await idle(400);
     const lp = at(await T((q) => window.trapla.project(q.x, q.y, q.z), link));
     await page.mouse.move(lp.x, lp.y); await page.waitForTimeout(250);
-    ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'grab', 'C: a reroute under the mouse can be grabbed');
+    ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'pointer', 'C: a reroute not selected: a click selects it');
+    await page.mouse.click(lp.x, lp.y); await idle(300);
+    await page.mouse.move(lp.x + 1, lp.y); await page.waitForTimeout(250);
+    ok((await sel())?.roadId === link.roadId && await T(() => document.querySelector('#view canvas').style.cursor) === 'grab', 'C: its crossing selected, the reroute under the mouse can be grabbed');
+    await page.mouse.move(lp.x, lp.y);
     await page.mouse.down();
     for (let k = 1; k <= 10; k++) await page.mouse.move(lp.x + 6 * k, lp.y - 4 * k);
     await page.mouse.up(); await idle(600);

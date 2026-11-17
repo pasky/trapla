@@ -68,6 +68,8 @@ try {
     }, [roads, start.crossings]);
     await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 800, 0, 62), [near.x, near.y]); await idle();
     const q = at(await page.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [near.x, near.y]));
+    await page.evaluate(() => window.trapla.whenTransport());
+    await page.mouse.click(q.x, q.y); await page.locator('#inspector.k-source').waitFor({ timeout: 5000 }); // a click selects it first
     await page.mouse.move(q.x, q.y); await page.mouse.down();
     await page.mouse.move(q.x + 40, q.y - 20, { steps: 10 }); await page.mouse.up(); await idle();
     const after = await page.evaluate(() => { const r = window.trapla.projectResult(); return { total: r.cost.total, alone: r.cost.alone }; });
@@ -125,6 +127,7 @@ try {
     const id = await page.evaluate(() => window.trapla.activeRoute());
     const L = await page.evaluate(i => window.trapla.projectResult().routes[i].legacy.length, id);
     const p = at(await page.evaluate(([i, s]) => window.trapla.routeScreen(i, s), [id, L * 0.4]));
+    await page.mouse.click(p.x, p.y); await idle(); // a click selects it first
     await page.mouse.move(p.x, p.y); await page.mouse.down();
     let seen = null;
     for (let k = 1; k <= 10 && !seen; k++) {

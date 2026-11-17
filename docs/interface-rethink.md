@@ -210,6 +210,12 @@ Implemented as decided above (owner: "just fix everything yourself"). What chang
   empty click = deselect; double-click = bend there. Crossed roads are clickable once they are drawn
   (< 10 m per pixel); from afar a click on the road picks its piece. Hover: grab cursor and "drag to bend"
   over the road, pointer over houses / crossings / walls.
+  **Since 2026-11-17 (owner: random presses while panning bent the road): select before drag.** A drag bends
+  only the selected road; one that starts on a road not selected (ours, another project road, a mapped road, a
+  reroute whose crossing is not selected) moves the map like one on open ground, and the hover says *click to
+  select*. A click selects it (its bend handles and a rebuilt stretch's end handles show only then); Esc, ✕ or a
+  click on open ground lets go. A first-time player (the intro is up) finds our road selected; a press in the
+  profile selects its road (a left drag there never moves the map).
 - **Inspector** (`src/ui/inspector.ts`): pieces of road (`src/ui/pieces.ts`: bridge / tunnel / cut /
   embankment runs, earthwork pieces under 120 m merged), dragged stretches, bends, pins, height points, crossed
   roads, houses; violations as banners with fix buttons (wall of the needed height over the needed km,

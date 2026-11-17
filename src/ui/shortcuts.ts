@@ -16,7 +16,8 @@ export interface ShortcutContext {
   undo(): void; redo(): void;
   /** Undo during a drag: take the drag back, ignore the rest of the gesture; and when the pointer is let go */
   cancelDrag(): void; releaseDrag(): void;
-  select(next: Sel | null): void;
+  /** nothing selected, the road included (a drag on it then moves the map) */
+  deselect(): void;
   setStructure(kind: StructureKind | null, s0: number, s1: number): void;
   deletePi(i: number): void;
 }
@@ -38,7 +39,7 @@ export function installShortcuts(app: ShortcutContext): void {
   window.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     // Escape closes the base-road card even from its typed fields (nothing was changed yet)
-    if (e.key === 'Escape' && (app.mappedRoadSelected || app.buildTool.active)) { e.preventDefault(); app.buildTool.cancel(false); app.select(null); return; }
+    if (e.key === 'Escape' && (app.mappedRoadSelected || app.buildTool.active)) { e.preventDefault(); app.buildTool.cancel(false); app.deselect(); return; }
     // Undo / Redo also right after choosing in a select or ticking a box; text fields keep their own undo
     const typing = t.closest('textarea, [contenteditable="true"]') || (t.matches('input') && !t.matches('[type=checkbox], [type=radio], [type=range]'));
     const mod = e.ctrlKey || e.metaKey;
@@ -61,7 +62,7 @@ export function installShortcuts(app: ShortcutContext): void {
     else if (e.key === 'Escape') {
       if (app.intro.visible) app.intro.hide();
       else if (!app.keyBox.hidden) app.showKey(false);
-      else app.select(null);
+      else app.deselect();
     }
   }, { capture: true }); // stretch shortcuts take precedence over the map's view shortcuts
 }

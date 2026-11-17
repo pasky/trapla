@@ -18,6 +18,8 @@ export interface DesignEditContext {
   /** the active road's shown result */
   readonly last: Result | null;
   select(next: Sel | null, fly?: boolean): void;
+  /** nothing selected, the road included (a card's ✕, as Esc) */
+  deselect(): void;
 }
 
 export function createDesignEdits(app: DesignEditContext) {
@@ -71,7 +73,7 @@ export function createDesignEdits(app: DesignEditContext) {
     if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
   const inspectorEvents: InspectorEvents = {
-    close: () => app.select(null),
+    close: () => app.deselect(),
     select: (t) => app.select(t, true),
     structure: setStructure,
     wall: setWall,
