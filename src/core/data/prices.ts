@@ -106,8 +106,9 @@
  * searched as for the road's speed with its own smaller curves weighed in one more pass (research/66; designs with
  * slowed bends only); a bend is never faster than its road;
  * arches rise to 1/3.5 of their span, a bridge to 3.3 × its arch, the rib's clearance in the search, an arch Auto's
- * only without a lift (research/69). Frozen bills and starters unchanged (runs carry the arch prices / reasons);
- * outcome audit random-3 −31.5 M (the arch options steer its support lifts). */
+ * only without a lift (research/69); no cut deeper than 30 m, presplit rock faces, rock cut by its kind
+ * (research/67); bridge ends in fills on cones, billed and weighed (research/68). D11 frozen +32 … +768 M (PLAN.md
+ * "Playtest sweep 3"), D3 0302 4,935 → 7,028 M. */
 export const COST_MODEL_VERSION = 39;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

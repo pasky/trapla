@@ -821,10 +821,10 @@ Research: research/65.
   exit 1 on any difference); any script under `--import ./scripts/dev/local-retry-check.ts` checks its own
   evaluations. `LOCAL_RETRY.local = false` is the reference.
 
-### Playtest sweep 3: slowed stretches, arches, hairpins (cost model 39, 2026-11-17)
+### Playtest sweep 3: slowed stretches, deep cuts, cones at bridge ends, arches, hairpins (cost model 39, 2026-11-17)
 
-Findings: docs/playtest-findings.md "Sweep 3 — main 30d0ad8". Research: research/66 (design speed), /69 (P2s).
-Shots 290–297 (`scripts/qa3-fixes-shots.mjs`).
+Findings: docs/playtest-findings.md "Sweep 3 — main 30d0ad8". Research: research/66 (design speed), /67 (deep cuts,
+rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/qa3-fixes-shots.mjs`).
 - **A slowed stretch never makes Auto's road dearer.** The grade search is monotone in its own objective (D11, one
   bend at 70: every block cheaper by its estimate, 4,398 → 4,171 M), but it prices no crossed roads: at 70 it took a
   line 10 m higher at km 9, where a field track 17 m under the fill forced a bridge that joined the stream bridge
@@ -843,13 +843,36 @@ Shots 290–297 (`scripts/qa3-fixes-shots.mjs`).
 - **Arches** (research/69): rise 1/10–1/3.5 of the span (Bridge Engineering Handbook ch. 17: "most" 1:4.5–1:6,
   Cowlitz River 159 / 45 m), a bridge up to 3.3 × its arch (D3 Sázava 787 / 237 m); the rib's clearance over what
   lies below is part of the search; an arch is Auto's only where it needs no lift (a first-pass arch with a smaller
-  lift steered the support lifts: random-2 / random-8 +257 / +569 M). The D3 0302 Sázava bridge can be an arch
-  (+648 M); a greyed Arch says why (`Run.archMiss`).
+  lift steered the support lifts: random-2 / random-8 +257 / +569 M). The D11 direct-80 valley takes an arch
+  (+106 M); a greyed Arch says why (`Run.archMiss`; the 0302 Sázava bridge, now 1,668 m: too long for one arch).
 - **Hairpins and the tunnel card**: a bend turning back on itself offers "Make it a hairpin" (one step, its stretch
   at the lowest speed) where one may stand; the tunnel card says "Auto’s tunnel, built by cut and cover as you
   chose." and offers no noise walls.
-- **Bills** (model 38 → 39): frozen D11 fixtures and all scenario starters identical (fixtures re-stamped: runs
-  carry arch prices / reasons); outcome audit random-3 7,794 → 7,763 M (its arch options), the rest identical.
+- **No cut deeper than 30 m; rock by its kind; presplit** (research/67). Auto builds no road or motorway cut
+  deeper than 30 m: a tunnel (sourced game rule: the D3 EIA "zářezy … 20-30 m, zde jsou však navrženy tunely",
+  Hessen Mobil's ≈ 30 m economic limit, the deepest Czech motorway cut 38 m; `STRUCTURE_RULES.deepCut`). The player
+  may paint a deeper cut; the tunnel card says why and its Earthwork button carries the open cut's price. A cut just
+  past 30 m over a ridge narrower than the grade search's samples is lifted, not tunnelled. Steep rock faces are
+  presplit (OTSKP 12892, TKP 4 art. 52) as well as netted; fast-weathering rock (Permian claystone, marlstone) is cut
+  like soil (VL 2 301.04 note 2), interbeds and phyllite at 5:4, Cretaceous sandstone at 2:1 (Brandecker), the rest
+  4:1. D3 0302: no 62 m cut; its line rides higher, at most 27 m in cut at Luka, and crosses the Sázava on one
+  1,668 m bridge (4,935 → 7,028 M; the real section 10.54 bn has the Luka tunnel and a lower 787 m bridge: the town's
+  covering demand, which the game does not price).
+- **Bridge ends in fills stand on cones** (research/68, `core/abutment-cone.ts`): the fill runs on under the end span
+  1:1.5 with quarter cones (VL 4 206.02 / 206.03), paved under the deck with a toe sill; billed (fill in the mass
+  balance, paving and sill with the bridge), weighed in a run's price, no pier on a cone, the bridge longer where a
+  cone would reach past a 60 m end span, a fill between two bridges that costs more than bridging the gap bridged;
+  drawn (the abutment wall only down to the cone's top) and clickable (the bridge's card: "Its ends stand on fills 7
+  and 20 m high, sloping on under the bridge: 22,392 m³ of fill, 3.9 M CZK of paving").
+- **Bills** (model 38 → 39). Frozen D11 fixtures, all VALID: straight 8,224.7 → 8,859.7, best 3,618.5 → 3,650.9,
+  best-drag 3,601.1 → 3,651.1, best-pin 3,614.2 → 3,666.0, best-structures 3,729.6 → 3,774.5, best-manual 3,622.2 →
+  3,671.7, demo 4,233.6 → 4,282.9, direct-80 4,144.7 → 4,265.4, direct-90 4,676.4 → 5,444.2, town-centre 8,972.7 →
+  9,420.4, town-controls 8,983.8 → 9,429.1 (shares per mechanism: research/67's table). Starters, all VALID: d3 3,364
+  → 3,933, d3-0301 5,102 → 5,158, d3-0302 4,935 → 7,028, d3-0303 5,442 → 5,611, d3-0304 10,118 → 10,145, d3-0305
+  9,126 → 9,810, d35 6,481 → 6,587, i16-nova-paka 1,221 → 1,223, d3-full 32,180 → 37,961, d35-full 29,362 → 32,626.
+  Outcome audit (24 random D11 lines): 14 → 13 VALID, 72 → 78 problems (random-22's service road at km 11.74 under
+  our embankment and random-19's street appear with either the slopes or the cones; random-13 / 15 / 17 tunnel cuts
+  of 56–67 m, +1.3–2.3 bn each).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 

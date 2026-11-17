@@ -1,5 +1,5 @@
 // Shots of the sweep-3 fixes (research/66, /69): a slowed bend's card (its stretch, the faster curve Auto keeps), the
-// railway bend card (no speed above the line's), the D3 0302 Sázava bridge with an arch, the D35 viaduct saying why
+// railway bend card (no speed above the line's), a D11 valley bridge as an arch, the D35 viaduct saying why
 // no arch fits, the tunnel card after the player's cut and cover, a near U-turn offering a hairpin.
 //   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/qa3-fixes-shots.mjs [--out docs/screenshots] [--first 290]
 import assert from 'node:assert/strict';
@@ -35,8 +35,11 @@ try {
   assert.match(text, /Its stretch is the whole road/);
   assert.match(text, /Auto keeps the 90 km\/h curve here: it fits/);
   assert.match(text, /hilltops and dips as for 90 km\/h/);
-  assert.equal(Math.round(await T(() => window.trapla.result().cost.total) / 1e6), 8782);
+  const at70 = await T(() => window.trapla.result().cost.total);
   await shot('d11-one-bend-70-keeps-90-geometry');
+  // (no dearer than the same road at 90 km/h)
+  await setDesign({ ...one, pis: one.pis.map(p => ({ ...p, speed: 90 })) });
+  assert.ok(at70 <= await T(() => window.trapla.result().cost.total) + 2e6);
   // 2. a near U-turn on the Rýchory slope: "Make it a hairpin"
   await setDesign({ category: 'S9.5', speed: 90, pis: [{ x: 12400, y: 15300, r: null }, { x: 12850, y: 16650, r: null }, { x: 12560, y: 15300, r: null }], profileMode: 'auto', vpis: [] });
   await T(() => window.trapla.selectPi(1)); await game.idle();
@@ -56,16 +59,17 @@ try {
   assert.doesNotMatch(text, /\b160\b|\b140\b/);
   assert.match(text, /no faster than the whole line, 120 km\/h/);
   await shot('rail-bend-speeds-up-to-the-line');
-  // 4. D3 0302: the Sázava bridge with an arch among its styles
-  await game.open('scenario=d3-0302&preset=d3-0302-motorway'); await park();
-  const sazava = await T(() => window.trapla.result().runs.find(r => r.kind === 1 && r.length > 300));
-  await piece((sazava.s0 + sazava.s1) / 2, 1100, 70, 20);
-  text = await card(); console.log('CARD Sázava', text.slice(0, 700));
-  assert.ok(sazava.styles.arch, 'an arch fits the Sázava valley');
-  await shot('d3-0302-sazava-bridge-arch-fits');
+  // 4. D11 direct-80 km 8.41–8.88 (the deepest valley on D11, ≈ 50 m): an arch among its styles, then chosen
+  await game.open('scenario=d11'); await park();
+  await setDesign(JSON.parse(readFileSync('scripts/direct-80-design.json', 'utf8')).design);
+  const valley = await T(() => window.trapla.result().runs.find(r => r.kind === 1 && r.s0 > 8300 && r.s1 < 9000));
+  assert.ok(valley?.styles?.arch, 'an arch fits the valley');
+  await piece((valley.s0 + valley.s1) / 2, 650, 160, 8);
+  text = await card(); console.log('CARD valley', text.slice(0, 700));
+  await shot('d11-direct-80-valley-arch-fits');
   await page.click('[data-style="arch"]'); await game.idle();
-  await piece((sazava.s0 + sazava.s1) / 2, 1100, 70, 20);
-  await shot('d3-0302-sazava-bridge-as-an-arch');
+  await piece((valley.s0 + valley.s1) / 2, 650, 160, 8);
+  await shot('d11-direct-80-valley-as-an-arch');
   // 5. D35: the 2 km viaduct says why no arch; the tunnel after the player's cut and cover
   await game.open('scenario=d35'); await park();
   const via = await T(() => window.trapla.result().runs.find(r => r.kind === 1 && r.length > 1500));
@@ -84,5 +88,34 @@ try {
     assert.match(text, /Auto’s tunnel, built by cut and cover as you chose/);
     await shot('d35-tunnel-cut-and-cover-chosen');
   }
+  // 6. P1 #3 / #4 (research/67, /68): D3 0302 without the deep cut and the high fills; the Sázava bridge's end on its
+  //    cone (clicking the cone selects the bridge); a deep-cut tunnel on D11 with the open cut's price
+  await game.open('scenario=d3-0302&preset=d3-0302-motorway'); await park();
+  const cones = await T(() => window.trapla.result().cones);
+  assert.ok(cones.length >= 2, 'the bridge ends stand on cones');
+  const deepest = await T(() => { const r = window.trapla.result(); let m = 0; for (let i = 0; i < r.n; i++) m = Math.max(m, r.ground[i] - r.grade[i]); return m; });
+  assert.ok(deepest <= 30.5, `no cut deeper than 30 m (${deepest})`);
+  const end = cones[cones.length - 1];
+  await T(([c]) => window.trapla.lookAt(c.x + c.tx * c.reach * 0.4, c.y + c.ty * c.reach * 0.4, 140, 240, 12), [end]); await game.idle(); await game.still();
+  const p = await T(([c]) => window.trapla.groundScreen(c.x + c.tx * c.reach * 0.5, c.y + c.ty * c.reach * 0.5), [end]);
+  const box = await page.locator('canvas').first().boundingBox();
+  await page.mouse.click(box.x + p.sx, box.y + p.sy); await game.idle();
+  text = await card(); console.log('CARD cone click', text.slice(0, 700));
+  assert.match(text, /Its ends stand on fills|One end stands on a fill/);
+  await T(([c]) => window.trapla.lookAt(c.x + c.tx * c.reach * 0.4, c.y + c.ty * c.reach * 0.4, 140, 240, 12), [end]);
+  await shot('d3-0302-sazava-bridge-end-on-its-cone');
+  const sazava2 = await T(() => window.trapla.result().runs.find(r => r.kind === 1 && r.length > 1000));
+  await piece((sazava2.s0 + sazava2.s1) / 2, 2600, 70, 22);
+  text = await card(); console.log('CARD Sázava', text.slice(0, 700));
+  assert.match(text, /No arch: the bridge is too long for one arch/);
+  await shot('d3-0302-no-deep-cut-one-long-bridge');
+  await game.open('scenario=d11'); await park();
+  await setDesign(JSON.parse(readFileSync('qa3/designs/d11-deep-cut-tunnel.json', 'utf8')).design);
+  const deep = await T(() => window.trapla.result().runs.find(r => r.kind === 2 && r.deepCut));
+  assert.ok(deep, 'Auto tunnels the deep cut');
+  await piece((deep.s0 + deep.s1) / 2, 1200, 120, 35);
+  text = await card(); console.log('CARD deep cut', text.slice(0, 700));
+  assert.match(text, /designers tunnel where a cut would be deeper than 30 m/);
+  await shot('d11-deep-cut-tunnel-open-cut-price');
   assert.deepEqual(game.pageErrors, []);
 } finally { await game.close(); }
