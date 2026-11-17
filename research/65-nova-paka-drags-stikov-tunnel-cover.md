@@ -11,7 +11,7 @@ surcharge on tunnel rows, and whether a rock-cover factor on mined tunnels is so
 
 | Bend dragged | Model 36 invalid | Model 37 invalid | What is left |
 |---|---:|---:|---|
-| 3 (km 1.5) | 16 | 8 | 8 × "Bends 4 and 5 are too close for an S-bend" (5 of them also a stream tip, below) |
+| 3 (km 1.5) | 16 | 11 | 8 × "Bends 4 and 5 are too close for an S-bend" (5 of them also a stream tip, below); 3 × the street whose junction lies at our toe (below) |
 | 6 (km 3.3) | 15 | 15 | all "Bends 4 and 5 / 5 and 6 are too close for an S-bend" |
 | 8 (km 5.0) | 9 | 7 | 7 × "Bend 9 is too close to B" |
 
@@ -32,7 +32,11 @@ surcharge on tunnel rows, and whether a rock-cover factor on mined tunnels is so
   **Model 37:** a dead end with no room for a turning area before the first road it joins is cut back to that
   junction (its traffic turns there; what it led to lies under our road). A dead end whose *pavement* (not just its
   centreline) reaches into our slope now counts as one. Before, its fixed tie-in inside our slope failed with
-  "tie-in inside the footprint".
+  "tie-in inside the footprint". The cut-back is taken only where the whole stretch under our earthworks goes with
+  it (review: otherwise pavement past the junction stays under our slope, unreported). That leaves the residential
+  street at km 1.5 (3 drags): its junction with a service road lies at our toe, so 2.2 m of it past the junction is
+  under the slope. The next step would be to rebuild it beside our slope and re-join the service road where the new
+  street crosses it. Today the sever check asks for the old junction point.
 - *A stream's head 1 m under our toe (5 drags, all also S-bend failures).* The culvert carries the stream under
   us. The 1 m of its head beyond the culvert's line is a separate hit with no cover and a "buried outlet". Left as
   is (engine limit): a stream that begins at our toe is taken by the toe ditch in reality.
@@ -46,8 +50,9 @@ surcharge on tunnel rows, and whether a rock-cover factor on mined tunnels is so
   horizontal.ts); (c) the editor lowers a set radius that a drag makes too large, with a note. Not done here.
 
 Outcome audit (24 random D11 designs; random categories, so the separation retry now runs on the S-designs):
-84 → 76 problems, 6 → 7 VALID, links > 1 km 17 → 17, ramps > 250 m 5 → 3 (random-3 and random-20 lose their
-overbridge ramp and buried-road problems; random-23 becomes VALID).
+84 → 72 problems, 6 → 8 VALID, links > 1 km 17 → 18, ramps > 250 m 5 → 4 (random-3 and random-20 lose their
+overbridge ramp and buried-road problems; random-3 (§2) and random-23 become VALID; random-6, VALID, gets a 278 m
+junction ramp and a 1.07 km track link on its re-solved line).
 
 ## 2. random-3 and random-15 (outcome-audit regressions of model 35)
 

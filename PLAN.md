@@ -732,8 +732,10 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
 
 Research: research/65.
 - **Small drags of the Nová Paka starter** (24 seeded drags of ≤ 25 m, `scripts/small-drag-audit.ts`, `DUMP=dir`
-  writes the dragged designs). Invalid 16 / 15 / 9 → **8 / 15 / 7** at km 1.5 / 3.3 / 5.0. No crossing or footprint
-  problem is left except a stream's head 1 m under our toe (5 drags, all also failing on geometry). The rest is
+  writes the dragged designs). Invalid 16 / 15 / 9 → **11 / 15 / 7** at km 1.5 / 3.3 / 5.0. Left besides geometry:
+  a dead-end street whose junction's mouth lies at our slope's toe (3 drags: its 2 m past the junction stays under
+  the slope, so it is not cut back; re-joining its side road where a rebuilt street crosses it is the next step) and
+  a stream's head 1 m under our toe (5 drags, all also failing on geometry). The rest is
   geometry: the starter's hand-set mapped radii leave 2.7 / 2.3 / 0.9 m spare at bends 4→5, 5→6 and 9→B (the real
   road is at the norm's limit), so a drag that turns them more breaks the S-bend rule, with a concrete fix. Options
   (owner's call, research/65 §1): leave it as the player's override; a "mapped radius" Auto lowers just enough;
@@ -745,7 +747,9 @@ Research: research/65.
   line 5 m out of the cutting the class III road crosses over; now it stays in a 6 m cutting.
 - **A dead end our earthworks cut**, with no room for a turning area before the first road it joins, **is cut back
   to that junction** (its traffic turns there). Before, the turning area went past the junction and severed the
-  third road. A dead end whose pavement (not only its centreline) reaches into our slope counts as one.
+  third road (only where the whole stretch under our earthworks goes with it). A dead end whose pavement (not only
+  its centreline) reaches into our slope counts as one. The separation retry starts from the options of the result
+  kept so far (a regrade retry's floors and lifts stay; review).
 - **Support lifts on grades**: a lift target moved onto the traced line's point (blocks, model 25) is raised by
   what the line falls from there to the station that needs the height. On a 5 % descent the station 4.8 m off
   missed it by 0.25 m in every round (outcome-audit random-3: VALID now).
@@ -755,7 +759,9 @@ Research: research/65.
 - **Bills** (model 36 → 37): D11 frozen fixtures (the lifts) straight 8,224.7 (same), best 3,616.7 → 3,618.5,
   best-pin 3,612.4 → 3,614.2, best-structures 3,724.0 → 3,729.6, direct-80 4,142.4 → 4,144.7, direct-90 4,673.7 →
   4,676.4, town-centre 8,968.3 → 8,972.7, demo / best-drag unchanged. Outcome audit (24 random D11 designs): 84 →
-  76 problems, 6 → 7 VALID, links > 1 km 17, ramps > 250 m 5 → 3.
+  72 problems, 6 → 8 VALID (random-3, random-23), links > 1 km 17 → 18 and ramps > 250 m 5 → 4 (random-6, VALID,
+  on a re-solved line). Starters all VALID: d3-0303 5,440 → 5,442, d3-0305 9,124 → 9,126, d3-full 32,187 → 32,180,
+  the rest unchanged (i16-nova-paka 1,221).
 - **The Štikov valley** (research/65 §3). No public document gives the reason for the real 423 m estakáda. The 2017
   EIA notification rules out a stream, a flood zone, a road below, landslides, NATURA 2000 and CHKO. A local
   biocorridor (LBK 3) and a binding migration study came after the bridge was designed. The real grade runs ≈ 28 m
