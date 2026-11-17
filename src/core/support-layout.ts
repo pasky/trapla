@@ -351,30 +351,51 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         return [plan];
       }
       if (style === 'long') {
-        // Over what lies below, the long span the short-span supports already need, with side spans of at
-        // least SIDE_SPAN × it next to it (a cantilevered or launched main span; the short spans beyond stay);
-        // where nothing is below, equal spans of 45–60 m throughout.
+        // Over what lies below, a span the short-span supports need longer than short spans reach (60 m), with
+        // side spans of at least BRIDGE_STYLES.long.sideSpan × it beside it (a cantilevered or launched main
+        // span), the short spans beyond kept or (the cheaper) equal spans of at most 60 m; elsewhere, equal spans
+        // of 45–60 m throughout.
         const short = placePiers(originalPiers, ordinary.span / 2, fixedSupports).piers;
-        const supports = [run.s0, ...short, run.s1], main = (k: number) => supports[k] - supports[k - 1] > ordinary.span * 1.5 + 1e-6;
+        const supports = [run.s0, ...short, run.s1], main = (k: number) => supports[k] - supports[k - 1] > BRIDGE_STYLES.short.maxSpan + 1e-6;
         let any = false;
         for (let k = 1; k < supports.length; k++) any ||= main(k);
         if (any) {
-          const keep = supports.map(() => true), mains: [number, number][] = [];
+          const keep = supports.map(() => true), mains: [number, number][] = [], added: number[] = [];
           for (let k = 1; k < supports.length; k++) if (main(k)) mains.push([supports[k - 1], supports[k]]);
           const isEnd = (x: number) => mains.some(([a, b]) => a === x || b === x);
           for (const [a, b] of mains) {
             const need = BRIDGE_STYLES.long.sideSpan * (b - a);
             for (const dir of [-1, 1]) {
               const at = supports.indexOf(dir < 0 ? a : b);
-              for (let j = at + dir; j > 0 && j < supports.length - 1; j += dir) {
+              let j = at + dir;
+              for (; j > 0 && j < supports.length - 1; j += dir) {
                 if (Math.abs(supports[j] - supports[at]) >= need - 1e-6 || isEnd(supports[j])) break;
                 keep[j] = false;
               }
+              // the side span just as long as it needs, where a pier can stand there (the next span not too short)
+              const x = supports[at] + dir * need, next = supports[Math.max(0, Math.min(supports.length - 1, j))];
+              if (!isEnd(next) && Math.abs(next - supports[at]) > need + MIN_PIER_GAP && !blocked(x, true)) added.push(x);
             }
           }
-          const plan = blank('long', supports.slice(1, -1).filter((_, k) => keep[k + 1]), true);
-          if (plan.layout.span > BRIDGE_STYLES.long.maxSpan) plan.tooLong = plan.layout.span;
-          return [plan];
+          const kept = [...supports.filter((_, k) => keep[k]), ...added].sort((p, q) => p - q);
+          const plans = [blank('long', kept.slice(1, -1), true)];
+          // …or, away from those spans and the spans beside them, equal spans of at most 60 m (a tall viaduct
+          // over a road: the cheaper of the two)
+          if (styles?.price) {
+            const fixed = new Set([0, kept.length - 1]);
+            for (let k = 1; k < kept.length; k++) if (mains.some(([a, b]) => a === kept[k - 1] && b === kept[k]))
+              for (const j of [k - 2, k - 1, k, k + 1]) if (j >= 0 && j < kept.length) fixed.add(j);
+            const ends = [...fixed].sort((a, b) => a - b), piers: number[] = [];
+            for (let e = 1; e < ends.length; e++) {
+              const a = ends[e - 1], b = ends[e];
+              if (a > 0) piers.push(kept[a]);
+              piers.push(...(b - a > 1 ? equalPiers(kept[a], kept[b], BRIDGE_STYLES.long.span + 1e-6) : []));
+            }
+            const placed = placePiers(piers, BRIDGE_STYLES.long.span / 2, false, [run.s0, run.s1]).piers;
+            if (placed.join() !== kept.slice(1, -1).join()) plans.push(blank('long', placed, true));
+          }
+          for (const plan of plans) if (plan.layout.span > BRIDGE_STYLES.long.maxSpan) plan.tooLong = plan.layout.span;
+          return plans;
         }
         return (styles?.price ? longLayouts(run.length) : longLayouts(run.length).slice(0, 1)).map(layout => {
           const { piers } = placePiers(equalPiers(run.s0, run.s1, layout.span + 1e-6), layout.span / 2, false, [run.s0, run.s1]);
