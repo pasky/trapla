@@ -46,7 +46,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   // railway here by 7.7 m": a 12.5 ‰ line cannot) while our railway dug itself 15 m down under the ground
   // there (+265 M). A railway of the project follows our crossing as a road does: our line stays where it
   // is, the new one goes over it on its bridge, and our bill rises by that bridge's deck only.
-  it('a new railway across our railway passes over it on its own bridge; ours stays where it was', () => {
+  it('a new railway across our railway passes over it on its own bridge; ours stays where it was', async () => {
     const design = fixture('rail-new-railway-across'), r = run(design);
     expect(r.issues.filter(i => i.code !== 'road-ends-nowhere').map(i => i.violation.title)).toEqual([]);
     const ours = r.routes['route:railway'].legacy!, held = r.routes[design.routes[1].id].legacy!;
@@ -54,8 +54,12 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(c).toMatchObject({ type: 'overbridge', approachLength: 0 });
     let k = 0; for (let q = 1; q < held.n; q++) if (Math.hypot(held.x[q] - c.x, held.y[q] - c.y) < Math.hypot(held.x[k] - c.x, held.y[k] - c.y)) k = q;
     expect(held.kind[k]).toBe(1);
-    const deck = c.geometry!.road!.reduce((p, q) => Math.abs(q.d!) < Math.abs(p.d!) ? q : p).z;
-    expect(Math.abs(held.grade[k] - deck)).toBeLessThan(1);
+    expect(held.grade[k] - ours.grade[c.i]).toBeGreaterThanOrEqual(7.5 - 0.5); // a railway's clearance over ours
+    // a drag preview of it follows that crossing too (it used to be left at its own height, level with ours)
+    const { previewProjectRoute } = await import('../src/core/project-evaluate');
+    const preview = previewProjectRoute(projectContext(design).ctx, { epoch: 'e', revision: 1, design }, design.routes[1].id, undefined, r).legacy!;
+    expect(preview.kind[k]).toBe(1);
+    expect(preview.grade[k] - ours.grade[c.i]).toBeGreaterThanOrEqual(7.5 - 0.5);
     const alone = structuredClone(design); alone.routes = alone.routes.slice(0, 1);
     alone.connections = alone.connections.filter(x => x.ports.every(p => p.kind !== 'route' || p.routeId === 'route:railway'));
     const solo = run(alone).routes['route:railway'].legacy!;
@@ -103,6 +107,15 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dra
     q.alignment.pis[0] = { ...q.alignment.pis[0], x: q.alignment.pis[0].x - (g2.y - g.y) / l * 23, y: q.alignment.pis[0].y + (g2.x - g.x) / l * 23 };
     const r = evaluateProject(ctx, { epoch: 'e', revision: 3, design: edited });
     expect(curve(r)).toMatchObject({ auto: true });
-    expect(r.routes['route:r1'].legacy!.violations.filter(v => ['radius', 'transition', 'compound', 'arcShort'].includes(v.kind))).toEqual([]);
+    const built = r.routes['route:r1'].legacy!;
+    expect(built.violations.filter(v => ['radius', 'transition', 'compound', 'arcShort'].includes(v.kind))).toEqual([]);
+    // other roads see it where it is built (its plan line in their networks: project-roadnet.ts planLine; the
+    // old corner's R 104 m there was 3.9 m off)
+    const { planLine } = await import('../src/core/project-roadnet');
+    const roads = pack.roads!, way = ctx.sourceWays.get(id)!, e = q.endpoints, da = roads.wayStation(way, e.a.position.x, e.a.position.y), db = roads.wayStation(way, e.b.position.x, e.b.position.y);
+    const line = planLine(q, undefined, 5, edited, [roads.wayPath(way, Math.min(da, db), Math.max(da, db))]);
+    let off = 0;
+    for (let k = 0; k < built.n; k++) { if (built.keptCells?.[k]) continue; let d = Infinity; for (let j = 0; j + 1 < line.length; j += 2) d = Math.min(d, Math.hypot(line[j] - built.x[k], line[j + 1] - built.y[k])); off = Math.max(off, d); }
+    expect(off).toBeLessThan(0.5); // (where it is built anew: on the old road it is drawn on the old line)
   }, 120_000);
 });

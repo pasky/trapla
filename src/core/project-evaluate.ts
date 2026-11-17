@@ -13,11 +13,11 @@ import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
-import { evaluateProjectRailway, type RailPaths, type RailwayEvaluation } from './project-railway';
+import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvaluation } from './project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign, RoadOperations } from './project';
 import * as dm from './detmath';
-import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, type ResolvedEnds } from './project-roadnet';
+import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, type OldLineOf, type ResolvedEnds } from './project-roadnet';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
@@ -103,8 +103,21 @@ interface KindInput {
   edited(owners: RouteDesign[]): EvalContext;
 }
 type KindEvaluation = CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
+/** A rebuilt stretch's old line, where it keeps an old road's own curves (PI.mapped): what its plan line in other
+ * roads' networks yields them to (project-roadnet.ts planLine), as its kernel does. */
+const oldLineOf = (ctx: ProjectEvalContext): OldLineOf => r => {
+  if (!r.source || r.alignment.kind !== 'pi' || !r.alignment.pis.some(p => p.mapped)) return undefined;
+  if (r.kind === 'railway') {
+    const lines = ctx.railPaths ? r.source.intervals.map(i => railInterval(ctx.railPaths!, i.sourceId, i.s0, i.s1)) : [];
+    return lines.length && lines.every(l => l) ? lines as { x: number; y: number }[][] : undefined;
+  }
+  const way = r.source.intervals.length === 1 ? ctx.sourceWays?.get(r.source.intervals[0].sourceId) : undefined, roads = ctx.legacy.roads;
+  if (way === undefined || !roads) return undefined;
+  const a = r.endpoints.a.position, b = r.endpoints.b.position, da = roads.wayStation(way, a.x, a.y), db = roads.wayStation(way, b.x, b.y);
+  return [roads.wayPath(way, Math.min(da, db), Math.max(da, db))];
+};
 const evaluateAsRoad = ({ ctx, snapshot, route, preview, prices, ends, holds, endsOf }: KindInput): KindEvaluation =>
-  evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays,
+  evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays, oldOf: oldLineOf(ctx),
     ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}) });
 /** A row's function of a route of its own kind (a row is only asked about routes of its kind). */
 function own<K extends RouteDesign['kind'], T>(_kind: K, f: (route: Extract<RouteDesign, { kind: K }>) => T): (route: RouteDesign) => T {
@@ -168,7 +181,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
   if (keepClear?.length) prices = { ...prices, keepClear };
   // motorways and railways are checked against the network as the player edited it too
   const edited = (owners: RouteDesign[]) => {
-    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays, endsOf) : null;
+    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays, endsOf, oldLineOf(ctx)) : null;
     return net ? { ...ctx.legacy, roads: net.roads } : ctx.legacy;
   };
   const evaluated = ROUTE_KINDS[route.kind].evaluate({ ctx, snapshot, route, corridor, preview, prices, corridors, ends, holds, endsOf, edited });
@@ -206,9 +219,11 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
   const design = snapshot.design;
   if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
   const route = design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
-  if (!last || last.epoch !== snapshot.epoch || !ROUTE_KINDS[route.kind].endsFollow) return routeProposal(ctx, snapshot, route, true, prices).route;
+  // (a railway's ends do not follow other roads, but it follows the crossings they built with it; a motorway's
+  // corridor kernel takes no holds)
+  if (!last || last.epoch !== snapshot.epoch || route.kind === 'motorway') return routeProposal(ctx, snapshot, route, true, prices).route;
   const legacyOf = (id: string) => design.routes.some(r => r.id === id) ? last.routes[id]?.legacy : undefined;
-  const ends = followEnds(route, legacyOf), line = planLine(route, ends, undefined, design);
+  const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(route, legacyOf) : undefined, line = planLine(route, ends, undefined, design, oldLineOf(ctx)(route));
   const holds: Hold[] = [];
   for (const owner of design.routes) {
     const own = owner === route ? undefined : legacyOf(owner.id);
@@ -455,7 +470,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
   for (const route of [...order, ...cyclic]) {
     // its ends follow the roads it joins; the heights its crossings hold are placed on the line it is built on
     const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(route, evaluated) : undefined;
-    const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design) : [];
+    const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design, oldLineOf(ctx)(route)) : [];
     let holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
     let proposal = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, holds.flatMap(heldBands), endsOf, routeClear(route));
     // (high above the owner's bridge on its own bridge: held above it instead, where that misses fewer holds)
@@ -467,7 +482,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
       const again = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, turned.flatMap(heldBands), endsOf, routeClear(route));
       if (again.route.legacy && heldChecks(again.route.legacy, turned, route.kind).violations.length < heldChecks(proposal.route.legacy!, holds, route.kind).violations.length) {
         proposal = again; holds = turned;
-        for (const h of turned) if (h.over && h.crossing.type === 'bridge') h.crossing.above = true;
+        for (const h of turned) if (h.over) h.crossing.above = true;
       } else if (corridorId && kept) corridorCache.set(corridorId, kept);
     }
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
@@ -482,7 +497,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
       seenOwners.add(own);
       const corridorKids = corridorOfRoute(design, route.id), owners = corridorKids
         ? design.routes.filter(r => r.id === corridorKids.children.forward || r.id === corridorKids.children.reverse) : [route];
-      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays, endsOf);
+      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays, endsOf, oldLineOf(ctx));
       for (const c of own.crossings) {
         const crossedId = c.roadId !== undefined ? net?.designed.get(c.roadId) : undefined, crossed = design.routes.find(r => r.id === crossedId);
         if (!crossed) continue;
@@ -1036,13 +1051,18 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
     case 'overbridge': {
       // on its bridge over us: the deck's height where it crosses our centreline
       const road = c.geometry?.road; if (!road?.length) return null;
-      const lift = z - own.grade[c.i], deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p).z + lift;
+      // (at least clear of the owner by its clearance: over a railway or motorway more than the crossing engine's
+      // deck over a road leaves; the held line climbs the rest on its own line)
+      const lift0 = z - own.grade[c.i], deck0 = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p).z + lift0;
+      const lift = lift0 + Math.max(0, z + clearOver(owner) - deck0), deck = deck0 + lift - lift0;
       // the deck is the owner's: the held road is on it from end to end (where the crossing moved since the
       // owner built it, a preview, its deck moves with it)
       const span = c.geometry?.deck, dx = at.x - c.x, dy = at.y - c.y;
       const ends = span && road[span.start] && road[span.end]
         ? [road[span.start], road[span.end]].map(p => ({ x: p.x + dx, y: p.y + dy, z: p.z + lift })) : undefined;
       // its own deck over our road: the span is measured along the crossed road already
+      // (high above that deck on the full evaluation: over us on that bridge built higher, overBridge)
+      if (c.above) return { ...band(z + clearOver(owner), Infinity), over: true, deck: (c.span ?? 0) / 2, billed: heldBodyBilled(owner, own, c) };
       return { ...band(deck - HOLD_TOLERANCE, deck + HOLD_TOLERANCE), deck: (c.span ?? 0) / 2, ...(ends ? { deckEnds: ends } : {}),
         billed: heldBodyBilled(owner, own, c) };
     }
