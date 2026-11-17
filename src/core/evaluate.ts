@@ -50,7 +50,7 @@ import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from '
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { planPis, planSpeeds } from './plan-speeds';
-import { abutmentCone, CONE, coneReach, conePavingCost, conesMeet, type AbutmentCone } from './abutment-cone';
+import { abutmentCone, CONE, coneReach, conePavingCost, coneStands, type AbutmentCone } from './abutment-cone';
 import { carryCrossingPrices, keptOwnHeights, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { LOWERING_RULES } from './data/remedies';
@@ -2035,16 +2035,18 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   const cones: AbutmentCone[] = [];
   const coneFill = new Float64Array(n), conePaving = new Float64Array(n);
   if (!preview) for (const r of runs) if (r.kind === KIND.bridge && !(heldDeck && heldDeck[r.i0] && heldDeck[r.i1])) {
-    // (a closed abutment has none; two cones under a short bridge each go as far as where they meet)
-    const tops = elevations(prof, [r.s0, r.s1]), meet = conesMeet(tops[0], tops[1], r.s1 - r.s0);
-    const fills = [r.i0 - 1, r.i1 + 1].map((e, k) => !r.closedEnds?.[k] && e >= 0 && e < n && kind[e] === KIND.earth);
-    for (const [k, i, into, s] of [[0, r.i0, 1, r.s0], [1, r.i1, -1, r.s1]] as const) {
-      const earthCell = i - into;
-      if (!fills[k]) continue;
-      const p = pointAt(fullAlignment, s + (win?.s0 ?? 0)), zf = tops[k];
-      const limit = !fills[1 - k] ? r.s1 - r.s0 : k ? r.s1 - r.s0 - meet : meet;
-      const c = abutmentCone(setup.terrain, { s, x: p.x, y: p.y, tx: p.tx * into, ty: p.ty * into, i, earthCell }, zf, cat.crownWidth / 2, b / 2, limit);
+    // (a closed abutment has none; two cones under a short bridge meet: each counts where it is the higher)
+    const ends = ([[0, r.i0, 1, r.s0], [1, r.i1, -1, r.s1]] as const).map(([k, i, into, s]) => {
+      const earthCell = i - into, p = pointAt(fullAlignment, s + (win?.s0 ?? 0)), zf = elevations(prof, [s])[0];
+      const at = { s, x: p.x, y: p.y, tx: p.tx * into, ty: p.ty * into, i, earthCell };
+      const stands = !r.closedEnds?.[k] && earthCell >= 0 && earthCell < n && kind[earthCell] === KIND.earth && coneStands(setup.terrain, at, zf);
+      return { at, zf, stands, half: cat.crownWidth / 2, top: zf - CONE.deckDepth, x: at.x, y: at.y, tx: at.tx, ty: at.ty };
+    });
+    for (const [k, e] of ends.entries()) {
+      if (!e.stands) continue;
+      const other = ends[1 - k], c = abutmentCone(setup.terrain, e.at, e.zf, cat.crownWidth / 2, b / 2, r.s1 - r.s0, other.stands ? other : undefined);
       if (!c) continue;
+      const { i, earthCell } = e.at;
       cones.push(c); coneFill[earthCell] += c.volume; conePaving[i] += conePavingCost(c);
     }
   }

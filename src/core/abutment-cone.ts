@@ -43,7 +43,8 @@ export interface AbutmentCone {
   /** from the abutment to the toe along the axis, m; the cone's top above the ground at the abutment, m */
   reach: number; height: number;
   /** how far the fill lies over the ground, m: along the axis from the abutment, and off the axis either side (a
-   * cross slope carries it further on its low side); what is drawn */
+   * cross slope carries it further on its low side); what is drawn (inside the other end's cone where the two meet,
+   * hidden by it) */
   length: number; side: number;
   /** fill, m³; paving, m²; toe sill, m */
   volume: number; paved: number; sill: number;
@@ -77,35 +78,55 @@ export function conesMeet(topA: number, topB: number, length: number): number {
   return Math.max(0, Math.min(length, (length + CONE.slope * (topA - topB)) / 2));
 }
 
+/** whether a fill whose road is at `grade` stands above the ground at the abutment by enough for a cone (else the
+ * abutment is set into a bank: no fill in front of it) */
+export function coneStands(terrain: Terrain, at: { x: number; y: number }, grade: number): boolean {
+  return grade - CONE.deckDepth - terrain.heightAt(at.x, at.y) >= 0.5;
+}
+
+/** the surface of a cone at a point of the map (its own frame; -Infinity behind its abutment) */
+function surfaceAt(c: Pick<AbutmentCone, 'x' | 'y' | 'tx' | 'ty' | 'half' | 'top'>, x: number, y: number): number {
+  const dx = x - c.x, dy = y - c.y, u = dx * c.tx + dy * c.ty;
+  return u < 0 ? -Infinity : coneSurface(c, u, -dx * c.ty + dy * c.tx);
+}
+
 /** The cone at a bridge end. `at`: the abutment (the bridge's end) and the direction into the bridge; `grade`:
- * the road's height there; `half`: half the crest width; `deckHalf`: half the deck width; `limit`: how far into
- * the bridge it may go, m (where it meets the other end's cone, conesMeet; the bridge's length). Null where the
- * ground is at the cone's top (an abutment set into a bank: no fill in front of it). */
+ * the road's height there; `half`: half the crest width; `deckHalf`: half the deck width. `limit`: the bridge's
+ * length (it goes no further). `rival`: the cone at the bridge's other end, where there is one: where the two
+ * meet each fill counts only where its surface is the higher (their union, no fill counted twice), its paving
+ * ends where they meet on the axis and there is no toe sill. Null where the ground is at the cone's top (an
+ * abutment set into a bank: no fill in front of it, coneStands). */
 export function abutmentCone(terrain: Terrain, at: { s: number; x: number; y: number; tx: number; ty: number; i: number; earthCell: number },
-  grade: number, half: number, deckHalf: number, limit = 300): AbutmentCone | null {
+  grade: number, half: number, deckHalf: number, limit = 300, rival?: Pick<AbutmentCone, 'x' | 'y' | 'tx' | 'ty' | 'half' | 'top'>): AbutmentCone | null {
+  if (!coneStands(terrain, at, grade)) return null;
   const top = grade - CONE.deckDepth, g0 = terrain.heightAt(at.x, at.y);
-  if (top - g0 < 0.5) return null;
   const axis = (u: number) => terrain.heightAt(at.x + at.tx * u, at.y + at.ty * u);
-  const met = coneReach(top, axis, limit), reach = Math.min(limit, met);
+  // (on the axis: where it meets the ground, or the other cone)
+  const meet = rival ? conesMeet(top, rival.top, Math.hypot(rival.x - at.x, rival.y - at.y)) : limit;
+  const met = coneReach(top, axis, Math.min(limit, meet)), reach = Math.min(limit, meet, met);
   // the volume over the ground on a grid in front of the abutment (u along, v across), row by row and outwards
-  // from the axis until the cone meets the ground (also where a cross slope carries it further than on the axis)
-  const G = CONE.grid, edge = half + CONE.berm, far = 300;
+  // from the axis until the cone meets the ground (also where a cross slope carries it further than on the axis);
+  // the last row may be cut short by the bridge's far end
+  const G = CONE.grid, edge = half + CONE.berm, end = Math.min(limit, 300);
   let volume = 0, length = 0, side = 0;
-  for (let u = G / 2; u < Math.min(limit, far); u += G) {
+  for (let u0 = 0; u0 < end; u0 += G) {
+    const du = Math.min(G, end - u0), u = u0 + du / 2;
     let any = false;
-    for (const sgn of [-1, 1]) for (let v = G / 2; v < far; v += G) {
+    for (const sgn of [-1, 1]) for (let v = G / 2; v < 300; v += G) {
       const x = at.x + at.tx * u - at.ty * v * sgn, y = at.y + at.ty * u + at.tx * v * sgn;
-      const dz = coneSurface({ half, top }, u, v) - terrain.heightAt(x, y);
-      if (dz > 0) { volume += dz * G * G; any = true; side = Math.max(side, v + G / 2); }
-      else if (v > edge) break;
+      const z = coneSurface({ half, top }, u, v), dz = z - terrain.heightAt(x, y);
+      if (dz > 0) {
+        any = true; side = Math.max(side, v + G / 2);
+        if (!rival || z >= surfaceAt(rival, x, y)) volume += dz * du * G;
+      } else if (v > edge) break;
     }
-    if (any) length = Math.min(limit, u + G / 2);
+    if (any) length = u0 + du;
     else if (u > reach) break;
   }
   const width = 2 * (deckHalf + CONE.paveMargin);
   const run = Math.max(0, reach - CONE.berm), slant = Math.hypot(run, run / CONE.slope);
   // (two cones meeting under a short bridge: no toe sill between them)
-  return { ...at, half, top, reach, height: top - g0, volume, paved: width * slant, sill: met >= limit ? 0 : width, length, side };
+  return { ...at, half, top, reach, height: top - g0, volume, paved: width * slant, sill: met >= Math.min(limit, meet) ? 0 : width, length, side };
 }
 
 /** CZK of a cone's paving and toe sill (billed with the bridge) */

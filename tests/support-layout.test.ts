@@ -49,6 +49,11 @@ describe('automatic bridge support remedies', () => {
     expect(mine.runs[0].closedEnds).toEqual([true, false]);
     expect(mine.runs[0].coneReach).toEqual([0, reach]);
     expect(mine.diagnostics).toEqual([]);
+    // a road beside the axis, under the quarter cone round the crest's corner (15 m off, 5–15 m into the bridge): a wall
+    // there (Auto's bridge goes on only for what lies on the axis: longer, it may need spans no style reaches)
+    const beside = remedyBridgeSupports(r, terrain(), new RoadNet({ cls: ['secondary'], ways: [[0, 200, 115, 210, 115]] })).runs[0];
+    expect(beside.s0).toBe(95);
+    expect(beside.closedEnds).toEqual([true, false]);
   });
 
   it('preserves manual runs and earth paint, with a measured clear-endpoint proposal', () => {

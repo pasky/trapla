@@ -35,7 +35,7 @@ shows the open cut's price; presplit and rock slopes by what the geology says.
 
 ## What it does (model 38 → 40, together with research/68's cones)
 
-**D3 0302 starter**: 4,935 → 7,028 M CZK, VALID (7,049 after the review fixes of research/68 §4.5). Auto's line now rides higher: the cut at Luka is at most 27 m deep
+**D3 0302 starter**: 4,935 → 7,028 M CZK, VALID (7,045 after the review fixes of research/68 §4.5). Auto's line now rides higher: the cut at Luka is at most 27 m deep
 (km 1.6–1.9), and the Sázava is crossed by one 1,678 m bridge (km 2.04–3.72, long spans, deck up to ≈ 145 m over the
 river) instead of a 419 m bridge between 40 / 47 m fills. The real section (ŘSD leaflet: 10.54 bn) has the 1,843 m Luka
 tunnel and a 787 m bridge 113 m high: its line is ≈ 30 m lower, because the town of Jílové asked for the line to be

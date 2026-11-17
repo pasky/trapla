@@ -315,13 +315,15 @@ The same at h_a = 30 m:
   hauteur limitée à une dizaine de mètres" (§1.4, secondary, **UNVERIFIED**). Rule (`CONE.closedMax` = 10 m,
   support-layout.ts): on a fill of at most 10 m the end is a closed abutment, no cone (billed as every abutment was
   before model 40, inside the bridge price: **PROVISIONAL**, its extra wall is not priced); above 10 m Auto's bridge
-  goes on to the first end whose cone is clear, counting only what the footprint screen may not move aside (a minor
-  road it may move only closes the end); where none is found within the abutment search's reach, and on the
-  player's bridge, a closed abutment. D11 best: the end at km 6.99 over a service road is a wall; the 21 m fill at
+  goes on to the first end whose cone's axis is clear, counting only what the footprint screen may not move aside (a
+  minor road it may move only closes the end); something under the quarter cones at its flanks (the cone's first
+  half, out to 0.87 of its reach either side), no clear end within the abutment search's reach, and the player's
+  bridge: a closed abutment (going on for the flanks too had made a bridge whose spans no style reaches). D11 best: the end at km 6.99 over a service road is a wall; the 21 m fill at
   km 11.40 runs on 20 m past a 0.5 m stream (+32 M of bridge).
 - **Cross slopes:** the cone's fill is summed row by row out to where it meets the ground on either side (the grid
   had been bounded by the ground on the axis: on a 30 % cross slope a 20 m cone stopped 9 m above the ground on its
   low side, unbilled and undrawn); the drawn mesh uses the same extents.
-- **Two cones under a short bridge** each go to where their surfaces meet on the axis (no fill counted twice, no toe
-  sill between them); the two directions of a motorway count their overlapping cones once (project-motorway.ts
+- **Two cones under a short bridge** count their union once: each fill where its surface is the higher (a single
+  cutting plane left steps off the axis where their heights differ); paving to where they meet on the axis, no toe
+  sill between them; a cone whose other end has none (a bank, a wall) runs on to the ground, as far as the bridge; the two directions of a motorway count their overlapping cones once (project-motorway.ts
   splitLedger).

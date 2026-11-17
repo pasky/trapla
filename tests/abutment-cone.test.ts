@@ -1,7 +1,7 @@
 // The end of a bridge in a fill (playtest sweep 3, P1 #4; research/68): a cone of fill in front of the abutment,
 // 1:1.5, quarter cones round the crest corners, paved under the deck.
 import { describe, expect, it } from 'vitest';
-import { abutmentCone, CONE, coneReach, conePavingCost, conesMeet, coneSurface } from '../src/core/abutment-cone';
+import { abutmentCone, CONE, coneReach, conePavingCost, coneSurface } from '../src/core/abutment-cone';
 import { syntheticTerrain } from '../src/core/terrain';
 
 describe('abutment cones', () => {
@@ -30,13 +30,16 @@ describe('abutment cones', () => {
     for (const u of [0, c.reach / 2]) expect(coneSurface(c, u, v)).toBeLessThanOrEqual(100 - 0.3 * v);
     expect(c.side).toBeGreaterThan(4.75 + CONE.berm + CONE.slope * 20);
   });
-  it('two cones under a short bridge each go as far as where they meet: no fill counted twice, no toe sill', () => {
-    const L = 30, meet = conesMeet(112, 112, L), a = abutmentCone(flat, at, 114, 6, 6, meet)!;
-    const b = abutmentCone(flat, { ...at, s: L, x: 100 + L, tx: -1 }, 114, 6, 6, L - meet)!;
-    expect(meet).toBeCloseTo(L / 2, 6);
-    expect(a.length).toBeLessThanOrEqual(meet + 1e-9);
+  it('two cones under a short bridge: their union counted once (each where it is the higher), no toe sill', () => {
+    const L = 30, A = at, B = { ...at, s: L, x: at.x + L, tx: -1 };
+    const ra = { x: A.x, y: A.y, tx: 1, ty: 0, half: 6, top: 112 }, rb = { x: B.x, y: B.y, tx: -1, ty: 0, half: 6, top: 109 };
+    const a = abutmentCone(flat, A, 114, 6, 6, L, rb)!, b = abutmentCone(flat, B, 111, 6, 6, L, ra)!;
     expect(a.sill + b.sill).toBe(0);
-    const whole = abutmentCone(flat, at, 114, 6, 6)!;
-    expect(a.volume).toBeLessThan(whole.volume);
+    expect(a.reach + b.reach).toBeCloseTo(L, 6); // (they meet on the axis)
+    let union = 0;
+    const g = 0.25;
+    for (let x = A.x + g / 2; x < B.x; x += g) for (let y = 150 + g / 2; y < 250; y += g)
+      union += Math.max(0, Math.max(coneSurface(ra, x - A.x, y - 200), coneSurface(rb, B.x - x, y - 200)) - 100) * g * g;
+    expect(Math.abs(a.volume + b.volume - union) / union).toBeLessThan(0.03);
   });
 });

@@ -152,10 +152,13 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   const coneReachAt = (i: number, into: number) => r.coneReachAt?.(i, into) ?? 0;
   /** the cone at end cell i too high to close off with a wall (CONE.closedMax) */
   const highCone = (i: number) => r.grade[i] - CONE.deckDepth - r.ground[i] > CONE.closedMax;
-  const coneBuries = (s: number, into: number, reach: number, relocatable?: ReadonlySet<number>) => {
+  const coneBuries = (s: number, into: number, reach: number, relocatable?: ReadonlySet<number>, flanks = true) => {
     if (!(reach > 0)) return false;
-    const len = reach + 0.5;
-    return obstacle(cellAt(r, s + into * len / 2, len / 2, r.crownWidth / 2 + 2), relocatable) > -Infinity;
+    // along the axis out to its toe, and (`flanks`) its first half, where the quarter cones round the crest's corners
+    // (radius ≈ its reach on level ground) reach out at least 0.87 of it to either side
+    const len = reach + 0.5, near = reach / 2;
+    return obstacle(cellAt(r, s + into * len / 2, len / 2, r.crownWidth / 2 + 2), relocatable) > -Infinity
+      || flanks && obstacle(cellAt(r, s + into * near / 2, near / 2, r.crownWidth / 2 + 0.87 * reach), relocatable) > -Infinity;
   };
   const heldRun = (run: { i0: number; i1: number }) => {
     if (!held) return false;
@@ -214,9 +217,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     }
     for (const direction of [-1, 1]) {
       const start = direction < 0 ? run.s0 : run.s1, end = direction < 0 ? run.i0 : run.i1;
-      // Auto's end on a fill too high to close off with a wall, whose cone would cover what lies under the bridge,
-      // goes on to where it does not (a minor road under it, a lower fill: a closed abutment instead, below)
-      const buried = !manualRuns.has(run) && highCone(end) && coneBuries(start, -direction, coneReachAt(end, -direction), strictWays);
+      // Auto's end on a fill too high to close off with a wall, whose cone would cover what lies under the bridge on its
+      // axis, goes on to where it does not (a minor road under it, a lower fill, something beside its flanks: a closed
+      // abutment instead, below; a longer bridge can need spans no style reaches)
+      const buried = !manualRuns.has(run) && highCone(end) && coneBuries(start, -direction, coneReachAt(end, -direction), strictWays, false);
       if (!blocked(start) && !buried) continue;
       const search = (cone: boolean) => {
         let index = end, target = start, raiseM = 0;
@@ -236,7 +240,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
           // continue low over dry ground, priced at the model's minimum height. A clear abutment
           // may also be set into the start of a cut (provisional ≤5 m retained cut), rather than
           // lifting the whole grade. Only a deck below ground or a deeper cut requires a raise.
-          const h = r.grade[index] - r.ground[index], free = !blocked(target) && !(cone && highCone(index) && coneBuries(target, -direction, coneReachAt(index, -direction), strictWays));
+          const h = r.grade[index] - r.ground[index], free = !blocked(target) && !(cone && highCone(index) && coneBuries(target, -direction, coneReachAt(index, -direction), strictWays, false));
           const shortfall = free ? -SUPPORT_LIMITS.abutmentCutM - h : -h;
           if (shortfall > 0) { raiseM = Math.max(raiseM, shortfall); reason ??= 'terrain'; }
           if (free) {

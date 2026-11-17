@@ -113,8 +113,8 @@
  * arches rise to 1/3.5 of their span, a bridge to 3.3 × its arch, the rib's clearance in the search, an arch Auto's
  * only without a lift (research/69); no cut deeper than 30 m, presplit rock faces, rock cut by its kind
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
- * the bridge (a wall, or Auto's bridge goes on). D11 frozen +50 … +758 M (PLAN.md "Playtest sweep 3"), D3 0302
- * 4,935 → 7,049 M. */
+ * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
+ * 4,935 → 7,045 M. */
 export const COST_MODEL_VERSION = 40;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
