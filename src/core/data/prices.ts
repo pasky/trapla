@@ -116,8 +116,12 @@
  * only without a lift (research/69); no cut deeper than 30 m, presplit rock faces, rock cut by its kind
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
- * 4,935 → 7,045 M. */
-export const COST_MODEL_VERSION = 41;
+ * 4,935 → 7,045 M.
+ * 42: Auto never squeezes two of its own changes of slope into each other: a support lift whose widened block end
+ * would (profile-remedies.ts) fails and the grade solve places its points there instead. Some drags change bill and
+ * validity (the owner's Královec drag: NOT VALID 10.76 → VALID 9.15 bn); frozen bills, saved designs unchanged
+ * (scripts/vc-overlap-audit.ts). */
+export const COST_MODEL_VERSION = 42;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
