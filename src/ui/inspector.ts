@@ -19,7 +19,7 @@ import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls
 import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
-import { KIND } from '../core/structures';
+import { KIND, tunnelGrade } from '../core/structures';
 import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
@@ -379,7 +379,12 @@ export class Inspector {
       const cc = tunnel.cutCoverM ?? 0, mined = Math.max(0, tunnel.length - cc);
       const how = [mined > 0 ? `mined ${m0(mined)}` : '', cc > 0 ? `cut and cover ${m0(cc)}${mined > 0 ? ' at its ends' : ''}` : '',
         (tunnel.tubes ?? 1) >= 2 ? 'two tubes (heavy traffic)' : (tunnel.tubes ?? 1) > 1 ? 'with an escape tunnel beside it' : ''].filter(Boolean).join(' · ');
-      method = `<div class="sub">${cap(how)}</div><div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
+      const steep = tunnelGrade(tunnel, r.grade, r.ds);
+      const steepNote = steep > TUNNEL_RULES.maxGrade + 1e-6 && !r.violations.some((v) => v.s0 === tunnel.s0 && /^This tunnel is steeper/.test(v.title))
+        ? `<div class="sub">Up to ${(steep * 100).toFixed(1)} % steep: a tunnel steeper than ${TUNNEL_RULES.maxGrade * 100} % is allowed only where the ground leaves no other way, with extra safety measures.</div>`
+        : steep > TUNNEL_RULES.autoMaxGrade + 1e-6 && steep <= TUNNEL_RULES.maxGrade + 1e-6
+          ? `<div class="sub">Up to ${(steep * 100).toFixed(1)} % steep: a tunnel steeper than ${TUNNEL_RULES.autoMaxGrade * 100} % needs extra safety measures after a risk study.</div>` : '';
+      method = `<div class="sub">${cap(how)}</div>${steepNote}<div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
     }
     // a bridge: its style as a choice, each with its price against this one
     const bridge = sel.piece === 'bridge' ? r.runs.find((q) => q.kind === KIND.bridge && q.s1 > s0 && q.s0 < s1) : undefined;

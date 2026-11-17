@@ -210,6 +210,13 @@ export const TUNNEL_RULES = {
    * at 1.8 km with the equipment share held): 0.957 at 1 km, 0.935 at 2 km. Beyond 2 km no data (ventilation and
    * control-centre steps from 3 km): held at `min` (research/64). */
   lengthFactor: { a: 0.913, b: 43.7, min: 0.92 },
+  /** NV 264/2009 Sb. annex 2.2 (EU Directive 2004/54/EC annex I §2.2): "V nových tunelech nesmí být podélný sklon
+   * větší než 5 %, kromě případů, kde prostorové podmínky neumožňují jiné řešení"; "V tunelech o sklonu větším než
+   * 3 % se na základě analýzy rizik musí přijmout dodatečná nebo zesílená opatření ke zvýšení bezpečnosti". Hessen
+   * Mobil 2006 §3.1.6: "das Längsgefälle sollte 3 % nicht überschreiten" (research/73 §3). Auto keeps its tunnels
+   * within `autoMaxGrade`; above it a note, above `maxGrade` a problem. */
+  autoMaxGrade: 0.03,
+  maxGrade: 0.05,
 };
 
 /**

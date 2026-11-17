@@ -46,7 +46,7 @@ import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
-import { allCut, chooseStructures, cutCoverMask, KIND, type Run } from './structures';
+import { allCut, chooseStructures, cutCoverMask, KIND, tunnelGrade, type Run } from './structures';
 import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
@@ -796,6 +796,38 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
     }
     mustBridge.push({ s: c.s, g, need, what: 'watercourse' });
   }
+  // A protected area that takes no works under our crown (research/75): Auto takes the road over it on a bridge
+  // (its supports outside, support-layout.ts) or under it in a mined tunnel (its dug ends outside), as the
+  // grade search's either-or clearance of a stream.
+  // Beside it, within the reach of a dug tunnel end's pit: no tunnel end there (the grade at most a portal's depth
+  // in its cut, or deep enough to mine).
+  const natureCrown = new Uint8Array(n), pitReach = cutCoverPitHalfWidth(STRUCTURE_RULES.tunnelMinDepth, cat.crownWidth);
+  if (terrain.protectedAreas) for (let i = 0; i < n; i++) {
+    const cell = { i, s: st.s[i], x: st.x[i], y: st.y[i], tx: st.tx[i], ty: st.ty[i], along: ds / 2, left: pitReach, right: pitReach };
+    let crown = false, near = false;
+    natureCells(terrain, cell, cat.mode === 'motorway', c => {
+      if (c.level !== 'ban') return;
+      near = true;
+      if (Math.abs(-(c.x - cell.x) * cell.ty + (c.y - cell.y) * cell.tx) <= cat.crownWidth / 2 + terrain.cell / 2) crown = true;
+    });
+    if (near && !oldAt(st.s[i])) natureCrown[i] = crown ? 1 : 2;
+  }
+  // (an area wider along our road than the longest span a bridge reaches: no deck can stand clear of it, only a tunnel)
+  for (let i = 0; i < n;) {
+    if (natureCrown[i] !== 1) { i++; continue; }
+    let j = i;
+    while (j + 1 < n && natureCrown[j + 1] === 1) j++;
+    const bridgeable = st.s[j] - st.s[i] + ds <= SUPPORT_LIMITS.spanM;
+    for (let k = i; k <= j; k++) {
+      waterMin[k] = bridgeable ? Math.max(Number.isNaN(waterMin[k]) ? -Infinity : waterMin[k], STRUCTURE_RULES.bridgeMinHeight) : Infinity;
+      waterBelow[k] = Math.min(Number.isNaN(waterBelow[k]) ? Infinity : waterBelow[k], -STRUCTURE_RULES.tunnelMinDepth);
+    }
+    i = j + 1;
+  }
+  for (let i = 0; i < n; i++) if (natureCrown[i] === 2) {
+    waterMin[i] = Math.max(Number.isNaN(waterMin[i]) ? -Infinity : waterMin[i], -STRUCTURE_RULES.portalDepth);
+    waterBelow[i] = Math.min(Number.isNaN(waterBelow[i]) ? Infinity : waterBelow[i], -STRUCTURE_RULES.tunnelMinDepth);
+  }
   // Distinct sparse crossing classes retain their actual size, skew and multiplicity in the DP.
   // Ground classes, rural then built-up: on the axis in a built-up area the town rates, surcharge and land
   // (SPK CN urban rows, building land), as the bill charges them there; then the watercourses' own classes.
@@ -925,7 +957,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
     groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
     mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
     waterGround, G, builtUp, costClasses, profileCostClass, profilePoints, crossingCost, forceWater,
-    sideHits, stationSides, forceParallelWater, tunnelWater, endJunctions, rawRoadX, roadX, roadG };
+    sideHits, stationSides, forceParallelWater, tunnelWater, endJunctions, rawRoadX, roadX, roadG, natureCrown };
 }
 
 interface BalanceSamples {
@@ -1169,7 +1201,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   const { ground, n, blocks, clearance, manualStructures, cutMethod, heldDeck, choiceDeck, rawRoadX, crossingOverrides, terrain, ds,
     clearanceS, waterMin, waterBelow, clearRuns, freeStation, cat, onOld, win, maxGradient, vlim,
     profileCostClass, costClasses, profilePoints, atS, groundClasses, G, builtUp, al, st, preview,
-    mustBridge, lap, roadX } = setup;
+    mustBridge, lap, roadX, natureCrown } = setup;
   const { costFor, balanceOf } = prices;
   let vpis: VPI[];
   let profileFeasible = true;
@@ -1219,7 +1251,11 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     // Roads to clear (opts.separate): our bridge 6 m above, or a cutting 6 m below for theirs.
     // Only there (and at the rivers / railways it failed to clear) does a missed clearance cost
     // more than any structure: elsewhere the grade line stays as it was.
-    const penaltyAt = opts.separate ? new Float64Array(n).fill(CLEARANCE_PENALTY) : undefined;
+    // A protected area that takes no works under our crown is the law, not a price: Auto pays any structure to
+    // keep out of it (research/75).
+    const nature = natureCrown.some(Boolean) ? natureCrown : undefined;
+    const penaltyAt = opts.separate || nature ? new Float64Array(n).fill(CLEARANCE_PENALTY) : undefined;
+    if (nature) for (let i = 0; i < n; i++) if (nature[i]) penaltyAt![i] = SEPARATION_PENALTY;
     if (penaltyAt) for (const r of opts.separateWater ?? []) {
       for (let i = Math.max(0, Math.floor((r.s0 - SEPARATION_REACH) / ds)); i <= Math.min(n - 1, Math.ceil((r.s1 + SEPARATION_REACH) / ds)); i++) penaltyAt[i] = SEPARATION_PENALTY;
     }
@@ -1296,10 +1332,10 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       ...(vlim.gradeAt ? { gradeAt: vlim.gradeAt } : {}),
       ...(typeof vlim.crest === 'number' ? {} : { crestAt: vlim.crest }), ...(typeof vlim.sag === 'number' ? {} : { sagAt: vlim.sag }),
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: either, structureKind: manualStructures, pins: d.gradePins,
-      portalDepth: STRUCTURE_RULES.portalDepth,
+      portalDepth: STRUCTURE_RULES.portalDepth, tunnelMaxGrade: TUNNEL_RULES.autoMaxGrade, tunnelHardGrade: TUNNEL_RULES.maxGrade,
       // A motorway or railway structure costs far more than the default penalty (a 70 m motorway bridge):
       // clear rivers, railways and roads rather than pay it.
-      ...(penaltyAt ? { clearancePenaltyAt: penaltyAt } : {}),
+      ...(penaltyAt ? { clearancePenaltyAt: penaltyAt } : {}), ...(nature ? { hardClearance: nature } : {}),
       costClass: profileCostClass, costClassCount: costClasses.length,
       ...(cat.minor ? { knotSpacing: MINOR_KNOTS } : onOld ? { knotSpacing: OLD_ROAD_KNOTS } : {}),
       ...(blocks ? { blocks, points: profilePoints, pointWeight: STEP, clearanceS,
@@ -1328,6 +1364,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         const r = autoProfile(subS, subG, { ...o, endpointElevations: { a: za, b: zb }, startGrade: za1 - za, endGrade: zb - zb0,
           ...(fp.slack ? { startGradeSlack: fp.slack[0], endGradeSlack: fp.slack[1] } : {}),
           minH: cut(o.minH), maxH: cut(o.maxH), structureKind: cut(o.structureKind), costClass: cut(o.costClass),
+          clearancePenaltyAt: cut(o.clearancePenaltyAt), hardClearance: cut(o.hardClearance),
           ...(o.eitherH ? { eitherH: { above: cut(o.eitherH.above)!, below: cut(o.eitherH.below)! } } : {}),
           pins: (o.pins ?? []).filter(p => p.s > sa && p.s < sb).map(p => ({ ...p, s: p.s - sa })),
           ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
@@ -1485,7 +1522,7 @@ function routeCaches(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
  * bridge supports. Called once per candidate by `finish` (lifts, retries). */
 function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>) {
   const { timing, st, water, terrain, n, preview, manualStructures, lap, w, ds, ground, waterAt,
-    crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG,
+    crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG, natureCrown,
     crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod, bridgeStyle, choiceDeck, deepCut } = setup;
   const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, tunnelFactor, tunnelRate, surT, roadS, balanceTolerance,
     usable } = prices;
@@ -1515,7 +1552,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   const retention: RetainingPlan = preview ? {
     walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
     wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [], walledBuildings: [],
-  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits }, opts.keepClear?.filter(c => c.wall));
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits }, opts.keepClear?.filter(c => c.wall));
   work('retaining', retainingStart);
   lap('sections');
 
@@ -1659,6 +1696,10 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   }
   const forcedTunnel = tunnelWater(st.s, grade);
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
+  // a protected area under our crown: over it on a bridge, or under it mined (research/75)
+  for (let i = 0; i < n; i++) if (natureCrown[i] === 1 && manualStructures[i] < 0) {
+    if (h[i] > 0) forced[i] = 1; else if (-h[i] >= STRUCTURE_RULES.tunnelMinDepth) forcedTunnel[i] = 1;
+  }
   // a cutting whose side slope never reaches the top of the hillside (sections.ts `open`) cannot be dug: a tunnel
   for (let i = 0; i < n; i++) if (sec.open[i] && -h[i] >= STRUCTURE_RULES.portalDepth) forcedTunnel[i] = 1;
   const priceRun = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width), spanCost = equalSpanRunCost(bridge, h, priceRun);
@@ -1791,7 +1832,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   let supportStart = performance.now();
   // (the cones in front of the abutments: no pier on them, none over what lies below; support-layout)
   const withCones = preview ? {} : { coneReachAt };
-  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
   work('support', supportStart);
   // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
   // within the limit reaches past them) is no option there: choose again without it.
@@ -1806,7 +1847,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     settled = settle(); selection = settled.selection;
     work('selection', again);
     supportStart = performance.now();
-    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
   const unlifted = choiceDeckOf(opts, choiceDeck);
@@ -1984,7 +2025,7 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
  * earth, width and land cover per station, earthworks (volumes, mass haul, cut classes). */
 function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setup: ReturnType<typeof routeSetup>, lifting: ReturnType<typeof routeLift>, caches: ReturnType<typeof routeCaches>, prices: ReturnType<typeof routePrices>) {
   const { engineering, liftShared, oob } = lifted;
-  const { preview, cat, maxGradient, ds, al, n, lap, cutMethod, heldDeck, fullAlignment, win } = setup;
+  const { preview, cat, maxGradient, ds, al, n, lap, cutMethod, heldDeck, fullAlignment, win, manualStructures } = setup;
   const { lift } = lifting;
   const { urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre } = caches;
   const { b, usable } = prices;
@@ -2002,7 +2043,8 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   });
   // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
   // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
-  const structureViolations = [...selection.violations, ...(preview && d.profileMode === 'auto' ? [] : supported.violations)];
+  const structureViolations = [...selection.violations, ...(preview && d.profileMode === 'auto' ? [] : supported.violations),
+    ...tunnelGradeViolations(runs, grade, ds, d.profileMode === 'auto' ? manualStructures : undefined)];
   // a clearance Auto could not lift: why, in numbers (P2 7: never a bare "raise it" Auto could have done)
   if (d.profileMode === 'auto' && !preview) for (const v of structureViolations) {
     if (!v.title.startsWith(SPAN_TOO_LOW)) continue;
@@ -2623,7 +2665,10 @@ function evaluatePass(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Resu
   let spanned = false;
   for (const c of streams) {
     const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
-    if (c.feature !== 'water' && !first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
+    // (or a stream with no bridge near, where our embankment stands a bridge's height over it: a short bridge of its own)
+    const high = c.feature === 'stream' && elevations(buildProfile(first.vpis, setup.vlim.crest, setup.vlim.sag), setup.st.s.subarray(i0, i1 + 1))
+      .every((z, k) => z - setup.ground[i0 + k] >= STRUCTURE_RULES.bridgeMinHeight);
+    if (c.feature !== 'water' && !high && !first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
     for (let i = i0; i <= i1; i++) if (manualStructures[i] < 0) { streamBridge[i] = 1; spanned = true; }
   }
   if (spanned) { timing['count.streamRetry'] = 1; first = finish(crossingWays, new Set(), first.vpis); }
@@ -2780,3 +2825,22 @@ function nearLines(lines: readonly (readonly { x: number; y: number }[])[], d: n
     return Math.hypot(x - ax - t * dx, y - ay - t * dy) <= d;
   });
 }
+
+/** A tunnel steeper than the law allows (TUNNEL_RULES.maxGrade, NV 264/2009 annex 2.2): its steepest grade between
+ * stations, over a whole tunnel. (Above TUNNEL_RULES.autoMaxGrade the tunnel's card has a note: tunnelGrade.) */
+function tunnelGradeViolations(runs: readonly Run[], grade: ArrayLike<number>, ds: number,
+  /** an Auto grade line: only the player's tunnels (painted) are checked; Auto's steeper ones are where its grade
+   * search found no other way (the Act's own exception), said on the tunnel's card */
+  manual?: ArrayLike<number>): Violation[] {
+  const out: Violation[] = [];
+  for (const r of runs) if (r.kind === KIND.tunnel && (!manual || Array.prototype.some.call(manual, (v: number, i: number) => i >= r.i0 && i <= r.i1 && v === KIND.tunnel))) {
+    const g = tunnelGrade(r, grade, ds);
+    if (g <= TUNNEL_RULES.maxGrade + 1e-6) continue;
+    out.push({ kind: 'structure', basis: 'law', s0: r.s0, s1: r.s1, title: `This tunnel is steeper than ${TUNNEL_RULES.maxGrade * 100} %`,
+      fix: `Make the road at most ${TUNNEL_RULES.maxGrade * 100} % steep from km ${(r.s0 / 1000).toFixed(2)} to km ${(r.s1 / 1000).toFixed(2)} (now ${(g * 100).toFixed(1)} %), or end the tunnel where it steepens`,
+      detail: 'A new road tunnel may not be steeper than this unless the ground leaves no other way; above 3 % it needs extra safety measures.',
+      rule: 'NV 264/2009 Sb. annex 2.2: no new tunnel steeper than 5 %, extra safety measures above 3 %' });
+  }
+  return out;
+}
+

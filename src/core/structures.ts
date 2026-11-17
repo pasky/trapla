@@ -95,6 +95,13 @@ export function cutCoverMask(kind: ArrayLike<number>, runs: readonly Run[], h: A
   return out;
 }
 
+/** the steepest grade in a tunnel run i0…i1, as a fraction */
+export function tunnelGrade(r: Pick<Run, 'i0' | 'i1'>, grade: ArrayLike<number>, ds: number): number {
+  let g = 0;
+  for (let i = r.i0; i < r.i1; i++) g = Math.max(g, Math.abs(grade[i + 1] - grade[i]) / ds);
+  return g;
+}
+
 /** the player chose cut and cover for all of the tunnel i0…i1 */
 export function allCut(i0: number, i1: number, cutMethod?: ArrayLike<number>): boolean {
   if (!cutMethod) return false;

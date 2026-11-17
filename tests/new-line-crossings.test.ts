@@ -8,6 +8,9 @@ import { createRailwayRoute } from '../src/core/project-railway';
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
 
 const D11 = 'public/scenarios/d11';
+// The QA's new lines run through the Natura 2000 site EVL Krkonoše (research/75), where they are rightly a problem;
+// these cases are about the crossing engine, so the pack is loaded without its protected areas (loadpack.ts).
+process.env.PROTECTED = '0';
 const fixture = (name: string) => JSON.parse(readFileSync(`tests/fixtures/qa-final/${name}.json`, 'utf8')) as ProjectDesign;
 /** what keeps the project from a total, or makes it invalid, other than the new line's own free ends */
 const problems = (r: ProjectResult) => r.issues.filter(i => !['road-ends-nowhere', 'motorway-needs-interchange'].includes(i.code)).map(i => i.violation.title);

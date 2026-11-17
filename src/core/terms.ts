@@ -213,7 +213,7 @@ export const BRIDGE_STYLE_TEXT: readonly ['short' | 'long' | 'arch', string, str
 
 /** Footprint outcomes (things our earthworks cover beside the road). */
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
-  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : 'stream';
+  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : c.feature === 'nature' ? 'protected nature area' : 'stream';
   switch (c.action) {
     case 'relocation': return c.closed && !c.closed.detour
       ? { tag: 'removed', label: `${what}: ${m(c.closed.length)} m removed (a dead end under our earthworks)`,

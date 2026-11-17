@@ -19,7 +19,7 @@ import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type Footpri
 
 export interface FootprintConflict {
   id: string;
-  feature: 'road' | 'railway' | 'water' | 'stream' | 'building';
+  feature: 'road' | 'railway' | 'water' | 'stream' | 'building' | 'nature';
   action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked' | 'junction';
   /** junction only: a rebuilt stretch joining its own old road, not a new junction */
   continuation?: boolean;

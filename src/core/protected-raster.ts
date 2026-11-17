@@ -58,8 +58,8 @@ export interface NatureCell { x: number; y: number; index: number; site: number;
 export function natureCells(terrain: Terrain, c: FootprintCell, motorway: boolean, visit: (cell: NatureCell) => void): void {
   const areas = terrain.protectedAreas, step = terrain.cell;
   if (!areas) return;
-  const [x0, y0, x1, y1] = cellBounds(c, step), e = areas.extent;
-  if (x1 < e[0] || x0 > e[2] || y1 < e[1] || y0 > e[3]) return;
+  const [x0, y0, x1, y1] = cellBounds(c, step);
+  if (!areas.mayCover(x0, y0, x1, y1)) return;
   footprintRows(terrain, c, (row, y, col0, col1) => areas.rowRuns(row, col0, col1, (c0, c1, combo) => {
     for (let col = c0; col <= c1; col++) {
       const x = (col + 0.5) * step;

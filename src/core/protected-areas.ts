@@ -4,6 +4,9 @@
 // pack's polygons (even-odd fill, cell centres, like the land-cover raster).
 import { PROTECTED_ORDER, protectedRule, type ProtectedData, type ProtectedRule, type ProtectedSiteData } from './data/protected';
 
+/** cells per side of a quick-test block */
+const BLOCK = 32;
+
 export class ProtectedAreas {
   readonly sites: readonly ProtectedSiteData[];
   /** distinct sets of sites covering a cell, each strictest first (PROTECTED_ORDER) */
@@ -14,6 +17,9 @@ export class ProtectedAreas {
   private readonly ruling = new Map<number, number>();
   /** local metres covered by any run: [x0, y0, x1, y1] (empty: x0 > x1) */
   readonly extent: readonly [number, number, number, number];
+  /** blocks of BLOCK × BLOCK cells holding any run (a quick test before a scan) */
+  private readonly blocks: Uint8Array;
+  private readonly bx: number;
 
   constructor(data: ProtectedData, readonly nx: number, readonly ny: number, readonly cell: number) {
     this.sites = data.sites;
@@ -83,6 +89,19 @@ export class ProtectedAreas {
       c0 = Math.min(c0, runs[3 * starts[r]]); c1 = Math.max(c1, runs[3 * (starts[r + 1] - 1) + 1]);
     }
     this.extent = [c0 * cell, height - (r1 + 1) * cell, (c1 + 1) * cell, height - r0 * cell];
+    this.bx = Math.ceil(nx / BLOCK);
+    this.blocks = new Uint8Array(this.bx * Math.ceil(ny / BLOCK));
+    for (let r = 0; r < ny; r++) for (let k = starts[r]; k < starts[r + 1]; k++)
+      for (let b = Math.floor(runs[3 * k] / BLOCK); b <= Math.floor(runs[3 * k + 1] / BLOCK); b++) this.blocks[Math.floor(r / BLOCK) * this.bx + b] = 1;
+  }
+
+  /** Whether any area may lie in the local-metre rectangle [x0, y0, x1, y1]. */
+  mayCover(x0: number, y0: number, x1: number, y1: number): boolean {
+    const h = this.ny * this.cell, b = BLOCK * this.cell;
+    const c0 = Math.max(0, Math.floor(x0 / b)), c1 = Math.min(this.bx - 1, Math.floor(x1 / b));
+    const r0 = Math.max(0, Math.floor((h - y1) / b)), r1 = Math.min(this.blocks.length / this.bx - 1, Math.floor((h - y0) / b));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (this.blocks[r * this.bx + c]) return true;
+    return false;
   }
 
   /** the combo of sites covering grid cell (col, row), or −1 */
