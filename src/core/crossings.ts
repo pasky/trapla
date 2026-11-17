@@ -364,7 +364,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         // (lower than the box needs, the way is lowered into a cut, by at most LOWERING_RULES.maxDepth)
         const lowest = box.minHeight - LOWERING_RULES.maxDepth;
         if (c.h < lowest - 1e-6) issue(c, 'underpass', 'Embankment too low for an underpass',
-          `Raise our road here by ${(lowest - c.h).toFixed(1)} m, to at least ${lowest.toFixed(2)} m above the crossed road: the box needs ${box.minHeight.toFixed(2)} m (${box.box.height} m inside, plus its roof and earth cover), and the ${row.label} can be lowered by at most ${LOWERING_RULES.maxDepth} m`, c.h, lowest);
+          `Raise our road here by ${(lowest - c.h).toFixed(1)} m, ${lowest < -0.005 ? `to ${(-lowest).toFixed(2)} m below` : `to at least ${Math.abs(lowest).toFixed(2)} m above`} the crossed road: the box needs ${box.minHeight.toFixed(2)} m (${box.box.height} m inside, plus its roof and earth cover), and the ${row.label} can be lowered by at most ${LOWERING_RULES.maxDepth} m`, c.h, lowest);
       }
     }
     if (choice !== 'reconnection' && !row.noAtGrade && !c.issues?.length) anchors.push(c);
