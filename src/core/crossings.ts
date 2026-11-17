@@ -487,6 +487,10 @@ export interface CrossingRoute {
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => 'railway' | 'water' | 'building' | 'works' | null;
   /** Houses still standing under a new road from a to b, and what buying one out costs. */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
+  /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
+  beside?: import('./crossing-works').WorksContext['beside'];
+  /** A mapped railway under a road of this half-width from a to b. */
+  railway?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => boolean;
   houseCost?: (j: number) => number;
   /** A home (not a shed, garage or barn): a reroute takes one only where nothing else can be built (research/60). */
   dwelling?: (j: number) => boolean;

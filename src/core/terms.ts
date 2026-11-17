@@ -100,7 +100,8 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
   // what else its raised or lowered stretch takes (crossing-works.ts)
   const works = [c.tieLength ? ` Roads joining it there are raised or lowered to meet it (${m(c.tieLength)} m).` : '',
-    c.wallLength ? ` A retaining wall (${m(c.wallLength)} m) keeps its slope off a road beside it.` : ''].join('');
+    c.wallLength ? ` A retaining wall (${m(c.wallLength)} m) keeps its slope off what stands beside it.` : '',
+    c.houses?.length && c.type !== 'reconnection' && c.type !== 'diversion' ? ` ${standing(c.homes ?? 0, c.houses.length - (c.homes ?? 0))} under its slopes and ${c.houses.length === 1 ? 'is' : 'are'} bought out.` : ''].join('');
   // what its new piece of road needs (link-route.ts)
   const link = [c.linkGrade ? ` The ground is steep: it climbs up to ${pct(c.linkGrade)} in places, the most its class allows where there is no other way.` : '',
     c.culverts ? ` ${c.culverts === 1 ? 'A culvert carries a stream' : `${c.culverts} culverts carry streams`} under it.` : '',

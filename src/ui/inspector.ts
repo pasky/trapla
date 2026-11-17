@@ -627,6 +627,7 @@ export class Inspector {
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
       why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is demolished, km ${km(r.s[removed.i])}, and goes with it.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
+        : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
         : removed.pier ? `A pier of our bridge stands on it, km ${km(r.s[removed.i])}.`
         : removed.in === 'bridge' ? `Under our bridge, km ${km(r.s[removed.i])}: ${this.ctx.building(j).kind === BUILDING_KINDS[BUILDING_KIND.minor].label

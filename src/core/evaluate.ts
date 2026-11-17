@@ -18,7 +18,7 @@ import {
   type CostBreakdown, type CostParts,
 } from './cost';
 import { heldRailway, RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
-import { WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG } from './crossing-works';
+import { WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG, type BesideHit } from './crossing-works';
 import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
 import { buildCrossings, type KeptCrossings } from './crossings-kept';
 export type { CrossingResult } from './crossings';
@@ -41,7 +41,7 @@ import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TRACK_CENTRES_M, TURNOUT_ANGLE_RAD } fro
 import { d275CrossSection } from './data/motorway';
 import { sourceReach, type SourceLane } from './noise-field';
 import { crossingWallGaps } from './crossing-walls';
-import { protectedRasterCells } from './protected-raster';
+import { protectedRasterCells, railwayNear } from './protected-raster';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
@@ -143,7 +143,7 @@ export interface Result {
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
   /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean;
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute' | 'works'; strip: boolean;
     /** under a high deck, where one of its piers stands */
     pier?: true;
     /** a small structure standing within this demolished building, which goes with it */
@@ -502,8 +502,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const sep = (gs: { road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...base,
       separate: [...base.separate ?? [], ...gs.flat().flatMap(t => t.road ? [t.road] : [])],
       separateWater: [...base.separateWater ?? [], ...gs.flat().flatMap(t => t.water ? [t.water] : [])] });
-    const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
-      && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH) || m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG));
+    const stuck = result.crossings.filter(c => (c.type === 'overbridge' || c.type === 'junction') && !c.requestedType
+      && c.geometry?.diagnostics?.some(m => (c.type === 'overbridge' && (m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH) || m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG))
+        || m === WORKS_COVER_RAILWAY || m === WORKS_COVER_HOUSE || m === WORKS_COVER_OURS));
     // …and where it paid the clearance penalty over a river, railway or stream instead of clearing it.
     const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water'));
     // …and where a way could be led to no other crossing and nothing else was buildable there either: it
@@ -2239,10 +2240,39 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
     return out;
   };
+  /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
+  const beside = (x: number, y: number, tx: number, ty: number, along: number, sign: number, reach: number) => {
+    const out: BesideHit[] = [];
+    const lateralOf = (px: number, py: number) => sign * (-(px - x) * ty + (py - y) * tx), r = along + reach + terrain.cell;
+    if (railwayNear(terrain, x - r, y - r, x + r, y + r)) protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along, left: sign > 0 ? reach : 0, right: sign > 0 ? 0 : reach }, f => {
+      if (f.feature !== 'railway' || retiredAt?.(f.x, f.y)) return;
+      const lateral = lateralOf(f.x, f.y);
+      if (lateral >= 0 && lateral <= reach) out.push({ what: 'railway', x: f.x, y: f.y, lateral: Math.max(0, lateral - terrain.cell / 2) });
+    });
+    const cx = x - ty * sign * reach / 2, cy = y + tx * sign * reach / 2;
+    if (bld) bld.near(cx, cy, along + reach / 2 + 5, j => {
+      if (gone[j] || !bld.hits(j, cx, cy, tx, ty, along, reach / 2)) return;
+      const band = bld.across(j, x, y, tx, ty, along);
+      if (!band) return;
+      const [lo, hi] = sign > 0 ? band : [-band[1], -band[0]];
+      if (hi < 0 || lo > reach) return;
+      const [fx, fy] = bld.facadePoint(j, x, y);
+      out.push({ what: keptIds.has(j) ? 'kept' : 'house', j, x: fx, y: fy, lateral: Math.max(0, lo) });
+    });
+    return out;
+  };
+  const railway = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    if (!(len > 0)) return false;
+    let hit = false;
+    protectedRasterCells(terrain, { i: 0, s: 0, x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half },
+      f => { if (!hit && f.feature === 'railway' && !retiredAt?.(f.x, f.y)) hit = true; });
+    return hit;
+  };
   if (!preview) {
     const left = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i]));
     const right = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i]));
-    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
+    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, beside, railway, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
       streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
       left, right };
     // (a retry builds only the crossings near what it changed: crossings-kept.ts)
@@ -2270,7 +2300,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     // houses a reroute runs through are bought out like those under our road (buildings, not works)
     // (a crossing built with the other direction is billed there, its houses included)
     const houses = c.shared ? [] : (c.houses ?? []).filter(j => !gone[j]);
-    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: 'reroute', strip: false }); }
+    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: c.type === 'reconnection' || c.type === 'diversion' ? 'reroute' : 'works', strip: false }); }
     crossingStructure[c.i] += c.cost - lump - (c.shared ? 0 : c.houseCost ?? 0);
     if (c.cost > 0) crossingsPaid++;
   }

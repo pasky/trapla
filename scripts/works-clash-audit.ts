@@ -15,7 +15,7 @@ import { bridgeLayout } from '../src/core/bridge';
 import { protectedRasterCells } from '../src/core/protected-raster';
 import { crossingBaseHeight, crossingSurfaces, groundSegment } from '../src/render/crossing-surface';
 
-export interface WorksClash { s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck'; x: number; y: number; j?: number }
+export interface WorksClash { path: string; i: number; s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck' | 'ours'; x: number; y: number; j?: number }
 
 /** Earth this thin is the drape tolerance, not a slope (crossing-works.ts DRAPED). */
 const DRAPED = 0.3;
@@ -25,18 +25,26 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
   const gone = new Set<number>([...r.demolished.map(d => d.j), ...r.boughtOut.map(d => d.j)]);
   const out: WorksClash[] = [], seen = new Set<string>();
   // our own body (its own checks own what lies under it): lateral reach per station
-  const ours = (x: number, y: number) => {
+  /** Where (x, y) lies in our own earth body: in its formation, or on a cut / fill slope (else null). */
+  const bodyAt = (x: number, y: number, inset = 0): 'formation' | 'cut' | 'fill' | null => {
     for (let i = 0; i + 1 < r.n; i++) {
       const dx = r.x[i + 1] - r.x[i], dy = r.y[i + 1] - r.y[i], len2 = dx * dx + dy * dy;
       if (Math.abs(x - r.x[i]) > 400 || Math.abs(y - r.y[i]) > 400) continue;
       const t = ((x - r.x[i]) * dx + (y - r.y[i]) * dy) / (len2 || 1);
       if (t < 0 || t > 1) continue;
       const lat = ((y - r.y[i]) * dx - (x - r.x[i]) * dy) / Math.sqrt(len2 || 1);
-      const k = t < 0.5 ? i : i + 1, reach = r.kind[k] === KIND.earth ? (lat >= 0 ? r.dayL[k] : r.dayR[k]) : 6;
-      if (Math.abs(lat) <= reach) return true;
+      const k = t < 0.5 ? i : i + 1;
+      // (over a tunnel or under a bridge is no clash with our body: piers are checked on their own)
+      if (r.kind[k] !== KIND.earth) continue;
+      const reach = lat >= 0 ? r.dayL[k] : r.dayR[k];
+      if (Math.abs(lat) > reach - inset) continue;
+      if (Math.abs(lat) <= crownWidth / 2 + 1) return 'formation';
+      // (dug away where the natural ground stands above our grade there)
+      return ctx.terrain.heightAt(x, y) > r.grade[i] + (r.grade[i + 1] - r.grade[i]) * t ? 'cut' : 'fill';
     }
-    return false;
+    return null;
   };
+  const ours = (x: number, y: number, inset = 0) => bodyAt(x, y, inset) !== null;
   // our bridge piers and deck: per bridge station, the deck underside
   const piers: { x: number; y: number }[] = [];
   for (const run of r.runs) if (run.kind === KIND.bridge) {
@@ -48,14 +56,17 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
     }
   }
   for (const surface of [...crossingSurfaces(r.crossings, natural, base)]) {
-    const c = surface.crossing, add = (what: WorksClash['what'], x: number, y: number, j?: number) => {
+    const c = surface.crossing, pathKind = surface.tie ? 'tie' : surface.link ? 'link' : 'road';
+    let at = 0;
+    const add = (what: WorksClash['what'], x: number, y: number, j?: number) => {
       const key = `${c.s}:${c.roadId}:${what}:${j ?? `${Math.round(x / 5)},${Math.round(y / 5)}`}`;
-      if (!seen.has(key)) { seen.add(key); out.push({ s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what, x, y, j }); }
+      if (!seen.has(key)) { seen.add(key); out.push({ path: pathKind, i: at, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what, x, y, j }); }
     };
     const sec = surface.sections;
     for (let i = 0; i + 1 < sec.length; i++) {
       if (!groundSegment(surface, i)) continue;
       const a = sec[i], b = sec[i + 1];
+      at = i;
       const raised = (q: typeof a) => Math.abs(q.edge[0].z - natural(q.edge[0].x, q.edge[0].y)) > DRAPED || Math.abs(q.edge[1].z - natural(q.edge[1].x, q.edge[1].y)) > DRAPED;
       if (!raised(a) && !raised(b)) continue;
       const dx = b.p.x - a.p.x, dy = b.p.y - a.p.y, len = Math.hypot(dx, dy);
@@ -72,9 +83,24 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
         const shift = (left - right) / 2, cx = x - ty * shift, cy = y + tx * shift;
         if (ctx.buildings!.hits(j, cx, cy, tx, ty, len / 2, (left + right) / 2) && !ours((ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j])) add('house', (ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j], j);
       });
-      protectedRasterCells(ctx.terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left, right }, f => {
+      // (a quarter metre's tolerance: the walls stand at the raster cell's edge)
+      protectedRasterCells(ctx.terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: left - 0.25, right: right - 0.25 }, f => {
         if (f.feature === 'railway' && !ours(f.x, f.y)) add('railway', f.x, f.y);
       });
+      // our own body (formation, slopes): a crossed way's slopes and pavement stay out of it, except where it
+      // meets our road (a junction) or passes through it (an underpass's box)
+      if (c.type !== 'junction' && !(c.type === 'underpass' && !surface.link && !surface.tie)) {
+        // (the slope's own height there beyond the drape tolerance: a toe grazing our slope's edge is not a body in it)
+        for (const q of [a, b]) for (const k of [0, 1] as const) for (const t of [0.25, 0.5, 0.75]) {
+          if (Math.abs(q.edge[k].z - natural(q.edge[k].x, q.edge[k].y)) * (1 - t) < DRAPED) continue;
+          const x = q.edge[k].x + (q.toe[k].x - q.edge[k].x) * t, y = q.edge[k].y + (q.toe[k].y - q.edge[k].y) * t;
+          if (Math.hypot(q.toe[k].x - q.edge[k].x, q.toe[k].y - q.edge[k].y) <= 1) continue;
+          // (a fill beside our fill merges with it: one body; anything in our formation or our cut, or a cut into
+          // our embankment, is not buildable as drawn)
+          const body = bodyAt(x, y, 1), fill = q.edge[k].z > natural(q.edge[k].x, q.edge[k].y);
+          if (body === 'formation' || body === 'cut' || (body === 'fill' && !fill)) add('ours', x, y);
+        }
+      }
       for (const p of piers) {
         const u = (p.x - a.p.x) * tx + (p.y - a.p.y) * ty, v = -(p.x - a.p.x) * ty + (p.y - a.p.y) * tx;
         if (u >= 0 && u <= len && (v >= 0 ? v <= left : -v <= right)) add('pier', p.x, p.y);

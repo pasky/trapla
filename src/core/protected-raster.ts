@@ -37,3 +37,31 @@ export function protectedRasterCells(terrain: Terrain, c: FootprintCell,
     }
   }
 }
+
+/** A coarse index of where mapped railway cells are (blocks of COARSE × COARSE cells), built once per
+ * terrain: a screen before a cell-exact scan (crossing-works' slopes beside a crossed way). */
+const COARSE = 16;
+const railBlocks = new WeakMap<Terrain, Int8Array>();
+export function railwayNear(terrain: Terrain, x0: number, y0: number, x1: number, y1: number): boolean {
+  const bx = Math.ceil(terrain.nx / COARSE), by = Math.ceil(terrain.ny / COARSE);
+  let blocks = railBlocks.get(terrain);
+  if (!blocks) railBlocks.set(terrain, blocks = new Int8Array(bx * by).fill(-1));
+  const step = terrain.cell * COARSE;
+  const c0 = Math.max(0, Math.floor(x0 / step)), c1 = Math.min(bx - 1, Math.floor(x1 / step));
+  const r0 = Math.max(0, Math.floor((terrain.height - y1) / step)), r1 = Math.min(by - 1, Math.floor((terrain.height - y0) / step));
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const k = r * bx + c;
+    if (blocks[k] < 0) {
+      // (each block's cells looked at once, when first asked)
+      let found = 0;
+      for (let row = r * COARSE; row < Math.min(terrain.ny, (r + 1) * COARSE) && !found; row++)
+        for (let col = c * COARSE; col < Math.min(terrain.nx, (c + 1) * COARSE); col++) {
+          const v = terrain.lc[row * terrain.nx + col];
+          if ((v & RAIL_CROSSING_BIT) || (v & CLASS_BITS) === LC.rail) { found = 1; break; }
+        }
+      blocks[k] = found;
+    }
+    if (blocks[k]) return true;
+  }
+  return false;
+}
