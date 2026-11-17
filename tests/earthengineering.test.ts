@@ -34,8 +34,9 @@ describe('side slopes (research/48)', () => {
     // interbedded claystone sequence: 5:4 faces, too flat to net
     expect(at('carb_mixed').day).toBeCloseTo(4.75 + 0.8 * 12 + 2 + 1.75 * 3, 6);
     expect(at('carb_mixed').rockFace).toBe(0);
-    // Cretaceous sandstone 2:1, netted and presplit
-    expect(at('cret_sand').rockFace).toBeCloseTo(12 * Math.hypot(1, 0.5), 6);
+    // Cretaceous sandstone 2:1: dug, not blasted to a face or netted (only faces steeper than 2:1 are)
+    expect(at('cret_sand').day).toBeCloseTo(4.75 + 0.5 * 12 + 2 + 1.75 * 3, 6);
+    expect(at('cret_sand').rockFace).toBe(0);
     expect(at('gneiss').day).toBeCloseTo(4.75 + 0.25 * 12 + 2 + 1.75 * 3, 6);
   });
 

@@ -282,6 +282,14 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   });
   const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...windowCrossings,
     ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
+  // the cones at bridge ends outside the window, where the full result has them (downstream shifted; a preview
+  // builds none in it)
+  const cones = (r.cones ?? []).flatMap(c => {
+    const into = c.i - c.earthCell, s = c.s < s0 - 1e-6 ? c.s : c.s > old1 + 1e-6 ? c.s + shift : NaN;
+    if (Number.isNaN(s)) return [];
+    const i = Math.max(0, Math.min(n - 1, Math.round(s / ds + into / 2))), e = i - into;
+    return e < 0 || e >= n || inWindow(i) || inWindow(e) || kind[i] !== 1 || kind[e] !== 0 ? [] : [{ ...c, s, i, earthCell: e }];
+  });
   const travelMin = travelMinutes(speedStretches(al, d.pis, d.speed, d.category));
   const cost = sumParts(parts);
   return {
@@ -300,7 +308,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     cell: { width: stitch(f64, w.cell.width, r.cell.width), urban: stitch(f32, w.cell.urban, r.cell.urban),
       forest: stitch(f32, w.cell.forest, r.cell.forest), wall: stitch(u8, w.cell.wall, r.cell.wall),
       wallLength: stitch(f64, w.cell.wallLength, r.cell.wallLength), wallArea: stitch(f64, w.cell.wallArea, r.cell.wallArea) },
-    crossings, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], wallsAroundChoices: [], demolished: [], boughtOut: [], kept: [],
+    crossings, cones: cones.length ? cones : undefined, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], wallsAroundChoices: [], demolished: [], boughtOut: [], kept: [],
     noise: quietNoise(w),
     travelMin, valid: false, profileFeasible: w.profileFeasible,
     timing: { ...w.timing, total: performance.now() - started, 'window.length': s1 - s0,

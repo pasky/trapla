@@ -17,7 +17,7 @@ export function fillFace(local: number, height: number): [n: number, hold: numbe
  * higher the face may go before the next layer, whether it stands in rock. */
 export function cutFace(depth: number, cutDepth: number, rockFrom: number, ground?: { key?: string }): [n: number, hold: number, rock: boolean] {
   const soil = cutDepth <= S.cutShallowDepth ? S.cutShallow : S.cutSoil, rock = rockSlope(ground);
-  if (depth > rockFrom && rock !== 'soil') return [rock, depth - rockFrom, rock <= S.rockFaceSteepest];
+  if (depth > rockFrom && rock !== 'soil') return [rock, depth - rockFrom, rock < S.rockFaceSteepest];
   return [soil, Infinity, false];
 }
 

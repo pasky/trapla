@@ -34,7 +34,7 @@ Snapshot 2026-11-17 (qa3-realism-fixes agent). QA: high fills ended at a bridge 
 
 ## What it does
 
-D3 0302: its Sázava bridge now ends where the fills are 7 and 20 m (together with research/67's line: one 1,668 m
+D3 0302: its Sázava bridge now ends where the fills are 7 and 20 m (together with research/67's line: one 1,678 m
 bridge). D11 direct-80: 25 cones, 14 bridges; its 8.58 km end stood on a 34 m fill (cone reaching 56 m): now one
 bridge km 8.41–8.88. Frozen D11 bills with cones against without (research/67's table, measured as the mechanisms were added): straight +134, best +6, demo
 +125, direct-80 +84, direct-90 +161, town-centre +280 M CZK.
@@ -305,3 +305,23 @@ The same at h_a = 30 m:
   **UNVERIFIED.**
 - End heights of the D3 Sázava, D8 Ohře/Řehlovice and Lochkov bridges: not published in the sources
   reached.
+
+### 4.5 After review (2026-11-17): what a cone may cover, cross slopes, cones that meet
+
+- **A cone never covers a road, railway or stream under the bridge** (it had: the review's repro put 8.4 m of fill
+  over a secondary road while the crossing read "bridge"). Designers either end the bridge with a closed abutment (a
+  front wall holding the fill, wings along it) or lengthen it so the end span clears the cone and what lies below.
+  The only height found for the closed abutment is SETRA's "une culée remblayée ne peut se concevoir que pour une
+  hauteur limitée à une dizaine de mètres" (§1.4, secondary, **UNVERIFIED**). Rule (`CONE.closedMax` = 10 m,
+  support-layout.ts): on a fill of at most 10 m the end is a closed abutment, no cone (billed as every abutment was
+  before model 39, inside the bridge price: **PROVISIONAL**, its extra wall is not priced); above 10 m Auto's bridge
+  goes on to the first end whose cone is clear, counting only what the footprint screen may not move aside (a minor
+  road it may move only closes the end); where none is found within the abutment search's reach, and on the
+  player's bridge, a closed abutment. D11 best: the end at km 6.99 over a service road is a wall; the 21 m fill at
+  km 11.40 runs on 20 m past a 0.5 m stream (+32 M of bridge).
+- **Cross slopes:** the cone's fill is summed row by row out to where it meets the ground on either side (the grid
+  had been bounded by the ground on the axis: on a 30 % cross slope a 20 m cone stopped 9 m above the ground on its
+  low side, unbilled and undrawn); the drawn mesh uses the same extents.
+- **Two cones under a short bridge** each go to where their surfaces meet on the axis (no fill counted twice, no toe
+  sill between them); the two directions of a motorway count their overlapping cones once (project-motorway.ts
+  splitLedger).

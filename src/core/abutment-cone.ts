@@ -25,6 +25,10 @@ export const CONE = {
    * 45–60 m; short spans reach 60 m over what lies below). A cone reaching further puts the abutment further out:
    * the bridge is longer (evaluate.ts); fills at an abutment of ≈ 40 m and more (Czech: 7–14 m documented). */
   maxEndSpan: 60,
+  /** the highest fill an abutment closes off with a wall (a closed abutment, no cone) where a cone would cover what
+   * lies under the bridge, m (French SETRA practice: "une culée remblayée … pour une hauteur limitée à une dizaine de
+   * mètres", research/68 §1.4, UNVERIFIED, secondary). Above it Auto's bridge goes on instead (support-layout.ts). */
+  closedMax: 10,
   /** the grid the cone's volume is summed on, m */
   grid: 2,
 };
@@ -38,6 +42,9 @@ export interface AbutmentCone {
   half: number; top: number;
   /** from the abutment to the toe along the axis, m; the cone's top above the ground at the abutment, m */
   reach: number; height: number;
+  /** how far the fill lies over the ground, m: along the axis from the abutment, and off the axis either side (a
+   * cross slope carries it further on its low side); what is drawn */
+  length: number; side: number;
   /** fill, m³; paving, m²; toe sill, m */
   volume: number; paved: number; sill: number;
 }
@@ -64,26 +71,41 @@ export function coneReach(top: number, groundAt: (u: number) => number, limit = 
   return limit;
 }
 
+/** where along the bridge (m from its start) the cones at its two ends, whose tops are `topA` and `topB`, meet
+ * on the axis of a bridge `length` m long */
+export function conesMeet(topA: number, topB: number, length: number): number {
+  return Math.max(0, Math.min(length, (length + CONE.slope * (topA - topB)) / 2));
+}
+
 /** The cone at a bridge end. `at`: the abutment (the bridge's end) and the direction into the bridge; `grade`:
- * the road's height there; `half`: half the crest width; `deckHalf`: half the deck width. Null where the ground
- * is at the cone's top (an abutment set into a bank: no fill in front of it). */
+ * the road's height there; `half`: half the crest width; `deckHalf`: half the deck width; `limit`: how far into
+ * the bridge it may go, m (where it meets the other end's cone, conesMeet; the bridge's length). Null where the
+ * ground is at the cone's top (an abutment set into a bank: no fill in front of it). */
 export function abutmentCone(terrain: Terrain, at: { s: number; x: number; y: number; tx: number; ty: number; i: number; earthCell: number },
-  grade: number, half: number, deckHalf: number): AbutmentCone | null {
+  grade: number, half: number, deckHalf: number, limit = 300): AbutmentCone | null {
   const top = grade - CONE.deckDepth, g0 = terrain.heightAt(at.x, at.y);
   if (top - g0 < 0.5) return null;
   const axis = (u: number) => terrain.heightAt(at.x + at.tx * u, at.y + at.ty * u);
-  const reach = coneReach(top, axis);
-  // the volume over the ground on a grid in front of the abutment (u along, v across)
-  const G = CONE.grid, U = reach + G, side = half + CONE.berm + CONE.slope * (top - Math.min(g0, axis(reach))) + G;
-  let volume = 0;
-  for (let u = G / 2; u < U; u += G) for (let v = -side + G / 2; v < side; v += G) {
-    const x = at.x + at.tx * u - at.ty * v, y = at.y + at.ty * u + at.tx * v;
-    const dz = coneSurface({ half, top }, u, v) - terrain.heightAt(x, y);
-    if (dz > 0) volume += dz * G * G;
+  const met = coneReach(top, axis, limit), reach = Math.min(limit, met);
+  // the volume over the ground on a grid in front of the abutment (u along, v across), row by row and outwards
+  // from the axis until the cone meets the ground (also where a cross slope carries it further than on the axis)
+  const G = CONE.grid, edge = half + CONE.berm, far = 300;
+  let volume = 0, length = 0, side = 0;
+  for (let u = G / 2; u < Math.min(limit, far); u += G) {
+    let any = false;
+    for (const sgn of [-1, 1]) for (let v = G / 2; v < far; v += G) {
+      const x = at.x + at.tx * u - at.ty * v * sgn, y = at.y + at.ty * u + at.tx * v * sgn;
+      const dz = coneSurface({ half, top }, u, v) - terrain.heightAt(x, y);
+      if (dz > 0) { volume += dz * G * G; any = true; side = Math.max(side, v + G / 2); }
+      else if (v > edge) break;
+    }
+    if (any) length = Math.min(limit, u + G / 2);
+    else if (u > reach) break;
   }
   const width = 2 * (deckHalf + CONE.paveMargin);
-  const slant = Math.hypot(Math.max(0, reach - CONE.berm), top - axis(reach));
-  return { ...at, half, top, reach, height: top - g0, volume, paved: width * slant, sill: width };
+  const run = Math.max(0, reach - CONE.berm), slant = Math.hypot(run, run / CONE.slope);
+  // (two cones meeting under a short bridge: no toe sill between them)
+  return { ...at, half, top, reach, height: top - g0, volume, paved: width * slant, sill: met >= limit ? 0 : width, length, side };
 }
 
 /** CZK of a cone's paving and toe sill (billed with the bridge) */

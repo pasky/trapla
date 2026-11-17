@@ -50,7 +50,7 @@ import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from '
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { planPis, planSpeeds } from './plan-speeds';
-import { abutmentCone, CONE, coneReach, conePavingCost, type AbutmentCone } from './abutment-cone';
+import { abutmentCone, CONE, coneReach, conePavingCost, conesMeet, type AbutmentCone } from './abutment-cone';
 import { carryCrossingPrices, keptOwnHeights, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { LOWERING_RULES } from './data/remedies';
@@ -1668,17 +1668,19 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     return top - groundAlong(edge) < 0.5 ? 0 : coneReach(top, u => groundAlong(edge + into * u), al.length);
   };
   /** what the structure choice weighs for a run's cones: their fill on level ground (a 1:1.5 prism across the crest
-   * and two quarter cones, research/68 §4) at the starting fill value, and their paving, CZK */
-  const coneFillPrice = blockDecision(MATERIAL_VALUE.start).fillPerM3 * (1 + surE(0));
-  const coneEnd = (j: number, into: number) => {
+   * and two quarter cones, research/68 §4), m³, at the fill value of its block (`fillPerM3`), and their paving, CZK */
+  const coneHeight = (j: number, into: number) => {
     const k = j - into, hh = grade[j] - CONE.deckDepth - groundAlong(st.s[j] - into * ds / 2);
-    if (k < 0 || k >= n || hh < 0.5) return 0;
-    const width = cat.crownWidth + 2 * CONE.paveMargin;
-    return (0.75 * cat.crownWidth * hh * hh + Math.PI / 12 * (CONE.slope * hh) ** 2 * hh * 2) * coneFillPrice
-      + conePavingCost({ paved: width * Math.hypot(CONE.slope * hh, hh), sill: width }) * (1 + surB(0));
+    return k < 0 || k >= n || hh < 0.5 ? 0 : hh;
   };
-  const coneEstimate = (i0: number, i1: number) => coneEnd(i0, 1) + coneEnd(i1, -1);
-  const runCost = (i0: number, i1: number, length: number) => spanCost(i0, i1, length) + (preview ? 0 : coneEstimate(i0, i1));
+  const coneVolume = (j: number, into: number) => {
+    const hh = coneHeight(j, into);
+    return 0.75 * cat.crownWidth * hh * hh + Math.PI / 12 * (CONE.slope * hh) ** 2 * hh * 2;
+  };
+  const coneEnd = (j: number, into: number, fillPerM3: number) => {
+    const hh = coneHeight(j, into), width = cat.crownWidth + 2 * CONE.paveMargin;
+    return hh ? coneVolume(j, into) * fillPerM3 * (1 + surE(0)) + conePavingCost({ paved: width * Math.hypot(CONE.slope * hh, hh), sill: width }) * (1 + surB(0)) : 0;
+  };
   const styles = { asked: bridgeStyle, price: priceRun as BridgePrice, arch: !preview,
     mayPay: (top: number, length: number, layout: BridgeLayout) => longMayPay(bridge, top, length, layout) };
   const widths = Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]);
@@ -1692,7 +1694,8 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   /** the structure choice at given values of a m³ of fill (one per block), and the usable cut minus fill it
    * leaves in each block */
   const selectAt = (values: readonly number[]): Settled => {
-    const dps = values.map(v => blockDecision(v));
+    const dps = values.map(v => blockDecision(v)), fillAt = (i: number) => dps[blk[i]].fillPerM3;
+    const runCost = (i0: number, i1: number, length: number) => spanCost(i0, i1, length) + (preview ? 0 : coneEnd(i0, 1, fillAt(i0)) + coneEnd(i1, -1, fillAt(i1)));
     for (let i = 0; i < n; i++) {
       const dp = dps[blk[i]], cutP = dp.cutPerM3;
       earthPerM[i] = (earthBase[i] + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II + sec.cutIII[i] * cutP.III
@@ -1729,7 +1732,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
       const bridges = chosen.runs.filter(r => r.kind === KIND.bridge);
       for (let q = 1; q < bridges.length; q++) {
         const a = bridges[q - 1].i1, z = bridges[q].i0;
-        let earth = coneEnd(a, -1) + coneEnd(z, 1), deck = 0, open = z > a + 1;
+        let earth = coneEnd(a, -1, fillAt(a)) + coneEnd(z, 1, fillAt(z)), deck = 0, open = z > a + 1;
         for (let k = a + 1; k < z && open; k++) {
           if (chosen.kind[k] !== KIND.earth || manualStructures[k] >= 0 || h[k] <= 0) open = false;
           earth += earthPerM[k] * cellLength(k, n, ds); deck += bridgePerM[k] * cellLength(k, n, ds);
@@ -1741,6 +1744,9 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     }
     const balances = new Array<number>(nbS).fill(0);
     for (let i = 0; i < n; i++) if (chosen.kind[i] === KIND.earth) balances[blk[i]] += (usable * sec.cut[i] - sec.fill[i]) * cellLength(i, n, ds);
+    // (not the cones at bridge ends: counting their fill here pins a block that cannot balance at the top value, which
+    // then prices all its fill, not only what is bought in, and bridges far more than pays: D11 one bend at 90, a
+    // 270 m bridge at km 9.2 became 730 m, +306 M. The bill counts it, in the mass haul.)
     let value = 0;
     for (let j = 0; j < nbS; j++) value += values[j] * (settleEnds ? (settleEnds[j + 1] - settleEnds[j]) / al.length : 1);
     return { selection: chosen, balances, values: [...values], value };
@@ -1781,12 +1787,9 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   let settled = settle(), selection = settled.selection;
   work('selection', selectionStart);
   let supportStart = performance.now();
-  // (the cones in front of the abutments: no pier on them, support-layout)
-  const withCones = (sel: ReturnType<typeof chooseStructures>) => {
-    if (!preview) for (const r of sel.runs) if (r.kind === KIND.bridge) r.coneReach = [coneReachAt(r.i0, 1), coneReachAt(r.i1, -1)];
-    return sel;
-  };
-  let supported = remedyBridgeSupports({ ...st, grade, ground, ...withCones(selection), crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+  // (the cones in front of the abutments: no pier on them, none over what lies below; support-layout)
+  const withCones = preview ? {} : { coneReachAt };
+  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
   work('support', supportStart);
   // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
   // within the limit reaches past them) is no option there: choose again without it.
@@ -1801,7 +1804,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     settled = settle(); selection = settled.selection;
     work('selection', again);
     supportStart = performance.now();
-    supported = remedyBridgeSupports({ ...st, grade, ground, ...withCones(selection), crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
   const unlifted = choiceDeckOf(opts, choiceDeck);
@@ -2030,13 +2033,19 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   // each bridge end (and the mass balance), their paving the bridge ---
   const cones: AbutmentCone[] = [];
   const coneFill = new Float64Array(n), conePaving = new Float64Array(n);
-  if (!preview) for (const r of runs) if (r.kind === KIND.bridge && !(heldDeck && heldDeck[r.i0] && heldDeck[r.i1])) for (const [i, into, s] of [[r.i0, 1, r.s0], [r.i1, -1, r.s1]] as const) {
-    const earthCell = i - into;
-    if (earthCell < 0 || earthCell >= n || kind[earthCell] !== KIND.earth) continue;
-    const p = pointAt(fullAlignment, s + (win?.s0 ?? 0)), zf = elevations(prof, [s])[0];
-    const c = abutmentCone(setup.terrain, { s, x: p.x, y: p.y, tx: p.tx * into, ty: p.ty * into, i, earthCell }, zf, cat.crownWidth / 2, b / 2);
-    if (!c) continue;
-    cones.push(c); coneFill[earthCell] += c.volume; conePaving[i] += conePavingCost(c);
+  if (!preview) for (const r of runs) if (r.kind === KIND.bridge && !(heldDeck && heldDeck[r.i0] && heldDeck[r.i1])) {
+    // (a closed abutment has none; two cones under a short bridge each go as far as where they meet)
+    const tops = elevations(prof, [r.s0, r.s1]), meet = conesMeet(tops[0], tops[1], r.s1 - r.s0);
+    const fills = [r.i0 - 1, r.i1 + 1].map((e, k) => !r.closedEnds?.[k] && e >= 0 && e < n && kind[e] === KIND.earth);
+    for (const [k, i, into, s] of [[0, r.i0, 1, r.s0], [1, r.i1, -1, r.s1]] as const) {
+      const earthCell = i - into;
+      if (!fills[k]) continue;
+      const p = pointAt(fullAlignment, s + (win?.s0 ?? 0)), zf = tops[k];
+      const limit = !fills[1 - k] ? r.s1 - r.s0 : k ? r.s1 - r.s0 - meet : meet;
+      const c = abutmentCone(setup.terrain, { s, x: p.x, y: p.y, tx: p.tx * into, ty: p.ty * into, i, earthCell }, zf, cat.crownWidth / 2, b / 2, limit);
+      if (!c) continue;
+      cones.push(c); coneFill[earthCell] += c.volume; conePaving[i] += conePavingCost(c);
+    }
   }
   // --- earthworks ---
   const vol = volumes(ds, sec.cut, sec.fill, kind, usable);

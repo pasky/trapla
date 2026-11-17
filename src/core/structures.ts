@@ -31,6 +31,9 @@ export interface Run {
   /** A bridge: how far the cones in front of its abutments reach into it from its start and its end, m (0: none;
    * abutment-cone.ts): no pier stands on them. */
   coneReach?: [number, number];
+  /** A bridge: an end at its start / its end whose cone would cover a road, railway or water under it, built as a
+   * closed abutment (a wall down to the ground, no cone; support-layout.ts). */
+  closedEnds?: [boolean, boolean];
 }
 
 export interface StructureInput {

@@ -280,9 +280,9 @@ export const SIDE_SLOPES = {
    * confidence; the others (gneiss, quartzite, limestone, igneous, the Permian and Carboniferous sandstones and
    * conglomerates) keep 4:1 (group A/B; II/157). Fault zones (D3 Luka at 1:1.25) are beyond a rock-type rule. */
   rockByGround: { perm_fine: 'soil', marl: 'soil', carb_mixed: 0.8, phyllite: 0.8, cret_sand: 0.5 } as Readonly<Record<string, number | 'soil'>>,
-  /** A rock face this steep or steeper (1:n) is blasted to a controlled face and netted: presplit OTSKP 12892
+  /** A rock face steeper than this (1:n, n below it) is blasted to a controlled face and netted: presplit OTSKP 12892
    * (class III, "v [m2] požadované výsledné plochy"), recommended by TKP 4 (2026) art. 52 ("vhodné zvážit a eventuálně
-   * použít technologii řízeného výlomu"), research/67 decision 2; flatter faces are dug like soil, not netted. */
+   * použít technologii řízeného výlomu"), research/67 decision 2; faces of 2:1 and flatter are dug, not netted. */
   rockFaceSteepest: 0.5,
   rockFacePerM2: 2_513.47 + 2_360.50,
 };

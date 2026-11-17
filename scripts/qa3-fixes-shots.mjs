@@ -117,5 +117,15 @@ try {
   text = await card(); console.log('CARD deep cut', text.slice(0, 700));
   assert.match(text, /designers tunnel where a cut would be deeper than 30 m/);
   await shot('d11-deep-cut-tunnel-open-cut-price');
+  // 7. A bridge end whose cone would cover the road under it: a wall down to the ground (D11 best, km 6.99)
+  const best = JSON.parse(readFileSync('tests/fixtures/evaluate-remedies-current.json', 'utf8')).fixtures.find(f => f.name === 'best').design;
+  await setDesign(best);
+  const walled = await T(() => window.trapla.result().runs.find(r => r.kind === 1 && r.closedEnds?.[0] && r.s0 > 6900 && r.s0 < 7100));
+  assert.ok(walled, 'the bridge at km 6.99 starts at a wall');
+  await piece(walled.s0 + 30, 260, 200, 18);
+  text = await card(); console.log('CARD closed end', text.slice(0, 700));
+  assert.match(text, /One end is a wall down to the ground, so the fill does not cover what lies below/);
+  await T(([s]) => { const r = window.trapla.result(), i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], 110, 270, 14); }, [walled.s0]);
+  await shot('d11-bridge-end-wall-beside-the-road-below');
   assert.deepEqual(game.pageErrors, []);
 } finally { await game.close(); }

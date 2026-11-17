@@ -36,7 +36,7 @@ What failed, per bridge (`qa3/_arch.ts`-style scan of every springing pair):
 
 **Result.** The Sázava bridge on the 0302 starter as Auto had it on model 38 (419 m) took an arch: +648 M against
 long spans (the arch's PROVISIONAL price, a 30 m-span viaduct as high as its highest point, research/50 §5, stays).
-With research/67's deep-cut rule Auto's line rides higher and its Sázava bridge is 1,668 m: too long for one arch,
+With research/67's deep-cut rule Auto's line rides higher and its Sázava bridge is 1,678 m: too long for one arch,
 which its card says. The D11 direct-80 valley (km 8.41–8.88, 50 m deep) takes an arch for +106 M (shots 294, 295). Auto's choices in
 every scenario starter and frozen D11 fixture are unchanged (no bill moves; the cards' arch prices do). A synthetic
 case (tests/bridge-styles: an 80 m river on flat ground under a 25 m deck) now takes an arch from bank to bank as

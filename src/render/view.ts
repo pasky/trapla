@@ -976,8 +976,8 @@ export class View {
     const coneAt = new Map<number, NonNullable<Result['cones']>[number]>();
     for (const c of r.cones ?? []) {
       coneAt.set(c.earthCell, c);
-      const G = 2, u0 = -Math.abs(r.s[c.earthCell] - c.s), U = c.reach + G, deckHalf = w + CONE.paveMargin;
-      const side = c.half + CONE.berm + CONE.slope * Math.max(0, c.top - Math.min(natural(c.x, c.y), natural(c.x + c.tx * c.reach, c.y + c.ty * c.reach))) + G;
+      // (out as far as the billed fill lies over the ground, abutment-cone.ts)
+      const G = 2, u0 = -Math.abs(r.s[c.earthCell] - c.s), U = c.length, deckHalf = w + CONE.paveMargin, side = c.side + G;
       const nu = Math.ceil((U - u0) / G) + 1, nv = Math.ceil(2 * side / G) + 1, ids: number[] = [], above: boolean[] = [];
       for (let a = 0; a < nu; a++) for (let q = 0; q < nv; q++) {
         const u = Math.min(U, u0 + a * G), vv = -side + q * G * (2 * side) / ((nv - 1) * G);

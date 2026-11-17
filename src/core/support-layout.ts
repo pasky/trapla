@@ -7,6 +7,7 @@ import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { cellBounds, clipFootprint, type FootprintCell } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
 import { findRuns, KIND, type Run } from './structures';
+import { CONE } from './abutment-cone';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import { waterWidth } from './watercourses';
@@ -33,6 +34,9 @@ export interface SupportRoute {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
   tx: ArrayLike<number>; ty: ArrayLike<number>; grade: ArrayLike<number>; ground: ArrayLike<number>;
   kind: ArrayLike<number>; runs: Run[]; crownWidth: number;
+  /** how far the cone of fill in front of a bridge end in end cell i reaches into the bridge (`into`: the direction
+   * into it), m; 0 where there is no fill (abutment-cone.ts). Without it (a preview), no cones. */
+  coneReachAt?: (i: number, into: number) => number;
 }
 export interface SupportDiagnostic {
   s: number;
@@ -139,6 +143,17 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   const onCone = (s: number) => !!cones && (s < cones.s0 + cones.reach[0] + 0.5 || s > cones.s1 - cones.reach[1] - 0.5);
   const blocked = (s: number, pier = false) => (pier && onCone(s))
     || obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
+  /** a cone reaching `reach` m into the bridge from its end at `s` (`into`: the direction into it) would cover a
+   * road, railway or water under the bridge (`relocatable`: as for an abutment, only the roads the footprint screen
+   * cannot move aside; else any road, as nothing relocates what a cone covers) */
+  const coneReachAt = (i: number, into: number) => r.coneReachAt?.(i, into) ?? 0;
+  /** the cone at end cell i too high to close off with a wall (CONE.closedMax) */
+  const highCone = (i: number) => r.grade[i] - CONE.deckDepth - r.ground[i] > CONE.closedMax;
+  const coneBuries = (s: number, into: number, reach: number, relocatable?: ReadonlySet<number>) => {
+    if (!(reach > 0)) return false;
+    const len = reach + 0.5;
+    return obstacle(cellAt(r, s + into * len / 2, len / 2, r.crownWidth / 2 + 2), relocatable) > -Infinity;
+  };
   const heldRun = (run: { i0: number; i1: number }) => {
     if (!held) return false;
     for (let i = run.i0; i <= run.i1; i++) if (!held[i]) return false;
@@ -195,34 +210,48 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       continue;
     }
     for (const direction of [-1, 1]) {
-      const start = direction < 0 ? run.s0 : run.s1;
-      if (!blocked(start)) continue;
-      let index = direction < 0 ? run.i0 : run.i1, target = start, raiseM = 0;
-      let reason: SupportDiagnostic['reason'] | undefined = manualRuns.has(run) ? 'manual' : undefined;
-      let clear = false;
-      // Search in cell-sized increments, even after a constraint stops automatic extension:
-      // the first clear endpoint supplies an actionable extension/elevation diagnostic.
-      while (true) {
-        if (Math.abs(target - start) + r.ds > SUPPORT_LIMITS.extensionM) { reason ??= 'limit'; break; }
-        index += direction;
-        if (index <= 0 || index >= r.n - 1) { reason ??= 'boundary'; break; }
-        target = r.s[index] + direction * r.ds / 2;
-        if (manual[index]) reason ??= 'manual';
-        if (kind[index] === KIND.tunnel) reason ??= 'tunnel';
-        // bridgeMinHeight is an economic selection threshold, not a physical limit: the deck may
-        // continue low over dry ground, priced at the model's minimum height. A clear abutment
-        // may also be set into the start of a cut (provisional ≤5 m retained cut), rather than
-        // lifting the whole grade. Only a deck below ground or a deeper cut requires a raise.
-        const h = r.grade[index] - r.ground[index], free = !blocked(target);
-        const shortfall = free ? -SUPPORT_LIMITS.abutmentCutM - h : -h;
-        if (shortfall > 0) { raiseM = Math.max(raiseM, shortfall); reason ??= 'terrain'; }
-        if (free) {
-          // Filling the last earth cell would merge adjacent runs and erase the requested
-          // run's endpoint/abutment, even though no painted cell itself changed kind.
-          if (manual[index + direction] && kind[index + direction] === KIND.bridge) reason ??= 'manual';
-          clear = true; break;
+      const start = direction < 0 ? run.s0 : run.s1, end = direction < 0 ? run.i0 : run.i1;
+      // Auto's end on a fill too high to close off with a wall, whose cone would cover what lies under the bridge,
+      // goes on to where it does not (a minor road under it, a lower fill: a closed abutment instead, below)
+      const buried = !manualRuns.has(run) && highCone(end) && coneBuries(start, -direction, coneReachAt(end, -direction), strictWays);
+      if (!blocked(start) && !buried) continue;
+      const search = (cone: boolean) => {
+        let index = end, target = start, raiseM = 0;
+        let reason: SupportDiagnostic['reason'] | undefined = manualRuns.has(run) ? 'manual' : undefined;
+        let clear = false;
+        // Search in cell-sized increments, even after a constraint stops automatic extension:
+        // the first clear endpoint supplies an actionable extension/elevation diagnostic.
+        while (true) {
+          if (Math.abs(target - start) + r.ds > SUPPORT_LIMITS.extensionM) { reason ??= 'limit'; break; }
+          index += direction;
+          if (index <= 0 || index >= r.n - 1) { reason ??= 'boundary'; break; }
+          target = r.s[index] + direction * r.ds / 2;
+          if (manual[index]) reason ??= 'manual';
+          if (kind[index] === KIND.tunnel) reason ??= 'tunnel';
+          if (cone && reason) break;
+          // bridgeMinHeight is an economic selection threshold, not a physical limit: the deck may
+          // continue low over dry ground, priced at the model's minimum height. A clear abutment
+          // may also be set into the start of a cut (provisional ≤5 m retained cut), rather than
+          // lifting the whole grade. Only a deck below ground or a deeper cut requires a raise.
+          const h = r.grade[index] - r.ground[index], free = !blocked(target) && !(cone && highCone(index) && coneBuries(target, -direction, coneReachAt(index, -direction), strictWays));
+          const shortfall = free ? -SUPPORT_LIMITS.abutmentCutM - h : -h;
+          if (shortfall > 0) { raiseM = Math.max(raiseM, shortfall); reason ??= 'terrain'; }
+          if (free) {
+            // Filling the last earth cell would merge adjacent runs and erase the requested
+            // run's endpoint/abutment, even though no painted cell itself changed kind.
+            if (manual[index + direction] && kind[index + direction] === KIND.bridge) reason ??= 'manual';
+            clear = true; break;
+          }
         }
+        return { index, target, raiseM, reason, clear };
+      };
+      let found = buried ? search(true) : undefined;
+      if (!found || found.reason || !found.clear) {
+        // (no end clear of the cone found: a closed abutment there, a wall down to the ground and no cone)
+        if (!blocked(start)) continue;
+        found = search(false);
       }
+      const { index, target, raiseM, reason, clear } = found;
       if (!reason && clear) {
         const a = Math.min(index, run.i0), b = Math.max(index, run.i1);
         kind.fill(KIND.bridge, a, b + 1);
@@ -237,6 +266,14 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     return { ...part, kind: part.kind as 1 | 2, s0, s1, length: s1 - s0,
       forced: r.runs.some(run => run.forced && run.i0 <= part.i1 && run.i1 >= part.i0) };
   });
+  // each bridge's cones as its ends now stand; an end whose cone would cover what lies under it (a player's bridge,
+  // or no clear end found) is a closed abutment, a wall down to the ground: no cone there
+  if (r.coneReachAt) for (const run of runs) if (run.kind === KIND.bridge && !heldRun(run)) {
+    const reach: [number, number] = [coneReachAt(run.i0, 1), coneReachAt(run.i1, -1)];
+    const closed: [boolean, boolean] = [coneBuries(run.s0, 1, reach[0]), coneBuries(run.s1, -1, reach[1])];
+    run.coneReach = [closed[0] ? 0 : reach[0], closed[1] ? 0 : reach[1]];
+    if (closed[0] || closed[1]) run.closedEnds = closed; else delete run.closedEnds;
+  }
   const gradeAt = (x: number) => {
     const j = Math.max(0, Math.min(r.n - 2, Math.floor(x / r.ds))), t = Math.max(0, Math.min(1, (x - r.s[j]) / r.ds));
     return r.grade[j] * (1 - t) + r.grade[j + 1] * t;

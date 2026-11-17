@@ -8,6 +8,7 @@ import { evaluate, type Design } from '../src/core/evaluate';
 import { RoadNet } from '../src/core/roadnet';
 import { remedyBridgeSupports, type SupportRoute } from '../src/core/support-layout';
 import { KIND } from '../src/core/structures';
+import { CONE } from '../src/core/abutment-cone';
 import { LC, RAIL_CROSSING_BIT, syntheticTerrain, Terrain } from '../src/core/terrain';
 
 function route(n = 41): SupportRoute {
@@ -31,6 +32,23 @@ describe('automatic bridge support remedies', () => {
     expect(r.runs[0].s0).toBe(95);
     expect(result.diagnostics).toEqual([]);
     expect(result.violations).toEqual([]);
+  });
+
+  it('an end whose cone would cover a road goes on (Auto) or is a wall (the player’s bridge); no pier on a cone', () => {
+    const reach = CONE.berm + CONE.slope * 13, r = { ...route(), coneReachAt: () => reach };
+    const auto = remedyBridgeSupports(r, terrain(), roadAt(207)), run = auto.runs[0];
+    expect(run.s0).toBeLessThan(95);
+    expect(run.closedEnds).toBeUndefined();
+    expect(run.coneReach).toEqual([reach, reach]);
+    for (const p of run.pierStations ?? []) expect(p > run.s0 + reach && p < run.s1 - reach).toBe(true);
+    expect(auto.diagnostics).toEqual([]);
+    const mask = new Int8Array(r.n).fill(-1);
+    mask[12] = KIND.bridge;
+    const mine = remedyBridgeSupports(r, terrain(), roadAt(207), mask);
+    expect(mine.runs[0].s0).toBe(95);
+    expect(mine.runs[0].closedEnds).toEqual([true, false]);
+    expect(mine.runs[0].coneReach).toEqual([0, reach]);
+    expect(mine.diagnostics).toEqual([]);
   });
 
   it('preserves manual runs and earth paint, with a measured clear-endpoint proposal', () => {

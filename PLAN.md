@@ -825,7 +825,7 @@ Research: research/65.
 ### Playtest sweep 3: slowed stretches, deep cuts, cones at bridge ends, arches, hairpins (cost model 39, 2026-11-17)
 
 Findings: docs/playtest-findings.md "Sweep 3 — main 30d0ad8". Research: research/66 (design speed), /67 (deep cuts,
-rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/qa3-fixes-shots.mjs`).
+rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/qa3-fixes-shots.mjs`).
 - **A slowed stretch never makes Auto's road dearer.** The grade search is monotone in its own objective (D11, one
   bend at 70: every block cheaper by its estimate, 4,398 → 4,171 M), but it prices no crossed roads: at 70 it took a
   line 10 m higher at km 9, where a field track 17 m under the fill forced a bridge that joined the stream bridge
@@ -835,6 +835,8 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/q
   bill; a preview missed by ±25 M). D11 one bend 90 / 80 / 70: 8,782 / 8,783 / 8,782 M (was 9,067 at 70); best
   design, 36 single-bend slow-downs: none dearer (was 14), savings to −44 M. Time: one more pass (D11 one bend at 70
   0.45 s, 0.27 s at 90); drags within budget in all six modes on a slowed design, settle 472 ms (unslowed 464).
+  (With the deep-cut rule and the cones below, that design bills 9,641 M at 90, 80 and 70 alike; at 70 it is too slow
+  for the mission's time.)
   (A first version evaluated every faster geometry in full: 2–9 evaluations, 1.2 s, replaced.) The bend card says
   which km its stretch covers ("Its stretch is the whole road" with one bend) and what Auto kept.
 - **No bend faster than its road.** ČSN 73 6101:2018 lowers a stretch's design speed; a railway's line speed is its
@@ -845,7 +847,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/q
   Cowlitz River 159 / 45 m), a bridge up to 3.3 × its arch (D3 Sázava 787 / 237 m); the rib's clearance over what
   lies below is part of the search; an arch is Auto's only where it needs no lift (a first-pass arch with a smaller
   lift steered the support lifts: random-2 / random-8 +257 / +569 M). The D11 direct-80 valley takes an arch
-  (+106 M); a greyed Arch says why (`Run.archMiss`; the 0302 Sázava bridge, now 1,668 m: too long for one arch).
+  (+106 M); a greyed Arch says why (`Run.archMiss`; the 0302 Sázava bridge, now 1,678 m: too long for one arch).
 - **Hairpins and the tunnel card**: a bend turning back on itself offers "Make it a hairpin" (one step, its stretch
   at the lowest speed) where one may stand; the tunnel card says "Auto’s tunnel, built by cut and cover as you
   chose." and offers no noise walls.
@@ -857,7 +859,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/q
   presplit (OTSKP 12892, TKP 4 art. 52) as well as netted; fast-weathering rock (Permian claystone, marlstone) is cut
   like soil (VL 2 301.04 note 2), interbeds and phyllite at 5:4, Cretaceous sandstone at 2:1 (Brandecker), the rest
   4:1. D3 0302: no 62 m cut; its line rides higher, at most 27 m in cut at Luka, and crosses the Sázava on one
-  1,668 m bridge (4,935 → 7,028 M; the real section 10.54 bn has the Luka tunnel and a lower 787 m bridge: the town's
+  1,678 m bridge (4,935 → 7,049 M; the real section 10.54 bn has the Luka tunnel and a lower 787 m bridge: the town's
   covering demand, which the game does not price).
 - **Bridge ends in fills stand on cones** (research/68, `core/abutment-cone.ts`): the fill runs on under the end span
   1:1.5 with quarter cones (VL 4 206.02 / 206.03), paved under the deck with a toe sill; billed (fill in the mass
@@ -865,15 +867,34 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/q
   cone would reach past a 60 m end span, a fill between two bridges that costs more than bridging the gap bridged;
   drawn (the abutment wall only down to the cone's top) and clickable (the bridge's card: "Its ends stand on fills 7
   and 20 m high, sloping on under the bridge: 22,392 m³ of fill, 3.9 M CZK of paving").
-- **Bills** (model 38 → 39). Frozen D11 fixtures, all VALID: straight 8,224.7 → 8,859.7, best 3,618.5 → 3,650.9,
-  best-drag 3,601.1 → 3,651.1, best-pin 3,614.2 → 3,666.0, best-structures 3,729.6 → 3,774.5, best-manual 3,622.2 →
-  3,646.4, demo 4,233.6 → 4,282.9, direct-80 4,144.7 → 4,265.4, direct-90 4,676.4 → 5,444.2, town-centre 8,972.7 →
-  9,420.4, town-controls 8,983.8 → 9,429.1 (shares per mechanism: research/67's table). Starters, all VALID: d3 3,364
-  → 3,933, d3-0301 5,102 → 5,158, d3-0302 4,935 → 7,028, d3-0303 5,442 → 5,611, d3-0304 10,118 → 10,145, d3-0305
-  9,126 → 9,810, d35 6,481 → 6,587, i16-nova-paka 1,221 → 1,223, d3-full 32,180 → 37,961, d35-full 29,362 → 32,626.
-  Outcome audit (24 random D11 lines): 14 → 13 VALID, 72 → 78 problems (random-22's service road at km 11.74 under
-  our embankment and random-19's street appear with either the slopes or the cones; random-13 / 15 / 17 tunnel cuts
-  of 56–67 m, +1.3–2.3 bn each).
+- **After review** (cones and rock faces): a cone's fill is summed out to where it meets the ground, also down a
+  cross slope on its low side (it had stopped at the axis's toe: up to 9 m of unbilled, undrawn edge), and drawn as
+  far; two cones under a short bridge each go to where they meet (no fill counted twice, no toe sill); a cone never
+  covers a road, railway or stream under the bridge: on a fill of at most 10 m that end is a closed abutment, a wall
+  down to the ground and no cone (SETRA: full-height abutments "pour une hauteur limitée à une dizaine de mètres",
+  research/68 §1.4, UNVERIFIED), above it Auto's bridge goes on to where its cone is clear (only for what the
+  footprint screen may not move aside; else, and on the player's bridge, a wall); the bridge card says "One end is a
+  wall down to the ground, so the fill does not cover what lies below." (D11 best km 6.99, shot 301). A closed
+  abutment is not priced apart from the bridge (as every abutment before model 39). Piers stay off the cones of
+  bridges whose ends the support layout moved; cones follow sliced, stitched and windowed results; the two motorway
+  directions' overlapping cones are counted once; a cone's fill is weighed at its block's fill value. Rock faces of
+  exactly 2:1 (Cretaceous sandstone) are dug, not presplit or netted, as decided in research/67 (d35-full −177 M).
+  Not done: the cones' fill in the structure choice's earth balance (`selectAt`; the bill counts it in the mass
+  haul): counting it pins a block that cannot balance at the top fill value, which then prices all of its fill and
+  bridges far more than pays (D11 one bend at 90: a 270 m bridge at km 9.2 became 730 m, +306 M); the balance
+  search's own limit, to be fixed with it.
+- **Bills** (model 38 → 39). Frozen D11 fixtures, validity unchanged (all VALID but best-manual and town-controls,
+  whose player's choices leave problems, as before): straight 8,224.7 → 8,867.2, best 3,618.5 → 3,694.9, best-drag
+  3,601.1 → 3,681.2, best-pin 3,614.2 → 3,713.5, best-structures 3,729.6 → 3,784.0, best-manual 3,622.2 → 3,690.0, demo
+  4,233.6 → 4,283.4, direct-80 4,144.7 → 4,232.4, direct-90 4,676.4 → 5,434.2, town-centre 8,972.7 → 9,421.7,
+  town-controls 8,983.8 → 9,430.4 (shares per mechanism: research/67's table, before the review's fixes; those moved
+  them −33 … +48 M: best's bridge at km 11.30 runs on 20 m past a stream its 21 m fill's cone would cover, its ends at
+  km 6.99 and 14.64 are walls). Starters, all VALID: d3 3,364 → 3,934, d3-0301 5,102 → 5,158, d3-0302 4,935 → 7,049,
+  d3-0303 5,442 → 5,607, d3-0304 10,118 → 10,155, d3-0305 9,126 → 9,575 (a wall at the km 2.73 bridge's end lets short
+  spans replace long ones), d35 6,481 → 6,584, i16-nova-paka 1,221 → 1,223, d3-full 32,180 → 37,948, d35-full 29,362 →
+  32,446. Outcome audit (24 random D11 lines): 14 → 13 VALID, 72 → 79 problems (random-22's service road at km 11.74
+  under our embankment and random-19's street appear with either the slopes or the cones; random-18's stream bank at
+  km 14.99 under our slope where a bridge stood; random-13 / 15 / 17 tunnel cuts of 56–67 m, +1.3–2.3 bn each).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 

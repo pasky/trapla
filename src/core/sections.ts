@@ -138,7 +138,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       const od = o0 + t * (o - o0);
       // triangle from o0 to daylight
       if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); addBands(out, g, o0, d0, od, 0); }
-      if (rock && !bench && n <= S.rockFaceSteepest) out.rockFace += t * Math.hypot(o - o0, rise);
+      if (rock && !bench && n < S.rockFaceSteepest) out.rockFace += t * Math.hypot(o - o0, rise);
       out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
       out.day = od; out.zDay = out.zSlope = zs + (zFace - zs) * t;
       if (isFill && height > SUBGRADE.fromHeight && treatedSubgrade(height, typeof bands === 'function' ? bands(od / 2) : bands)) out.subgrade = od;
@@ -146,7 +146,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       return out;
     }
     if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); addBands(out, g, o0, d0, o, d); }
-    if (rock && !bench && n <= S.rockFaceSteepest) out.rockFace += Math.hypot(o - o0, rise);
+    if (rock && !bench && n < S.rockFaceSteepest) out.rockFace += Math.hypot(o - o0, rise);
     since = bench ? 0 : since + rise;
     o0 = o; d0 = d; zs = zFace;
     if (trace) trace.push(o, zs);

@@ -429,8 +429,9 @@ was 284 M dearer)](docs/screenshots/290-d11-one-bend-70-keeps-90-geometry.png),
 [the D35 viaduct says why no arch fits](docs/screenshots/296-d35-viaduct-no-arch-why.png),
 [the D35 tunnel after the player's cut and cover](docs/screenshots/297-d35-tunnel-cut-and-cover-chosen.png),
 [D3-0302: the Sázava bridge's end on the cone of fill in front of its abutment (clicked: the bridge's card)](docs/screenshots/298-d3-0302-sazava-bridge-end-on-its-cone.png),
-[D3-0302: no 62 m cut and no 41 / 47 m fills, one 1,668 m bridge](docs/screenshots/299-d3-0302-no-deep-cut-one-long-bridge.png),
-[a D11 line whose cut would be 67 m deep: Auto's tunnel, the open cut's price on its Earthwork button](docs/screenshots/300-d11-deep-cut-tunnel-open-cut-price.png).
+[D3-0302: no 62 m cut and no 41 / 47 m fills, one 1,678 m bridge](docs/screenshots/299-d3-0302-no-deep-cut-one-long-bridge.png),
+[a D11 line whose cut would be 67 m deep: Auto's tunnel, the open cut's price on its Earthwork button](docs/screenshots/300-d11-deep-cut-tunnel-open-cut-price.png),
+[a bridge end whose fill would cover the road below it: a wall down to the ground](docs/screenshots/301-d11-bridge-end-wall-beside-the-road-below.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses
