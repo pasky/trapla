@@ -73,6 +73,8 @@ export interface ViolationTarget {
   road?: number;
   /** a wall that fixes it: sides, height (m) and station range */
   wall?: { sides: ('L' | 'R')[]; height: number; s0: number; s1: number };
+  /** bends whose radius set by hand, back to Auto, fixes it */
+  auto?: number[];
 }
 
 /** one-line form for logs and scripts */
@@ -262,6 +264,11 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     };
   };
   const autoOf = (k: number) => { const o = options(k); return o ? ` (${R(up(o.auto))})` : ''; };
+  /** the fix button "Back to Auto" for these bends' radii set by hand */
+  const toAuto = (cs: (CurveInfo | null | undefined)[]) => {
+    const auto = cs.flatMap((c) => c && !c.auto ? [c.index] : []);
+    return auto.length ? { target: { auto } } : {};
+  };
   const manualRadii = (cs: (CurveInfo | null)[]): HorizontalConstraint['manualRadii'] =>
     cs.filter((c): c is CurveInfo => !!c && !c.auto).map((c) => {
       const o = options(c.index);
@@ -288,7 +295,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
         out.push({
           kind: 'radius', ...where,
           title: `Hairpin at ${bend(c.index)} is too tight`,
-          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto`, ...toAuto([c]),
           detail: `Its radius is ${R(c.r)}; a hairpin needs at least ${R(RR.minRadius)}.`,
           basis: 'norm', rule: 'ČSN 73 6101:2000 §8.5.7, table 12: hairpins of at least 30 m with 8 % banking, driven at 30 km/h', // research/54 §1
         });
@@ -296,7 +303,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
         out.push({
           kind: 'radius', ...where,
           title: `${cap(bend(c.index))} is too sharp for ${speed} km/h`,
-          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto${autoOf(c.index)}`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto${autoOf(c.index)}`, ...toAuto([c]),
           detail: `Its radius is ${R(c.r)}; ${speed} km/h needs at least ${R(RR.minRadius)}. A lower design speed allows sharper curves.`,
           basis: 'norm', rule: rules.minRadius,
         });
@@ -306,7 +313,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
         out.push({
           kind: 'arcShort', ...where,
           title: `${cap(bend(c.index))}: curve too short for its easing curves`,
-          fix: `Set ${bend(c.index)} to at least ${R(need)}, or back to auto${autoOf(c.index)}`,
+          fix: `Set ${bend(c.index)} to at least ${R(need)}, or back to auto${autoOf(c.index)}`, ...toAuto([c]),
           detail: `At ${R(c.r)} this gentle turn (${deg(c.delta)}°) gives a curve only ${fmt(c.r * c.delta)} m long, but its easing curves take ${fmt(easeNeed)} m of it.${need >= plain ? ` From ${R(plain)} on no easing curves are needed.` : ''}`,
           basis: 'norm', rule: rules.easing,
         });
@@ -330,7 +337,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
         out.push({
           kind: 'radius', s0: c.sStart, s1: c.sEnd, pi: c.index, pis: [c.index],
           title: `${cap(bend(c.index))} is too sharp for ${speed} km/h`,
-          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto${autoOf(c.index)}`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto${autoOf(c.index)}`, ...toAuto([c]),
           detail: `It is part of one curve through ${name}; its radius is ${R(c.rEff)}, ${speed} km/h needs at least ${R(RR.minRadius)}.`,
           basis: 'norm', rule: rules.minRadius,
         });
@@ -353,6 +360,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
         fix: manual.length
           ? `Set ${manual.map((c) => bend(c.index)).join(' and ')} to at least ${R(plain)} (no easing curves needed), or back to auto`
           : `${spread(easeNeed / Math.max(1, u.arcLen))}, or set their radii to at least ${R(plain)}`,
+        ...toAuto(manual),
         detail: `${cap(name)} turn the same way ${apart} and are drawn as one curve, only ${fmt(u.arcLen)} m long; its easing curves take ${fmt(easeNeed)} m of it.`,
         basis: 'norm', rule: rules.easing,
       });
@@ -377,7 +385,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
           compoundRatio: { actual: hi / lo, maximum: RR.compoundRatio },
         },
         title: `${cap(pair(j.from, j.to))}: radii too different for one curve`,
-        fix,
+        fix, ...toAuto(!big.auto ? [big] : [small]),
         detail: `They turn the same way ${fmt(j.length)} m apart and are drawn as one curve, with ${R(a.rEff)} at ${bend(a.index)} and ${R(b.rEff)} at ${bend(b.index)}: more than ${fmt(RR.compoundRatio)}× apart.${!big.auto ? ` Moving the bends far enough apart for a straight between the curves also works.` : ''}`,
         basis: 'norm', rule: rules.compound,
       });
@@ -411,7 +419,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       out.push({
         kind: 'transition', ...where, pi: c.index, horizontal,
         title: `${cap(bend(c.index))} is too close to ${other}`,
-        fix: red ? red.text : move,
+        fix: red ? red.text : move, ...(red ? { target: { auto: [red.bend] } } : {}),
         detail: `${cap(bend(c.index))} is ${fmt(j.length)} m from ${other}, but its curve needs ${fmt(t)} m of that${need > 0 ? ` plus ${fmt(need)} m for its easing curve` : ''}. ${red ? or(move) : 'A smaller radius or a gentler turn also helps.'}`,
         basis: 'norm', rule: need > 0 ? rules.easing : rules.minRadius,
       });
@@ -421,7 +429,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       out.push({
         kind: 'transition', ...where, pi: red?.bend ?? where.pi, horizontal,
         title: `${cap(pair(j.from, j.to))} are too close for an S-bend`,
-        fix: red ? red.text : move,
+        fix: red ? red.text : move, ...(red ? { target: { auto: [red.bend] } } : {}),
         detail: `${need(j.plainFrom && j.plainTo ? 'The two curves and the straight they need between them' : 'The two curves and their easing curves')} ${red ? or(move) : 'Smaller radii or deleting one bend also help.'}`,
         basis: minor ? 'game' : 'norm', rule: j.plainFrom || j.plainTo || minor ? rules.reverse : rules.easing,
       });
@@ -443,7 +451,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       out.push({
         kind: 'transition', ...where, pi: red?.bend ?? manual[0]?.index ?? where.pi, horizontal,
         title: `${cap(pair(j.from, j.to))} are too close for their radii`,
-        fix: red ? red.text : `${move}${j.joinFailed && !manual.length ? ', or delete one' : ''}`,
+        fix: red ? red.text : `${move}${j.joinFailed && !manual.length ? ', or delete one' : ''}`, ...(red ? { target: { auto: [red.bend] } } : {}),
         detail: `${why}${set}${join}${ratio} ${red ? or(move) : manual.length ? 'Try auto to let the neighbouring radii adapt.' : ''} Spacing advice assumes the current turning angles.`.trim(),
         basis: 'game',
         rule: `${rules.easing}. ${rules.noJoin}${ratio ? `. ${rules.compound}` : ''}`,

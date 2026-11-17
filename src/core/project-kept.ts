@@ -131,10 +131,23 @@ export function releaseHeld(kept: Uint8Array, s: ArrayLike<number>, ground: (i: 
 
 /** Where a rebuilt stretch's planned line (between `a` and `b`, as `design` bends it) stays on its old line
  * (`old`): known before the kernel runs (it depends on the line only), so the kernel builds nothing there
- * (EvalOptions.oldRoad). Null: none of it does. */
+ * (EvalOptions.oldRoad). Null: none of it does. `pis`: the bends the kernel builds, where an old road's own
+ * curve (PI.mapped) that no longer lies wholly on the old road is the rules' (Auto): a new road's curve. */
 export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' | 'category'>, old: OldPaths) {
-  const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category), bendRules(design.pis, design.speed, design.category)), STEP);
-  return { kept: keptCells(st, old), st };
+  const plan = (pis: Design['pis']) => {
+    const al = buildAlignment(a, b, pis, horizontalRules(design.speed, design.category), bendRules(pis, design.speed, design.category)), st = station(al, STEP);
+    return { al, st, kept: keptCells(st, old) };
+  };
+  let pis = design.pis, p = plan(pis);
+  const anew = (k: number) => {
+    const c = p.al.curves.find(c => c.index === k);
+    if (!c || !(c.sEnd > c.sStart)) return false;
+    for (let i = 0; i < p.st.n; i++) if (p.st.s[i] >= c.sStart && p.st.s[i] <= c.sEnd && !p.kept[i]) return true;
+    return false;
+  };
+  const yielded = pis.map((q, k) => q.mapped && q.r !== null && anew(k));
+  if (yielded.some(Boolean)) { pis = pis.map((q, k) => yielded[k] ? { ...q, r: null } : q); p = plan(pis); }
+  return { kept: p.kept, st: p.st, pis };
 }
 
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes

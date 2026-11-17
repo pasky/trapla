@@ -234,7 +234,7 @@ async function main() {
   // on-map radius handles for the selected bend (grips, + / −)
   const curveEdit = new CurveEditor(view, document.getElementById('overlay')!, pack.terrain, {
     get a() { return ends.a; }, get b() { return ends.b; }, design: () => store.design, selected: () => selectedPi(), result: () => session.last,
-    setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
+    setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) { d.pis[i].r = r; delete d.pis[i].mapped; } }, commit),
     commit: () => store.commit(),
   });
 

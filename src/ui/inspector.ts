@@ -399,6 +399,9 @@ export class Inspector {
       if (t.buildings.some((j) => d.buildingOverrides?.some((o) => o.j === j && o.action === 'keep'))) btn(`data-fix-unkeep="${t.buildings.join(',')}"`, 'Stop keeping');
     }
     if (t?.road !== undefined) btn(`data-road-card="${t.road}"`, 'The side road');
+    // a bend's radius set by hand: back to Auto (only the bends still set by hand; an old road's own curve counts)
+    const auto = (t?.auto ?? []).filter((i) => d.pis[i] && d.pis[i].r !== null);
+    if (auto.length) btn(`data-fix-auto="${auto.join(',')}"`, 'Back to Auto');
     const roadId = (v as Violation & { crossing?: { roadId?: number } }).crossing?.roadId;
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
@@ -417,7 +420,8 @@ export class Inspector {
     if (!pi) return '';
     const speed = bendSpeed(pi, d.speed, d.category), speeds = designSpeeds(d.category);
     const cv = r.curves.find((c) => c.index === i), n = speedNorms(speed, d.category);
-    const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius, lowered = this.ctx.radiusNote?.(i, pi.r) ?? null;
+    // (an old road's own curve stands while it lies on the old road; built anew it is Auto's: core/project-kept.ts)
+    const auto = pi.r === null || !!(pi.mapped && cv?.auto), rv = auto ? cv?.r ?? n.minRadius : pi.r ?? n.minRadius, lowered = this.ctx.radiusNote?.(i, pi.r) ?? null;
     const road = CATEGORIES[d.category].mode === 'road' && !CATEGORIES[d.category].minor;
     // (no hairpin note while a violation says it may not stand there)
     const hairpinNote = pi.hairpin && !r.violations.some((v) => v.pis?.includes(i) && /^Hairpin/.test(v.title))
@@ -427,9 +431,9 @@ export class Inspector {
     const active = auto ? 'auto' : null;
     const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
-    const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
+    const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
+      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : pi.mapped ? `The ${this.oldLine}’s own curve, kept as it is.` : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
       ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
       ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole road` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>` : ''}
@@ -668,6 +672,7 @@ export class Inspector {
     }
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
+    if (b.dataset.fixAuto) { const bends = b.dataset.fixAuto.split(',').map(Number); bends.forEach((i, k) => this.ev.radius?.(i, null, k === bends.length - 1)); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }

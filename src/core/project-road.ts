@@ -101,7 +101,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
     oldPath = ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db));
     const planned = plannedKept(a, b, design, [oldPath]), st = planned.st;
-    kept = planned.kept;
+    kept = planned.kept; design.pis = planned.pis;
     // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
     if (options.holds?.length) releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
   }

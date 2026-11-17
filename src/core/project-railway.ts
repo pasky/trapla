@@ -248,6 +248,7 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   // nothing is built there, so the kernel neither lifts it for a new structure nor meets the old line's own
   // level crossings, culverts and neighbours there; the new parts are tied to the old track's heights.
   const planned = retired && plannedKept(a, b, design, retired), kept = planned && planned.kept.some(Boolean) ? planned.kept : undefined;
+  if (planned) design.pis = planned.pis;
   // ... and leaves that track no more steeply than a turnout: a mapped line's own direction there, or a
   // mission station's tracks (their axis on the map). A rebuilt stretch's own ends continue its old track:
   // no corner sharper than a turnout either, unless its end straight stays on the old track (kept as it is:
