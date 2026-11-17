@@ -102,14 +102,20 @@
  * (No version: a later finish of an evaluation builds again only the crossings near where its road differs from
  * an earlier finish's, crossings-kept.ts. No bill, validity or other field moved on any checked design:
  * docs/evaluate-performance.md.)
- * 39: playtest sweep 3. A slowed bend keeps the road speed's curve where it fits, a slowed stretch's heights are
+ * 39: projects of several roads (playtest sweep 3): a road carried over ours is let off exactly what our road bills
+ * for that bridge (it was let off all it built within the ramps' reach); a railway of the project crossing ours follows
+ * our crossing's height (ours no longer digs under it as under a mapped railway; the crossing is its deck only); a held
+ * line high above the deck set for it passes over on that bridge built higher; a mapped road's own curve built anew
+ * is Auto's; a new road that ends nowhere is priced, not valid (it was unpriced). Frozen single-road bills unchanged.
+ * 40: playtest sweep 3. A slowed bend keeps the road speed's curve where it fits, a slowed stretch's heights are
  * searched as for the road's speed with its own smaller curves weighed in one more pass (research/66; designs with
  * slowed bends only); a bend is never faster than its road;
  * arches rise to 1/3.5 of their span, a bridge to 3.3 × its arch, the rib's clearance in the search, an arch Auto's
  * only without a lift (research/69); no cut deeper than 30 m, presplit rock faces, rock cut by its kind
- * (research/67); bridge ends in fills on cones, billed and weighed (research/68). D11 frozen +32 … +768 M (PLAN.md
- * "Playtest sweep 3"), D3 0302 4,935 → 7,028 M. */
-export const COST_MODEL_VERSION = 39;
+ * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
+ * the bridge (a wall, or Auto's bridge goes on). D11 frozen +50 … +758 M (PLAN.md "Playtest sweep 3"), D3 0302
+ * 4,935 → 7,049 M. */
+export const COST_MODEL_VERSION = 40;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

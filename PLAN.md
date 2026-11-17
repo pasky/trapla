@@ -796,6 +796,58 @@ Research: research/65.
   VKL 3–4 reference, not SPK's TT4, and its spread (deep / 10–20 m ≈ 0.74) disagrees with the Czech derivation
   (≈ 0.82).
 
+### Playtest sweep 3: a line over ours billed once, a railway across ours, mapped curves (cost model 39, 2026-11-17)
+
+- **A road carried over ours is let off what our road bills for that bridge, no more** (QA3 P1 #2). The held road
+  draws and prices its whole body, the owner's deck and ramps included, and the owner bills the deck and ramps as
+  its crossing. It used to be let off everything it built within the ramps' reach: on D11 km 12.5 (`tests/fixtures/
+  qa3/d11-new-road-across-km12.5.json`) −238 M against our 37 M overbridge, its own 185 M viaduct over a dip beside
+  the ramps billed by neither road. Now the credit is exactly what the owner bills for that crossing (deck and ramps
+  with their surcharge; not the side roads it regrades, its walls or the houses it takes, which the owner draws):
+  −48 M, "Our road pays for its bridge over our road and the ramps up to it". Invariant (`tests/qa3-sweep.test.ts`
+  `billedOnce`): the roads' bills sum to their own bodies and works less exactly what owners bill for the others'.
+- **A railway of the project across ours** (QA3 P1 #5, `rail-new-railway-across.json`). Our railway used to clear it
+  as a mapped railway at ground level (it cannot move): it dug itself 15 m down there, +265 M, while the new railway
+  was held at a deck at ground level it could not reach ("lower this railway by 7.7 m"). A railway of the project
+  now follows our crossing's height as a road of the project does: our line stays as it is, the new one goes over
+  it where our line is on earth, held at the deck; the crossing bills that deck only (it climbs on its own line,
+  which it draws and bills; `heldRailway` in crossing-geometry.ts); a held railway's deck is a bridge. A held line
+  that stays high above the deck set for it (a 12.5 ‰ line, a road on its own embankment) passes over on that bridge
+  built higher, held at least clear of the owner (as one high above the owner's bridge already was). Our railway
+  +38 M (the deck), the new one valid. A new motorway is still cleared as a mapped one: its corridor kernel does not
+  take holds yet.
+- **A mapped road's own curve** (QA3 P1 #6). Converting a mapped road into bends keeps a sharp old corner's own
+  radius (it lies on the old road, which is kept as it is there); it is now marked as the old road's (`PI.mapped`),
+  not the player's: while its curve lies wholly on the old road it stands ("The old road's own curve, kept as it
+  is."), where a drag builds it anew it is Auto's, as a new road's (`project-kept.ts plannedKept`, road and railway;
+  a set radius clears the mark). D11 III/3012 at km 2.3, its R 104 m corner dragged 23 m: no longer "too sharp for
+  70 km/h". Every bend problem whose fix is a radius back to Auto has a *Back to Auto* button (`ViolationTarget.auto`).
+- **P2**: Undo / Redo say what they take back ("Undo: moving bend 3", "Redo: a bridge or tunnel (Road III/3012)"),
+  worked out from the designs either side of the step when the button is pointed at (`core/history-label.ts`); the
+  profile's tooltip says "River under our bridge, and 1 more".
+- **A road that ends nowhere is priced, not valid** (owner's decision, 2026-11-17): a road or railway the player
+  builds with an end on open ground was left unpriced; it is now priced as built (nothing is built at the free
+  end) with one "Road ends nowhere · Connect this end to a road" problem at each free end (a click goes there);
+  "not priced" stays for engine limits (interchanges, roads designed together). Reaching the screen of several
+  roads exposed three of its false alarms, fixed: a railway's land is its formation's (it was unknown and failed
+  closed everywhere), a way left as it is under our bridge or over our tunnel is neither our works nor a change of
+  that way, and one road on its bridge ≥ 6 m above the other's works there shares no land with it. Two lines that
+  both change one old road (QA's railway across ours and the track at km 12.05, the D11 new road and road I/14,
+  the final sweep's new road over the railway viaduct) stay unpriced: an engine limit.
+- **Review fixes**: a held line is held at least the owner's clearance over it (7.5 m over a railway; the crossing
+  engine's deck sat 6 m up); a railway's drag preview follows the crossings others built with it; a rebuilt
+  stretch's plan line in other roads' networks yields its old corners to Auto as its kernel does; a held road's own
+  bridge puts no pier on the deck band it rides over the owner (support-layout.ts, it used to ignore the owner: a
+  pier on our centreline), and the screen keeps a bridge's piers as ground works under a deck it exempts.
+- **Bills**: frozen single-road fixtures identical; multi-road projects change (credits, railway crossings, free
+  ends priced): model 39.
+- Screenshots `docs/screenshots/310…314-qa3fix-*.png`: the new road's card (−48 M), the new railway on its bridge
+  over ours, III/3012's old corner built anew (R 176 m, auto), the profile's river tooltip, *Back to Auto*.
+- **Known issue (audit)**: a box lowered under our road for a road of the project (our road too low over it) bills
+  the lowered approach ramps on our road while the held road stays at the ground through the box: its hold should be
+  the box floor, but where the held road ends within the ramps (D11 km 4.03 service road) it cannot reach it, and the
+  owner, evaluated first, cannot see that. Left as it was (no QA repro of a priced case).
+
 ### A retry builds only the crossings near what it changed (no model version, 2026-11-17)
 
 - **What.** An evaluation finishes its design several times (the stream and strict retries of a pass, then the
@@ -822,7 +874,7 @@ Research: research/65.
   exit 1 on any difference); any script under `--import ./scripts/dev/local-retry-check.ts` checks its own
   evaluations. `LOCAL_RETRY.local = false` is the reference.
 
-### Playtest sweep 3: slowed stretches, deep cuts, cones at bridge ends, arches, hairpins (cost model 39, 2026-11-17)
+### Playtest sweep 3: slowed stretches, deep cuts, cones at bridge ends, arches, hairpins (cost model 40, 2026-11-17)
 
 Findings: docs/playtest-findings.md "Sweep 3 — main 30d0ad8". Research: research/66 (design speed), /67 (deep cuts,
 rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/qa3-fixes-shots.mjs`).
@@ -875,7 +927,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   research/68 §1.4, UNVERIFIED), above it Auto's bridge goes on to where its cone is clear (only for what the
   footprint screen may not move aside; else, and on the player's bridge, a wall); the bridge card says "One end is a
   wall down to the ground, so the fill does not cover what lies below." (D11 best km 6.99, shot 301). A closed
-  abutment is not priced apart from the bridge (as every abutment before model 39). Piers stay off the cones of
+  abutment is not priced apart from the bridge (as every abutment before model 40). Piers stay off the cones of
   bridges whose ends the support layout moved; cones follow sliced, stitched and windowed results; the two motorway
   directions' overlapping cones are counted once; a cone's fill is weighed at its block's fill value. Rock faces of
   exactly 2:1 (Cretaceous sandstone) are dug, not presplit or netted, as decided in research/67 (d35-full −177 M).
@@ -883,7 +935,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   haul): counting it pins a block that cannot balance at the top fill value, which then prices all of its fill and
   bridges far more than pays (D11 one bend at 90: a 270 m bridge at km 9.2 became 730 m, +306 M); the balance
   search's own limit, to be fixed with it.
-- **Bills** (model 38 → 39). Frozen D11 fixtures, validity unchanged (all VALID but best-manual and town-controls,
+- **Bills** (model 38 → 40; model 39, the projects' sweep, left single-road bills as they were). Frozen D11 fixtures, validity unchanged (all VALID but best-manual and town-controls,
   whose player's choices leave problems, as before): straight 8,224.7 → 8,867.2, best 3,618.5 → 3,694.9, best-drag
   3,601.1 → 3,681.2, best-pin 3,614.2 → 3,713.5, best-structures 3,729.6 → 3,784.0, best-manual 3,622.2 → 3,690.0, demo
   4,233.6 → 4,283.4, direct-80 4,144.7 → 4,232.4, direct-90 4,676.4 → 5,434.2, town-centre 8,972.7 → 9,421.7,
@@ -927,8 +979,16 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
 
 ### Known limitations
 
-- Stream culverts and buried bridges ("přesypané mosty", cost model 29) are billed and marked on the map but not
-  drawn in 3D (no barrel, headwalls or wing walls at the slope toes).
+- Stream culverts and buried bridges ("přesypané mosty", cost model 29) are drawn in 3D as billed (2026-11-17,
+  `src/render/culvert-geometry.ts`, `culverts.ts`, screenshots 330–339): the barrel (precast pipe, precast frame, or
+  the buried bridge's vault at the billed plan width) from toe to toe along the mapped stream, each end cut along
+  our road at the toe with a headwall, splayed wing walls, an apron and the water running out onto the stream; the
+  slope comes down to the headwall's top over the barrel's last metres (a few m³ of earth, not billed; the bill's
+  barrel runs toe to toe, a real one ends where the slope covers it). An end at a retaining wall stands 0.5 m out
+  of its face. The drawn barrel is within ≈ ±10 % of the billed length (the toe where the stream really leaves the
+  embankment vs. the station's footprint / sine). A click on an end, its map mark or its profile ring opens the
+  culvert card. Not drawn yet: the culverts under our reroutes and the longer culverts where our slope covers a
+  stream running beside it (footprint culverts; none on the saved designs).
 - Junction approaches on class I–III roads are not length-capped (the 250 m cap is for ramps up to bridges over
   us): since cost model 29 town-centre km 11.65 meets class I road 2136 5.6 m up and regrades it over 271 m.
 - Free haul (1 km) is credited on the pooled haul moment, not per movement.

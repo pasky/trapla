@@ -91,13 +91,13 @@ export function createDesignEdits(app: DesignEditContext) {
     unpin: (s0, s1) => app.store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
     heightAt: (s) => addHeightAt(s),
     commit: () => app.store.commit(),
-    radius: (i, r, commit = true) => app.store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
+    radius: (i, r, commit = true) => app.store.update((d) => { if (d.pis[i]) { d.pis[i].r = r; delete d.pis[i].mapped; } }, commit),
     // a bend's stretch speed: the road's own is no setting of its own
     bendSpeed: (i, v) => app.store.update((d) => { const p = d.pis[i]; if (!p) return; if (v === null || v === d.speed) delete p.speed; else p.speed = v; }),
     // a hairpin takes its own radius: back to Auto either way
     // (with `speed`: its stretch's speed too, one step to undo — a problem's "Make it a hairpin")
     hairpin: (i, on, speed) => app.store.update((d) => {
-      const p = d.pis[i]; if (!p) return; if (on) p.hairpin = true; else delete p.hairpin; p.r = null;
+      const p = d.pis[i]; if (!p) return; if (on) p.hairpin = true; else delete p.hairpin; p.r = null; delete p.mapped;
       if (on && speed !== undefined) { if (speed === d.speed) delete p.speed; else p.speed = speed; }
     }),
     deletePi,

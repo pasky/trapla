@@ -7,6 +7,7 @@ import type { ProjectStoreApi } from '../project-store-contract';
 import { carryVpis } from '../core/carry-heights';
 import { bendRules, horizontalRules } from '../core/data/norms';
 import { buildAlignment } from '../core/horizontal';
+import { historyLabel } from '../core/history-label';
 
 export class ActiveRouteStore {
   activeRouteId: RouteId | null;
@@ -128,7 +129,12 @@ export class ActiveRouteStore {
   }
   undo() { const after = this.onHistory?.(); this.project.undo(); after?.(); }
   redo() { const after = this.onHistory?.(); this.project.redo(); after?.(); }
-  undoLabel() { return this.project.canUndo() ? 'Undo edit' : ''; }
-  redoLabel() { return this.project.canRedo() ? 'Redo edit' : ''; }
+  /** what an undo (redo) takes back (does again), in plain words ("moving bend 3"); '' when there is nothing */
+  undoLabel() { return this.project.canUndo() ? this.stepLabel('undo') : ''; }
+  redoLabel() { return this.project.canRedo() ? this.stepLabel('redo') : ''; }
+  private stepLabel(step: 'undo' | 'redo') {
+    const pair = this.project.historyStep?.(step);
+    return pair ? historyLabel(pair[0], pair[1]) : 'edit';
+  }
   offerBest(result: ProjectResult) { return this.project.offerBest(result); }
 }

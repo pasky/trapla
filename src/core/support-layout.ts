@@ -141,7 +141,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   /** the bridge being laid out: no pier on the cones in front of its abutments (abutment-cone.ts), 0.5 m clear */
   let cones: { s0: number; s1: number; reach: [number, number] } | undefined;
   const onCone = (s: number) => !!cones && (s < cones.s0 + cones.reach[0] + 0.5 || s > cones.s1 - cones.reach[1] - 0.5);
-  const blocked = (s: number, pier = false) => (pier && onCone(s))
+  // (no pier of ours on the higher-ranking road under the deck it carries us on: that deck spans it)
+  const onHeld = (s: number) => { if (!held) return false;
+    const k = Math.max(0, Math.min(r.n - 2, Math.floor((s - r.s[0]) / r.ds))); return !!held[k] || !!held[k + 1]; };
+  const blocked = (s: number, pier = false) => (pier && (onCone(s) || onHeld(s)))
     || obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
   /** a cone reaching `reach` m into the bridge from its end at `s` (`into`: the direction into it) would cover a
    * road, railway or water under the bridge (`relocatable`: as for an abutment, only the roads the footprint screen

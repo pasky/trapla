@@ -37,8 +37,9 @@ describe('railway mode', () => {
     const result = evaluateProject(ctx, { epoch: 'e', revision: 1, design });
     const rail = result.routes['route:rail'].legacy!;
     expect(rail.cost.total).toBeGreaterThan(0);
-    // no railway-specific blocker: only the free ends (a new line must join something) keep it unpriced
-    expect(result.cost.unpriced.filter(u => u.routeId === 'route:rail').map(u => u.reason)).toEqual(['road-ends-nowhere']);
+    // no railway-specific blocker: priced; only its free ends (a new line must join something) make it not valid
+    expect(result.cost.unpriced.filter(u => u.routeId === 'route:rail')).toEqual([]);
+    expect(result.issues.filter(i => i.scope.routeIds.includes('route:rail')).map(i => i.violation.title)).toEqual(['Railway ends nowhere', 'Railway ends nowhere']);
     // track geometry: minimum radius from the cant envelope at 160 km/h, never a road row
     expect(speedNorms(160, 'R2').minRadius).toBe(Math.ceil(11.8 * 160 * 160 / 230));
     expect(railRouteBasePerKm(2) / railRouteBasePerKm(1)).toBeGreaterThan(1.6);

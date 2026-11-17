@@ -264,8 +264,9 @@ try {
   assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
   const r3 = await page.evaluate(() => window.trapla.projectResult());
   assert(r3.issues.some(i => i.code === 'road-ends-nowhere'), 'a free end is reported');
-  assert.equal(r3.cost.total, null, 'a road that ends nowhere is not priced');
-  // not priced withholds the total only: houses under our road are gone from the map and say so
+  assert(r3.issues.filter(i => i.code === 'road-ends-nowhere').every(i => i.blocking === 'invalid' && r3.cost.unpriced.every(u => u.reason !== 'road-ends-nowhere')), 'a road that ends nowhere is priced, not valid');
+  assert.equal(r3.valid, false, 'a road that ends nowhere is not valid');
+  // priced or not, houses under our road are gone from the map and say so
   {
     const result = r3, own = result.routes[mission].legacy.demolished.map(b => b.j);
     assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');
@@ -379,7 +380,7 @@ try {
       assert(rules.every(t => !/6101/.test(t)), `its norm is its own, never ČSN 73 6101 (${rules.join(' | ')})`);
       // the street crosses our road's cutting on our bridge: it rides that deck, which is not its own bridge
       if (cls === 'local') {
-        assert(pr.works.items.some(w => w.owner.id === r.id && /built with that bridge/.test(w.label)), 'the street rides our bridge over our road');
+        assert(pr.works.items.some(w => w.owner.id === r.id && /pays for its bridge over/.test(w.label)), 'the street rides our bridge over our road');
         assert(!own.violations.some(v => /Your bridge|on its bridge over/.test(v.title)), `on our bridge it is neither its own bridge nor off the deck (${own.violations.map(v => v.title).join('; ')})`);
       }
       assert.match(await page.locator('#norms').getAttribute('title'), cs === 'P4' ? /ČSN 73 6109/ : /ČSN 73 6110/);

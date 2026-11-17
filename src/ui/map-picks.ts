@@ -103,6 +103,9 @@ export function createMapPicks(app: MapPickContext) {
   };
   /** what a click at a client point means */
   const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | null => {
+    // a culvert's end (close up: its headwall, wings and apron at the slope's toe, a small target of its own)
+    const culvert = app.extras.culvertAt(clientX, clientY);
+    if (culvert) return { kind: 'culvert', id: culvert.id, s: culvert.s };
     const c = crossingAt(clientX, clientY);
     if (c) return { kind: 'crossing', roadId: c.roadId! };
     const hit = routeAt(clientX, clientY, 10);

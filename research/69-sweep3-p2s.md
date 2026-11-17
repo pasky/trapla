@@ -1,4 +1,4 @@
-# Playtest sweep 3 P2s: arches, hairpins, the tunnel card (cost model 39)
+# Playtest sweep 3 P2s: arches, hairpins, the tunnel card (cost model 40)
 
 Snapshot 2026-11-17 (qa3-realism-fixes agent). Findings in docs/playtest-findings.md "Sweep 3 — main 30d0ad8", P2.
 

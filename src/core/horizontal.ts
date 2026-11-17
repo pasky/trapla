@@ -24,6 +24,10 @@ export interface PI extends Vec2 {
   speed?: number;
   /** a hairpin bend (research/47 §3) */
   hairpin?: boolean;
+  /** `r` is the old road's own curve, kept from the map when a mapped road became editable (not the player's):
+   * it stands while the curve lies on the old road, which is kept as it is there; where the curve is built
+   * anew, the rules' radius (Auto) applies (core/project-kept.ts plannedKept) */
+  mapped?: true;
 }
 
 export type Element =

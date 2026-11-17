@@ -143,6 +143,7 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     if (v.horizontal) out.horizontal = { ...v.horizontal, manualRadii: v.horizontal.manualRadii.flatMap(m => { const j = bend(m.pi); return j === null ? [] : [{ ...m, pi: j }]; }) };
     if (v.vpi !== undefined) { const i = vpi(v.vpi); if (i === undefined) delete out.vpi; else out.vpi = i; }
     if (v.target?.wall) out.target = { ...v.target, wall: { ...v.target.wall, s0: s(v.target.wall.s0), s1: s(v.target.wall.s1) } };
+    if (v.target?.auto) out.target = { ...out.target, auto: v.target.auto.flatMap(i => { const j = bend(i); return j === null ? [] : [j]; }) };
     return out;
   };
   const spineSide = (v: Violation) => list.every(p => v.s1 <= base.s[p.i0] + 1e-9 || v.s0 >= base.s[p.i1] - 1e-9) || (v.s0 === v.s1 && outsideS(v.s0));

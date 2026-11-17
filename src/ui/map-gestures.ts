@@ -176,7 +176,8 @@ export function createMapGestures(app: MapGestureContext) {
       app.store.update((d) => {
         d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0);
         // radii set by hand that the drag leaves too large are lowered just enough (and back up as room returns)
-        if (dragWanted?.i !== i) dragWanted = { i, r: d.pis.map((p, k) => radiusNotes.wanted(route, k, p.r)) };
+        // (an old road's own curve is not set by hand: off the old road it is Auto's, core/project-kept.ts)
+        if (dragWanted?.i !== i) dragWanted = { i, r: d.pis.map((p, k) => p.mapped ? null : radiusNotes.wanted(route, k, p.r)) };
         if (!dragWanted.r.some((r, k) => r !== null && Math.abs(k - i) <= 1)) return;
         const fit = fitSetRadii(app.A, app.B, d.pis, i, dragWanted.r, d.speed, d.category);
         for (let k = Math.max(0, i - 1); k <= Math.min(d.pis.length - 1, i + 1); k++) d.pis[k].r = fit.pis[k].r;

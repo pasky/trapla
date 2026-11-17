@@ -27,6 +27,9 @@ import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './
 import { activeStructure } from './structure-bar';
 import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 import { stationIndex } from '../core/range';
+import { CULVERT_RULES } from '../core/data/culverts';
+import { culvertCard } from '../core/terms';
+import { culvertSection } from '../render/culvert-geometry';
 
 export type Sel =
   | { kind: 'stretch'; s0: number; s1: number; piece?: PieceKind }
@@ -35,6 +38,8 @@ export type Sel =
   | { kind: 'vpi'; i: number }
   | { kind: 'crossing'; roadId: number }
   | { kind: 'building'; j: number }
+  /** a stream culvert under our road (Result.waterCrossings): its stream and station */
+  | { kind: 'culvert'; id: number; s: number }
   /** a mission end that meets an interchange or a road (scenario data) */
   | { kind: 'end'; end: 'a' | 'b' };
 
@@ -248,6 +253,7 @@ export class Inspector {
     else if (sel?.kind === 'crossing') html = this.crossing(r, d, sel.roadId);
     else if (sel?.kind === 'building') html = this.building(r, d, sel.j);
     else if (sel?.kind === 'end') html = this.end(r, sel.end);
+    else if (sel?.kind === 'culvert') html = this.culvert(r, d, sel.id, sel.s);
     const shown = html ? sel : null;
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
@@ -439,6 +445,9 @@ export class Inspector {
     }
     if (t?.road !== undefined) btn(`data-road-card="${t.road}"`, 'The side road');
     if (t?.hairpin) btn(`data-fix-hairpin="${t.hairpin.pi},${t.hairpin.speed}"`, `Make it a hairpin <small>${t.hairpin.speed} km/h</small>`);
+    // a bend's radius set by hand: back to Auto (only the bends still set by hand; an old road's own curve counts)
+    const auto = (t?.auto ?? []).filter((i) => d.pis[i] && d.pis[i].r !== null);
+    if (auto.length) btn(`data-fix-auto="${auto.join(',')}"`, 'Back to Auto');
     const roadId = (v as Violation & { crossing?: { roadId?: number } }).crossing?.roadId;
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
@@ -464,7 +473,8 @@ export class Inspector {
     const stretchNote = stretch ? `<div class="sub">${stretch.s0 <= 1 && stretch.s1 >= r.length - 1 ? `Its stretch is the whole ${line}` : `Its stretch: km ${kmr(stretch.s0, stretch.s1)}`}${d.speed < Math.max(...designSpeeds(d.category)) ? `; no faster than the whole ${line}, ${d.speed} km/h` : ''}.${heights ? ` Auto rounds its hilltops and dips as for ${d.speed} km/h.` : ''}</div>` : '';
     const keptNote = kept !== null && kept > speed ? `Auto keeps the ${kept} km/h curve here: it fits.` : '';
     const cv = r.curves.find((c) => c.index === i), n = speedNorms(speed, d.category);
-    const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius, lowered = this.ctx.radiusNote?.(i, pi.r) ?? null;
+    // (an old road's own curve stands while it lies on the old road; built anew it is Auto's: core/project-kept.ts)
+    const auto = pi.r === null || !!(pi.mapped && cv?.auto), rv = auto ? cv?.r ?? n.minRadius : pi.r ?? n.minRadius, lowered = this.ctx.radiusNote?.(i, pi.r) ?? null;
     const road = CATEGORIES[d.category].mode === 'road' && !CATEGORIES[d.category].minor;
     // (no hairpin note while a violation says it may not stand there)
     const hairpinNote = pi.hairpin && !r.violations.some((v) => v.pis?.includes(i) && /^Hairpin/.test(v.title))
@@ -474,9 +484,9 @@ export class Inspector {
     const active = auto ? 'auto' : null;
     const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
-    const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: v.target?.hairpin ? this.fixes(v, d) : '' }));
+    const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : keptNote && auto ? keptNote : auto ? 'Tightest the rules allow.' : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
+      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : keptNote && auto ? keptNote : auto ? 'Tightest the rules allow.' : pi.mapped ? `The ${this.oldLine}’s own curve, kept as it is.` : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
       ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', slowed
         // (a slowed bend: Auto keeps the faster curve where it fits; the tightest is the player's to ask for)
@@ -513,6 +523,21 @@ export class Inspector {
     const card = endCard(info, end);
     return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
       <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+  }
+
+  // ---- a stream culvert ----
+  private culvert(r: Result, d: Design, id: number, s: number) {
+    const c = culvertAt(r, id, s);
+    if (!c?.size || c.size.type === 'bridge') return '';
+    const card = culvertCard({ ...c, size: { ...c.size, type: c.size.type }, ...(c.size.buried ? { frameCover: CULVERT_RULES.maxFrameCover,
+      vaultSpan: culvertSection(c.size).width } : {}) }, CATEGORIES[d.category].mode as OurLine);
+    // the alternative: a bridge over the stream and its banks (the span the game would need, as in the problem's fix)
+    const half = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, c.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine) / 2 + r.ds;
+    const s0 = Math.max(0, c.s - half), s1 = Math.min(r.length, c.s + half);
+    return `${this.head(card.title, `km ${km(c.s)}`)}
+      <div class="ctx-state"><b>${esc(card.state)} · ${czk(c.cost)}</b>${card.why.map(t => `<div class="why">${esc(t)}</div>`).join('')}</div>
+      <div class="more-box">${card.more.map(t => `<div class="sub">${esc(t)}</div>`).join('')}</div>
+      <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${CATEGORIES[d.category].mode} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
   }
 
   // ---- height point (By hand) ----
@@ -719,6 +744,7 @@ export class Inspector {
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
     if (b.dataset.fixHairpin) { const [pi, speed] = b.dataset.fixHairpin.split(',').map(Number); this.ev.hairpin?.(pi, true, speed); return; }
+    if (b.dataset.fixAuto) { const bends = b.dataset.fixAuto.split(',').map(Number); bends.forEach((i, k) => this.ev.radius?.(i, null, k === bends.length - 1)); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }
@@ -777,6 +803,13 @@ export class Inspector {
     if (sel?.kind === 'vpi' && t.id === 'vpi-auto') this.ev.vpiRadius?.(sel.i, t.checked ? null : Math.round(this.r?.vcurves[sel.i - 1]?.r ?? 0));
     if (t.id === 'pin-z') this.el.querySelector<HTMLButtonElement>('#pin-set')?.click();
   }
+}
+
+/** the culvert of stream `id` nearest station s (a pipe or a box under our earthworks), if any within 100 m */
+export function culvertAt(r: Pick<Result, 'waterCrossings'>, id: number, s: number) {
+  let best: Result['waterCrossings'][number] | undefined;
+  for (const c of r.waterCrossings) if (c.size && c.id === id && Math.abs(c.s - s) < 100 && (!best || Math.abs(c.s - s) < Math.abs(best.s - s))) best = c;
+  return best;
 }
 
 /** every crossed road once, in route order */

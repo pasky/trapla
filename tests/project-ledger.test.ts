@@ -27,14 +27,21 @@ function fixture(buildings?: BuildingIndex) {
   return { ctx, snapshot, side };
 }
 
-it('does not price a road that ends nowhere, but keeps both roads\' own bills and problems visible', () => {
+// Owner's decision (2026-11-17): an end the player left unconnected is the player's problem, priced and not valid;
+// "not priced" is for what the engine cannot do yet.
+it('prices a road that ends nowhere and calls it not valid, at each free end', () => {
   const { ctx, snapshot, side } = fixture();
   snapshot.design.routes.push(side);
   const project = evaluateProject(ctx, snapshot), [main] = snapshot.design.routes;
-  expect(project.cost.total).toBeNull(); expect(project.valid).toBe(false); expect(isScorableProject(project)).toBe(false);
-  expect(project.cost.unpriced).toEqual([{ routeId: 'side', reason: 'road-ends-nowhere' }]);
+  expect(project.cost.unpriced).toEqual([]);
+  expect(project.cost.total).toBeCloseTo(project.routes[main.id].legacy!.cost.total + project.routes.side.legacy!.cost.total, 0);
+  expect(project.valid).toBe(false); expect(project.routes.side.valid).toBe(false); expect(project.routes[main.id].valid).toBe(true);
   expect(project.cost.alone).toEqual({ [main.id]: project.routes[main.id].legacy!.cost.total, side: project.routes.side.legacy!.cost.total });
-  const nowhere = project.issues.find(i => i.code === 'road-ends-nowhere')!;
+  const ends = project.issues.filter(i => i.code === 'road-ends-nowhere');
+  expect(ends.map(i => [i.blocking, i.violation.fix, i.locations[0].s0])).toEqual([['invalid', 'Connect this end to a road', 0],
+    ['invalid', 'Connect this end to a road', project.routes.side.legacy!.length]]);
+  expect(ends[0].at).toEqual({ x: 100, y: 450 });
+  const nowhere = ends[0];
   expect(nowhere.scope.routeIds).toEqual(['side']);
   for (const text of [nowhere.violation.title, nowhere.violation.fix]) expect(jargonIn(text, true)).toEqual([]);
   expect(jargonIn(nowhere.violation.rule, false)).toEqual([]);

@@ -69,7 +69,7 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     expect(side.kind[k]).toBe(1); // its own deck over our road
     expect(side.violations.filter(v => v.kind === 'crossing')).toEqual([]);
     // what the crossing builds (deck and ramps) is not billed again in the side road's own bill
-    const credit = r.works.items.find(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))!;
+    const credit = r.works.items.find(w => w.owner.id === 'side' && /pays for its bridge over/.test(w.label!))!;
     expect(credit.cost).toBeLessThan(0);
   });
   // D11 Nový Rokytník: a street over our road's cutting rides the owner's deck at ground level. That deck is
@@ -92,7 +92,7 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     }
     expect(side.kind[Math.round((250 - side.y[0]) / side.ds)]).toBe(1);
     expect(side.violations).toEqual([]);
-    expect(r.works.items.some(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))).toBe(true);
+    expect(r.works.items.some(w => w.owner.id === 'side' && /pays for its bridge over/.test(w.label!))).toBe(true);
   });
   it('a crossing choice on it is stored on that road and our bridge keeps it low enough under us', () => {
     const { ctx, project, mission } = fixture();
@@ -165,11 +165,11 @@ describe('the edited network follows the project as it is now', () => {
     const alone = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
     expect(alone.complete).toBe(true);
     expect(alone.buildings.filter(b => b.action === 'demolish')).toMatchObject([{ buildingIndex: 0, routeId: mission }]);
-    // a new road that ends nowhere keeps the project unpriced; it stands on a house too
-    project.routes.push(road('side', [300, 420], [900, 420]));
+    // a new road on a house, and another too close to it (the engine does not design two roads that close
+    // together yet: not priced)
+    project.routes.push(road('side', [300, 420], [900, 420]), road('other', [300, 436], [900, 436]));
     const r = evaluateProject(ctx, { epoch: 'e', revision: 2, design: project });
     expect(r.complete).toBe(false); expect(r.cost.total).toBeNull();
-    expect(r.issues.map(i => i.code)).toContain('road-ends-nowhere');
     const gone = r.buildings.filter(b => b.action === 'demolish');
     expect(gone).toMatchObject([{ buildingIndex: 0, routeId: mission }, { buildingIndex: 1, routeId: 'side' }]);
     expect(gone.every(b => b.cost > 0)).toBe(true);

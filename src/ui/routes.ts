@@ -224,7 +224,7 @@ export function createRoutes(app: RoutesContext) {
       app.view.setDesign(d, app.selectedPi(), app.activeEndpoints()); app.hud.setDesign(d);
       app.profile.selectBend(app.selectedPi()); app.curveEdit.refresh(); app.linkEdit?.refresh(); app.works?.refresh();
     } else { app.view.clearDesign(app.activeEndpoints()); app.profile.clear(); if (!app.links.editor?.selected) app.routeCard(); app.curveEdit.hide(); }
-    app.editBar.set(app.store.undoLabel(), app.store.redoLabel());
+    app.editBar.set(app.projectStore.canUndo(), app.projectStore.canRedo());
     app.routeBar.set(app.projectStore.snapshot.design, app.store.activeRouteId, app.projectStore.inTransaction);
     syncEnds();
     syncDirections();

@@ -123,14 +123,20 @@ export function createResultDisplay(app: ResultDisplayContext) {
       return rr && !rr.legacy && rr.surface ? [{ id: route.id, key: rr.engineeringRevision, active: route.id === app.store.activeRouteId, points: rr.surface.points }] : [];
     }));
     for (const [id, entry] of otherExtras) if (!result.routes[id]?.legacy) { entry.overlay.dispose(); otherExtras.delete(id); }
-    for (const route of app.projectStore.snapshot.design.routes) {
+    const design = app.projectStore.snapshot.design;
+    for (const route of design.routes) {
       const r = result.routes[route.id]?.legacy;
+      let crown = routeCrownWidth(route);
       const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
-      if (!r || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection)) continue;
-      const crown = routeCrownWidth(route);
+      // a paired motorway is one body, drawn once under its forward direction: its walls and culverts too
+      const paired = route.kind === 'motorway' && route.alignment.kind === 'corridor' ? corridorOfRoute(design, route.id) : undefined;
+      if (paired) crown = CATEGORIES[MOTORWAY_CATEGORY].crownWidth;
+      if (!r || (paired && (paired.mode !== 'paired' || paired.children.forward !== route.id))
+        || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection && !paired)) { otherExtras.get(route.id)?.overlay.setVisible(false); continue; }
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
       const entry = otherExtras.get(route.id);
-      if (route.id === app.store.activeRouteId) { entry?.overlay.setVisible(false); continue; }
+      const active = route.id === app.store.activeRouteId || (!!paired && paired.children.reverse === app.store.activeRouteId);
+      if (active) { entry?.overlay.setVisible(false); continue; }
       if (entry) { entry.overlay.setVisible(true); if (entry.result !== r) { entry.overlay.setResult(r, crown, controls.structureOverrides, controls.wallOverrides); entry.result = r; } }
       else { const overlay = new RouteExtras(app.view); overlay.setResult(r, crown, controls.structureOverrides, controls.wallOverrides); otherExtras.set(route.id, { overlay, result: r }); }
     }

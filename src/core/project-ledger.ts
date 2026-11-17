@@ -4,12 +4,13 @@
 // resolves an interaction. Joint engineering/acquisition/noise decisions are a later stage.
 import type { BuildingIndex } from './buildings';
 import type { CrossingGeometry, CrossingPoint } from './crossings';
-import { NOISE } from './data/urban';
+import { CROSSING_RULES, NOISE } from './data/urban';
 import type { Result } from './evaluate';
 import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 import * as dm from './detmath';
 import { KIND } from './structures';
+import { bridgeLayout } from './bridge';
 import type { KeepClear } from './keep-clear';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
@@ -57,7 +58,15 @@ export interface IndependenceScreen {
 
 interface Capsule { ax: number; ay: number; bx: number; by: number; r: number;
   /** a piece of an automatic reroute (its new road): it can be planned again elsewhere */
-  reroute?: true }
+  reroute?: true;
+  /** the highest its works reach (a cutting's: the ground at its edge), m; absent: unknown */
+  top?: number;
+  /** a road's own deck: its lowest grade there, m (what passes under it keeps its clearance below) */
+  deck?: number }
+/** One road on its bridge high above the other's works there (by the clearance a bridge over a road keeps,
+ * CROSSING_RULES.overHeight, grade to grade): two storeys, not land they share. */
+const storeyed = (s: Capsule, t: Capsule) => s.deck !== undefined && t.top !== undefined && s.deck - t.top >= CROSSING_RULES.overHeight
+  || t.deck !== undefined && s.top !== undefined && t.deck - s.top >= CROSSING_RULES.overHeight;
 interface Chunk { minX: number; minY: number; maxX: number; maxY: number; items: Capsule[] }
 const CHUNK = 32;
 function chunks(capsules: Capsule[]): Chunk[] {
@@ -98,7 +107,7 @@ function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?
   const reroutes: [boolean, boolean] = [true, true];
   for (const p of a) for (const q of b) if (boxGap(p, q) <= 0) for (const s of p.items) for (const t of q.items) {
     const r = s.r + t.r, d = segmentSegment(s, t);
-    if (d >= r) continue; // NaN/Infinity fail closed
+    if (d >= r || storeyed(s, t)) continue; // NaN/Infinity fail closed
     found = true;
     if (!s.reroute) reroutes[0] = false;
     if (!t.reroute) reroutes[1] = false;
@@ -129,19 +138,33 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     const earth = result.kind[i - 1] === KIND.earth && result.kind[i] === KIND.earth;
     const l = earth ? Math.max(side(i - 1, true), side(i, true)) : NaN, r = earth ? Math.max(side(i - 1, false), side(i, false)) : NaN;
     const dx = result.x[i] - result.x[i - 1], dy = result.y[i] - result.y[i - 1], len = Math.hypot(dx, dy);
+    // (how high its works reach: the grade, or the ground at a cutting's edge; on its own deck, the deck)
+    // (unknown heights: no storeys)
+    const z = !result.grade || !result.ground ? {} : { top: Math.max(result.grade[i - 1], result.grade[i], result.ground[i - 1], result.ground[i]),
+      ...(result.kind[i - 1] === KIND.bridge && result.kind[i] === KIND.bridge ? { deck: Math.min(result.grade[i - 1], result.grade[i]) } : {}) };
     if (Number.isFinite(l) && Number.isFinite(r) && len > 0) {
       // (the left side is to the left of the direction of travel)
       const o = (l - r) / 2, nx = -dy / len * o, ny = dx / len * o;
-      out.push({ ax: result.x[i - 1] + nx, ay: result.y[i - 1] + ny, bx: result.x[i] + nx, by: result.y[i] + ny, r: (l + r) / 2 + pad });
-    } else out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i], r: Math.max(reach(i - 1), reach(i)) + pad });
+      out.push({ ax: result.x[i - 1] + nx, ay: result.y[i - 1] + ny, bx: result.x[i] + nx, by: result.y[i] + ny, r: (l + r) / 2 + pad, ...z });
+    } else out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i], r: Math.max(reach(i - 1), reach(i)) + pad, ...z });
   }
   if (result.n === 1) out.push({ ax: result.x[0], ay: result.y[0], bx: result.x[0], by: result.y[0], r: reach(0) + pad });
+  // A bridge's piers stand on the ground under its deck (as footprint.ts structureFootprints places them): a
+  // deck high above another road's works shares no land with them, its piers do.
+  for (const run of result.runs ?? []) if (run.kind === KIND.bridge && result.grade) {
+    const spans = Math.max(1, Math.round(run.length / bridgeLayout(run.length).span));
+    for (const s of run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + run.length * (k + 1) / spans)) {
+      const k = Math.max(0, Math.min(result.n - 2, Math.floor(s / result.ds))), t = Math.max(0, Math.min(1, (s - result.s[k]) / result.ds));
+      const x = result.x[k] + (result.x[k + 1] - result.x[k]) * t, y = result.y[k] + (result.y[k + 1] - result.y[k]) * t;
+      out.push({ ax: x, ay: y, bx: x, by: y, r: Math.max(1.2, halfWidth * 0.55) + pad, top: Math.max(result.grade[k], result.grade[k + 1]) });
+    }
+  }
   const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0, reroute = false) => {
     if (!points?.length) return;
     // Earthwork toe bound: half width plus a 1:2 side slope over the largest height difference.
-    let dz = 0; for (const p of points) dz = Math.max(dz, Math.abs(p.z - p.ground));
+    let dz = 0, top = -Infinity; for (const p of points) { dz = Math.max(dz, Math.abs(p.z - p.ground)); top = Math.max(top, p.z, p.ground); }
     const r = width / 2 + 2 * dz + extra + pad;
-    const tag = reroute ? { reroute: true as const } : {};
+    const tag = { ...reroute ? { reroute: true as const } : {}, ...Number.isFinite(top) ? { top } : {} };
     if (points.length === 1) out.push({ ax: points[0].x, ay: points[0].y, bx: points[0].x, by: points[0].y, r, ...tag });
     for (let k = 1; k < points.length; k++) out.push({ ax: points[k - 1].x, ay: points[k - 1].y, bx: points[k].x, by: points[k].y, r, ...tag });
   };
@@ -161,8 +184,9 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
       while (j > i && road[j].surface === 'terrain' && road[j - 1].surface === 'terrain') j--;
       // (met at its own level: nothing of it is rebuilt)
       geometry({ ...g, road: road.some(q => q.surface !== 'terrain') ? road.slice(i, j + 1) : [] });
-    // (Auto's own reroute, not one the player chose or shaped)
-    } else geometry(g, (c.type === 'reconnection' || c.type === 'diversion') && !c.requestedType && !c.via);
+    // (Auto's own reroute, not one the player chose or shaped; under our bridge or over our tunnel the way is left
+    // as it is: no works of ours)
+    } else if (!unchanged(c)) geometry(g, (c.type === 'reconnection' || c.type === 'diversion') && !c.requestedType && !c.via);
   }
   for (const f of result.footprintConflicts) {
     geometry(f.geometry);
@@ -174,12 +198,16 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
 /** Roads a route crosses, relocates or closes. A closure relies on a detour over existing roads, no longer than
  * its `detour` (road-realignment.ts closeRedundantStretch): every road that detour can use lies within `reach`
  * of the closure (the closed stretch's length plus the detour). */
+/** A crossed way our bridge passes over or our tunnel under, left as it is (not moved onto a square line). */
+const unchanged = (c: Result['crossings'][number]) => (c.type === 'bridge' || c.type === 'tunnel') && !c.realignLength
+  && !(c.geometry?.road ?? []).some(q => q.surface !== 'terrain');
 function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: { x: number; y: number; reach: number }[] } {
   const roads = new Map<number, { x: number; y: number }[]>();
   const add = (id: number | undefined, x: number, y: number) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y }); else roads.set(id, [{ x, y }]); };
   // (a junction meets the way where it is and leaves it whole on both sides: no change of its course; its
   // works are screened as land like any other)
-  for (const c of result.crossings) if (c.type !== 'junction') {
+  // (nor does our bridge over it or our tunnel under it: the way stays as it is)
+  for (const c of result.crossings) if (c.type !== 'junction' && !(unchanged(c))) {
     add(c.roadId, c.x, c.y);
     // (a reroute joins the road it is led to where its new pieces end)
     if (c.targetRoadId !== undefined) for (const p of [c, ...(c.geometry?.links ?? []).flatMap(l => l.length ? [l[l.length - 1]] : [])]) add(c.targetRoadId, p.x, p.y);
