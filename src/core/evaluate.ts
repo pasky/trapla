@@ -825,7 +825,9 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
       for (let j = Math.max(0, Math.floor((c.s - halfSpan) / step) - 1); !bridged && chosen && j < ss.length && ss[j] <= c.s + halfSpan + step; j++)
         if (near(j) && chosen[j] === KIND.bridge) bridged = true;
       if (!bridged) continue;
-      for (let j = 0; j < ss.length; j++) if (near(j) && heights[j] > 0) mask[j] = 1;
+      // (the samples are evenly spaced: only those around the crossing can be near it)
+      const j0 = Math.max(0, Math.floor((c.s - halfSpan - ss[0]) / step) - 2), j1 = Math.min(ss.length - 1, Math.ceil((c.s + halfSpan - ss[0]) / step) + 2);
+      for (let j = j0; j <= j1; j++) if (near(j) && heights[j] > 0) mask[j] = 1;
     }
   };
 

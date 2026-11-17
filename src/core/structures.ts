@@ -99,6 +99,12 @@ export function allCut(i0: number, i1: number, cutMethod?: ArrayLike<number>): b
   return true;
 }
 
+/** Does any station's value pass? (A plain loop: the selection asks this of the whole route on every call.) */
+function anyAt(values: ArrayLike<number>, test: (v: number) => boolean): boolean {
+  for (let i = 0; i < values.length; i++) if (test(values[i])) return true;
+  return false;
+}
+
 export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[]; violations: Violation[] } {
   const n = inp.h.length;
   const kind = new Uint8Array(n);
@@ -186,7 +192,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   // Manual paint is authoritative: never optimise away or silently extend an invalid request.
   // Rebuild runs for billing, then report the safety constraints rather than repairing the design.
   const violations: Violation[] = [];
-  if (inp.overrides && Array.from(inp.overrides).some((k) => k >= 0)) {
+  if (inp.overrides && anyAt(inp.overrides, (k) => k >= 0)) {
     const automatic = kind.slice();
     for (let i = 0; i < n; i++) if (inp.overrides[i] >= 0) kind[i] = inp.overrides[i];
     runs.length = 0;
@@ -263,7 +269,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   }
   // cut and cover chosen for Auto's tunnel (overrides.ts `auto`): as deep as it can be dug, as for the player's own
   const cut = inp.cutMethod;
-  if (cut && cut.length && Array.prototype.some.call(cut, (v: number) => v === 1)) {
+  if (cut && cut.length && anyAt(cut, (v) => v === 1)) {
     const deepest = rules.portalDepth + TUNNEL_RULES.cutCoverMaxCover;
     const bad = (j: number) => kind[j] === KIND.tunnel && !!cut[j] && !(inp.overrides && inp.overrides[j] >= 0) && -inp.h[j] > deepest + 1e-9;
     for (let i = 0; i < n; i++) {
