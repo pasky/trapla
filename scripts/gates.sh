@@ -13,7 +13,8 @@
 #
 # Each gate's output goes to $GATES_LOG/<gate>.log (default /tmp/trapla-gates-<branch>); the summary says
 # PASS / FAIL and the time taken; exit 1 if any gate failed. Order: the timed runs (drag-perf) one after another,
-# alone on our side, under the exclusive browser lock; then the Node gates in parallel (the longest first); then
+# alone on our side, under the exclusive browser lock; then vitest alone (its tests time out beside the other
+# gates); then the other Node gates in parallel (the longest first); then
 # the untimed browser runs together, each on its own port, which wait for queued timed runs, then take the
 # shared lock under nice (the protocol in AGENTS.md; beside our Node gates nice starved them and they flaked).
 # A timed or browser run is run again once if it fails while the host is loaded (load > 6). The outcome audit
@@ -28,11 +29,11 @@ PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-
 branch=$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
 log=${GATES_LOG:-/tmp/trapla-gates-$branch}
 
-# name | kind (node, timed, browser) | set (quick, full) | command
+# name | kind (node; alone: a Node gate on its own, its tests time out on a loaded host; timed; browser) | set (quick, full) | command
 gates() {
   cat <<EOF
 tsc|node|quick|npx tsc --noEmit
-vitest|node|quick|npx vitest run --maxWorkers=50%
+vitest|alone|quick|npx vitest run
 eval-regression|node|quick|npx tsx scripts/eval-regression.ts
 drag-bend|timed|quick|node scripts/drag-perf.mjs --gpu --check --mode bend
 build|node|full|npm run build
@@ -94,7 +95,7 @@ finish() { # name status took [seconds waited for the lock]: the gate's line, ke
 run() { # name kind command
   local name=$1 kind=$2 cmd=$3 start=$SECONDS status
   case "$kind" in
-    node) bash -c "$cmd" >"$log/$name.log" 2>&1; status=$? ;;
+    node|alone) bash -c "$cmd" >"$log/$name.log" 2>&1; status=$? ;;
     timed)
       flock -x "$LOCK" bash -c "[ -f $log/$name.locked ] || date +%s >$log/$name.locked; $cmd" >"$log/$name.log" 2>&1; status=$?
       if [ $status -ne 0 ] && awk '{ exit !($1 > 6) }' /proc/loadavg; then
@@ -117,16 +118,16 @@ run() { # name kind command
 }
 
 # the selected gates, in the table's order (the summary's)
-order=(); timed=(); browsers=(); nodes=()
+order=(); timed=(); alone=(); browsers=(); nodes=()
 declare -A cmds
 while IFS='|' read -r name kind set cmd; do
   [ -z "$name" ] && continue
   [ "$mode" = quick ] && [ "$set" != quick ] && continue
   [ -n "$only" ] && [[ "$only" != *",$name,"* ]] && continue
   [ -n "$skip" ] && [[ "$skip" == *",$name,"* ]] && continue
-  [ $browser -eq 0 ] && [ "$kind" != node ] && continue
+  [ $browser -eq 0 ] && [ "$kind" != node ] && [ "$kind" != alone ] && continue
   order+=("$name"); cmds[$name]=$cmd
-  case "$kind" in timed) timed+=("$name") ;; browser) browsers+=("$name") ;; node) nodes+=("$name") ;; esac
+  case "$kind" in timed) timed+=("$name") ;; alone) alone+=("$name") ;; browser) browsers+=("$name") ;; node) nodes+=("$name") ;; esac
 done < <(gates)
 if [ -n "$exact" ]; then order+=(exact); cmds[exact]="npx tsx scripts/exact.ts --compare $exact"; nodes+=(exact); fi
 
@@ -141,7 +142,8 @@ for name in "${order[@]}"; do rm -f "$log/$name.result" "$log/$name.locked"; don
 # 1. timed runs, one after another, before anything of ours loads the host
 for name in "${timed[@]}"; do run "$name" timed "${cmds[$name]}"; done
 
-# 2. the Node gates, `jobs` at a time
+# 2. the Node gates, those that need the host alone first, then the others `jobs` at a time
+for name in "${alone[@]}"; do run "$name" alone "${cmds[$name]}"; done
 [ ${#nodes[@]} -gt 0 ] && echo "(${#nodes[@]} Node gates, $jobs at a time)"
 running=()
 for name in "${nodes[@]}"; do
