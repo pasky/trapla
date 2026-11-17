@@ -39,6 +39,7 @@ $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old
 pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m unittest discover -s pipeline -p 'test_*.py'
 smoke|browser|full|node scripts/smoke.mjs
 playtest|browser|full|node scripts/playtest.mjs
+toolbar|browser|full|node scripts/toolbar-layout.mjs
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 EOF
 }
