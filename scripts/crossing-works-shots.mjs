@@ -14,36 +14,36 @@ const { page, pageErrors: errors } = game;
 const idle = (ms = 600) => game.idle(ms);
 const load = (name) => name === 'straight' ? { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }
   : JSON.parse(readFileSync(`scripts/${name}-design.json`, 'utf8')).design;
-// [file number, design, what the scene shows, the way that showed it when the scene was last looked at (it is
-// taken while it still does, else the first crossing of the design that does; --before: that way as the older
-// code builds it), distance, bearing, elevation, label]. The camera looks at the regraded side road / the wall.
+// [file number, design, what the scene shows, the way that showed it when the scene was last looked at and the
+// camera centre used for it then (the same before and after; both are taken while that way still shows it,
+// else the first crossing of the design that does, looked at where its side road is regraded; --before: that
+// way as the older code builds it), distance, bearing, elevation, label].
 const SHOWS = {
   'junction-tie': 'a side road regraded to meet a junction approach',
   'ramp-tie': 'a side road regraded to meet the ramp of a bridge over us',
-  wall: 'a retaining wall beside a crossing\'s works',
 };
 const scenes = [
-  [110, 'straight', 'junction-tie', 2180, 260, 200, 50, 'junction-street-tie'],
-  [112, 'direct-80', 'ramp-tie', 1158, 200, 150, 35, 'ramp-wall'],
-  [114, 'demo', 'wall', 2136, 170, 20, 45, 'junction-street-tie-demo'],
+  [110, 'straight', 'junction-tie', 2180, [11880, 17823], 260, 200, 50, 'junction-street-tie'],
+  // (until cost model 31 this was the track bridge 5189 at km 15.3 with a wall at the corner, which is what the
+  // --before picture 112 shows; its ramp regrades nothing now)
+  [112, 'direct-80', 'ramp-tie', 1158, null, 200, 150, 35, 'ramp-wall'],
+  [114, 'demo', 'junction-tie', 1975, [9840, 8528], 170, 20, 45, 'junction-street-tie-demo'],
 ];
 try {
   await game.open('scenario=d11'); await idle();
-  for (const [number, name, shows, roadId, dist, bearing, elev, label] of scenes) {
+  for (const [number, name, shows, roadId, centre, dist, bearing, elev, label] of scenes) {
     await page.evaluate(d => window.trapla.setDesign(d), load(name)); await idle();
-    const c = await page.evaluate(([shows, id, before, dist, bearing, elev]) => {
+    const c = await page.evaluate(([shows, id, centre, before, dist, bearing, elev]) => {
       const r = window.trapla.result();
-      const has = (c) => shows === 'wall' ? c.wallLength > 0 : c.tieLength > 0 && (c.type === 'junction') === (shows === 'junction-tie');
-      const c = before ? r.crossings.find(c => c.roadId === id) : r.crossings.find(c => c.roadId === id && has(c)) ?? r.crossings.find(has);
+      const has = (c) => c.tieLength > 0 && (c.type === 'junction') === (shows === 'junction-tie');
+      const named = r.crossings.find(c => c.roadId === id && (before || has(c))), c = named ?? (before ? undefined : r.crossings.find(has));
       if (!c) return null;
-      // the works to look at: the first walled point (of the rebuilt way, then of the regraded side roads), else
-      // the middle of the first regraded side road, else the crossing
-      const g = c.geometry, tie = g?.ties?.[0]?.path, walled = [...(g?.road ?? []), ...(g?.ties ?? []).flatMap(t => t.path)].find(p => p.wall?.some(h => h > 0));
-      const at = (shows === 'wall' ? walled : undefined) ?? tie?.[tie.length >> 1] ?? c;
+      // the works to look at: where the scene was framed before, else the middle of the first regraded side road
+      const tie = c.geometry?.ties?.[0]?.path, at = named && centre ? { x: centre[0], y: centre[1] } : tie?.[tie.length >> 1] ?? c;
       window.trapla.select(null); window.trapla.setView({ contours: true });
       window.trapla.lookAt(at.x, at.y, dist, bearing, elev);
-      return { roadId: c.roadId, s: c.s, type: c.type, cls: c.cls, cost: c.cost, tie: c.tieLength, wall: c.wallLength, ties: g?.ties?.length ?? 0 };
-    }, [shows, roadId, BEFORE, dist, bearing, elev]);
+      return { roadId: c.roadId, s: c.s, type: c.type, cls: c.cls, cost: c.cost, tie: c.tieLength, wall: c.wallLength, ties: c.geometry?.ties?.length ?? 0 };
+    }, [shows, roadId, centre, BEFORE, dist, bearing, elev]);
     assert(c, BEFORE ? `${name} crosses way ${roadId}` : `${name} has ${SHOWS[shows]}`);
     await idle(); await game.park();
     const path = `${out}/${number + (BEFORE ? 0 : 1)}-crossing-works-${BEFORE ? 'before' : 'after'}-${label}.png`;

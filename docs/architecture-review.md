@@ -107,7 +107,8 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
     what they show (a road moved beside ours, a way Auto straightens, a side road regraded to a junction
     / a ramp, a walled crossing, a reconnection to shape, a way crossed more than once), so a model change
     picks other ways instead of failing; where the model no longer does a thing at all the script says
-    SKIPPED. Their pictures in `docs/screenshots` (110–119, 150–156, 170–176) are still the old models'.
+    SKIPPED. Their pictures in `docs/screenshots` (111–119, 150–156, 170–175) were retaken on model 31 and
+    the README's captions say what they show now (110, 112, 114 stay: the code before model 19).
   - `violations.mjs` scrolled the HUD while the HUD's own smooth scroll to the selected card was running
     (one run in six framed the list, five the card): it waits for the HUD to rest, then scrolls.
 - Seen while repairing them, not changed: on the D3 motorway starter Auto straightens no skewed way any
