@@ -320,7 +320,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
     delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.closure;
-    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved;
+    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.under; delete c.overRailway;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);
     if (square !== undefined) c.square = square; else delete c.square;

@@ -805,6 +805,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
   const g: CrossingGeometry = c.geometry = { width: ROAD_CLASSES[c.cls].width, schematic: false };
   if (c.type !== 'reconnection' && c.type !== 'diversion') delete c.closure;
   if (c.type !== 'overbridge') delete c.overRailway;
+  if (c.type !== 'reconnection' && c.type !== 'diversion') delete c.under;
   let path = getPath(c.roadId, c.x, c.y, g);
   if (path.length < 2) {
     diagnose(g, 'Crossed way has no usable polyline');
@@ -1875,7 +1876,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (cannotPay(target)) break;
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
-      link.targetS = target.s; link.targetRoadId = target.roadId;
+      link.targetS = target.s; link.targetRoadId = target.roadId; delete link.under; delete link.closure;
       const anchor = clone(target); anchor.square = target.square;
       // A resolved diversion's source is a real ground-level road node; its downstream link need
       // not be rebuilt to evaluate a new branch arriving at that source.
@@ -1888,7 +1889,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // (a way that comes back out of our earthworks on the side it went in: moved beside them when
     // nothing else is buildable; otherwise weighed with the roads led to it, below)
     if (g?.sameSide && !c.moved && !ok(best)) {
-      const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true;
+      const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true; delete move.under;
       delete move.targetS; delete move.targetRoadId; delete move.span; delete move.approachLength; delete move.underpassLength;
       build([move]);
       consider(move);
@@ -1948,7 +1949,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     for (const x of [c, ...along]) {
       const link = clone(x); link.type = x.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
-      link.targetS = target.s; link.targetRoadId = target.roadId;
+      link.targetS = target.s; link.targetRoadId = target.roadId; delete link.under; delete link.closure;
       const anchor = clone(target); anchor.square = target.square;
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], before - spent, new Set([anchor]));
@@ -1978,7 +1979,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // (a follower the player shaped keeps its path; one the player only asked to cut and reroute is led on)
     if (followers.some(x => x.via !== undefined || (x.requestedType && x.requestedType !== 'reconnection'))) continue;
     const before = (feasible(c) ? c.cost : Infinity) + followers.reduce((sum, x) => sum + x.cost, 0);
-    const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true;
+    const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true; delete move.under;
     delete move.targetS; delete move.targetRoadId; delete move.span; delete move.approachLength; delete move.underpassLength;
     build([move], before);
     if (!feasible(move) || takesHome(move)) continue;
@@ -1990,7 +1991,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // reroute then has no crossing to lead to, and says so)
       if (!t && x.requestedType === 'reconnection') { total += x.cost; moves.push({ ...x }); continue; }
       if (!t) { total = Infinity; break; }
-      const link = clone(x); link.targetS = t.s; link.targetRoadId = t.roadId;
+      const link = clone(x); link.targetS = t.s; link.targetRoadId = t.roadId; delete link.under; delete link.closure;
       const anchor = clone(t); anchor.square = t.square;
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], before - total, new Set([anchor]));
