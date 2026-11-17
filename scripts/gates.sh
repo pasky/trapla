@@ -8,20 +8,24 @@
 #   scripts/gates.sh full --skip playtest            all but these
 #   scripts/gates.sh full --exact /tmp/before.json   also: results bit-identical to that snapshot
 #                                                    (npx tsx scripts/exact.ts --out /tmp/before.json on the base)
+#   scripts/gates.sh full --jobs 4          at most 4 Node gates at a time (default: nproc/2, fewer if memory is short)
 #   scripts/gates.sh list                   the gates and their commands
 #
 # Each gate's output goes to $GATES_LOG/<gate>.log (default /tmp/trapla-gates-<branch>); the summary says
-# PASS / FAIL and the time taken; exit 1 if any gate failed. Timed runs (drag-perf) take the exclusive
-# browser lock; untimed browser runs wait for queued timed runs, then take the shared lock under nice (the
-# protocol in AGENTS.md). Either is run again once if it fails while the host is loaded (load > 6).
-# The outcome audit never fails the run: its flags are for reading (it prints how many).
+# PASS / FAIL and the time taken; exit 1 if any gate failed. Order: the timed runs (drag-perf) first, one after
+# another, alone on our side, under the exclusive browser lock; then the Node gates in parallel (the longest
+# first) together with the untimed browser runs, which wait for queued timed runs, then take the shared lock
+# under nice, each on its own port (the protocol in AGENTS.md). A timed or browser run is run again once if it
+# fails while the host is loaded (load > 6). The outcome audit never fails the run: its flags are for reading.
 set -u
 cd "$(dirname "$0")/.."
 
 LOCK=${TRAPLA_BROWSER_LOCK:-/tmp/trapla-browser.lock}
-# the browser scripts start at PORT (the next free one if it is taken): one per checkout
+# the browser scripts start at PORT (the next free one if it is taken): one per checkout, 10 apart per browser gate
 export PORT=${PORT:-$((5300 + $(pwd | cksum | cut -d' ' -f1) % 600))}
 PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-paka"
+branch=$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
+log=${GATES_LOG:-/tmp/trapla-gates-$branch}
 
 # name | kind (node, timed, browser) | set (quick, full) | command
 gates() {
@@ -39,34 +43,51 @@ outcome-audit|node|full|npx tsx scripts/outcome-audit.ts --quiet --straight scri
 local-retry|node|full|npx tsx scripts/local-retry-report.ts
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m unittest discover -s pipeline -p 'test_*.py'
-smoke|browser|full|node scripts/smoke.mjs
-playtest|browser|full|node scripts/playtest.mjs
-toolbar|browser|full|node scripts/toolbar-layout.mjs
+smoke|browser|full|PORT=\$((PORT + 10)) node scripts/smoke.mjs
+playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/playtest.mjs
+toolbar|browser|full|PORT=\$((PORT + 30)) node scripts/toolbar-layout.mjs --out $log/toolbar-shots
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 EOF
 }
 
 mode=${1:-}; [ $# -gt 0 ] && shift
-only=""; skip=""; browser=1; exact=""
+only=""; skip=""; browser=1; exact=""; jobs=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --only) only=",$2,"; shift 2 ;;
     --skip) skip=",$2,"; shift 2 ;;
     --no-browser) browser=0; shift ;;
     --exact) exact=$2; shift 2 ;;
+    --jobs) jobs=$2; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
 case "$mode" in
   list) gates | awk -F'|' '{ printf "%-24s %-8s %-6s %s\n", $1, $2, $3, $4 }'; exit 0 ;;
   quick|full) ;;
-  *) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 
-branch=$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
-log=${GATES_LOG:-/tmp/trapla-gates-$branch}
+# Node gates at a time: half the cores, and ≈ 3 GB of available memory each (a whole-D3 pack is ≈ 0.5 GB of heap
+# per process; vitest and the scenario checks run several)
+if [ -z "$jobs" ]; then
+  jobs=$(( $(nproc) / 2 ))
+  mem=$(awk '/MemAvailable/ { print int($2 / 3145728) }' /proc/meminfo)
+  [ "$mem" -lt "$jobs" ] && jobs=$mem
+  [ "$jobs" -lt 1 ] && jobs=1
+fi
+
 mkdir -p "$log"
-failed=0; summary=""
+trap 'trap - INT TERM; kill 0' INT TERM
+
+finish() { # name status took: the gate's line, kept for the summary
+  local name=$1 status=$2 took=$3 note="" line
+  [ "$name" = outcome-audit ] && note="  $(grep -o '^## Flags ([0-9]*)' "$log/$name.log" | tr -d '#' | xargs): for reading, in $log/$name.log"
+  if [ "$status" -eq 0 ]; then line=$(printf 'PASS %-24s %4ss%s' "$name" "$took" "$note")
+  else line=$(printf 'FAIL %-24s %4ss  see %s' "$name" "$took" "$log/$name.log"); fi
+  echo "$line" >"$log/$name.result"
+  echo "$line"
+}
 
 run() { # name kind command
   local name=$1 kind=$2 cmd=$3 start=$SECONDS status
@@ -88,24 +109,53 @@ run() { # name kind command
         [ $status -eq 0 ] && echo "(failed once under load, passed the second time: $log/$name.first.log)" >>"$log/$name.log"
       fi ;;
   esac
-  local took=$((SECONDS - start)) note=""
-  [ "$name" = outcome-audit ] && note="  $(grep -o '^## Flags ([0-9]*)' "$log/$name.log" | tr -d '#' | xargs): for reading, in $log/$name.log"
-  if [ $status -eq 0 ]; then summary+=$(printf 'PASS %-24s %4ss%s' "$name" "$took" "$note")$'\n'
-  else summary+=$(printf 'FAIL %-24s %4ss  see %s' "$name" "$took" "$log/$name.log")$'\n'; failed=1; fi
-  printf '%s %-24s %4ss%s\n' "$([ $status -eq 0 ] && echo PASS || echo FAIL)" "$name" "$took" "$note"
+  finish "$name" $status $((SECONDS - start))
 }
 
+# the selected gates, in the table's order (the summary's)
+order=(); timed=(); browsers=(); nodes=()
+declare -A cmds
 while IFS='|' read -r name kind set cmd; do
   [ -z "$name" ] && continue
   [ "$mode" = quick ] && [ "$set" != quick ] && continue
   [ -n "$only" ] && [[ "$only" != *",$name,"* ]] && continue
   [ -n "$skip" ] && [[ "$skip" == *",$name,"* ]] && continue
   [ $browser -eq 0 ] && [ "$kind" != node ] && continue
-  run "$name" "$kind" "$cmd"
+  order+=("$name"); cmds[$name]=$cmd
+  case "$kind" in timed) timed+=("$name") ;; browser) browsers+=("$name") ;; node) nodes+=("$name") ;; esac
 done < <(gates)
-if [ -n "$exact" ]; then run exact node "npx tsx scripts/exact.ts --compare $exact"; fi
+if [ -n "$exact" ]; then order+=(exact); cmds[exact]="npx tsx scripts/exact.ts --compare $exact"; nodes+=(exact); fi
+
+# the Node gates longest first (their times in the last run; new ones first of all)
+if [ ${#nodes[@]} -gt 0 ]; then
+  mapfile -t nodes < <(for name in "${nodes[@]}"; do
+    took=$(awk '{ print $3 + 0 }' "$log/$name.result" 2>/dev/null)
+    echo "${took:-100000} $name"; done | sort -rn -k1,1 -s | cut -d' ' -f2)
+fi
+for name in "${order[@]}"; do rm -f "$log/$name.result"; done
+
+# 1. timed runs, one after another, before anything of ours loads the host
+for name in "${timed[@]}"; do run "$name" timed "${cmds[$name]}"; done
+
+# 2. the untimed browser runs together, and the Node gates `jobs` at a time beside them
+for name in "${browsers[@]}"; do run "$name" browser "${cmds[$name]}" & done
+[ ${#nodes[@]} -gt 0 ] && echo "(${#nodes[@]} Node gates, $jobs at a time$([ ${#browsers[@]} -gt 0 ] && echo ", beside ${#browsers[@]} browser runs"))"
+running=()
+for name in "${nodes[@]}"; do
+  while [ ${#running[@]} -ge "$jobs" ]; do
+    wait -n -p done_pid "${running[@]}"
+    keep=(); for pid in "${running[@]}"; do [ "$pid" != "$done_pid" ] && keep+=("$pid"); done; running=("${keep[@]}")
+  done
+  run "$name" node "${cmds[$name]}" &
+  running+=($!)
+done
+wait
 
 echo
 echo "== gates ($mode) on $branch @ $(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' + uncommitted changes'): logs in $log"
-printf '%s' "$summary"
+failed=0
+for name in "${order[@]}"; do
+  if [ -f "$log/$name.result" ]; then cat "$log/$name.result"; grep -q '^PASS' "$log/$name.result" || failed=1
+  else printf 'FAIL %-24s  (no result)\n' "$name"; failed=1; fi
+done
 exit $failed
