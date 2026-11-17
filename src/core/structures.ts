@@ -309,6 +309,25 @@ function mergeGaps(kind: Uint8Array, k: number, maxGap: number, ok: (i: number) 
   }
 }
 
+/** Between two bridges, a fill closed off by a wall at an end (support-layout.ts; the structure choice weighed cones
+ * there): the gaps (first and last earth cell) to bridge, where its deck costs less than the fill, its walls, its cones
+ * and the abutments one bridge saves. `cone(i, into)`: CZK of the cone at bridge end cell i; `earth(k)` / `deck(k)`: CZK
+ * of cell k as earthwork / as bridge; `open(k)`: cell k may be bridged; `abutments`: CZK of one bridge's two abutments;
+ * `wallMul`: the walls' surcharge factor. */
+export function wallGapsToBridge(runs: readonly Run[], cone: (i: number, into: number) => number, earth: (k: number) => number,
+  deck: (k: number) => number, open: (k: number) => boolean, abutments: number, wallMul: number): [number, number][] {
+  const out: [number, number][] = [], bridges = runs.filter(q => q.kind === KIND.bridge);
+  const wall = (q: Run, k: 0 | 1) => q.closedEnds?.[k] ? q.endWalls?.[k].cost ?? 0 : 0;
+  for (let q = 1; q < bridges.length; q++) {
+    const p = bridges[q - 1], r = bridges[q], a = p.i1 + 1, z = r.i0 - 1, wa = wall(p, 1), wz = wall(r, 0);
+    if (!(wa + wz > 0) || z < a) continue;
+    let fill = (wa + wz) * wallMul + (wa ? 0 : cone(p.i1, -1)) + (wz ? 0 : cone(r.i0, 1)) + abutments, span = 0, ok = true;
+    for (let k = a; k <= z && ok; k++) { ok = open(k); fill += earth(k); span += deck(k); }
+    if (ok && span < fill) out.push([a, z]);
+  }
+  return out;
+}
+
 export function findRuns(kind: Uint8Array): { kind: number; i0: number; i1: number }[] {
   const out: { kind: number; i0: number; i1: number }[] = [];
   let i = 0;

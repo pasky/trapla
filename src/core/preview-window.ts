@@ -241,7 +241,11 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     if (kind[i] === 0) continue;
     let j = i;
     while (j + 1 < n && kind[j + 1] === kind[i]) j++;
-    runs.push({ kind: kind[i] as 1 | 2, i0: i, i1: j, s0: st.s[i], s1: st.s[j], length: st.s[j] - st.s[i] + ds });
+    const run: Run = { kind: kind[i] as 1 | 2, i0: i, i1: j, s0: st.s[i], s1: st.s[j], length: st.s[j] - st.s[i] + ds };
+    // (a bridge outside the window keeps its closed ends and their walls, as the full result billed them)
+    const full = inWindow(i) || inWindow(j) ? undefined : r.runs.find(q => q.kind === run.kind && q.i0 === nearest(r, oldS(st.s[i])) && q.i1 === nearest(r, oldS(st.s[j])));
+    if (full?.closedEnds) { run.closedEnds = full.closedEnds; if (full.endWalls) run.endWalls = full.endWalls; }
+    runs.push(run);
     i = j;
   }
   // Per-cell costs: window cells priced now; the others are the full result's, per metre of its cells.

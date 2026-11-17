@@ -118,10 +118,10 @@
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
  * 4,935 → 7,045 M.
  * 42: bridge ends, one rule (owner's review of the Královec railway: walls up to 28 m): what a cone would cover that
- * nothing moves aside, on its axis or flanks, closes the end with a wall only on a fill up to 10 m, billed as the wall it
+ * nothing moves aside, anywhere on its ground, closes the end with a wall only on a fill up to 10 m, billed as the wall it
  * is (abutment-cone.ts closedEndWall); above it Auto's bridge goes on, else the cone stands and what it covers is a
  * problem; a minor way under a cone is moved aside by the footprint screen; a fill between two bridges closed off by a
- * wall is bridged where the deck costs less. D11 frozen +3.5 … +99 M (PLAN.md "Bridge ends: one rule"). */
+ * wall is bridged where the deck costs less. D11 frozen −78 … +49 M (PLAN.md "Bridge ends: one rule"). */
 export const COST_MODEL_VERSION = 42;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

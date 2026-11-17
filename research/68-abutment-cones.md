@@ -324,7 +324,9 @@ The same at h_a = 30 m:
   cone's flanks, field tracks included, and never looked at the 10 m limit, while the search that lengthens Auto's
   bridge looked at the axis only and spared minor ways: the Královec railway closed ends with walls of 16–28 m beside a
   field track 23–31 m from the abutment (and a memo shared one key between "every road" and "the strict ways" screens).
-  Now one test serves both: what the cone would cover on its axis or under its quarter cones that nothing moves aside
+  Now one test serves both: what the cone would cover anywhere on its ground (rows from the abutment out to where its
+  surface meets the ground, a cross slope included; the two rectangles of the first fix missed a track 1 m under a cone's
+  toe on a cross slope) that nothing moves aside
   (railways, water, roads of a class; a minor way the footprint screen may move aside is screened under the cone as
   under an abutment, and moved; a way whose move fails is counted on the retry). A covered end is closed only on a fill
   of at most 10 m, billed as the wall it is: a cantilever retaining wall across the fill's end section (crest at full

@@ -45,7 +45,7 @@ import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
-import { allCut, chooseStructures, cutCoverMask, KIND, type Run } from './structures';
+import { allCut, chooseStructures, cutCoverMask, KIND, wallGapsToBridge, type Run } from './structures';
 import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
@@ -1694,14 +1694,13 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   type Settled = { selection: ReturnType<typeof chooseStructures>; balances: number[]; values: number[]; value: number };
   /** the structure choice at given values of a m³ of fill (one per block), and the usable cut minus fill it
    * leaves in each block */
+  /** CZK per m of earthwork in cell i at a block's prices */
+  const earthAt = (i: number, dp: ReturnType<typeof blockDecision>) => (earthBase[i] + sec.cutI[i] * dp.cutPerM3.I + sec.cutII[i] * dp.cutPerM3.II
+    + sec.cutIII[i] * dp.cutPerM3.III + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
   const selectAt = (values: readonly number[]): Settled => {
     const dps = values.map(v => blockDecision(v)), fillAt = (i: number) => dps[blk[i]].fillPerM3;
     const runCost = (i0: number, i1: number, length: number) => spanCost(i0, i1, length) + (preview ? 0 : coneEnd(i0, 1, fillAt(i0)) + coneEnd(i1, -1, fillAt(i1)));
-    for (let i = 0; i < n; i++) {
-      const dp = dps[blk[i]], cutP = dp.cutPerM3;
-      earthPerM[i] = (earthBase[i] + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II + sec.cutIII[i] * cutP.III
-        + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
-    }
+    for (let i = 0; i < n; i++) earthPerM[i] = earthAt(i, dps[blk[i]]);
     const forcedAt = forced.slice();
     const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, cutCoverPerM, cutCoverExtraPerM, tunnelFactor, tunnelRate, cutMethod, forced: forcedAt, forcedTunnel, overrides: selectionOverrides, ...(heldDeck ? { held: heldDeck } : {}), deepCut,
       bridgeRunCost: noBridgeAny ? (i0: number, i1: number, length: number) => noBridge.subarray(i0, i1 + 1).some(Boolean) && !forcedAt.subarray(i0, i1 + 1).some(Boolean) ? Infinity : runCost(i0, i1, length) : runCost };
@@ -1809,29 +1808,26 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     work('support', supportStart);
   }
   // Between two bridges, a fill the support layout closed off with a wall at an end (the structure choice weighed a
-  // cone there): one bridge where its deck costs less than that fill, its walls and its cones (Auto's gaps only).
+  // cone there): one bridge where its deck costs less than that fill, its walls, its cones and the two abutments one
+  // bridge saves (Auto's gaps only, none Auto ruled out for its piers; kept only if the joined bridge stands).
   if (!preview) {
-    const fillAt = (i: number) => blockDecision(settled.values[blk[i]]).fillPerM3, wallOf = (q: Run, k: 0 | 1) => q.closedEnds?.[k] ? q.endWalls?.[k].cost ?? 0 : 0;
-    const bridges = supported.runs.filter(q => q.kind === KIND.bridge);
-    let more = false;
-    for (let q = 1; q < bridges.length; q++) {
-      const a = bridges[q - 1].i1, z = bridges[q].i0, walls = wallOf(bridges[q - 1], 1) + wallOf(bridges[q], 0);
-      if (!walls || z <= a + 1) continue;
-      let earth = walls * (1 + surB(0)) + (wallOf(bridges[q - 1], 1) ? 0 : coneEnd(a, -1, fillAt(a))) + (wallOf(bridges[q], 0) ? 0 : coneEnd(z, 1, fillAt(z))), deck = 0, open = true;
-      for (let k = a + 1; k < z && open; k++) {
-        if (supported.kind[k] !== KIND.earth || manualStructures[k] >= 0 || h[k] <= 0) open = false;
-        earth += earthPerM[k] * cellLength(k, n, ds); deck += bridgePerM[k] * cellLength(k, n, ds);
-      }
-      if (open && deck < earth) { for (let k = a + 1; k < z; k++) forced[k] = 1; more = true; }
-    }
-    if (more) {
+    const dp = (i: number) => blockDecision(settled.values[blk[i]]);
+    const gaps = wallGapsToBridge(supported.runs, (i, into) => coneEnd(i, into, dp(i).fillPerM3), k => earthAt(k, dp(k)) * cellLength(k, n, ds),
+      k => bridgePerM[k] * cellLength(k, n, ds), k => supported.kind[k] === KIND.earth && manualStructures[k] < 0 && h[k] > 0 && !noBridge[k],
+      bridge.abutments * (1 + surB(0)), 1 + surB(0));
+    if (gaps.length) {
       timing['count.wallGap'] = (timing['count.wallGap'] ?? 0) + 1;
+      const before = { settled, selection, supported, forced: forced.slice() };
+      for (const [a, z] of gaps) forced.fill(1, a, z + 1);
       const again = performance.now();
       settled = settle(); selection = settled.selection;
       work('selection', again);
       supportStart = performance.now();
       supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
       work('support', supportStart);
+      if (supported.diagnostics.some(f => f.reason === 'span-limit' && f.automatic && f.cells && gaps.some(([a, z]) => f.cells![0] <= z && f.cells![1] >= a))) {
+        ({ settled, selection, supported } = before); forced.set(before.forced);
+      }
     }
   }
   const unlifted = choiceDeckOf(opts, choiceDeck);
@@ -2644,7 +2640,10 @@ function evaluatePass(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Resu
   // spanned by it; a pond or river beside us that no wall holds back gets a short bridge of its own.
   // (so is a road our bridge's end would bury where it runs askew under it: the end is set beyond it)
   const asked = notAsked(first);
-  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water' || c.feature === 'road') && c.action === 'blocked' && /:earth(:|$)/.test(c.id) && asked(c));
+  // (a minor way under a bridge end's cone that could not be moved aside is not one: it is counted on the strict retry
+  // below, and the end is closed or goes on, support-layout.ts)
+  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water' || c.feature === 'road') && c.action === 'blocked' && /:earth(:|$)/.test(c.id) && asked(c)
+    && (c.feature !== 'road' || first.kind[c.i] !== KIND.bridge));
   let spanned = false;
   for (const c of streams) {
     const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
