@@ -478,11 +478,11 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,
       detail: ok ? `The stream runs ${length.toFixed(0)} m under our slope in a ${waterOpening(size)} culvert.`
         : `${affectedLength.toFixed(0)} m of the stream lies under our ${h.structure ? `bridge ${h.structure === 'pier' ? 'pier' : 'end'}` : 'earthworks'}, and no culvert works here: ${plainReasons.join('; ')}.`,
-      source: ok ? 'Culvert sizes and prices per research/17' : undefined };
+      source: ok ? 'OTSKP 2026 culvert items and estimated assemblies' : undefined };
     if (ok) conflicts.push(conflict);
     else block(conflict, h.structure ? `A bridge ${h.structure === 'pier' ? 'pier' : 'support'} stands in a stream` : 'Our earthworks block a stream',
       h.structure ? `Move the route at km ${kmText(conflict.s0)} a little so the support misses the stream, or make the bridge longer here` : moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream'),
-      'Game rule (research/17): a stream under our earthworks needs a culvert with enough earth over it and open ends; the game does not move streams it cannot reroute safely',
+      'Game rule: a stream under our earthworks needs a culvert with enough earth over it and open ends; the game does not move streams it cannot reroute safely',
       h.structure ? 'engine' : 'game');
   }
   for (const { feature, structure, hits } of rasterHits.values()) {

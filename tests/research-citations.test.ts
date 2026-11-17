@@ -15,10 +15,6 @@ describe('research citations', () => {
     /** notes per number: a number with several is no citation by itself */
     const perNumber = new Map<string, number>();
     for (const f of notes) { const n = /^(\d\d)-.*\.md$/.exec(f)?.[1]; if (n) perNumber.set(n, (perNumber.get(n) ?? 0) + 1); }
-    // Player text that names such a number as a rule's basis (rule and source strings): reworded only together
-    // with the text, which is a change of results.
-    const PLAYER_TEXT = new Set(['src/core/crossing-geometry.ts: research/17', 'src/core/evaluate.ts: research/17',
-      'src/core/footprint.ts: research/17', 'src/ui/hud.ts: research/17']);
     const missing: string[] = [], vague: string[] = [];
     let cited = 0;
     for (const file of files) for (const m of readFileSync(file, 'utf8').matchAll(/research\/([0-9A-Za-z_./–-]+)/g)) {
@@ -29,7 +25,7 @@ describe('research citations', () => {
       // a number (or the two ends of a range of numbers), else a path under research/
       const ok = range ? [range[1], range[2]].every(n => n === undefined || numbered.has(n)) : existsSync(`research/${what}`);
       if (!ok) missing.push(`${file}: research/${what}`);
-      for (const n of range ? [range[1], range[2]] : []) if (n !== undefined && (perNumber.get(n) ?? 0) > 1 && !PLAYER_TEXT.has(`${file}: research/${n}`)) vague.push(`${file}: research/${what}`);
+      for (const n of range ? [range[1], range[2]] : []) if (n !== undefined && (perNumber.get(n) ?? 0) > 1) vague.push(`${file}: research/${what}`);
     }
     expect(missing).toEqual([]);
     expect(vague).toEqual([]);

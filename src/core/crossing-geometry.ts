@@ -221,12 +221,12 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     return { title: `No buildable reroute for the ${what}`,
       fix,
       detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
-      rule: `Game rule: a new road is no steeper than its class allows (research/20, ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts (research/17), buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
+      rule: `Game rule: a new road is no steeper than its class allows (research/20, ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
   }
   if (message === SHAPED_LINK.river) return { title: `Your path for the new ${what} crosses a river`,
     fix: 'Drag its bend points so that it stays on this side of the river, or choose "Automatic path" on the crossing card',
     detail: `The river is too big for a culvert under a ${what}.`, basis: 'game',
-    rule: 'Game rule (research/17): a new road crosses streams on culverts; rivers need a bridge, which reroutes do not get' };
+    rule: 'Game rule: a new road crosses streams on culverts; rivers need a bridge, which reroutes do not get' };
   if (message === SHAPED_LINK.works) return { title: `Your path for the new ${what} runs into another road you build`,
     fix: 'Drag its bend points clear of that road, or choose "Automatic path" on the crossing card',
     detail: `The new piece of ${what} would come closer than ${INDEPENDENCE_SCREEN.clearance} m to that road's works.`, basis: 'engine',
