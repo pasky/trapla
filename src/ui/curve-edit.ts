@@ -7,6 +7,7 @@ import './curve-edit.css';
 import { bendRules, horizontalRules } from '../core/data/norms';
 import type { Design, Result } from '../core/evaluate';
 import { buildAlignment, pointAt, type Alignment, type Vec2 } from '../core/horizontal';
+import { planPis } from '../core/plan-speeds';
 import type { Terrain } from '../core/terrain';
 import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
@@ -121,10 +122,12 @@ export class CurveEditor {
       if (this.drag && now !== this.drag.design) this.drag.abort(false);
       else if (this.drag && i !== this.drag.i) this.drag.abort(true);
     }
-    // (an old road's own curve that the line now builds anew is Auto's, as the evaluation has it: core/project-kept.ts)
+    // (an old road's own curve that the line now builds anew is Auto's, as the evaluation has it: core/project-kept.ts;
+    // as built: a slowed bend may keep a faster curve, core/plan-speeds.ts)
     const curves = this.host.result()?.curves;
     const pis = d.pis.map((p, k) => p.mapped && curves?.find((c) => c.index === k)?.auto ? { ...p, r: null } : p);
-    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, pis, horizontalRules(d.speed, d.category), bendRules(pis, d.speed, d.category));
+    const ppis = i === null ? pis : planPis(this.host.a, this.host.b, pis, d.speed, d.category);
+    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, ppis, horizontalRules(d.speed, d.category), bendRules(ppis, d.speed, d.category));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
     if (!info || !this.al || i === null) { this.place(); return; }

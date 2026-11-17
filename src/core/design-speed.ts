@@ -4,7 +4,7 @@
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { designSpeeds, HAIRPIN, hairpinLaneWidening, speedNorms, type SpeedNorms } from './data/norms';
 import type { RadiusLimit } from './vertical';
-import type { Alignment, PI } from './horizontal';
+import { HAIRPIN_MAX_DEFLECTION, type Alignment, type PI } from './horizontal';
 import { groundSlopeAt, routeMountainous, TERRAIN_CLASS } from './terrain-class';
 import type { Terrain } from './terrain';
 import type { Violation } from './checks';
@@ -12,13 +12,64 @@ import { stationIndex } from './range';
 
 export interface SpeedStretch { s0: number; s1: number; speed: number }
 
-/** a bend's design speed: its own where the category has that speed, else the road's */
+/** a bend's design speed: its own where the category has that speed and it is not above the road's, else the
+ * road's. A stretch is designed slower than its road, never faster: ČSN 73 6101:2018 lowers the design speed of a
+ * stretch in justified cases (research/47 §2), and a railway's line speed is its mission's (research/38, /66 §3):
+ * its trains run no faster on one curve built for more. */
 export function bendSpeed(p: PI | undefined, roadSpeed: number, category?: CategoryId): number {
-  return p?.speed !== undefined && (!category || designSpeeds(category).includes(p.speed)) ? p.speed : roadSpeed;
+  return p?.speed !== undefined && p.speed <= roadSpeed && (!category || designSpeeds(category).includes(p.speed)) ? p.speed : roadSpeed;
+}
+
+/** the design speeds a bend's stretch may be given: the category's, no faster than the road's */
+export function bendSpeedChoices(roadSpeed: number, category: CategoryId): number[] {
+  return designSpeeds(category).filter(v => v <= roadSpeed);
+}
+
+/** The stretch a bend's design speed covers (from the middle of the straight before its curve to the middle of
+ * the one after, or the road's end; with one bend the whole road), whatever speed it has now. */
+export function bendStretch(al: StretchPlan, pis: readonly PI[], k: number, roadSpeed: number): SpeedStretch | undefined {
+  const c = al.curves.find(x => x.index === k);
+  if (!c) return undefined;
+  // (the bend alone at a speed no other bend has)
+  const probe = pis.map((p, j) => j === k ? { ...p, speed: -1 } : { ...p, speed: 0 });
+  const all = speedStretches(al, probe, roadSpeed, undefined, false);
+  return all.find(x => x.speed === -1);
+}
+
+/** A stretch slowed below the road's design speed may have smaller elements; a designer uses them where the faster
+ * ones do not fit ("přechod na minimální hodnotu návrhového prvku byl pozvolný", the transition to minimum elements
+ * gradual: VUT, research/47 §2; research/66 §2). Auto's grade search rounds the hilltops and dips of a slowed
+ * stretch as for the road's speed, and with the stretch's own smaller curves only where that finds no line
+ * (evaluate.ts); a slowed bend's Auto curve likewise (plan-speeds.ts). So slowing a stretch never makes Auto's road
+ * dearer where the faster elements fit, at no extra evaluation (research/66: weighing both lines at the bill cost
+ * 2–3 evaluations, and the grade search's own estimate misleads, it prices no crossed roads). The speeds the
+ * search's heights' rules are built for, per bend (null: its own; hairpins keep theirs); undefined where no bend is
+ * slowed. */
+export function searchSpeeds(pis: readonly PI[], roadSpeed: number, category: CategoryId): (number | null)[] | undefined {
+  let any = false;
+  const out = pis.map(p => {
+    if (p.hairpin || bendSpeed(p, roadSpeed, category) >= roadSpeed) return null;
+    any = true;
+    return roadSpeed;
+  });
+  return any ? out : undefined;
+}
+
+/** the speeds a design's heights' rules are built for (EvalOptions.geometrySpeeds, else Auto's searchSpeeds) */
+export function heightSpeeds(d: { pis: readonly PI[]; speed: number; category: CategoryId; profileMode: string }, opts: { geometrySpeeds?: readonly (number | null)[] }): readonly (number | null)[] | undefined {
+  return opts.geometrySpeeds ?? (d.profileMode === 'auto' ? searchSpeeds(d.pis, d.speed, d.category) : undefined);
+}
+
+/** the bends as the geometry is built for them (`speeds`: raisedBendSpeeds; absent: as they are) */
+export function geometryPis(pis: readonly PI[], speeds?: readonly (number | null)[] | null): PI[] {
+  if (!speeds) return pis as PI[];
+  return pis.map((p, k) => speeds[k] == null ? p : { ...p, speed: speeds[k]! });
 }
 
 /** The road from 0 to its length in stretches of one design speed (one stretch where no bend has its own). */
-export function speedStretches(al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category?: CategoryId, hairpins = true): SpeedStretch[] {
+/** what of a plan the stretches read: its curves (by bend) and length */
+export type StretchPlan = { curves: readonly { index: number; sStart: number; sEnd: number; rEff: number }[]; length: number };
+export function speedStretches(al: StretchPlan, pis: readonly PI[], roadSpeed: number, category?: CategoryId, hairpins = true): SpeedStretch[] {
   const out: SpeedStretch[] = [];
   let speed = roadSpeed, s0 = 0, lastEnd = 0, first = true;
   for (const c of al.curves) {
@@ -86,6 +137,22 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
         detail: `A hairpin belongs on a stretch designed for the lowest speed, ${lowest} km/h.` });
   }
   return out;
+}
+
+/** A bend turning back almost on itself (checks.ts, past MAX_DEFLECTION) may be a hairpin where one would be
+ * allowed (hairpinViolations: a road, not a local road or track, on steep ground, up to HAIRPIN_MAX_DEFLECTION):
+ * its problem offers that, with its stretch at the category's lowest speed. Changes `violations` in place. */
+export function hairpinFixes(al: Pick<Alignment, 'curves'>, pis: readonly PI[], category: CategoryId, terrain: Terrain, violations: Violation[]): void {
+  const cat = CATEGORIES[category];
+  if (cat.minor || cat.mode !== 'road') return;
+  const lowest = Math.min(...designSpeeds(category));
+  for (const v of violations) {
+    if (v.kind !== 'radius' || v.pi === undefined || pis[v.pi]?.hairpin) continue;
+    const c = al.curves.find(x => x.index === v.pi);
+    if (!c?.tooSharp || c.delta > HAIRPIN_MAX_DEFLECTION || !(groundSlopeAt(terrain, c.x, c.y) > TERRAIN_CLASS.mountainousFrom)) continue;
+    v.target = { ...v.target, hairpin: { pi: v.pi, speed: lowest } };
+    v.fix = `${v.fix}, or make it a hairpin`;
+  }
 }
 
 /** Travel time over the stretches at their design speeds, minutes. */

@@ -175,7 +175,8 @@ export function bendRules(pis: readonly PI[], speed: number, category?: Category
     const p = pis[k];
     if (!p) return undefined;
     if (p.hairpin) return HAIRPIN_RULES;
-    if (p.speed === undefined || p.speed === speed || !allowed.has(p.speed)) return undefined;
+    // (a stretch is never faster than its road: design-speed.ts bendSpeed)
+    if (p.speed === undefined || p.speed >= speed || !allowed.has(p.speed)) return undefined;
     let r = memo.get(p.speed);
     if (!r) memo.set(p.speed, r = horizontalRules(p.speed, category));
     return r;

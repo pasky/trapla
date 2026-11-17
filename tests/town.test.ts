@@ -1,4 +1,5 @@
 // Built-up areas: crossings of existing roads, buildings, noise walls, per-station cost attribution.
+import { conePavingCost } from '../src/core/abutment-cone';
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { BuildingIndex, noiseBuyoutCost, type BuildingInfo } from '../src/core/buildings';
@@ -368,6 +369,8 @@ describe('evaluate on a synthetic town', () => {
       bridgeCost += model.abutments;
       for (let i = run.i0; i <= run.i1; i++) bridgeCost += cellLength(i, r.n, r.ds) * model.perM(r.grade[i] - r.ground[i], bridgeLayout(run.length));
     }
+    // (the paving of the cones in front of its abutments, core/abutment-cone.ts)
+    for (const cone of r.cones ?? []) bridgeCost += conePavingCost(cone);
     expect(c.bridges).toBeCloseTo(bridgeCost, 0);
     // two halves of the route
     const whole = rangeSummary(r), a = rangeSummary(r, 0, 2995), b = rangeSummary(r, 3000, r.length);

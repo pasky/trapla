@@ -47,7 +47,11 @@ describe('bridge styles', () => {
   it('over a river too wide for a short span: one long span between its banks, side spans beside it', () => {
     const t = new Terrain({ nx: 150, ny: 60, cell: 5, base: 100, scale: 1, q: new Uint16Array(9000), lc: new Uint8Array(9000),
       watercourses: { version: 1, method: 'test', reaches: [{ id: 1, kind: 'river', width: 80, points: [[345, 50], [345, 250]], catchmentKm2: [10, 10], truncated: [false, false] }] } });
-    const r = route(125, () => 100), result = remedyBridgeSupports(r, t, undefined, undefined, undefined, undefined, undefined, undefined, { price: priceOf(r) });
+    // (beams only: an arch from bank to bank, clear of the river, is weighed too and is the cheapest here, below)
+    const r = route(125, () => 100), result = remedyBridgeSupports(r, t, undefined, undefined, undefined, undefined, undefined, undefined, { price: priceOf(r), arch: false });
+    const withArch = remedyBridgeSupports(route(125, () => 100), t, undefined, undefined, undefined, undefined, undefined, undefined, { price: priceOf(r) }).runs[0];
+    expect(withArch.style).toBe('arch');
+    expect(withArch.styles!.arch!).toBeLessThan(withArch.styles!.long!);
     const run = result.runs[0], s = spans(run), main = Math.max(...s), k = s.indexOf(main);
     expect(result.diagnostics.filter(d => d.reason === 'span-limit')).toEqual([]);
     expect(run.style).toBe('long');
@@ -88,6 +92,17 @@ describe('bridge styles', () => {
     expect(none.runs[0].style).toBeUndefined();
     expect(none.runs[0].styles!.arch).toBeUndefined();
     expect(none.violations.map(v => v.title)).toEqual(['This bridge cannot be built with an arch']);
+    // …and the card can say why (QA3: "Does not fit this bridge" only)
+    expect(none.runs[0].archMiss).toBe('shallow');
+    expect(run.archMiss).toBeUndefined();
+  });
+
+  it('a deep V-shaped valley takes an arch that rises steeply (deep-valley arches to 1/3.5, the real D3 Sázava 237 m)', () => {
+    // 100 m deep under a deck 3 m over its rims: an arch springing low on its sides rises ≈ 1/4 of its span
+    const vee = (s: number) => 158 - Math.max(0, 100 - Math.abs(s - 245) * 0.9);
+    const r = route(161, vee), run = remedyBridgeSupports(r, flat(), undefined, undefined, undefined, undefined, undefined, undefined, { price: priceOf(r) }).runs[0];
+    expect(run.styles!.arch).toBeDefined();
+    expect(run.archMiss).toBeUndefined();
   });
 
   it('the style is painted over the bridge and survives normalising', () => {

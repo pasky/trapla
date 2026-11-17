@@ -1,6 +1,7 @@
 import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
 import { SIDE_SLOPES } from '../core/data/prices';
+import { rockSlope } from '../core/earthengineering';
 
 export interface GroundPoint { x: number; y: number; z: number }
 export interface DaylightSection { edge: GroundPoint; day: GroundPoint; outer: GroundPoint; slopeDay?: GroundPoint }
@@ -56,11 +57,11 @@ export function slopeKnee(r: EarthworkRoute & Pick<Result, 'zDayL' | 'zDayR' | '
     if (-height <= SIDE_SLOPES.fillToeHeight + 0.1) return null;
     zk = zDay + SIDE_SLOPES.fillToeHeight; o = day - SIDE_SLOPES.fillToeHeight * SIDE_SLOPES.fillToe;
   } else {
-    const g = r.geology.profiles[r.geology.ids[i]];
-    const rock = g && !g.normMix ? height - g.classIIto : 0;
+    const g = r.geology.profiles[r.geology.ids[i]], n = rockSlope(g);
+    const rock = g && !g.normMix && n !== 'soil' ? height - g.classIIto : 0;
     if (rock <= 0.1 || rock >= height - 0.1) return null;
     zk = z + rock;
-    o = halfWidth + rock * SIDE_SLOPES.cutRock + Math.floor((rock - 1e-9) / SIDE_SLOPES.rockBenchEvery) * SIDE_SLOPES.benchWidth;
+    o = halfWidth + rock * (n as number) + Math.floor((rock - 1e-9) / SIDE_SLOPES.rockBenchEvery) * SIDE_SLOPES.benchWidth;
   }
   const u = (o - halfWidth) / run;
   if (!(u > 0.02 && u < 0.98)) return null;

@@ -45,6 +45,62 @@ describe('design speed by stretch', () => {
   });
 });
 
+describe('a slowed stretch (playtest sweep 3, P1 #1)', () => {
+  it('is never faster than its road, and covers the straights halfway to its neighbours (all of a one-bend road)', async () => {
+    const { bendSpeed, bendSpeedChoices, bendStretch } = await import('../src/core/design-speed');
+    // a 120 km/h railway: no curve faster than the line (the 160 km/h pilot was withdrawn)
+    expect(bendSpeed({ x: 0, y: 0, r: null, speed: 160 }, 120, 'R1')).toBe(120);
+    expect(bendSpeedChoices(120, 'R1')).toEqual([120, 100, 80, 60]);
+    expect(bendSpeedChoices(90, 'S9.5')).toEqual([90, 80, 70]);
+    const p = pis(), al = build(p), c = al.curves;
+    expect(bendStretch(al, p, 1, 90)).toEqual({ s0: (c[0].sEnd + c[1].sStart) / 2, s1: (c[1].sEnd + c[2].sStart) / 2, speed: -1 });
+    const one: PI[] = [{ x: 3000, y: 300, r: null }], al1 = build(one);
+    expect(bendStretch(al1, one, 0, 90)).toMatchObject({ s0: 0, s1: al1.length });
+  });
+  it('a slowed stretch searches its heights as for the road\'s speed (hairpins keep theirs)', async () => {
+    const { searchSpeeds } = await import('../src/core/design-speed');
+    const p: PI[] = [{ x: 0, y: 0, r: null, speed: 70 }, { x: 1, y: 0, r: null }, { x: 2, y: 0, r: null, speed: 80 }, { x: 3, y: 0, r: null, speed: 70, hairpin: true }];
+    expect(searchSpeeds(p, 90, 'S9.5')).toEqual([90, null, 90, null]);
+    expect(searchSpeeds([{ x: 0, y: 0, r: null }], 90, 'S9.5')).toBeUndefined();
+  });
+  it('a slowed bend keeps the road speed\'s curve where it fits, its own tightest where not', async () => {
+    const { planPis } = await import('../src/core/plan-speeds');
+    // room for a 90 km/h curve: kept
+    const roomy: PI[] = [{ x: 3000, y: 300, r: null, speed: 70 }];
+    expect(planPis(a, b, roomy, 90, 'S9.5')[0].speed).toBe(90);
+    // three bends 330 m apart, all slowed to 70: 90 km/h S-bends do not fit between them; the middle one takes its
+    // own tightest, the outer ones keep 90 km/h curves
+    const tight: PI[] = [{ x: 2670, y: 300, r: null, speed: 70 }, { x: 3000, y: 0, r: null, speed: 70 }, { x: 3330, y: 300, r: null, speed: 70 }];
+    const plan = planPis(a, b, tight, 90, 'S9.5');
+    expect(plan.map(p => p.speed)).toEqual([90, 70, 90]);
+    expect(ROAD_CHECKS.horizontal(build(plan), speedNorms(90, 'S9.5'), { a, b, pis: plan, category: 'S9.5' })).toEqual([]);
+    const at90 = tight.map(p => ({ ...p, speed: undefined }));
+    expect(ROAD_CHECKS.horizontal(build(at90), speedNorms(90, 'S9.5'), { a, b, pis: at90, category: 'S9.5' }).map(v => v.title)).toContain('Bends 1 and 2 are too close for an S-bend');
+  });
+});
+
+// QA3 P1 #1: a stretch slowed only relaxes its rules, so Auto's road may not cost more for it (the grade search
+// prices an estimate; Auto keeps the faster geometry where the bill finds it cheaper).
+describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('slowing a stretch on D11', () => {
+  it('never makes Auto\'s road dearer: one 7° bend (the whole road) at 90 / 80 / 70 km/h', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { evaluate } = await import('../src/core/evaluate');
+    const { loadPack } = await import('../scripts/loadpack');
+    const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
+    const ctx = { terrain, scenario, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] }, buildings, roads, junctions };
+    const base = JSON.parse(readFileSync('qa3/designs/d11-one-bend-70.json', 'utf8'));
+    const at = (v: number) => evaluate(ctx, { ...base, pis: base.pis.map((p: PI) => ({ ...p, speed: v })) });
+    const [r90, r80, r70] = [at(90), at(80), at(70)];
+    // (QA3: 70 billed 9,067 M against 8,782 M, an 800 m bridge at km 8.84–9.64; the weighing is before the retries:
+    // a near-tie may end ≈ 1 M either way)
+    expect(r80.cost.total).toBeLessThanOrEqual(r90.cost.total + 2e6);
+    expect(r70.cost.total).toBeLessThanOrEqual(r90.cost.total + 2e6);
+    // the 90 km/h curve fits: kept
+    expect(r70.planSpeeds?.[0]).toBe(90);
+    expect(r70.travelMin).toBeGreaterThan(r90.travelMin + 3);
+  }, 60_000);
+});
+
 describe('hairpins (research/47 §3)', () => {
   // up a slope and back: the bend turns 158°
   const zig: PI[] = [{ x: 1000, y: 200, r: null, hairpin: true }];
@@ -79,6 +135,20 @@ describe('hairpins (research/47 §3)', () => {
     const gentle: PI[] = [{ x: 1000, y: 200, r: null, hairpin: true }];
     const g = buildAlignment(A, { x: 2000, y: 1040 }, gentle, horizontalRules(70, 'S9.5'), bendRules(gentle, 70, 'S9.5'));
     expect(hairpinViolations(g, gentle, 90, 'S9.5', steep).map(v => v.fix)).toEqual(['Make bend 1 an ordinary curve; for a tighter one set its stretch to 70 km/h']);
+  });
+  it('a bend turning back almost on itself offers to be a hairpin where one may stand (QA3)', async () => {
+    const { hairpinFixes } = await import('../src/core/design-speed');
+    const { syntheticTerrain } = await import('../src/core/terrain');
+    const steep = syntheticTerrain(400, 400, 5, (_x, y) => 300 + 0.25 * y), flat = syntheticTerrain(400, 400, 5, () => 300);
+    const u: PI[] = [{ x: 1000, y: 200, r: null }], B2 = { x: 0, y: 300 };
+    const ua = buildAlignment(A, B2, u, horizontalRules(90, 'S9.5'), bendRules(u, 90, 'S9.5'));
+    const issues = () => ROAD_CHECKS.horizontal(ua, speedNorms(90, 'S9.5'), { a: A, b: B2, pis: u, category: 'S9.5' }).filter(v => v.title.endsWith('turns back almost on itself'));
+    const onSteep = issues();
+    hairpinFixes(ua, u, 'S9.5', steep, onSteep);
+    expect(onSteep.map(v => v.target?.hairpin)).toEqual([{ pi: 0, speed: 70 }]);
+    const onFlat = issues();
+    hairpinFixes(ua, u, 'S9.5', flat, onFlat);
+    expect(onFlat.map(v => v.target?.hairpin)).toEqual([undefined]);
   });
 });
 
