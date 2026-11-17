@@ -26,11 +26,11 @@ export function createDesignEdits(app: DesignEditContext) {
     const [i0, i1] = cellsInRange(app.last, Math.max(0, s0), Math.min(s1, app.last.length));
     return { s0: Math.max(0, (i0 - 0.5) * app.last.ds), s1: Math.min(app.last.length, (i1 + 0.5) * app.last.ds) };
   };
-  const setStructure = (kind: StructureKind | null, a: number, b: number, method?: StructureChoice) => {
+  const setStructure = (kind: StructureKind | null, a: number, b: number, method?: StructureChoice, auto?: boolean) => {
     const range = cellsRange(a, b);
     if (!range) return;
     const previous = app.store.design.structureOverrides ?? [];
-    const next = paintOverride(previous, range.s0, range.s1, kind, method);
+    const next = paintOverride(previous, range.s0, range.s1, kind, method, auto);
     if (JSON.stringify(previous) !== JSON.stringify(next)) app.store.update((d) => { d.structureOverrides = next; });
   };
   const setWall = (sides: ('L' | 'R')[], height: number | null, a: number, b: number) => {

@@ -1,6 +1,7 @@
 // "Your decisions": every choice the player made (forced structures, walls, pins, crossings, buildings),
 // each a link that selects it, plus a picker of all crossed roads. Cards for the things themselves are
 // the inspector's (inspector.ts).
+import { BRIDGE_STYLE_TEXT } from '../core/terms';
 import './build-tools.css';
 import type { Design, Result } from '../core/evaluate';
 import { CROSSING_CHOICE_TEXT } from '../core/terms';
@@ -43,7 +44,7 @@ export class DecisionList {
   setResult(r: Result, d: Design, kind: (j: number) => string = () => 'building') {
     const items: string[] = [];
     const li = (attrs: string, text: string) => items.push(`<li><button type="button" class="link" ${attrs}>${text}</button></li>`);
-    for (const o of [...(d.structureOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="st-${o.kind}"></i>${['Earthwork', 'Bridge', 'Tunnel'][o.kind]} <small>km ${kmr(o.s0, o.s1)}</small>`);
+    for (const o of [...(d.structureOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="st-${o.kind}"></i>${['Earthwork', 'Bridge', 'Tunnel'][o.kind]}${o.style ? `: ${BRIDGE_STYLE_TEXT.find(([v]) => v === o.style)![1].toLowerCase()}` : o.method === 'cut' ? ': cut and cover' : ''} <small>km ${kmr(o.s0, o.s1)}</small>`);
     for (const o of [...(d.wallOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="wall"></i>${o.height ? `${o.height} m wall` : 'No wall'} ${o.side === 'L' ? 'left' : 'right'} <small>km ${kmr(o.s0, o.s1)}</small>`);
     for (const p of d.gradePins ?? []) li(`data-pin="${p.s}"`, `<i class="pin"></i>Height ${p.z.toFixed(1)} m <small>km ${km(p.s)}${p.s > r.length ? ' · past the end' : ''}</small>`);
     const inactive: number[] = [];

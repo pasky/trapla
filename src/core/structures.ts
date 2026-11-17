@@ -240,6 +240,20 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       'A bridge is needed here', 'Set this stretch back to Automatic (or Bridge), or choose "Our bridge over it" for the crossed road',
       'Game rule: rivers, railways and roads that must be crossed at a different level cannot be buried under earthworks');
   }
+  // cut and cover chosen for Auto's tunnel (overrides.ts `auto`): as deep as it can be dug, as for the player's own
+  if (inp.cutMethod) {
+    const deepest = rules.portalDepth + TUNNEL_RULES.cutCoverMaxCover;
+    for (let i = 0; i < n; i++) {
+      const bad = (j: number) => kind[j] === KIND.tunnel && !!inp.cutMethod![j] && !(inp.overrides && inp.overrides[j] >= 0) && -inp.h[j] > deepest + 1e-9;
+      if (!bad(i)) continue;
+      let j = i;
+      while (j + 1 < n && bad(j + 1)) j++;
+      violations.push({ kind: 'structure', s0: i * inp.ds, s1: j * inp.ds, title: 'Too deep to dig from above', basis: 'game',
+        fix: `Choose Mined, or raise the road to at most ${deepest} m below ground`,
+        rule: `Cut and cover is dug from the surface, with at most ${TUNNEL_RULES.cutCoverMaxCover} m of ground over the tunnel` });
+      i = j;
+    }
+  }
   return { kind, runs, violations };
 }
 

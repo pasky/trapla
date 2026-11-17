@@ -6,7 +6,8 @@ import type { StationRange } from '../state';
 
 /** which button matches the stretch: one player choice covering all of it, or 'clear' with none at all */
 export function activeStructure(range: StationRange, overrides: readonly StructureOverride[] = []): string | null {
-  const touching = overrides.filter((o) => o.s1 > range.s0 + 0.5 && o.s0 < range.s1 - 0.5);
+  // (a method or style chosen for Auto's structure leaves the stretch Auto's)
+  const touching = overrides.filter((o) => !o.auto && o.s1 > range.s0 + 0.5 && o.s0 < range.s1 - 0.5);
   if (!touching.length) return 'clear';
   const kinds = new Set(touching.map((o) => o.kind));
   if (kinds.size !== 1) return null;

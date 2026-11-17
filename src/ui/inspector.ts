@@ -39,7 +39,7 @@ export interface InspectorEvents {
   select?: (sel: Sel) => void;
   /** bridge / tunnel / earthwork / Auto (null) on a station range; a tunnel's method ('cut': cut and cover) or
    * a bridge's style */
-  structure?: (kind: StructureKind | null, s0: number, s1: number, method?: StructureChoice) => void;
+  structure?: (kind: StructureKind | null, s0: number, s1: number, method?: StructureChoice, auto?: boolean) => void;
   /** walls on these sides of a station range: height in m, 0 = none, null = Auto */
   wall?: (sides: ('L' | 'R')[], height: number | null, s0: number, s1: number) => void;
   pin?: (s: number, z: number | null) => void;
@@ -669,11 +669,13 @@ export class Inspector {
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }
       // Mined on Auto's tunnel is what it is: nothing to paint
-      if (b.dataset.method !== undefined && !b.classList.contains('on')) { this.ev.structure?.(KIND.tunnel, sel.s0, sel.s1, b.dataset.method === 'cut' ? 'cut' : undefined); return; }
-      // a bridge's style: painted over the whole bridge
-      if (b.dataset.style !== undefined && !b.classList.contains('on')) {
-        const run = this.r?.runs.find((q) => q.kind === KIND.bridge && q.s1 > sel.s0 && q.s0 < sel.s1);
-        this.ev.structure?.(KIND.bridge, run?.s0 ?? sel.s0, run?.s1 ?? sel.s1, b.dataset.style as StructureChoice); return;
+      // a tunnel's method or a bridge's style, over the whole structure: on Auto's, only that choice (it stays Auto's)
+      const choice = b.dataset.method !== undefined ? KIND.tunnel : b.dataset.style !== undefined ? KIND.bridge : undefined;
+      if (choice !== undefined && !b.classList.contains('on')) {
+        const run = this.r?.runs.find((q) => q.kind === choice && q.s1 > sel.s0 && q.s0 < sel.s1), s0 = run?.s0 ?? sel.s0, s1 = run?.s1 ?? sel.s1;
+        const value = choice === KIND.tunnel ? (b.dataset.method === 'cut' ? 'cut' : undefined) : b.dataset.style as StructureChoice;
+        this.ev.structure?.(choice, s0, s1, value, activeStructure({ s0, s1 }, this.d?.structureOverrides) !== String(choice));
+        return;
       }
     }
     for (const side of ['L', 'R'] as const) {
