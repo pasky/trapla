@@ -116,8 +116,16 @@
  * only without a lift (research/69); no cut deeper than 30 m, presplit rock faces, rock cut by its kind
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
- * 4,935 → 7,045 M. */
-export const COST_MODEL_VERSION = 41;
+ * 4,935 → 7,045 M.
+ * 42: other ways' works (owner's Královec review): a crossed way's ramps, junction approach, side-road regrades and
+ * reroutes keep their slopes off houses (walled, else bought out), mapped railways and (bridges over us, reroutes)
+ * our own body, behind walls where they can stand; a bridge over us spans the station tracks its way crosses beside
+ * us; a cut way is judged piece by piece (way-pieces.ts): a piece still reaching the road network just ends, only a
+ * piece cut off is led to a crossing, a public road is closed only where it goes round at most 500 m further
+ * (game rule, research/45), its ends get billed turning areas; no reroute joins its own way's line. D11 frozen
+ * −23 … −59 M (fewer reroutes of tracks whose pieces stay connected; straight +junction cleared over the Trutnov
+ * level crossing). */
+export const COST_MODEL_VERSION = 42;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
