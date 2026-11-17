@@ -150,12 +150,20 @@ export function bridgeRunCost(model: BridgeModel, h: ArrayLike<number>, ds: numb
 
 /** A run's price before its supports are placed (the structure choice): the cheaper of short spans and the
  * long-span layouts (support-layout then places the supports and picks the style). */
-export function equalSpanRunCost(price: ReturnType<typeof bridgeRunCost>) {
+export function equalSpanRunCost(model: BridgeModel, h: ArrayLike<number>, price: ReturnType<typeof bridgeRunCost>) {
   return (i0: number, i1: number, length: number) => {
-    let best = price(i0, i1, length);
-    for (const layout of longLayouts(length)) best = Math.min(best, price(i0, i1, length, layout, undefined, { style: 'long' }));
+    let best = price(i0, i1, length), top = -Infinity;
+    for (let i = i0; i <= i1; i++) if (h[i] > top) top = h[i];
+    for (const layout of longLayouts(length)) if (longMayPay(model, top, length, layout))
+      best = Math.min(best, price(i0, i1, length, layout, undefined, { style: 'long' }));
     return best;
   };
+}
+/** Can a long-span layout be cheaper than short spans anywhere on a bridge at most `top` high? Per metre, the
+ * short spans' extra piers make their price rise faster with height (and their pier height is floored lower), so
+ * if they are no dearer at the top they are no dearer anywhere: the long layout cannot pay. */
+export function longMayPay(model: BridgeModel, top: number, length: number, layout: BridgeLayout): boolean {
+  return model.longPerM(top, layout) < model.perM(top, bridgeLayout(length));
 }
 
 /** An arch's rib (its underside; the rib is ARCH_RIB_DEPTH deep, PROVISIONAL: drawn and checked, not priced), m: a parabola from the springings at sa, sb (ground za, zb) up to its crown

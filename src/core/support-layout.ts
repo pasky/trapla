@@ -106,7 +106,9 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   ownTrack?: OwnTrack,
   /** Bridge styles: those the player asked for per station (STYLE_CODES), and the price of a layout. Without a
    * price, the first style that fits (short spans, else long spans, else an arch). */
-  styles?: { asked?: ArrayLike<number>; price?: BridgePrice; /** false: an arch only where asked for or nothing else fits (a drag preview) */ arch?: boolean }): {
+  styles?: { asked?: ArrayLike<number>; price?: BridgePrice; /** false (a drag preview): an arch only where asked for or
+    * nothing else fits, long spans only where they may pay (`mayPay`, bridge.ts longMayPay) or short ones do not fit */
+    arch?: boolean; mayPay?: (top: number, length: number, layout: BridgeLayout) => boolean }): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
   /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
    * routine never changes grade, profile controls, or any explicitly requested structure. */
@@ -433,7 +435,14 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       }
     };
     if (styles?.price) {
-      for (const style of BRIDGE_STYLE_ORDER) if (style !== 'arch' || styles.arch !== false || asked === 'arch') consider(style);
+      const quick = styles.arch === false && !asked;
+      let top = -Infinity;
+      if (quick) for (let i = run.i0; i <= run.i1; i++) top = Math.max(top, r.grade[i] - r.ground[i]);
+      for (const style of BRIDGE_STYLE_ORDER) {
+        if (style === 'arch' && styles.arch === false && asked !== 'arch') continue;
+        if (style === 'long' && quick && fits.length && styles.mayPay && !longLayouts(run.length).some(l => styles.mayPay!(top, run.length, l))) continue;
+        consider(style);
+      }
       if (!fits.length && styles.arch === false && asked !== 'arch') consider('arch');
     }
     else for (const style of asked ? [asked, ...BRIDGE_STYLE_ORDER.filter(x => x !== asked)] : BRIDGE_STYLE_ORDER) { consider(style); if (fits.length) break; }

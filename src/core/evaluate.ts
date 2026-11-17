@@ -7,7 +7,7 @@ import { footprintConflicts, structureFootprints, type FootprintConflict } from 
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
-import { bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost } from './bridge';
+import { bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost, longMayPay, type BridgeLayout } from './bridge';
 import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -1085,7 +1085,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
       });
     }
     const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
-      bridgeRunCost: equalSpanRunCost(bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i]))) };
+      bridgeRunCost: equalSpanRunCost(bridge, hh, bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i]))) };
     const firstChoice = chooseStructures(input);
     forceWater(must, S, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
     const { kind } = chooseStructures(input);
@@ -1595,8 +1595,9 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
   // a cutting whose side slope never reaches the top of the hillside (sections.ts `open`) cannot be dug: a tunnel
   for (let i = 0; i < n; i++) if (sec.open[i] && -h[i] >= STRUCTURE_RULES.portalDepth) forcedTunnel[i] = 1;
-  const priceRun = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width), runCost = equalSpanRunCost(priceRun);
-  const styles = { asked: bridgeStyle, price: priceRun as BridgePrice, arch: !preview };
+  const priceRun = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width), runCost = equalSpanRunCost(bridge, h, priceRun);
+  const styles = { asked: bridgeStyle, price: priceRun as BridgePrice, arch: !preview,
+    mayPay: (top: number, length: number, layout: BridgeLayout) => longMayPay(bridge, top, length, layout) };
   const widths = Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]);
   // The plan's blocks (those of the Auto grade solve, also By hand) settle their own fill value (as they
   // balance their own earth), so the structures an edit re-prices are those of its own blocks; without
