@@ -95,8 +95,11 @@
  * where the height is needed (it fell short on steep grades); side roads our earthworks cover: a dead end with no
  * room to turn round before its junction is cut back to it, an overbridge whose ramps would bury a road beside it
  * is cleared by the grade on every road (the separation retry), a split-off way is judged with that retry.
- * D11 frozen +0–5.5 M (the lifts). */
-export const COST_MODEL_VERSION = 37;
+ * D11 frozen +0–5.5 M (the lifts).
+ * 38: a side road whose junction lies on a stretch we rebuild beside our earthworks is re-joined where the new road
+ * crosses it (within 25 m of its old junction; the stub between goes): some designs become valid (Nová Paka drags).
+ * Frozen bills, starters and the outcome audit unchanged. */
+export const COST_MODEL_VERSION = 38;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

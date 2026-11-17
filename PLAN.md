@@ -775,7 +775,7 @@ Research: research/65.
   - That factor is recorded as a proposal and not implemented. It would remove ≈ 0.8–1.0 bn of the 3.3 bn D35
     gap.
 
-### A drag lowers a set radius to fit; side roads re-joined (2026-11-17, after cost model 37)
+### A drag lowers a set radius to fit; side roads re-joined (cost model 38, 2026-11-17)
 
 - **The editor fits hand-set radii during a bend drag** (owner's decision (c), research/65 §1): where the drag
   leaves a set radius too large for the room between its bends, that radius is lowered just enough, live — the
