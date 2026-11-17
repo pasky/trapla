@@ -464,7 +464,15 @@ demo|starter] [--only km,…]`.)
 [D3 5 × 3 m buried bridge](docs/screenshots/337-culvert-d3-buried-bridge-5x3.png),
 [D35 box](docs/screenshots/338-culvert-d35-box-end.png),
 [Královec railway buried bridge](docs/screenshots/339-culvert-kralovec-railway-buried-bridge.png).
-Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
+Reproduce with `node scripts/crossing-shots.mjs`.
+
+Grade line problems in the player's words (`node scripts/vc-text-shots.mjs`): on Auto the height points are
+the game's and never drawn, so no message names one, and Auto never squeezes two of its changes of slope into
+each other ([the owner's Královec drag, now valid](docs/screenshots/400-rail-owner-drag-auto-no-overlap.png);
+`scripts/vc-overlap-audit.ts`); By hand the ◆ points are your height pins:
+[two 30 m apart, named, both drawn, Move / Delete](docs/screenshots/401-rail-by-hand-two-pins-too-close.png),
+[moved as offered](docs/screenshots/402-rail-by-hand-pin-moved.png),
+[an Auto pin drawn in the profile](docs/screenshots/403-rail-auto-pin-drawn.png). Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall
 openings use the same masks for rendering, billing and acoustic checks. The existing worst-station noise
