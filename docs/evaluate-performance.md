@@ -1,6 +1,6 @@
 # Evaluate performance regression
 
-## Protected areas and the 3 % tunnel rule, cost model 44 (2026-11-17)
+## Protected areas and the 3 % tunnel rule, cost model 45 (2026-11-17)
 
 What runs more on every route: a scan of the protected areas per station in the setup (crown and a dug tunnel end's
 reach, ≈ 0.7 ms per 2,000 stations; a 160 m block bitmap rejects most stations at once), the footprint's check of our

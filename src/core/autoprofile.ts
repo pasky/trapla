@@ -562,7 +562,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * clearance is weighed against the wide band's: the band only bounds the search, it must not decide
    * that a stream is left in a cutting where a deeper tunnel clears it for less. (Roads keep the normal
    * band: there the wide one also lands on the other side of near-ties, e.g. D35 stage 1 −1.1 bn and the
-   * whole D35 +0.4 bn, a search question of its own. Exceptions, model 44: a road's line whose tunnel pays for being
+   * whole D35 +0.4 bn, a search question of its own. Exceptions, model 45: a road's line whose tunnel pays for being
    * steeper than the tunnel limit at the band's floor, and a range holding a protected area's hard clearance that
    * the normal band misses, take the wide band too.)
    */

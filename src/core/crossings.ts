@@ -67,6 +67,9 @@ export interface CrossingGeometry {
   removed?: [number, number];
   /** Side roads joining the rebuilt stretch, regraded from its new level down to their own ground. */
   ties?: { cls: string; way: number; path: CrossingPoint[] }[];
+  /** A closed way's pieces that just end: each its cut end and the old road's first metres beyond it (what a road
+   * rebuilt beside our earthworks meets; nothing built, drawn or billed). */
+  keptEnds?: CrossingPoint[][];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   /** Explicit priced turning disk, distinct from legacy small severed-end heads. */
@@ -142,6 +145,13 @@ export interface CrossingResult {
   /** Culverts carrying streams under a reroute (count, and their pre-surcharge CZK, included in cost). */
   culverts?: number;
   culvertCost?: number;
+  /** Led under our bridge (Auto's reroute): the chainage where its new road passes under the deck, m. */
+  under?: number;
+  /** Its bridge over us also spans the mapped railway it crossed at the same level beside us (crossing-geometry.ts). */
+  overRailway?: true;
+  /** A cut way's pieces that still reach the road network over other ways and just end here ([right, left] of our
+   * road), and, where both do, how much further its traffic goes round over the network, m (way-pieces.ts). */
+  closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number };
   /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
   houses?: number[];
   houseCost?: number;
@@ -310,8 +320,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade;
-    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.closure;
+    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.under; delete c.overRailway;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);
     if (square !== undefined) c.square = square; else delete c.square;
@@ -488,6 +498,10 @@ export interface CrossingRoute {
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => LinkObstacle | null;
   /** Houses still standing under a new road from a to b, and what buying one out costs. */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
+  /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
+  beside?: import('./crossing-works').WorksContext['beside'];
+  /** A mapped railway under a road of this half-width from a to b. */
+  railway?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => boolean;
   houseCost?: (j: number) => number;
   /** A home (not a shed, garage or barn): a reroute takes one only where nothing else can be built (research/60). */
   dwelling?: (j: number) => boolean;

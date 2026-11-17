@@ -44,7 +44,10 @@ for (const name of names) {
     const d: Design = { ...structuredClone(base), crossingOverrides: [...base.crossingOverrides ?? [], { roadId: c.roadId!, type: c.type as 'underpass' | 'overbridge', square }] };
     const r = evaluate(ctx, d);
     const mine = r.crossings.find(x => x.roadId === c.roadId && Math.abs(x.s - c.s) < 50);
-    const fresh = problems(r).filter(p => !before.has(p));
+    // (what asking for that treatment at all does — the player's choice is the player's — is not straightening's:
+    // problems the same choice on its own line has too are not counted)
+    const chosen = new Set(problems(evaluate(ctx, { ...structuredClone(base), crossingOverrides: [...base.crossingOverrides ?? [], { roadId: c.roadId!, type: c.type as 'underpass' | 'overbridge' }] })));
+    const fresh = problems(r).filter(p => !before.has(p) && !chosen.has(p));
     const said = fresh.filter(p => / cannot be straightened here @/.test(p));
     let far = 0;
     for (let i = 0; i < Math.min(r.n, auto.n); i++) if (Math.abs(r.s[i] - c.s) > REACH && Math.abs(r.grade[i] - auto.grade[i]) > 0.1) far = Math.max(far, Math.abs(r.s[i] - c.s));

@@ -54,7 +54,7 @@ describe('earthworks of a raised crossing approach leave other roads usable', ()
       expect(s.toe[k].z).toBe(100); // its foot on the ground
       expect(s.wallTop![k]!.z).toBeGreaterThan(100); // its top on the slope
     }
-    expect(crossingOutcome(c).explain).toMatch(/A retaining wall \(\d+ m\) keeps its slope off a road beside it/);
+    expect(crossingOutcome(c).explain).toMatch(/A retaining wall \(\d+ m\) keeps its slope off what stands beside it/);
     // the independent audit remeasures the wall (and ties) from the drawn geometry: the bill agrees
     const both = build([1, 110, 30, 110, 90], [0, 100, 50, 400, 50]);
     expect(both.tieLength).toBeGreaterThan(0); expect(both.wallLength).toBeGreaterThan(0);

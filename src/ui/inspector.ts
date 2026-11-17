@@ -623,7 +623,8 @@ export class Inspector {
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {
-    if ((c.type !== 'reconnection' && c.type !== 'diversion') || c.moved) return '';
+    // (a closed way builds no new road: nothing to drag)
+    if ((c.type !== 'reconnection' && c.type !== 'diversion') || c.moved || !c.geometry?.links?.some(l => l.length > 1)) return '';
     if (!shapeable(this.r, d, c.roadId!)) return `<div class="why link-path">This road crosses ours more than once: choose "Cut and reroute" for it to reshape its new roads.</div>`;
     const via = crossingVia(c.roadId, d.crossingOverrides ?? []), bends = via ? via[0].length + via[1].length : 0;
     return bends ? `<div class="ctx-row link-path"><span>Path: your shape, ${bends} bend point${bends === 1 ? '' : 's'}</span>
@@ -648,6 +649,7 @@ export class Inspector {
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
       why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is demolished, km ${km(r.s[removed.i])}, and goes with it.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
+        : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
         : removed.pier ? `A pier of our bridge stands on it, km ${km(r.s[removed.i])}.`
         : removed.in === 'bridge' ? `Under our bridge, km ${km(r.s[removed.i])}: ${this.ctx.building(j).kind === BUILDING_KINDS[BUILDING_KIND.minor].label

@@ -52,8 +52,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // not meet, priced. Since cost model 41 our line, short of the spoil of the cut it now tunnels at km 6.6–8.6, runs
     // 3 m lower here, and the new line past its bridge keeps the working strip from our embankment at km 12.58
     // behind a wall: evaluateProject)
-    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere').map(i => i.violation.title)).toEqual([]);
-    expect(r.cost.total).not.toBeNull();
+    // (since model 42 our bridge carrying road II/2253 over us at km 12.98 also spans the station tracks beside
+    // us, which its ramp used to bury: its east ramp now ends at the junction with road I/2249, whose side road
+    // the new line's own bridge over I/2249 regrades there: two crossings changing one junction, said as such)
+    expect(r.issues.filter(i => i.code !== 'road-ends-nowhere').map(i => i.code)).toEqual(['shared-land']);
+    expect(r.issues.find(i => i.code === 'shared-land')!.locations.map(l => Math.round(l.s0 / 100))).toEqual([131, 13]);
     const ours = r.routes['route:railway'].legacy!, held = r.routes[design.routes[1].id].legacy!;
     const c = ours.crossings.find(c => c.crossedRoute?.id === design.routes[1].id)!;
     expect(c).toMatchObject({ type: 'overbridge', approachLength: 0 });
@@ -70,6 +73,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const solo = run(alone).routes['route:railway'].legacy!;
     expect(Math.abs(ours.grade[c.i] - solo.grade[c.i])).toBeLessThan(1);
     expect(ours.cost.total - solo.cost.total).toBeLessThan(2 * c.cost);
+    // (each road's bill still counts that bridge once, the project total aside)
     const { alone: bills, expected } = billedOnce(design, r);
     expect(Math.abs(bills - expected)).toBeLessThan(1);
   }, 60_000);

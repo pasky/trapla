@@ -40,6 +40,8 @@ export interface LinkEnv {
   /** What blocks a new road of this half-width from a to b on the ground (raster rail/water). */
   /** ('works': another road of the project the reroute is kept clear of) */
   obstacle?: (a: XY, b: XY, half: number) => LinkObstacle | null;
+  /** Is there a mapped railway under a road of this half-width from a to b (a bridge over us spans it too)? */
+  railway?: (a: XY, b: XY, half: number) => boolean;
   /** Houses (still standing) under a new road of this half-width from a to b, and their price. */
   houses?: (a: XY, b: XY, half: number) => number[];
   houseCost?: (j: number) => number;

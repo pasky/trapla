@@ -87,8 +87,11 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
-  along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a crossed way whose cut
-  ends stay connected over other roads is still rerouted instead of closed; merged crossings of different ways
+  along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a cut way is judged piece
+  by piece (model 42, `way-pieces.ts`): a piece still reaching the road network just ends, a piece cut off is led to
+  a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour; other
+  ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts);
+  merged crossings of different ways
   within 30 m keep one remedy for the group unless that leaves one buried (then it is a crossing of its own,
   a retry). Lowered underpasses ignore groundwater; pier placement near the Polish border can fail (engine limit).
 - Project roads (2026-11-16 final-sweep P1s, PLAN.md "Final-sweep P1s"): the player's road takes over from
@@ -116,7 +119,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   (short spans / long spans / arch, Auto the cheapest that fits; cost model 35, PLAN.md "Bridge styles"); a
   style or method chosen on Auto's structure leaves it Auto's (`StructureOverride.auto`); painting a structure
   as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
-  later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 44, research/75): no
+  later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 45, research/75): no
   works of ours in reserves, monuments, Natura 2000 sites, national parks, CHKO zones I–II (protection zones: a note);
   Auto bridges over them (no supports inside) or mines under them; tunnels kept to 3 %, never above 5 %. The real D35
   layout is now Auto's (3.2 km tunnel under Pod skálou, research/73 §6). Not taken: T-8.0 tube width, rock cover,

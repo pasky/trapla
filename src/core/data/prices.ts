@@ -126,12 +126,22 @@
  * would (profile-remedies.ts) fails and the grade solve places its points there instead. Some drags change bill and
  * validity (the owner's Královec drag: NOT VALID → VALID, 9.15 bn); frozen bills, saved designs unchanged
  * (scripts/vc-overlap-audit.ts).
- * 44: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
+ * 44: other ways' works (owner's Královec review): a crossed way's ramps, junction approach, side-road regrades and
+ * reroutes keep their slopes off houses (walled, else bought out), mapped railways and (bridges over us, reroutes)
+ * our own body, behind walls where they can stand; a bridge over us spans the station tracks its way crosses beside
+ * us; a cut way is judged piece by piece (way-pieces.ts): a piece still reaching the road network just ends, only a
+ * piece cut off is led to a crossing, a track or service road right beside our bridge may be led under it, a public
+ * road is closed only where it goes round at most 500 m further (game rule, research/45), its ends get billed
+ * turning areas; no reroute joins its own way's line. D11 frozen vs model 43: straight +17 M, best −59, demo −51,
+ * direct-80 −25, direct-90 −125, town-centre −100 (tracks whose parts still reach the network closed instead of
+ * rerouted, tracks beside a bridge led under it; the straight design's junction approach over the Trutnov level
+ * crossing cleared by the grade).
+ * 45: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
  * sites, national parks and CHKO zones I–II (over them on a bridge with no supports inside, under them mined);
  * tunnels kept to 3 %, never steeper than 5 % (NV 264/2009, research/73). D11 frozen unchanged; d35 stage-1
  * 19,203 → 20,084 M (a 3.2 km tunnel under Pod skálou), d35 road 6,590 → 9,468, d35-full 32,738 → 34,414, D3
  * motorway 14,446 → 15,248 (the Sázava bridge's piers out of the Natura 2000 river), d3-full 38,077 → 36,530. */
-export const COST_MODEL_VERSION = 44;
+export const COST_MODEL_VERSION = 45;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

@@ -78,7 +78,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -105,7 +105,8 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
   // what else its raised or lowered stretch takes (crossing-works.ts)
   const works = [c.tieLength ? ` Roads joining it there are raised or lowered to meet it (${m(c.tieLength)} m).` : '',
-    c.wallLength ? ` A retaining wall (${m(c.wallLength)} m) keeps its slope off a road beside it.` : ''].join('');
+    c.wallLength ? ` A retaining wall (${m(c.wallLength)} m) keeps its slope off what stands beside it.` : '',
+    c.houses?.length && c.type !== 'reconnection' && c.type !== 'diversion' ? ` ${standing(c.homes ?? 0, c.houses.length - (c.homes ?? 0))} under its slopes and ${c.houses.length === 1 ? 'is' : 'are'} bought out.` : ''].join('');
   // what its new piece of road needs (link-route.ts)
   const link = [c.linkGrade ? ` The ground is steep: it climbs up to ${pct(c.linkGrade)} in places, the most its class allows where there is no other way.` : '',
     c.culverts ? ` ${c.culverts === 1 ? 'A culvert carries a stream' : `${c.culverts} culverts carry streams`} under it.` : '',
@@ -116,6 +117,23 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; nearby it is laid on a new line crossing at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what}).` : '';
   const joinedTo = c.targetRoadId === undefined ? 'the road our road joins at its end' : `the road that crosses at km ${km(c.targetS ?? 0)}`;
   const crossesAt = c.targetRoadId === undefined ? 'the road at our road\'s end' : `the crossing at km ${km(c.targetS ?? 0)}`;
+  // Led under our bridge beside it (crossing-geometry.ts c.under)
+  if (c.under !== undefined && (c.type === 'reconnection' || c.type === 'diversion')) {
+    const piece = c.cls === 'track' ? 'track' : 'road';
+    return { tag: 'under our bridge', label: `Led under our bridge at km ${km(c.under)} (+${m(c.linkLength)} m of new ${piece})`,
+      explain: `The ${what} is cut by our earthworks right beside our bridge; a new piece of ${piece} leads it along the earthworks and under the bridge, joining its two parts again.${link}` };
+  }
+  // A cut way whose pieces still reach other roads just ends at our earthworks (way-pieces.ts); a piece cut off is led on.
+  if (c.closure && (c.type === 'reconnection' || c.type === 'diversion')) {
+    const [right, left] = c.closure.connected, both = right && left, round = c.closure.extra !== undefined ? `${km(c.closure.extra)} km further round` : '';
+    const ends = ROAD_CLASSES[c.cls]?.label === 'track' || c.cls === 'service' ? 'just ends at our earthworks' : 'ends at our earthworks in a turning area';
+    if (both || !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: `Closed here${round ? ` (${round})` : ''}`,
+      explain: `The ${what} is cut by our road. ${both ? `Both parts still reach other roads, so each ${ends}${round ? `; its traffic goes round, ${round}` : ''}`
+        : `The ${right ? c.closure.sides[0] : c.closure.sides[1]} part still reaches other roads, so it ${ends}; nothing is left of the other beyond our earthworks`}.${link}` };
+    const kept = right ? c.closure.sides[0] : c.closure.sides[1], led = right ? c.closure.sides[1] : c.closure.sides[0];
+    return { tag: 'rerouted', label: `The ${led} part led to ${crossesAt} (+${m(c.linkLength)} m of new ${c.cls === 'track' ? 'track' : 'road'})`,
+      explain: `The ${what} is cut by our road. The ${kept} part still reaches other roads, so it ${ends}; the ${led} part, cut off, is led to ${crossesAt} by a new piece of ${c.cls === 'track' ? 'track' : 'road'} along the outside of the earthworks.${link}` };
+  }
   // (its cut ends lie on the road that crosses there: nothing new to build)
   if ((c.type === 'reconnection' || c.type === 'diversion') && !c.moved && !Math.round(c.linkLength ?? 0)) return { tag: c.type === 'diversion' ? 'rerouted' : 'reconnected',
     label: `Joined to ${crossesAt} (no new road needed)`,
@@ -131,8 +149,8 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     case 'tunnel': return { tag: 'above our tunnel', label: 'Our road is in a tunnel below it',
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
     case 'overbridge': return { tag: 'its bridge over us',
-      label: `Carried over our road on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}${square}`,
-      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${squareWhy}${works}` };
+      label: `Carried over our road${c.overRailway ? ' and the railway beside it' : ''} on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}${square}`,
+      explain: `The ${what} is raised onto a new bridge over our road${c.overRailway ? ', long enough to span the railway it crossed at the same level beside it too' : ''}; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${squareWhy}${works}` };
     case 'junction': return { tag: 'junction', label: 'Junction with our road',
       explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.${works}` };
     case 'reconnection': return { tag: 'reconnected',

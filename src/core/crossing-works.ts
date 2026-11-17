@@ -13,6 +13,9 @@ type XY = { x: number; y: number };
 export const WORKS_COVER_ROAD = 'Approach earthworks would cover another road';
 export const WORKS_TIE_TOO_LONG = 'A side road joining the approach cannot be regraded to meet it';
 export const WORKS_TIE_SHARED = 'Two crossings would regrade the same side road';
+export const WORKS_COVER_RAILWAY = 'Approach earthworks would cover a railway';
+export const WORKS_COVER_HOUSE = 'Approach earthworks would cover a house the player keeps';
+export const WORKS_COVER_OURS = 'Approach earthworks would run into our own earthworks';
 /** Earth this thin over another road's edge is the engine's draped-road tolerance (crossing-geometry.ts
  * returns rebuilt road ends within 0.3 m of the ground to the ground), not a buried road, m. */
 const DRAPED = 0.3;
@@ -33,6 +36,8 @@ export interface CrossingWorks {
   /** Pre-surcharge CZK: tie pavement (SPK road per km of its class) plus wall assemblies. */
   cost: number;
   problems: string[];
+  /** Houses under the slopes no wall can hold back from: bought out and demolished with it. */
+  houses: number[];
 }
 export interface WorksContext {
   roads: RoadNet;
@@ -46,7 +51,16 @@ export interface WorksContext {
   urban: 0 | 1;
   /** Side-road regrades already accepted for other crossings in this build (shared and extended). */
   claimed?: XY[][];
+  /** Houses (standing; 'kept': the player keeps it) and mapped railways within `reach` of the line through
+   * (x, y) along (tx, ty) on one side (sign +1: left), `along` either way: each with its nearest offset from
+   * that line, m. */
+  beside?: (x: number, y: number, tx: number, ty: number, along: number, sign: number, reach: number) => BesideHit[];
+  /** What of our own road's body lies at q: its formation, a cut or a fill slope (null: outside it). */
+  body?: (q: XY) => 'formation' | 'cut' | 'fill' | null;
+  /** How far q is outside our road's earthworks, m (negative inside). */
+  gap?: (q: XY) => number;
 }
+export interface BesideHit { what: 'house' | 'kept' | 'railway' | 'ours'; j?: number; x: number; y: number; lateral: number }
 
 const segDist = (q: XY, a: XY, b: XY) => {
   const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
@@ -98,10 +112,146 @@ function toe(p: CrossingPoint, nx: number, ny: number, side: number, half: numbe
  * query per engineered section, ties ≤ maxTie. */
 export function crossingWorks(road: readonly CrossingPoint[], width: number,
   source: readonly XY[], ctx: WorksContext): CrossingWorks {
-  const works: CrossingWorks = { ties: [], walls: new Map(), tieLength: 0, wallLength: 0, wallArea: 0, cost: 0, problems: [] };
+  const works: CrossingWorks = { ties: [], walls: new Map(), tieLength: 0, wallLength: 0, wallArea: 0, cost: 0, problems: [], houses: [] };
+  if (road.length < 2) return works;
+  besideRoads(works, road, width, source, ctx);
+  if (ctx.beside || ctx.body) besideObstacles(works, road, width, ctx);
+  measureWalls(works, road, width, ctx.heightAt);
+  // (the side roads regraded to meet it have slopes of their own: the same screen)
+  if (ctx.beside || ctx.body) for (const tie of works.ties) {
+    const own = slopeWorks(tie.path, ROAD_CLASSES[tie.cls].width, ctx);
+    for (const [i, wall] of own.walls) tie.path[i] = { ...tie.path[i], wall: [wall[0], wall[1]] };
+    works.wallLength += own.wallLength; works.wallArea += own.wallArea; works.cost += own.cost;
+    for (const m of own.problems) if (!works.problems.includes(m)) works.problems.push(m);
+    for (const j of own.houses) if (!works.houses.includes(j)) works.houses.push(j);
+  }
+  if (!works.problems.length) ctx.claimed?.push(...works.ties.map(t => t.path));
+  return works;
+}
+/** The slopes of one more piece of road (a regraded side road, a reroute) screened like a crossing's own stretch:
+ * walls, houses bought out, problems (crossing-works' besideObstacles). */
+export function slopeWorks(path: readonly CrossingPoint[], width: number, ctx: Pick<WorksContext, 'beside' | 'body' | 'gap' | 'heightAt' | 'ours'>): CrossingWorks {
+  const own: CrossingWorks = { ties: [], walls: new Map(), tieLength: 0, wallLength: 0, wallArea: 0, cost: 0, problems: [], houses: [] };
+  if (path.length < 2) return own;
+  besideObstacles(own, path, width, ctx);
+  measureWalls(own, path, width, ctx.heightAt);
+  return own;
+}
+const engineeredAt = (road: readonly CrossingPoint[], i: number) => road[i].surface === 'ramp' && Math.abs(road[i].z - road[i].ground) >= FLAT;
+/** A section the renderer draws slopes for: a ramp, or a deck's end (the end of the embankment behind it). */
+/** (the slopes start at the paved edges: on a side slope a section level with the ground at its centre still
+ * has them, as the renderer draws; toe() measures them) */
+const slopedAt = (road: readonly CrossingPoint[], i: number) => road[i].surface === 'ramp'
+  || (road[i].surface === 'deck' && (road[i - 1]?.surface !== 'deck' || road[i + 1]?.surface !== 'deck'));
+const wallAt = (works: CrossingWorks, j: number, side: 0 | 1, offset: number) => {
+  for (const i of [j, j + 1]) {
+    const w = works.walls.get(i) ?? [undefined, undefined];
+    w[side] = Math.min(w[side] ?? Infinity, offset); works.walls.set(i, w);
+  }
+};
+/** toe() of every sloped point of a path, per side ([-n, +n]), computed once (a path is immutable within a build). */
+const toeCache = new WeakMap<readonly CrossingPoint[], Map<number, number>>();
+function toeAt(road: readonly CrossingPoint[], i: number, side: 0 | 1, half: number, heightAt: WorksContext['heightAt']) {
+  let cache = toeCache.get(road);
+  if (!cache) toeCache.set(road, cache = new Map());
+  const key = (i * 2 + side) * 64 + Math.round(half * 4);
+  let v = cache.get(key);
+  if (v === undefined) { const { nx, ny } = normal(road, i); v = toe(road[i], nx, ny, side ? 1 : -1, half, heightAt); cache.set(key, v); }
+  return v;
+}
+/** Height of the slope where a wall at `offset` from the centreline cuts it (0: the slope stops short). */
+function wallHeight(road: readonly CrossingPoint[], i: number, side: 0 | 1, offset: number, half: number, heightAt: WorksContext['heightAt']) {
+  const p = road[i], { nx, ny } = normal(road, i), sign = side ? 1 : -1;
+  if (!slopedAt(road, i) || toeAt(road, i, side, half, heightAt) <= offset) return 0;
+  const g = heightAt(p.x + nx * sign * offset, p.y + ny * sign * offset), e = heightAt(p.x + nx * sign * half, p.y + ny * sign * half);
+  const fill = p.z >= e, slope = (offset - half) / SLOPE;
+  return Math.max(0, fill ? p.z - slope - g : g - (p.z + slope));
+}
+/** Measure the walls actually standing: the slope's height where the wall cuts it. A wall line spans whole
+ * sections (both ends of every section a road beside it needs); where the slope stops short of it the face
+ * tapers to nothing, as drawn (render/crossing-surface.ts). */
+function measureWalls(works: CrossingWorks, road: readonly CrossingPoint[], width: number, heightAt: WorksContext['heightAt']) {
+  for (let i = 0; i + 1 < road.length; i++) for (const side of [0, 1] as const) {
+    const a = works.walls.get(i)?.[side], b = works.walls.get(i + 1)?.[side];
+    if (a === undefined || b === undefined) continue;
+    const ha = wallHeight(road, i, side, a, width / 2, heightAt), hb = wallHeight(road, i + 1, side, b, width / 2, heightAt), h = (ha + hb) / 2;
+    if (Math.max(ha, hb) > RETAINING_RULES.maxHeight && !works.problems.includes(WORKS_COVER_ROAD)) works.problems.push(WORKS_COVER_ROAD);
+    if (h <= 0) continue;
+    const length = Math.hypot(road[i + 1].x - road[i].x, road[i + 1].y - road[i].y);
+    works.wallLength += length; works.wallArea += length * h;
+    works.cost += length * retainingAssembly(h).perM;
+  }
+}
+/** Houses and mapped railways beside (or under) the rebuilt stretch's slopes, as a designer treats them: a
+ * retaining wall holds the slope back where it can stand clear of them; else a house is bought out and
+ * demolished (a house the player keeps, or a railway, makes this treatment infeasible). */
+function besideObstacles(works: CrossingWorks, road: readonly CrossingPoint[], width: number, ctx: Pick<WorksContext, 'beside' | 'body' | 'gap' | 'heightAt' | 'ours'>) {
+  const n = road.length, half = width / 2, houses = new Set<number>();
+  // Where a point's slope on one side first reaches our earthworks, if it does (each point is the end of two
+  // sections: judged once): a point that far out along its normal.
+  const ourHits = new Map<number, BesideHit | null>();
+  const oursAt = (i: number, side: 0 | 1): BesideHit | null => {
+    const key = i * 2 + side;
+    let hit = ourHits.get(key);
+    if (hit !== undefined) return hit;
+    hit = null;
+    const p = road[i];
+    if (slopedAt(road, i)) {
+      const sign = side ? 1 : -1, end = toeAt(road, i, side, half, ctx.heightAt);
+      if (end > half + DRAPED * SLOPE) {
+        const { nx, ny } = normal(road, i), gap = ctx.gap ? ctx.gap({ x: p.x + nx * sign * half, y: p.y + ny * sign * half }) : NaN;
+        // (from there out to its toe, a metre at a time: our fill's slope beside a fill of its own merges with it,
+        // our cut or formation further out does not)
+        const cutting = p.z < ctx.heightAt(p.x + nx * sign * half, p.y + ny * sign * half);
+        if (gap < end - half) for (let o = half + Math.max(0, gap) + 0.5; o <= end + 0.5 && !hit; o += 1) {
+          const q = { x: p.x + nx * sign * Math.min(o, end), y: p.y + ny * sign * Math.min(o, end) }, body = ctx.body!(q);
+          if (body === 'formation' || body === 'cut' || (body === 'fill' && cutting)) hit = { what: 'ours', ...q, lateral: Math.min(o, end) };
+        }
+      }
+    }
+    ourHits.set(key, hit);
+    return hit;
+  };
+  for (let j = 0; j + 1 < n; j++) {
+    if (!slopedAt(road, j) && !slopedAt(road, j + 1) || (road[j].surface === 'deck' && road[j + 1].surface === 'deck')) continue;
+    const a = road[j], b = road[j + 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-6) continue;
+    const tx = (b.x - a.x) / len, ty = (b.y - a.y) / len, x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
+    for (const side of [0, 1] as const) {
+      const sign = side ? 1 : -1, reach = Math.max(slopedAt(road, j) ? toeAt(road, j, side, half, ctx.heightAt) : half,
+        slopedAt(road, j + 1) ? toeAt(road, j + 1, side, half, ctx.heightAt) : half);
+      // (a slope under the drape tolerance's height is no earthwork: crossing-works' DRAPED)
+      if (reach <= half + DRAPED * SLOPE) continue;
+      const hits = ctx.beside ? ctx.beside(x, y, tx, ty, len / 2, sign, reach) : [];
+      // Our own body: its slopes are no place for this one's (a fill sliding into our cut or over our formation,
+      // a cut into our embankment). Where the slope would reach it, a wall (a wing wall at a bridge end) holds
+      // the slope back (render/crossing-surface.ts draws it cut short).
+      if (ctx.body) for (const k of [0, 1]) {
+        const hit = oursAt(j + k, side);
+        if (hit) hits.push(hit);
+      }
+      for (const hit of hits) {
+        if (hit.what === 'house' && houses.has(hit.j!)) continue;
+        if (hit.what !== 'ours' && ctx.ours(hit, 0)) continue; // (our own road's footprint check owns what lies in it)
+        const edge = hit.lateral;
+        let offset = edge - RETAINING_RULES.clearance;
+        if (offset < half + RETAINING_RULES.minimumOffset) offset = edge - RETAINING_RULES.constrainedClearance;
+        if (offset >= half && Math.max(wallHeight(road, j, side, offset, half, ctx.heightAt), wallHeight(road, j + 1, side, offset, half, ctx.heightAt)) <= RETAINING_RULES.maxHeight) {
+          wallAt(works, j, side, offset); continue;
+        }
+        if (hit.what === 'house') { houses.add(hit.j!); continue; }
+        if (hit.what === 'ours') { if (!works.problems.includes(WORKS_COVER_OURS)) works.problems.push(WORKS_COVER_OURS); continue; }
+        const problem = hit.what === 'railway' ? WORKS_COVER_RAILWAY : WORKS_COVER_HOUSE;
+        if (!works.problems.includes(problem)) works.problems.push(problem);
+      }
+    }
+  }
+  works.houses.push(...houses);
+}
+function besideRoads(works: CrossingWorks, road: readonly CrossingPoint[], width: number,
+  source: readonly XY[], ctx: WorksContext) {
   const n = road.length, half = width / 2, { roads, heightAt } = ctx;
-  if (n < 2) return works;
-  const engineered = (i: number) => road[i].surface === 'ramp' && Math.abs(road[i].z - road[i].ground) >= FLAT;
+  const engineered = (i: number) => engineeredAt(road, i);
   const onPath = (q: XY, path: readonly XY[], tolerance = ON_PATH) => {
     for (let i = 1; i < path.length; i++) if (segDist(q, path[i - 1], path[i]) < tolerance) return true;
     return false;
@@ -113,7 +263,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
     x0 = Math.min(x0, road[i].x - r); y0 = Math.min(y0, road[i].y - r); x1 = Math.max(x1, road[i].x + r); y1 = Math.max(y1, road[i].y + r);
   }
   if (x0 < x1) roads.nearSegments([x0, y0, x1, y1], s => { if (!any && !(onSource({ x: s.ax, y: s.ay }, source) && onSource({ x: s.bx, y: s.by }, source))) any = true; });
-  if (!any) return works;
+  if (!any) return;
   const normals = road.map((_, i) => normal(road, i));
   const toes: [number, number][] = road.map((p, i) => engineered(i)
     ? [toe(p, normals[i].nx, normals[i].ny, -1, half, heightAt), toe(p, normals[i].nx, normals[i].ny, 1, half, heightAt)] : [half, half]);
@@ -165,7 +315,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
       if (best && !ctx.ours(q, other) && buried(best, other) > DRAPED) (hits.get(way) ?? hits.set(way, []).get(way)!).push(best);
     }
   }
-  if (!hits.size) return works;
+  if (!hits.size) return;
   /** z of the rebuilt stretch at a point on it */
   const zAt = (q: XY) => {
     let z = road[0].z, gap = Infinity;
@@ -176,12 +326,6 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
       if (d < gap) { gap = d; z = a.z + (b.z - a.z) * u; }
     }
     return z;
-  };
-  const wallAt = (j: number, side: 0 | 1, offset: number) => {
-    for (const i of [j, j + 1]) {
-      const w = works.walls.get(i) ?? [undefined, undefined];
-      w[side] = Math.min(w[side] ?? Infinity, offset); works.walls.set(i, w);
-    }
   };
   // Regraded arms and junction mouths: the stretch of each arm's own line they take, from the node.
   const resolved: XY[][] = [], arms = new Set<string>(), joined = new Set<number>();
@@ -283,29 +427,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
       // a constrained face may stand right at the paved edge (as beside our own road)
       if (offset < half + RETAINING_RULES.minimumOffset) offset = edge - RETAINING_RULES.constrainedClearance;
       if (offset < half) { if (!works.problems.includes(WORKS_COVER_ROAD)) works.problems.push(WORKS_COVER_ROAD); continue; }
-      wallAt(h.j, h.side, offset);
+      wallAt(works, h.j, h.side, offset);
     }
   }
-  // Measure the walls actually standing: the slope's height where the wall cuts it.
-  const height = (i: number, side: 0 | 1, offset: number) => {
-    const p = road[i], { nx, ny } = normals[i], sign = side ? 1 : -1;
-    if (toes[i][side] <= offset) return 0;
-    const g = heightAt(p.x + nx * sign * offset, p.y + ny * sign * offset), e = heightAt(p.x + nx * sign * half, p.y + ny * sign * half);
-    const fill = p.z >= e, slope = (offset - half) / SLOPE;
-    return Math.max(0, fill ? p.z - slope - g : g - (p.z + slope));
-  };
-  // A wall line spans whole sections (both ends of every section a road beside it needs); where the
-  // slope stops short of it the face tapers to nothing, as drawn (render/crossing-surface.ts).
-  for (let i = 0; i + 1 < n; i++) for (const side of [0, 1] as const) {
-    const a = works.walls.get(i)?.[side], b = works.walls.get(i + 1)?.[side];
-    if (a === undefined || b === undefined) continue;
-    const ha = height(i, side, a), hb = height(i + 1, side, b), h = (ha + hb) / 2;
-    if (Math.max(ha, hb) > RETAINING_RULES.maxHeight && !works.problems.includes(WORKS_COVER_ROAD)) works.problems.push(WORKS_COVER_ROAD);
-    if (h <= 0) continue;
-    const length = Math.hypot(road[i + 1].x - road[i].x, road[i + 1].y - road[i].y);
-    works.wallLength += length; works.wallArea += length * h;
-    works.cost += length * retainingAssembly(h).perM;
-  }
-  if (!works.problems.length) ctx.claimed?.push(...works.ties.map(t => t.path));
-  return works;
 }

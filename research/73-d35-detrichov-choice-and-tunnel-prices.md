@@ -164,14 +164,14 @@ at T-8.0. At a uniform 0.75 × our present tube price (≈ 1.08 M) the real-port
 - Nothing published compares Dětřichov tunnel lengths or prices. "The protected slope drove the length" is my
   reading of the EIA, consistent with the EIA's own wording and with the bills in §2.
 
-## 6. After protected areas and the 3 % tunnel rule (cost model 44)
+## 6. After protected areas and the 3 % tunnel rule (cost model 45)
 
 Recommendations #1 and #2 implemented (research/75; #3, #4 and running costs not taken).
 
 | | Tunnel | Bridges | Bill |
 |---|---|---|---|
 | Auto, model 43 | 1.9 km at 3.8 %, its east end in PP Pod skálou | 2.3 km | 19,203 M |
-| **Auto, model 44** | **3,209 m at ≤ 3 %, out of the protected forest** | 880 m | **20,084 M** |
+| **Auto, model 45** | **3,209 m at ≤ 3 %, out of the protected forest** | 880 m | **20,084 M** |
 | Real-portal line (514 → 439 m), tunnel painted | 3,948 m | 640 m | 21,319 M (+6.1 %) |
 | Real D35 (ŘSD estimate, incl. the I/35 feeder) | 3,983 m | ≈ 700 m | 17,694 M |
 

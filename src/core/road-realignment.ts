@@ -115,7 +115,7 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
     }
     if (g.removed) { a = Math.min(a, g.removed[0]); b = Math.max(b, g.removed[1]); }
     path = slice(raw, Math.max(raw[0].d, a), Math.min(raw[raw.length - 1].d, b));
-    targets = (g.links ?? []).flat();
+    targets = [...(g.links ?? []).flat(), ...(g.keptEnds ?? []).flat()];
   } else return;
   const intervals: RoadSourceInterval[] = [];
   for (const piece of path === old ? [path] : [path, old]) for (let i = 1; i < piece.length; i++) {

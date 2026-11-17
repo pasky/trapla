@@ -472,15 +472,18 @@ export class Hud {
     }).join('') + (sel ? `<tr class="sum"><td>Selected</td><td>${czk(sel.cost.total)}</td><td></td></tr>` : '');
     const q = r.quantities;
     const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0, junction: 0, reconnection: 0, diversion: 0, underpass: 0 };
-    let reconnectM = 0, divertM = 0, underpassM = 0;
+    let reconnectM = 0, divertM = 0, underpassM = 0, closed = 0;
     for (const cr of r.crossings) if (!sel || (cr.i >= sel.i0 && cr.i <= sel.i1)) {
+      // (a cut way whose parts both still reach other roads is closed there: way-pieces.ts)
+      if (cr.closure && !Math.round(cr.linkLength ?? 0)) { closed++; continue; }
       x[cr.type]++;
       if (cr.type === 'reconnection') reconnectM += cr.linkLength ?? 0;
       if (cr.type === 'diversion') divertM += cr.linkLength ?? 0;
       if (cr.type === 'underpass') underpassM += cr.underpassLength ?? 0;
     }
     const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-    const xing = `${Object.values(x).reduce((a, b) => a + b, 0)} <small>(${[x.junction ? plural(x.junction, 'junction', 'junctions') : '',
+    const xing = `${Object.values(x).reduce((a, b) => a + b, 0) + closed} <small>(${[x.junction ? plural(x.junction, 'junction', 'junctions') : '',
+      closed ? `${plural(closed, 'way', 'ways')} closed (what is left still reaches other roads)` : '',
       x.reconnection ? `${plural(x.reconnection, 'road', 'roads')} reconnected (+${num(reconnectM, 0)} m of new road)` : '',
       x.diversion ? `${plural(x.diversion, 'track', 'tracks')} rerouted (+${num(divertM, 0)} m of new track)` : '',
       x.underpass ? `${plural(x.underpass, 'underpass', 'underpasses')} ${num(underpassM, 0)} m` : '', x.atGrade ? `${x.atGrade} crossing at the same level (not allowed)` : '',
