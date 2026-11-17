@@ -80,7 +80,9 @@ if [ -z "$jobs" ]; then
 fi
 
 mkdir -p "$log"
-trap 'trap - INT TERM; kill 0' INT TERM
+# stopped: our gates go too (only ours: `kill 0` would also take a caller's wrapper shell sharing our group)
+killtree() { local p; for p in $(pgrep -P "$1"); do killtree "$p"; kill "$p"; done; }
+trap 'trap - INT TERM; echo "gates: stopped by a signal" >&2; killtree $$; exit 130' INT TERM
 
 finish() { # name status took [seconds waited for the lock]: the gate's line, kept for the summary
   local name=$1 status=$2 took=$3 note="" line
