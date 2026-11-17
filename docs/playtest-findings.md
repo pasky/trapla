@@ -14,7 +14,7 @@ under `/tmp/trapla-qa3/r1/`.
 | P1 #1 design speed the wrong way | **FIXED** | `qa3/speed-monotone.ts`: 90 / 80 / 70 all 9.583 bn; `qa3/speed-per-bend.ts` on best: 0 of 36 slow-downs dearer (to −66 M); in the game the 70 click keeps 9.577 bn and the card says "Its stretch is the whole road. Auto rounds its hilltops and dips as for 90 km/h" (282). Railway bend card offers 120 · 100 · 80 · 60 only ("Its stretch: km 2.80–7.24; no faster than the whole line"); `qa3/rail-speed.ts`: a saved 160 / 140 bills as 120. |
 | P1 #2 credit larger than the bridge | **FIXED** | D11 km 12.5 project: "Our road pays for its bridge over our road and the ramps up to it −48.3 M" (our overbridge bills 37 M + surcharge); project priced 9.12 bn, NOT VALID by its free ends only (285). |
 | P1 #3 large earthworks on 0302 | **FIXED** | deepest cut 29 m, highest fill 21 m; one 1,678 m, 146 m high bridge (5.16 bn); starter 4.94 → 7.05 bn VALID (real section 10.54). D35's tunnel card: "a cut here would be up to 124 m deep; designers tunnel where a cut would be deeper than 30 m", Earthwork −2.09 bn. |
-| P1 #4 vertical fill ends at bridges | **FIXED** | 0302 ends on 7 / 19 m fills sloping on under the deck as cones with paving; the card lists them (287, 288). P2: at the 19 m end the fill's flank still ends in a steep edge beside the cone. |
+| P1 #4 vertical fill ends at bridges | **PARTLY FIXED** | 0302 ends on 7 / 19 m fills sloping on under the deck as cones with paving; the card lists them (287, 288). P2: at the 19 m end the fill's flank still ends in a steep edge beside the cone. **Still a wall** on the Královec starter (owner's shot): see New, first item. |
 | P1 #5 new railway across ours | **FIXED** | `rail-new-railway-across.json`: on its bridge over our railway ("Our railway pays for its bridge over our railway −37.9 M"), 11.15 bn, only the two free ends (286). |
 | P1 #6 mapped radius kept as yours | **FIXED** | III/3012 40 px drag: no radius problem (Bend 2 R 211 m, Auto). Left (PLAN.md): "earthworks cover 13 m of a track" at its km 0.14. |
 | P2 hairpin card / tunnel card / arch reason / undo labels / tooltip | **FIXED** | tunnel card "Auto’s tunnel, built by cut and cover as you chose", no noise walls; greyed Arch says why ("too long for one arch: at most 3.3 times its arch"); Undo "Undo: changing Road III/3012". "Make it a hairpin" not re-tested (my bends reached only 168°). |
@@ -23,6 +23,15 @@ under `/tmp/trapla-qa3/r1/`.
 
 ### New
 
+- **P1 — Královec starter: closed abutments up to 28 m high (the owner's "vertical grey wall").** km 10.27, start of
+  the bridge km 10.26–10.46 at bend 3: grade 506 m over ground 478 m, the end closed, a 28.4 m wall and no cone; also
+  km 5.61 (24.9 m) and km 5.70 (16.1 m), an 80 m fill walled at both ends. Cause: `support-layout.ts`'s final
+  `closedEnds` check, `coneBuries(run.s0, 1, reach[0])` with defaults, counts the cone's flanks and any way, a
+  relocatable field track included (23–31 m from each abutment), and never looks at `CONE.closedMax` (10 m); the
+  extension search before it, for fills over 10 m, looks only along the axis and only at `strictWays`, so the bridge
+  is not lengthened and the end is closed at full height (not priced apart from the bridge). Repro:
+  `SCENARIO=d11 npx tsx qa3/bridge-ends.ts rail` (each bridge end: fill height, cone, or why none). Handed to the
+  abutment-ends agent.
 - **P1 — the score's per-road line belongs to another step.** D11 road: Build → Road (any), *Remove road*, then drag
   III/3012 40 px: the headline says −227 M (our road −234 M, III/3012 +6.5 M) but the line under it reads "Our road −234 M
   · New road −229 M · Road III/3012 +6.5 M", the removed road's −229 M added in. Ctrl+Z: headline +227 M, line unchanged
