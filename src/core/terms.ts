@@ -336,3 +336,28 @@ export function endCard(info: EndConnection, end: 'a' | 'b'): { title: string; l
   return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
     ...(info.section ? [end === 'b' ? `The motorway goes on as ${info.section}.` : `The motorway comes from ${info.section}.`] : [])] };
 }
+
+/** What a stream culvert's card says (its size, length and price are the bill's: WaterResult). */
+export interface CulvertFacts {
+  size: { type: 'pipe' | 'box'; width: number; height: number; buried?: boolean };
+  /** barrel length, m; our road above the stream bed, m; the flood it is sized for, m³/s; land draining into it, km² */
+  length: number; h: number; q100: number; catchmentKm2: number;
+  /** its land runs off the map (the flood is a rougher guess) */
+  truncated?: boolean;
+  /** a buried bridge: the most fill a precast frame takes, m; its vault's clear span (billed width less its walls), m */
+  frameCover?: number; vaultSpan?: number;
+}
+/** The culvert card in plain words: title, the one-line state, why (lines), and what "More" adds. */
+export function culvertCard(c: CulvertFacts, line: OurLine = 'road'): { title: string; state: string; why: string[]; more: string[] } {
+  const m = (v: number) => v.toFixed(1);
+  const title = c.size.buried ? 'Buried bridge' : c.size.type === 'pipe' ? 'Pipe culvert' : 'Box culvert';
+  const what = c.size.type === 'pipe' ? `${Math.round(c.size.width * 1000)} mm pipe` : c.size.buried ? `vault spanning ${m(c.vaultSpan ?? c.size.width)} m`
+    : `${m(c.size.width)} × ${m(c.size.height)} m opening`;
+  const why = [`Carries a stream under our road's embankment, ${m(c.h)} m below our road.`,
+    c.size.buried ? `With that much earth over it (a precast frame takes ${m(c.frameCover ?? 7)} m), the ${m(c.size.width)} × ${m(c.size.height)} m opening the flood needs is built as a concrete vault spanning ${m(c.vaultSpan ?? c.size.width)} m.`
+      : c.size.type === 'pipe' ? 'A precast concrete pipe, with a wall at each end.' : 'A precast concrete frame, with a wall at each end.',
+    `Sized for a 100-year flood of about ${c.q100 < 10 ? c.q100.toFixed(1) : Math.round(c.q100)} m³/s.`];
+  const more = [`${m(c.catchmentKm2)} km² of land drains into it${c.truncated ? ' (some of it off the map: a rougher guess)' : ''}.`,
+    'Priced by its length under our earthworks and its two ends. The flood is a rough estimate from the land, not a survey.'];
+  return { title, state: `${what} · ${Math.round(c.length)} m long`, why: why.map(t => ourWords(t, line)), more: more.map(t => ourWords(t, line)) };
+}

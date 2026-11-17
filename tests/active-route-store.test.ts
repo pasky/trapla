@@ -101,3 +101,21 @@ describe('active road widgets on project history', () => {
     expect(project.snapshot).toBe(before);
   });
 });
+
+// Undo / Redo say what they take back (QA sweep 3: every step was "Undo edit").
+it('labels each undo and redo step by what it changes, in plain words', () => {
+  const { adapter } = setup();
+  expect(adapter.undoLabel()).toBe('');
+  adapter.update(d => { d.pis[0].x += 10; });
+  expect(adapter.undoLabel()).toBe('moving bend 1');
+  adapter.update(d => { d.pis[0].r = 400; });
+  expect(adapter.undoLabel()).toBe("bend 1's radius");
+  adapter.update(d => { d.pis.push({ x: 80, y: 20, r: null }); });
+  expect(adapter.undoLabel()).toBe('adding a bend');
+  adapter.update(d => { d.gradePins = [{ s: 30, z: 104 }]; });
+  expect(adapter.undoLabel()).toBe('the height');
+  adapter.undo();
+  expect([adapter.undoLabel(), adapter.redoLabel()]).toEqual(['adding a bend', 'the height']);
+  adapter.switchRoute('other'); adapter.update(d => { d.structureOverrides = [{ s0: 10, s1: 40, kind: 1 }]; });
+  expect(adapter.undoLabel()).toBe('a bridge or tunnel (Other road)');
+});

@@ -74,6 +74,9 @@ export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: Readonl
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
+/** the longest end of a way under our earthworks rejoined to the road our junction rebuilds where it meets it, m
+ * (PROVISIONAL: a short junction arm; a longer stretch runs along our earthworks and is moved aside) */
+const JUNCTION_TIE_IN = 30;
 /** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
 const existingHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
 
@@ -227,6 +230,16 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     }
   }
   const roadHits = new Map<string, { way: number; cls: string; hits: Hit[] }>();
+  // A way whose end meets a road our junction rebuilds, within what it rebuilds: its end under our earthworks is
+  // rejoined to the rebuilt road there (the junction's tie-in), not a road to move aside.
+  const junctionRebuilt = roads ? roadRealignmentCrossingIntervals(crossings.filter(c => c.type === 'junction'), roads) : [];
+  const rejoinsJunction = (way: number, a: number, b: number) => {
+    if (!junctionRebuilt.length || b - a > JUNCTION_TIE_IN) return false;
+    const path = roads!.wayPath(way, 0, Infinity);
+    if (path.length < 2) return false;
+    return [path[0], path[path.length - 1]].some(end => Math.min(Math.abs(a - end.d), Math.abs(b - end.d)) <= 0.5
+      && roads!.connections(end).some(c => c.way !== way && junctionRebuilt.some(iv => iv.way === c.way && c.d >= iv.a - 0.5 && c.d <= iv.b + 0.5)));
+  };
   const streamHits = new Map<string, { segment: WaterSegment; hits: Hit[]; axisHits: [number, number][] }>();
   // Raster classes are independent flags: a road-painted rail/water crossing remains protected.
   const rasterHits = new Map<string, { feature: 'railway' | 'water' | 'stream'; structure?: FootprintCell['structure']; hits: Map<number, { x: number; y: number; count: number }> }>();
@@ -340,6 +353,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       }
       continue;
     }
+    if (rejoinsJunction(way, h.a, h.b)) continue;
     const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections,
       bounds: [index ? (merged[index - 1].b + h.a) / 2 : -Infinity, index + 1 < merged.length ? (h.b + merged[index + 1].a) / 2 : Infinity] });
     base.length = planned.length; base.cost = planned.cost; base.roadCode = planned.roadCode;
@@ -435,6 +449,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       if (hi > lo) { axisStart = Math.min(axisStart, lo); axisEnd = Math.max(axisEnd, hi); }
     }
     const bankOnly = axisEnd <= axisStart;
+    // (a bank brushing our slope beside the culvert that carries the same stream under us: held by that
+    // culvert's headwall and wing walls at its end, within the bank's own width and a metre)
+    if (bankOnly && !h.structure && connectedWater(w.id).some(other => original.every(q => barrelContains(q, barrels.get(other)!, waterWidth(w) / 2 + 1)))) continue;
     // Keep the full ribbon for feasibility/cover checks, but price the channel-axis span.
     // A bank-only contact has no culvert quantity and must remain an unresolved conflict.
     let length = bankOnly ? affectedLength : axisEnd - axisStart;
@@ -477,7 +494,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const plainReasons = [bankOnly ? 'only its bank lies under our slope, so there is no line for a culvert' : '',
       h.structure ? 'a bridge support would stand in it' : '', size.type === 'bridge' ? 'it is too big for a culvert' : '',
       !compatible ? 'it would have to join a culvert of a different size' : '', !outlets ? 'its outlet would be buried' : '',
-      !waterCoverFits(minCover, size.minHeight) ? `there is only ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'no'} m of earth over it, a culvert needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
+      !waterCoverFits(minCover, size.minHeight) ? `${Number.isFinite(minCover) ? `there is only ${minCover.toFixed(1)} m of earth over it` : 'there is no earth over it'}, a culvert needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
       s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length, affectedLength,
       cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,

@@ -418,6 +418,20 @@ spans](docs/screenshots/228-d11-direct-90-arch.png) ([from the side](docs/screen
 here](docs/screenshots/230-town-centre-long-span-over-railway.png),
 [D3 motorway km 8.59: "Our bridge over it" in our cutting is built, and its card says what raising our motorway
 for it cost](docs/screenshots/231-d3-motorway-our-bridge-over-track-raised.png).
+Playtest sweep 3 fixes (cost model 41, PLAN.md "Playtest sweep 3"; `node scripts/qa3-fixes-shots.mjs`): [D11, one
+bend slowed to 70 km/h: its stretch is the whole road, Auto keeps the 90 km/h curve and heights (the 70 km/h line
+was 284 M dearer)](docs/screenshots/290-d11-one-bend-70-keeps-90-geometry.png),
+[a bend turning back on itself on steep ground offers a hairpin](docs/screenshots/291-d11-near-u-turn-offers-hairpin.png)
+([made one](docs/screenshots/292-d11-u-turn-made-a-hairpin.png)),
+[the railway mission's bend: no speed above the line's 120 km/h](docs/screenshots/293-rail-bend-speeds-up-to-the-line.png),
+[D11 direct-80 km 8.41–8.88: the 50 m deep valley may be bridged by an arch](docs/screenshots/294-d11-direct-80-valley-arch-fits.png)
+([as the player's arch](docs/screenshots/295-d11-direct-80-valley-as-an-arch.png)),
+[the D35 viaduct says why no arch fits](docs/screenshots/296-d35-viaduct-no-arch-why.png),
+[the D35 tunnel after the player's cut and cover](docs/screenshots/297-d35-tunnel-cut-and-cover-chosen.png),
+[D3-0302: the Sázava bridge's end on the cone of fill in front of its abutment (clicked: the bridge's card)](docs/screenshots/298-d3-0302-sazava-bridge-end-on-its-cone.png),
+[D3-0302: no 62 m cut and no 41 / 47 m fills, one 1,678 m bridge](docs/screenshots/299-d3-0302-no-deep-cut-one-long-bridge.png),
+[a D11 line whose cut would be 67 m deep: Auto's tunnel, the open cut's price on its Earthwork button](docs/screenshots/300-d11-deep-cut-tunnel-open-cut-price.png),
+[a bridge end whose fill would cover the road below it: a wall down to the ground](docs/screenshots/301-d11-bridge-end-wall-beside-the-road-below.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses
@@ -428,6 +442,28 @@ Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
 [service reconnection, best km 7.96 (1.6 km → 461 m)](docs/screenshots/crossing-sanity/best-km796-service-reconnection.png).
+
+### Stream culverts
+
+Every billed stream culvert is drawn as what is billed: a precast pipe, a precast frame, or under a high fill the
+buried bridge's concrete vault, through our embankment along the stream from toe to toe; at each toe a headwall cut
+along our road, splayed wing walls, an apron and the water running out onto the stream, the slope down to the
+headwall's top. A click on an end, on its mark over the road or on its ring in the profile opens its card (size,
+length, price, why; "Bridge instead"). (`node scripts/culvert-shots.mjs [--scenario … | --query …] [--design
+demo|starter] [--only km,…]`.)
+
+| Box culvert 4.0 × 2.5 m, demo km 8.82 | Buried bridge under 17 m of fill, demo km 11.93 |
+|---|---|
+| ![box culvert](docs/screenshots/330-culvert-d11-demo-box-end.png) | ![buried bridge](docs/screenshots/333-culvert-d11-demo-buried-bridge-end.png) |
+
+[The box beside the track underpass](docs/screenshots/331-culvert-d11-demo-box-beside-track-underpass.png),
+[a 1000 mm pipe from the closest view](docs/screenshots/332-culvert-d11-demo-pipe-end.png),
+[a buried bridge's end at a retaining wall](docs/screenshots/334-culvert-d11-demo-buried-bridge-at-retaining-wall.png),
+[the card after a click on the pipe's end](docs/screenshots/335-culvert-card-from-3d-click.png),
+[a profile ring selects its culvert, map and profile in sync](docs/screenshots/336-culvert-profile-ring-selects-box.png),
+[D3 5 × 3 m buried bridge](docs/screenshots/337-culvert-d3-buried-bridge-5x3.png),
+[D35 box](docs/screenshots/338-culvert-d35-box-end.png),
+[Královec railway buried bridge](docs/screenshots/339-culvert-kralovec-railway-buried-bridge.png).
 Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall

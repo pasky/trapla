@@ -231,7 +231,7 @@ function onOldRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: n
     if (!(high > low)) return { pis, now };
     const at = (r: number) => pis.map((p, k) => k === i ? { ...p, r } : p);
     for (let k = 0; k < 6; k++) { const mid = (low + high) / 2; if (measure(at(mid)).bend(i) <= FIT_TOLERANCE) low = mid; else high = mid; }
-    const next = at(Math.round(low));
+    const next = at(Math.round(low)).map((p, k) => k === i ? { ...p, mapped: true as const } : p);
     return { pis: next, now: measure(next) };
   };
   return { rules, far, measure, tighten };
@@ -526,7 +526,7 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
     }
     pis = best!.pis;
   }
-  pis = pis.map(p => ({ x: p.x, y: p.y, r: p.r }));
+  pis = pis.map(p => ({ x: p.x, y: p.y, r: p.r, ...(p.mapped && p.r !== null ? { mapped: true as const } : {}) }));
   const shift = old.s0 - s0, length = s1 - s0;
   const moveRange = <T extends { s0: number; s1: number }>(list: readonly T[] | undefined) => list?.flatMap(r => {
     const a = Math.max(0, r.s0 + shift), b = Math.min(length, r.s1 + shift); return b > a ? [{ ...r, s0: a, s1: b }] : [];

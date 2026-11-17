@@ -10,6 +10,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Design, Result } from '../core/evaluate';
 import type { TransportGraphData, TransportRenderInterval } from '../core/project-transport';
 import { KIND } from '../core/structures';
+import { CONE, coneSurface } from '../core/abutment-cone';
 import { OOB_BIT, type Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import { Buildings } from './buildings';
@@ -565,6 +566,9 @@ export class View {
   /** height that clears both the true and the rendered terrain (for draped overlays) */
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
   groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
+  get watercourses() { return this.terrain.watercourses; }
+  /** the camera's position in map coordinates (m; its height without the relief exaggeration) */
+  get eye() { const c = this.camera.position; return { x: c.x + this.cx, y: this.cy - c.z, z: c.y / this.exag }; }
   replacementHeight = (x: number, y: number) => this.drape(x, y);
   crossingGeology(x: number, y: number, z: number) {
     const profile = this.terrain.groundAt(x,y), depth = this.terrain.heightAt(x,y)-z;
@@ -971,9 +975,31 @@ export class View {
       }
     }
     flushGround();
+    // The cones of fill in front of the abutments of bridges ending in a fill (core/abutment-cone.ts): from the
+    // last earth station under the deck, sloped 1:1.5 down to the ground, quarter cones round the crest corners;
+    // paved under the deck (concrete-coloured), earth elsewhere. As billed: the same surface over the same ground.
+    const coneAt = new Map<number, NonNullable<Result['cones']>[number]>();
+    for (const c of r.cones ?? []) {
+      coneAt.set(c.earthCell, c);
+      // (out as far as the billed fill lies over the ground, abutment-cone.ts)
+      const G = 2, u0 = -Math.abs(r.s[c.earthCell] - c.s), U = c.length, deckHalf = w + CONE.paveMargin, side = c.side + G;
+      const nu = Math.ceil((U - u0) / G) + 1, nv = Math.ceil(2 * side / G) + 1, ids: number[] = [], above: boolean[] = [];
+      for (let a = 0; a < nu; a++) for (let q = 0; q < nv; q++) {
+        const u = Math.min(U, u0 + a * G), vv = -side + q * G * (2 * side) / ((nv - 1) * G);
+        const x = c.x + c.tx * u - c.ty * vv, y = c.y + c.ty * u + c.tx * vv, g = natural(x, y);
+        const zc = coneSurface(c, Math.max(0, u), vv), paved = Math.abs(vv) <= deckHalf && u >= CONE.berm;
+        above.push(zc > g + 0.05);
+        ids.push(push(x, y, Math.max(zc, g) + groundLift, paved ? concrete : fillC, Math.max(zc, g), slopeInk, paved ? EW_KIND.structure : EW_KIND.fill));
+      }
+      for (let a = 0; a + 1 < nu; a++) for (let q = 0; q + 1 < nv; q++) {
+        const k = a * nv + q;
+        if (above[k] || above[k + 1] || above[k + nv] || above[k + nv + 1]) quad(ids[k], ids[k + nv], ids[k + 1], ids[k + nv + 1]);
+      }
+    }
     // Close the ground works' cross-section at structure transitions: the abutment's front wall under
     // the crown and its wing walls out to the toes, in concrete. Without these faces the terrain
-    // cut-out is visible as a sky-coloured hole beside the first/last bridge span.
+    // cut-out is visible as a sky-coloured hole beside the first/last bridge span (down to the cone's top where
+    // a cone stands in front of the abutment).
     const again = (k: number) => { // vertex k once more, as concrete
       pos.push(pos[3*k], pos[3*k+1], pos[3*k+2]); col.push(concrete.r, concrete.g, concrete.b); elev.push(elev[k]); ink.push(0);
       kinds.push(EW_KIND.structure); geo.push(...noGeo);
@@ -983,15 +1009,32 @@ export class View {
     for (let i = 0; i < n; i++) {
       if (i % 512 === 511) yield;
       if (!ground[i] || !((i > 0 && !ground[i-1]) || (i+1 < n && !ground[i+1]))) continue;
-      const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
-      const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
+      const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i], cone = coneAt.get(i);
+      const zl = cone ? cone.top : this.terrain.heightAt(x+nx*w, y+ny*w), zr = cone ? cone.top : this.terrain.heightAt(x-nx*w, y-ny*w);
       if (z <= Math.max(zl, zr)) continue;
       const l = push(x+nx*w, y+ny*w, zl, concrete, zl), rr = push(x-nx*w, y-ny*w, zr, concrete, zr);
       const station = sv[i], el = again(station.el), er = again(station.er);
       const dl = again(station.dl), dr = again(station.dr);
       const wl = station.wl === undefined ? undefined : again(station.wl), wr = station.wr === undefined ? undefined : again(station.wr);
       quad(el, l, er, rr);
-      idx.push(wl ?? dl, l, el, er, rr, wr ?? dr);
+      if (cone) {
+        // (the wing walls down to the cone's surface: level across the berm, then its 1:1.5 slope to the ground,
+        // then the ground out to the embankment's toe; a straight edge to the toe left a sky-coloured sliver over it)
+        const edge = (sgn: number) => {
+          const out: number[] = [], at = (v: number, zz: number) => push(x + nx * sgn * v, y + ny * sgn * v, zz, concrete, zz);
+          const crest = cone.half + CONE.berm;
+          out.push(at(crest, cone.top));
+          for (let v = crest + 1; v < crest + 300; v += 1) {
+            const g = natural(x + nx * sgn * v, y + ny * sgn * v), zc = coneSurface(cone, 0, v);
+            if (zc <= g) { out.push(at(v, g)); break; }
+            out.push(at(v, zc));
+          }
+          return out;
+        };
+        const left = [l, ...edge(1), wl ?? dl], right = [rr, ...edge(-1), wr ?? dr];
+        for (let k = left.length - 1; k > 0; k--) idx.push(left[k], left[k - 1], el);
+        for (let k = 0; k + 1 < right.length; k++) idx.push(er, right[k], right[k + 1]);
+      } else idx.push(wl ?? dl, l, el, er, rr, wr ?? dr);
       // Retained toes need the lower part of the end cap too, otherwise the bridge
       // transition exposes a hole between the vertical wall and ground under the crown.
       if (wl !== undefined) idx.push(dl, l, wl);

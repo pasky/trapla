@@ -11,7 +11,8 @@
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
-import { hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
+import { planPis } from './plan-speeds';
+import { geometryPis, hairpinFixes, heightSpeeds, hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -99,6 +100,11 @@ function quietNoise(r: Result): Result['noise'] {
   return { ...r.noise, receivers: [], source: null, L: new Float64Array(0), R: new Float64Array(0) };
 }
 
+/** Whether the lineage's last full result fell back to its slowed stretches' own curves (evaluate.ts). */
+export function keptOwnHeights(ctx: EvalContext, d: Design, opts: EvalOptions): boolean {
+  return !!fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts))?.result.ownHeights;
+}
+
 /** A full result evaluated elsewhere (the full worker) becomes a base for windowed previews here. */
 export function adoptFull(terrain: Terrain, result: Result): void {
   if (!result.lineage || result.preview) return;
@@ -170,7 +176,8 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const started = performance.now();
   const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts));
   if (!base) return null;
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
+  const ppis = planPis(ctx.a, ctx.b, d.pis, d.speed, d.category), gpis = geometryPis(d.pis, heightSpeeds(d, opts));
+  const al = buildAlignment(ctx.a, ctx.b, ppis, horizontalRules(d.speed, d.category), bendRules(ppis, d.speed, d.category));
   const st = station(al, STEP), L = al.length, n = st.n, ds = st.ds;
   const range = changedRange(base, d, st, L, al.curves);
   if (!range) return null;
@@ -178,7 +185,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   if ((i1 - i0) * ds > WINDOW_MAX_SHARE * L) return null;
   const s0 = st.s[i0], s1 = st.s[i1];
   const r = base.result, shift = L - r.length, old1 = s1 - shift;
-  const norms = speedNorms(d.speed, d.category), radii = stretchRadii(al, d.pis, d.speed, d.category);
+  const norms = speedNorms(d.speed, d.category), radii = stretchRadii(al, gpis, d.speed, d.category);
   const baseProfile = buildProfile(r.vpis, radii.crest, radii.sag);
   // Heights and grades of the full result's line where the window meets it (the route ends keep theirs).
   const z = elevations(baseProfile, [s0, s0 + 1, old1 - 1, old1]);
@@ -255,6 +262,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     ...(d.pis.some(p => p.hairpin) ? hairpinViolations(al, d.pis, d.speed, d.category, ctx.terrain) : []),
     ...r.violations.filter(v => local1(v) && v.s1 < s0), ...w.violations.filter(local1).map(v => shiftS(v, s0)),
     ...r.violations.filter(v => local1(v) && v.s0 > old1).map(v => shiftS(v, shift))];
+  hairpinFixes(al, d.pis, d.category, ctx.terrain, violations);
   // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
   // message to the main thread).
   const lean = (c: Result['crossings'][number]) => { const { geometry: _g, ...rest } = c; return rest; };
@@ -274,6 +282,14 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   });
   const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...windowCrossings,
     ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
+  // the cones at bridge ends outside the window, where the full result has them (downstream shifted; a preview
+  // builds none in it)
+  const cones = (r.cones ?? []).flatMap(c => {
+    const into = c.i - c.earthCell, s = c.s < s0 - 1e-6 ? c.s : c.s > old1 + 1e-6 ? c.s + shift : NaN;
+    if (Number.isNaN(s)) return [];
+    const i = Math.max(0, Math.min(n - 1, Math.round(s / ds + into / 2))), e = i - into;
+    return e < 0 || e >= n || inWindow(i) || inWindow(e) || kind[i] !== 1 || kind[e] !== 0 ? [] : [{ ...c, s, i, earthCell: e }];
+  });
   const travelMin = travelMinutes(speedStretches(al, d.pis, d.speed, d.category));
   const cost = sumParts(parts);
   return {
@@ -292,7 +308,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     cell: { width: stitch(f64, w.cell.width, r.cell.width), urban: stitch(f32, w.cell.urban, r.cell.urban),
       forest: stitch(f32, w.cell.forest, r.cell.forest), wall: stitch(u8, w.cell.wall, r.cell.wall),
       wallLength: stitch(f64, w.cell.wallLength, r.cell.wallLength), wallArea: stitch(f64, w.cell.wallArea, r.cell.wallArea) },
-    crossings, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], wallsAroundChoices: [], demolished: [], boughtOut: [], kept: [],
+    crossings, cones: cones.length ? cones : undefined, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], wallsAroundChoices: [], demolished: [], boughtOut: [], kept: [],
     noise: quietNoise(w),
     travelMin, valid: false, profileFeasible: w.profileFeasible,
     timing: { ...w.timing, total: performance.now() - started, 'window.length': s1 - s0,

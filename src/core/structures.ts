@@ -21,6 +21,19 @@ export interface Run {
   /** A bridge: how it is built (absent: short spans), its arch, the price of each style that fits it (as
    * billed, for the card), and whether the player chose the style (support-layout). */
   style?: Exclude<BridgeStyle, 'short'>; arch?: BridgeArch; styles?: Partial<Record<BridgeStyle, number>>; styleChosen?: BridgeStyle;
+  /** A bridge weighed for an arch where none fits: why (support-layout archFor): too short or too long a bridge for
+   * one arch, too shallow or too deep a valley for its rise, its rib through the ground, it or its feet on something
+   * below, its approach spans too long, or it would need the road higher. */
+  archMiss?: 'short' | 'long' | 'shallow' | 'deep' | 'ground' | 'blocked' | 'spans' | 'lift';
+  /** A tunnel Auto builds because the cut would be deeper than STRUCTURE_RULES.deepCut: the deepest it would be (m)
+   * and what the open cut would cost against the tunnel (CZK, the structure choice's prices on this grade line). */
+  deepCut?: { depth: number; earth: number; tunnel: number };
+  /** A bridge: how far the cones in front of its abutments reach into it from its start and its end, m (0: none;
+   * abutment-cone.ts): no pier stands on them. */
+  coneReach?: [number, number];
+  /** A bridge: an end at its start / its end whose cone would cover a road, railway or water under it, built as a
+   * closed abutment (a wall down to the ground, no cone; support-layout.ts). */
+  closedEnds?: [boolean, boolean];
 }
 
 export interface StructureInput {
@@ -52,6 +65,8 @@ export interface StructureInput {
   forced?: ArrayLike<number>;
   /** A surface watercourse above a grade a tunnel's height below it keeps a tunnel, not an open cut. */
   forcedTunnel?: ArrayLike<number>;
+  /** Auto builds no open cut deeper than this, m: a tunnel (STRUCTURE_RULES.deepCut); the player may paint one */
+  deepCut?: number;
   /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
   overrides?: ArrayLike<number>;
   /** 1 = a higher-ranking road's deck this road rides (its bridge over that road, built and billed
@@ -113,12 +128,14 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     }
     return tubes * (inp.tunnelFactor ? inp.tunnelFactor(length) : 1) + extra;
   };
+  const locked = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const h = inp.h[i];
     if (h >= rules.bridgeMinHeight && bridgeAt(i) < inp.earthPerM[i]) kind[i] = KIND.bridge;
     else if (-h >= rules.tunnelMinDepth && tunnelAt(i) < inp.earthPerM[i]) kind[i] = KIND.tunnel;
+    // deeper than designers cut: a tunnel whatever the price (kept by the run-level check)
+    if (inp.deepCut !== undefined && -h > inp.deepCut) { kind[i] = KIND.tunnel; locked[i] = 1; }
   }
-  const locked = new Uint8Array(n);
   if (inp.forced) {
     // a forced crossing is bridged over at least the minimum bridge length, centred on it
     const pad = Math.max(1, Math.ceil((rules.minBridgeLength / inp.ds - 1) / 2));
@@ -170,7 +187,10 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       for (let i = r.i0; i <= r.i1; i++) kind[i] = 0;
       continue;
     }
-    runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len, forced: isLocked });
+    let deepest = 0;
+    if (r.kind === KIND.tunnel && inp.deepCut !== undefined) for (let i = r.i0; i <= r.i1; i++) deepest = Math.max(deepest, -inp.h[i]);
+    runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len, forced: isLocked,
+      ...(inp.deepCut !== undefined && deepest > inp.deepCut ? { deepCut: { depth: deepest, earth, tunnel: struct } } : {}) });
   }
   // Manual paint is authoritative: never optimise away or silently extend an invalid request.
   // Rebuild runs for billing, then report the safety constraints rather than repairing the design.
@@ -204,7 +224,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
           continue;
         }
       }
-      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
+      // (a tunnel where Auto would cut deeper than designers do: as above, with the open cut's price)
+      let deepest = 0, earthCost = 0;
+      if (r.kind === KIND.tunnel && inp.deepCut !== undefined && !manual) for (let i = r.i0; i <= r.i1; i++) { deepest = Math.max(deepest, -inp.h[i]); earthCost += inp.earthPerM[i] * inp.ds; }
+      const deep = inp.deepCut !== undefined && deepest > inp.deepCut ? { deepCut: { depth: deepest, earth: earthCost, tunnel: tunnelRunCost(r.i0, r.i1, length, (i) => (i === 0 || i === n - 1 ? 0.5 : 1) * inp.ds) } } : {};
+      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced, ...deep });
       // Do not turn an existing clipped crossing bridge into a new violation merely because
       // the player painted an unrelated range. Validate manual runs and fragments paint shortened.
       const shortened = (r.i0 > 0 && automatic[r.i0 - 1] === r.kind) || (r.i1 + 1 < n && automatic[r.i1 + 1] === r.kind);

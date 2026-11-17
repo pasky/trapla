@@ -21,6 +21,7 @@ import { childControls } from './motorway-commands';
 import { cellLength, landPerM2, surchargeRate } from './cost';
 import { LAND, PRICES } from './data/prices';
 import { KIND } from './structures';
+import { CONE, coneSurface } from './abutment-cone';
 import type { Violation } from './checks';
 import { stationIndex } from './range';
 
@@ -504,6 +505,23 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
       out.overlapFill += fill * len; out.overlapCut += cut * len;
       out.parts.overlapLand += (hi - lo) * len * (landPerM2(u) + f.cell.forest[i] * LAND.forestExtraPerM2 + PRICES.topsoilDepth * PRICES.topsoil * sur);
     }
+  }
+  // the cones at the two directions' bridge ends (abutment-cone.ts), where they overlap between the carriageways:
+  // their fill once
+  for (const a of f.cones ?? []) for (const b of r.cones ?? []) {
+    if (Math.hypot(a.x - b.x, a.y - b.y) > a.length + a.side + b.length + b.side) continue;
+    const G = CONE.grid;
+    let fill = 0;
+    for (let u = G / 2; u < a.length; u += G) for (let v = -a.side + G / 2; v < a.side; v += G) {
+      const x = a.x + a.tx * u - a.ty * v, y = a.y + a.ty * u + a.tx * v, dx = x - b.x, dy = y - b.y;
+      const ub = dx * b.tx + dy * b.ty, vb = -dx * b.ty + dy * b.tx;
+      if (ub < 0 || ub > b.length || Math.abs(vb) > b.side) continue;
+      const g = heightAt(x, y), za = coneSurface(a, u, v), zb = coneSurface(b, ub, vb);
+      if (za > g && zb > g) fill += (Math.min(za, zb) - g) * G * G;
+    }
+    if (fill <= 0) continue;
+    out.parts.overlapEarth += fill * (rf.fill + rf.haul) * (1 + surchargeRate(f.cell.urban[a.earthCell], true));
+    out.overlapFill += fill;
   }
   // a house taken by both directions is bought once
   const taken = new Map<number, number>();

@@ -117,7 +117,8 @@ try {
   bad.wallOverrides = [{ s0: 16200, s1: 16500, side: 'L', height: 0 }];
   await fresh(bad);
   const nv = await T(() => window.trapla.result().violations.length);
-  ok(nv >= 2, `B: the design has ${nv} violations`);
+  // (cost model 39 resolves the track Auto left under its earthworks at km 8.58: the house is the one left)
+  ok(nv >= 1, `B: the design has ${nv} violations`);
   await page.click('#chip-viol'); await idle(700);
   s = await sel();
   ok(!!s && await visible('#inspector .ctx-issue'), `B: the violations chip selects the first one's object (${s?.kind}) with its banner`);

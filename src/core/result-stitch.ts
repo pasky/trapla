@@ -102,6 +102,11 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     ...(r.pierStations ? { pierStations: r.pierStations.map(s => mapS(p, s)) } : {}),
     ...(r.arch ? { arch: { ...r.arch, s0: mapS(p, r.arch.s0), s1: mapS(p, r.arch.s1) } } : {}) })));
   out.runs = [...base.runs.filter(r => list.every(p => r.i1 <= p.i0 || r.i0 >= p.i1)), ...pieceRuns].sort((a, b) => a.i0 - b.i0);
+  // the cones at bridge ends: the spine's outside the pieces, each piece's on the stitched stations (end cell beside)
+  const cones = [...(base.cones ?? []).filter(c => list.every(p => Math.max(c.i, c.earthCell) <= p.i0 || Math.min(c.i, c.earthCell) >= p.i1)),
+    ...list.flatMap(p => (p.piece.cones ?? []).map(c => { const i = toI(p, c.i); return { ...c, i, earthCell: i - (c.i - c.earthCell), s: mapS(p, c.s) }; }))]
+    .filter(c => c.earthCell >= 0 && c.earthCell < n).sort((a, b) => a.s - b.s);
+  if (cones.length) out.cones = cones; else delete out.cones;
   // heights: the spine's grade points outside, each piece's inside (its first and last on the joins)
   const vpiMap = new Map<string, number>();
   const vpis: VPI[] = [];
@@ -138,6 +143,7 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     if (v.horizontal) out.horizontal = { ...v.horizontal, manualRadii: v.horizontal.manualRadii.flatMap(m => { const j = bend(m.pi); return j === null ? [] : [{ ...m, pi: j }]; }) };
     if (v.vpi !== undefined) { const i = vpi(v.vpi); if (i === undefined) delete out.vpi; else out.vpi = i; }
     if (v.target?.wall) out.target = { ...v.target, wall: { ...v.target.wall, s0: s(v.target.wall.s0), s1: s(v.target.wall.s1) } };
+    if (v.target?.auto) out.target = { ...out.target, auto: v.target.auto.flatMap(i => { const j = bend(i); return j === null ? [] : [j]; }) };
     return out;
   };
   const spineSide = (v: Violation) => list.every(p => v.s1 <= base.s[p.i0] + 1e-9 || v.s0 >= base.s[p.i1] - 1e-9) || (v.s0 === v.s1 && outsideS(v.s0));
@@ -263,6 +269,7 @@ export function sliceResult(r: Result, i0: number, i1: number): Result {
     curves: r.curves.filter(c => inS(c.sStart) && inS(c.sEnd)).map(c => ({ ...c, sStart: sh(c.sStart), sEnd: sh(c.sEnd) })),
     violations: r.violations.filter(v => inS(v.s0) || inS(v.s1)).map(v => ({ ...v, s0: Math.max(0, sh(v.s0)), s1: Math.min(r.s[i1] - s0, sh(v.s1)) })),
     crossings: r.crossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s), ...(c.targetS !== undefined ? { targetS: sh(c.targetS) } : {}) })),
+    cones: r.cones?.filter(c => inI(c.i) && inI(c.earthCell)).map(c => ({ ...c, i: at(c.i), earthCell: at(c.earthCell), s: sh(c.s) })),
     waterCrossings: r.waterCrossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s) })),
     footprintConflicts: r.footprintConflicts.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s0: sh(c.s0), s1: sh(c.s1),
       ...(c.allocations ? { allocations: c.allocations.filter(a => inI(a.i)).map(a => ({ ...a, i: at(a.i) })) } : {}) })),

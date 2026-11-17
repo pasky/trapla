@@ -103,6 +103,9 @@ export function createMapPicks(app: MapPickContext) {
   };
   /** what a click at a client point means */
   const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | null => {
+    // a culvert's end (close up: its headwall, wings and apron at the slope's toe, a small target of its own)
+    const culvert = app.extras.culvertAt(clientX, clientY);
+    if (culvert) return { kind: 'culvert', id: culvert.id, s: culvert.s };
     const c = crossingAt(clientX, clientY);
     if (c) return { kind: 'crossing', roadId: c.roadId! };
     const hit = routeAt(clientX, clientY, 10);
@@ -114,7 +117,21 @@ export function createMapPicks(app: MapPickContext) {
     if (b !== null) return { kind: 'building', j: b };
     const w = app.extras.wallAt(clientX, clientY);
     if (w) return { kind: 'stretch', s0: w.s0, s1: w.s1 };
+    // the cone of fill in front of a bridge's abutment (core/abutment-cone.ts): part of that bridge
+    const cone = coneAt(clientX, clientY);
+    if (cone !== null && app.activeRouteId) return { kind: 'route-hit', routeId: app.activeRouteId, s: cone };
     return sourceAt(clientX, clientY);
+  };
+  /** the station of the bridge whose abutment cone is under the pointer, or null */
+  const coneAt = (clientX: number, clientY: number): number | null => {
+    const r = app.last; if (!r?.cones?.length) return null;
+    const g = app.view.pick(clientX, clientY); if (!g) return null;
+    for (const c of r.cones) {
+      const dx = g.x - c.x, dy = g.y - c.y, u = dx * c.tx + dy * c.ty, v = -dx * c.ty + dy * c.tx;
+      const off = Math.max(0, Math.abs(v) - c.half);
+      if (u >= -2 && Math.hypot(Math.max(0, u), off) <= c.reach + 2) return r.s[c.i];
+    }
+    return null;
   };
   return { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt };
 }

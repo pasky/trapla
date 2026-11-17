@@ -125,7 +125,7 @@ async function main() {
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
   const profileCanvas = document.getElementById('profile-canvas') as HTMLCanvasElement;
   const profile = new ProfilePanel(profileCanvas);
-  const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo());
+  const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo(), (step) => step === 'undo' ? store.undoLabel() : store.redoLabel());
   addScenariosButton(document.getElementById('editbar')!);
   installToolbarFit(document.getElementById('view')!);
   const hud = new Hud(document.getElementById('hud')!, scenario);
@@ -225,7 +225,7 @@ async function main() {
   decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });
-  annotations.onCulvert = (s) => selectPiece(s);
+  annotations.onCulvert = (id, s) => select({ kind: 'culvert', id, s });
 
   // ---- evaluation: what happens with the workers' results (ui/result-display.ts) ----
   const results = createResultDisplay({
@@ -240,7 +240,7 @@ async function main() {
   // on-map radius handles for the selected bend (grips, + / −)
   const curveEdit = new CurveEditor(view, document.getElementById('overlay')!, pack.terrain, {
     get a() { return ends.a; }, get b() { return ends.b; }, design: () => store.design, selected: () => selectedPi(), result: () => session.last,
-    setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
+    setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) { d.pis[i].r = r; delete d.pis[i].mapped; } }, commit),
     commit: () => store.commit(),
   });
 
@@ -317,7 +317,7 @@ async function main() {
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }
   projectScore(true);
-  editBar.set(store.undoLabel(), store.redoLabel());
+  editBar.set(projectStore.canUndo(), projectStore.canRedo());
   setStatus('computing…');
   requestEval();
 

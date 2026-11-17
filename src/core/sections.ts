@@ -7,7 +7,7 @@ import { NORM_CAP_I, NORM_CAP_II, UNKNOWN_GROUND, type GroundProfile } from './g
 type Bands = Pick<GroundProfile, 'classIto' | 'classIIto' | 'normMix' | 'key'>;
 import type { Terrain } from './terrain';
 import { SIDE_SLOPES, SUBGRADE } from './data/prices';
-import { treatedSubgrade } from './earthengineering';
+import { rockSlope, treatedSubgrade } from './earthengineering';
 
 export interface SectionTemplate {
   crownWidth: number;
@@ -121,8 +121,8 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       else { n = S.fillToe; hold = Infinity; }
     } else {
       if (typeof bands === 'function') g = bands(o0 + 0.01); // the ground the face's foot stands in
-      const rockFrom = g.normMix ? Infinity : g.classIIto;
-      if (-d0 > rockFrom + 1e-6) { n = S.cutRock; hold = -d0 - rockFrom; rock = true; } else { n = soil; hold = Infinity; }
+      const rockN = rockSlope(g), rockFrom = g.normMix || rockN === 'soil' ? Infinity : g.classIIto;
+      if (-d0 > rockFrom + 1e-6) { n = rockN as number; hold = -d0 - rockFrom; rock = true; } else { n = soil; hold = Infinity; }
       const every = rock ? S.rockBenchEvery : S.soilBenchEvery;
       if (since >= every - 1e-9) bench = true; else if (every - since < hold) hold = every - since;
     }
@@ -138,7 +138,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       const od = o0 + t * (o - o0);
       // triangle from o0 to daylight
       if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); addBands(out, g, o0, d0, od, 0); }
-      if (rock && !bench) out.rockFace += t * Math.hypot(o - o0, rise);
+      if (rock && !bench && n < S.rockFaceSteepest) out.rockFace += t * Math.hypot(o - o0, rise);
       out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
       out.day = od; out.zDay = out.zSlope = zs + (zFace - zs) * t;
       if (isFill && height > SUBGRADE.fromHeight && treatedSubgrade(height, typeof bands === 'function' ? bands(od / 2) : bands)) out.subgrade = od;
@@ -146,7 +146,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       return out;
     }
     if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); addBands(out, g, o0, d0, o, d); }
-    if (rock && !bench) out.rockFace += Math.hypot(o - o0, rise);
+    if (rock && !bench && n < S.rockFaceSteepest) out.rockFace += Math.hypot(o - o0, rise);
     since = bench ? 0 : since + rise;
     o0 = o; d0 = d; zs = zFace;
     if (trace) trace.push(o, zs);

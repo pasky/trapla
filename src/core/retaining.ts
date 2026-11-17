@@ -14,6 +14,7 @@ import { subtract, type FootprintConflict } from './footprint';
 import { KIND } from './structures';
 import { barrelContains, barrelIntervals, culvertEnvelope, waterWidth, type BarrelEnvelope, type WaterCrossing, type WaterSegment } from './watercourses';
 import { planChannelRelocations, type ChannelHit, type ChannelRelocation } from './channel-relocation';
+import { capsuleTest, type KeepClear } from './keep-clear';
 
 export interface RetainingWall {
   i: number; s0: number; s1: number; side: 'L' | 'R'; offset: number;
@@ -107,7 +108,9 @@ interface RetainingBarrel { c: WaterCrossing; i: number; left: number; right: nu
 /** Source-way chainages where an existing road crosses the route centreline. */
 export type CrossingChainages = ReadonlyMap<number, readonly number[]>;
 
-export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache, waterElevation?: ReadonlyMap<WaterCrossing, number>, crossingWays?: CrossingChainages, buildings?: RetainingBuildings): RetainingPlan {
+export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache, waterElevation?: ReadonlyMap<WaterCrossing, number>, crossingWays?: CrossingChainages, buildings?: RetainingBuildings,
+  /** another road of the project's works our slopes keep clear of (KeepClear `wall`; project-ledger.ts) */
+  keepOff?: KeepClear): RetainingPlan {
   const { n, ds } = r;
   // the buildings worth a wall, from the sections before any wall (every pass starts from them)
   const buildingWalls = buildings ? wallBuildings(r, terrain, buildings) : undefined;
@@ -119,7 +122,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     const envelope = culvertEnvelope(c, r.dayL[i], r.dayR[i], ds, r.tx[i], r.ty[i], cover);
     return envelope ? [{ c, i, left: r.dayL[i], right: r.dayR[i], cover, envelope }] : [];
   });
-  if (!barrels.length) return retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays, buildingWalls);
+  if (!barrels.length) return retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays, buildingWalls, 0, keepOff);
   // Road/water walls can shorten a crossing's barrel footprint. Re-screen its ownership
   // against the shortened sections, rebuilding from the untouched input so quantities and
   // wall costs are never applied twice. Side-width limits only shrink; the final screen
@@ -134,7 +137,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     }
   };
   for (let attempt = 0; attempt < 3; attempt++) {
-    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays, buildingWalls, attempt);
+    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays, buildingWalls, attempt, keepOff);
     let changed = false;
     barrels = barrels.flatMap(b => {
       const left = Math.min(b.left, r.dayL[b.i]), right = Math.min(b.right, r.dayR[b.i]);
@@ -150,11 +153,11 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
   }
   // Bound coupled wall/ownership retries. If they do not settle, no hypothetical barrel
   // can waive a constraint: retain/bridge the feature and let the final screen validate it.
-  return retainingPass(r, terrain, roads, overrides, water, cache, [], crossingWays, buildingWalls, 3);
+  return retainingPass(r, terrain, roads, overrides, water, cache, [], crossingWays, buildingWalls, 3, keepOff);
 }
 
 function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | undefined, overrides: ArrayLike<number> | undefined,
-  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[], crossingWays?: CrossingChainages, buildingWalls?: BuildingWalls, attempt = 0): RetainingPlan {
+  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[], crossingWays?: CrossingChainages, buildingWalls?: BuildingWalls, attempt = 0, keepOff?: KeepClear): RetainingPlan {
   const { n, ds } = r, w = r.crownWidth / 2;
   const forcedBridge = new Uint8Array(n), forcedTunnel = new Uint8Array(n), perCell = new Float64Array(n), landPerCell = new Float64Array(n);
   const wallSurfaceL = new Float64Array(n).fill(NaN), wallSurfaceR = new Float64Array(n).fill(NaN);
@@ -369,6 +372,25 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     if (cache) kept.made = { owned: owned.map(o => [o[0], o[1]]), events };
   }
   if (buildingWalls) requests.push(...buildingWalls.requests);
+  // Another road of the project's works (KeepClear `wall`, project-ledger.ts): our slope stops the working strip
+  // short of them, behind a wall (not replayed with a station's events: no memo reads it)
+  if (keepOff?.length) {
+    const near = capsuleTest(keepOff), feature: RetainingWall['feature'] = keepOff.some(c => c.railway) ? 'railway' : 'road';
+    // (a piece of road is as wide as its wider end there, project-ledger.ts envelope: this station's slope is
+    // also tried from its neighbours)
+    for (let i = 1; i < n - 1; i++) for (const side of [1, -1]) {
+      const day = side > 0 ? r.dayL[i] : r.dayR[i];
+      let limit = NaN;
+      for (const k of [i - 1, i, i + 1]) {
+        const nx = -r.ty[k] * side, ny = r.tx[k] * side;
+        for (let o = w; o <= day && !(o > limit); o += 0.5) {
+          const p = { x: r.x[k] + nx * o, y: r.y[k] + ny * o };
+          if (near(p, p, 0)) { limit = Number.isNaN(limit) ? o - 0.5 : Math.min(limit, o - 0.5); break; }
+        }
+      }
+      if (limit >= w && limit < day - 0.05) requests.push({ i, side, limit, feature, constrained: false, crossing: 0, cap: Infinity });
+    }
+  }
   const walledBuildings = buildingWalls?.walled ?? [];
   const channelRelocations = planChannelRelocations(r, terrain, roads, [...channelHits.values()], water).filter(channel => {
     if (unretainable.has(channel.id)) return true;

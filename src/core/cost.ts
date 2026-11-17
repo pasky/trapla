@@ -96,6 +96,10 @@ export function surchargeRate(urban: number, divided = false): number {
     + (divided ? PRICES.technologySurcharge : 0);
 }
 
+/** The surcharge on a crossing structure's construction (SPK other objects, a railway's bridge markup):
+ * what a line bills on top of a crossing's own price. */
+export const structureSurcharge = (cat: Category, urban: number): number => cat.markup ? cat.markup.bridge : surchargeRate(urban);
+
 /** whether a category's own objects carry B.6 technology (motorways) */
 export const dividedRoad = (cat: Category) => cat.mode === 'motorway';
 
@@ -206,6 +210,11 @@ export interface StationCostInput {
   extraRoadPerM?: ArrayLike<number>;
   /** 1 = a tunnel cell built cut and cover (structures.ts cutCoverMask) */
   cutCover?: ArrayLike<number>;
+  /** The cones of fill in front of the abutments (abutment-cone.ts): their fill, m³, in the earth cell beside each
+   * bridge end (it is the end of that embankment), and their paving and toe sill, CZK, in the bridge's end cell
+   * (the bridge object, as a bill of quantities has it). */
+  coneFill?: ArrayLike<number>;
+  conePaving?: ArrayLike<number>;
 }
 
 /**
@@ -234,6 +243,7 @@ export function costParts(inp: StationCostInput): CostParts {
       if (r.regradeM3) { parts.bridges[r.i0] += r.regradeM3[0] * EXCAVATION_BY_CLASS.II; parts.bridges[r.i1] += r.regradeM3[1] * EXCAVATION_BY_CLASS.II; }
     }
   }
+  if (inp.conePaving) for (let i = 0; i < n; i++) parts.bridges[i] += inp.conePaving[i];
   // volumes per cell
   const cutV = new Float64Array(n), fillV = new Float64Array(n);
   let cut = 0, fill = 0;
@@ -241,7 +251,7 @@ export function costParts(inp: StationCostInput): CostParts {
     if (inp.kind[i] !== KIND.earth) continue;
     const len = cellLength(i, n, ds);
     cutV[i] = (inp.cutI[i] + inp.cutII[i] + inp.cutIII[i]) * len;
-    fillV[i] = inp.fill[i] * len;
+    fillV[i] = inp.fill[i] * len + (inp.coneFill?.[i] ?? 0);
     cut += cutV[i]; fill += fillV[i];
   }
   const h = inp.haul;
@@ -290,9 +300,9 @@ export function costParts(inp: StationCostInput): CostParts {
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
     parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
     const mk = cat.markup;
-    parts.surcharge[i] = !mk ? construction * surchargeRate(u, divided) + structure * surchargeRate(u)
-      : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth + structure * mk.bridge
-        : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel) + structure * mk.bridge;
+    parts.surcharge[i] = (!mk ? construction * surchargeRate(u, divided)
+      : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth
+        : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel)) + structure * structureSurcharge(cat, u);
     parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
     parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;

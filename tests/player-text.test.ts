@@ -8,7 +8,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   trackEndViolations, verticalViolations, VIOLATION_KINDS } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, culvertCard, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
@@ -49,6 +49,13 @@ describe('player-facing text', () => {
       check(`house card, decided together (${together.decision})`, text.state); check(`house card, decided together (${together.decision})`, text.why);
     }
     for (const g of COST_GROUPS) check('bill line', g.label);
+    // a stream culvert's card: pipe, frame, buried bridge, under each kind of line
+    for (const size of [{ type: 'pipe', width: 1, height: 1 }, { type: 'box', width: 4, height: 2.5 }, { type: 'box', width: 2, height: 2, buried: true }] as const)
+      for (const line of ['road', 'motorway', 'railway'] as const) {
+        const card = culvertCard({ size, length: 42.3, h: 14.2, q100: 2.7, catchmentKm2: 0.9, truncated: true, frameCover: 7, vaultSpan: 3.5 }, line);
+        for (const text of [card.title, card.state, ...card.why, ...card.more]) { expect(text.trim()).not.toBe(''); check(`culvert card ${size.type} ${line}`, text); }
+        if (line !== 'road') expect([...card.why, ...card.more].join(' ')).not.toMatch(/our road/);
+      }
     // the cards of the mission ends (interchanges, roads joined): every mission's, both ends
     let ends = 0;
     for (const sc of PRESETS) check(`${sc.id} photo note`, sc.photoNote);

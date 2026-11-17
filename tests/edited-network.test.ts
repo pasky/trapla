@@ -69,7 +69,7 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     expect(side.kind[k]).toBe(1); // its own deck over our road
     expect(side.violations.filter(v => v.kind === 'crossing')).toEqual([]);
     // what the crossing builds (deck and ramps) is not billed again in the side road's own bill
-    const credit = r.works.items.find(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))!;
+    const credit = r.works.items.find(w => w.owner.id === 'side' && /pays for its bridge over/.test(w.label!))!;
     expect(credit.cost).toBeLessThan(0);
   });
   // D11 Nový Rokytník: a street over our road's cutting rides the owner's deck at ground level. That deck is
@@ -92,7 +92,7 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     }
     expect(side.kind[Math.round((250 - side.y[0]) / side.ds)]).toBe(1);
     expect(side.violations).toEqual([]);
-    expect(r.works.items.some(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))).toBe(true);
+    expect(r.works.items.some(w => w.owner.id === 'side' && /pays for its bridge over/.test(w.label!))).toBe(true);
   });
   it('a crossing choice on it is stored on that road and our bridge keeps it low enough under us', () => {
     const { ctx, project, mission } = fixture();
@@ -165,11 +165,11 @@ describe('the edited network follows the project as it is now', () => {
     const alone = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
     expect(alone.complete).toBe(true);
     expect(alone.buildings.filter(b => b.action === 'demolish')).toMatchObject([{ buildingIndex: 0, routeId: mission }]);
-    // a new road that ends nowhere keeps the project unpriced; it stands on a house too
-    project.routes.push(road('side', [300, 420], [900, 420]));
+    // a new road on a house, and another too close to it (the engine does not design two roads that close
+    // together yet: not priced)
+    project.routes.push(road('side', [300, 420], [900, 420]), road('other', [300, 436], [900, 436]));
     const r = evaluateProject(ctx, { epoch: 'e', revision: 2, design: project });
     expect(r.complete).toBe(false); expect(r.cost.total).toBeNull();
-    expect(r.issues.map(i => i.code)).toContain('road-ends-nowhere');
     const gone = r.buildings.filter(b => b.action === 'demolish');
     expect(gone).toMatchObject([{ buildingIndex: 0, routeId: mission }, { buildingIndex: 1, routeId: 'side' }]);
     expect(gone.every(b => b.cost > 0)).toBe(true);
@@ -282,7 +282,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
     const A = { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1] }, B = { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1] };
     const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: 'd11', packId: pack.meta.id, objectData, transportData: fingerprint });
-    const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) }, lc);
+    // (since cost model 39 Auto's line runs ≈ 12 m higher here, over the track on a bridge; two pins at model 38's
+    // heights keep the setting of these cases: our road 2 m over the track, which it reroutes)
+    const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}), gradePins: [{ s: 4100, z: 441.1 }, { s: 4300, z: 432 }] }, lc);
     const index = new ProjectTransportIndex(graph, fingerprint, graph.vectorData, pack.terrain, pack.census);
     const ctx: ProjectEvalContext = { legacy: { terrain: pack.terrain, scenario, a: A, b: B, buildings: pack.buildings, roads: pack.roads },
       environment: { objectData, transportData: fingerprint, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' },
@@ -312,11 +314,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // to the rest of its old track is ours alone (no "two roads change the same old road")
     // ... and a quarter along, bent 60 m away from our road: it now crosses another track at a junction whose
     // drawn ends are that track as it is (not works beside our reroute). Bent 60 m towards our road it runs
-    // 3 m from our embankment (a real conflict, with its concrete fix); 45 m towards it, it keeps clear.
+    // 1 m from our embankment (a real conflict, with its concrete fix; 3 m before cost model 39); 45 m towards it, it keeps clear.
     const { nearestLeg } = await import('../src/core/horizontal');
     const quarter = (interval.s1 - interval.s0) / 4;
     for (const [at, off, shared] of [[10, -60, []], [21, -60, []], [quarter, -60, []], [quarter, 45, []],
-      [quarter, 60, ['Move one of them about 7 m away here']]] as [number, number, string[]][]) {
+      [quarter, 60, ['Move one of them about 9 m away here']]] as [number, number, string[]][]) {
       const near = structuredClone(edited), q = near.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
       const g = index.position(track.id, interval.s0 + at)!, g2 = index.position(track.id, interval.s0 + at + 5)!, tl = Math.hypot(g2.x - g.x, g2.y - g.y);
       q.alignment.pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis, g), 0, { x: g.x - (g2.y - g.y) / tl * off, y: g.y + (g2.x - g.x) / tl * off, r: null });
@@ -342,7 +344,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
     const A = { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1] }, B = { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1] };
     const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: 'd11', packId: pack.meta.id, objectData, transportData: fingerprint });
-    const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) }, lc);
+    // (since cost model 39 Auto's line runs ≈ 12 m higher here, over the track on a bridge; two pins at model 38's
+    // heights keep the setting of these cases: our road 2 m over the track, which it reroutes)
+    const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}), gradePins: [{ s: 4100, z: 441.1 }, { s: 4300, z: 432 }] }, lc);
     const index = new ProjectTransportIndex(graph, fingerprint, graph.vectorData, pack.terrain, pack.census);
     const ctx: ProjectEvalContext = { legacy: { terrain: pack.terrain, scenario, a: A, b: B, buildings: pack.buildings, roads: pack.roads },
       environment: { objectData, transportData: fingerprint, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' },

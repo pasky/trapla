@@ -7,6 +7,7 @@ import './curve-edit.css';
 import { bendRules, horizontalRules } from '../core/data/norms';
 import type { Design, Result } from '../core/evaluate';
 import { buildAlignment, pointAt, type Alignment, type Vec2 } from '../core/horizontal';
+import { planPis } from '../core/plan-speeds';
 import type { Terrain } from '../core/terrain';
 import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
@@ -121,7 +122,12 @@ export class CurveEditor {
       if (this.drag && now !== this.drag.design) this.drag.abort(false);
       else if (this.drag && i !== this.drag.i) this.drag.abort(true);
     }
-    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
+    // (an old road's own curve that the line now builds anew is Auto's, as the evaluation has it: core/project-kept.ts;
+    // as built: a slowed bend may keep a faster curve, core/plan-speeds.ts)
+    const curves = this.host.result()?.curves;
+    const pis = d.pis.map((p, k) => p.mapped && curves?.find((c) => c.index === k)?.auto ? { ...p, r: null } : p);
+    const ppis = i === null ? pis : planPis(this.host.a, this.host.b, pis, d.speed, d.category);
+    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, ppis, horizontalRules(d.speed, d.category), bendRules(ppis, d.speed, d.category));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
     if (!info || !this.al || i === null) { this.place(); return; }
@@ -137,13 +143,13 @@ export class CurveEditor {
       this.inward = { x: -mid.ty * c.dir, y: mid.tx * c.dir };
       this.anchors = [at(c.sStart), at(c.sEnd), at((c.sStart + c.sEnd) / 2)];
       const u = this.al.units[c.unit];
-      const manual = d.pis[i].r !== null;
+      const manual = pis[i].r !== null;
       this.text.textContent = `R ${num(c.rEff)} m`;
       const parts: string[] = [];
       if (c.rEff < c.r - 0.5) parts.push(`wanted ${num(c.r)} m — no room`);
       if (u.last > u.first) parts.push(`one curve with bend${u.last - u.first > 1 ? 's' : ''} ${listOthers(u.first, u.last, i)}`);
       if (u.maxOffset > 0.5) parts.push(`up to ${u.maxOffset.toFixed(1)} m off the straights between bends`);
-      this.sub.textContent = [manual ? 'set by you' : 'auto', ...parts].join(' · ');
+      this.sub.textContent = [!manual ? 'auto' : pis[i].mapped ? 'the old road’s' : 'set by you', ...parts].join(' · ');
       this.autoBtn.disabled = !manual;
       this.maxBtn.style.display = this.autoBtn.style.display = '';
     } else {

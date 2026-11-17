@@ -27,14 +27,21 @@ function fixture(buildings?: BuildingIndex) {
   return { ctx, snapshot, side };
 }
 
-it('does not price a road that ends nowhere, but keeps both roads\' own bills and problems visible', () => {
+// Owner's decision (2026-11-17): an end the player left unconnected is the player's problem, priced and not valid;
+// "not priced" is for what the engine cannot do yet.
+it('prices a road that ends nowhere and calls it not valid, at each free end', () => {
   const { ctx, snapshot, side } = fixture();
   snapshot.design.routes.push(side);
   const project = evaluateProject(ctx, snapshot), [main] = snapshot.design.routes;
-  expect(project.cost.total).toBeNull(); expect(project.valid).toBe(false); expect(isScorableProject(project)).toBe(false);
-  expect(project.cost.unpriced).toEqual([{ routeId: 'side', reason: 'road-ends-nowhere' }]);
+  expect(project.cost.unpriced).toEqual([]);
+  expect(project.cost.total).toBeCloseTo(project.routes[main.id].legacy!.cost.total + project.routes.side.legacy!.cost.total, 0);
+  expect(project.valid).toBe(false); expect(project.routes.side.valid).toBe(false); expect(project.routes[main.id].valid).toBe(true);
   expect(project.cost.alone).toEqual({ [main.id]: project.routes[main.id].legacy!.cost.total, side: project.routes.side.legacy!.cost.total });
-  const nowhere = project.issues.find(i => i.code === 'road-ends-nowhere')!;
+  const ends = project.issues.filter(i => i.code === 'road-ends-nowhere');
+  expect(ends.map(i => [i.blocking, i.violation.fix, i.locations[0].s0])).toEqual([['invalid', 'Connect this end to a road', 0],
+    ['invalid', 'Connect this end to a road', project.routes.side.legacy!.length]]);
+  expect(ends[0].at).toEqual({ x: 100, y: 450 });
+  const nowhere = ends[0];
   expect(nowhere.scope.routeIds).toEqual(['side']);
   for (const text of [nowhere.violation.title, nowhere.violation.fix]) expect(jargonIn(text, true)).toEqual([]);
   expect(jargonIn(nowhere.violation.rule, false)).toEqual([]);
@@ -130,4 +137,23 @@ it('lets a house near the limit belong to one road only; a second road must stay
   expect(other).toBeCloseTo(-INDEPENDENCE_SCREEN.noiseMargin - INDEPENDENCE_SCREEN.noiseTolerance, 2);
   // What the rule neglects is reported, never hidden: N roads × margin below each limit.
   expect(screen(50000).omittedDayEnergy).toBeCloseTo(2 * 10 ** ((NOISE.limitDayDb - 20) / 10), 6);
+});
+
+// QA sweep 3: two lines each carrying one track over themselves 500 m apart along it were "two roads change the
+// same old road" (an engine limit, not priced); changes of one way that reach each other still are.
+it('two changes of one old road conflict only where they reach each other along it', async () => {
+  const { screenIndependence } = await import('../src/core/project-ledger');
+  const road = (y: number, crossings: unknown[]) => {
+    const n = 101, x = Float64Array.from({ length: n }, (_, i) => i * 10);
+    return { n, x, y: new Float64Array(n).fill(y), kind: new Uint8Array(n), dayL: new Float64Array(n).fill(8), dayR: new Float64Array(n).fill(8),
+      cell: { width: new Float64Array(n).fill(16) }, crossings, footprintConflicts: [], demolished: [], boughtOut: [], kept: [],
+      noise: { receivers: [] } } as unknown as import('../src/core/evaluate').Result;
+  };
+  // a track along x = 500, carried over each road on its own bridge and ramps (100 m of it each side)
+  const over = (y: number) => ({ type: 'overbridge', roadId: 7, x: 500, y, s: 500, i: 50, cls: 'track', span: 20, approachLength: 180, cost: 1 });
+  const op = { aadt: 100, speed: 90, heavyShare: 0.1, halfWidth: 4.75 };
+  const screen = (gap: number) => screenIndependence([{ routeId: 'a', result: road(0, [over(0)]), ...op }, { routeId: 'b', result: road(gap, [over(gap)]), ...op }], undefined)
+    .interactions.map(i => i.reason);
+  expect(screen(500)).toEqual([]);
+  expect(screen(150)).toEqual(['shared-road']);
 });
