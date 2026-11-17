@@ -833,7 +833,16 @@ Research: research/65.
   closed everywhere), a way left as it is under our bridge or over our tunnel is neither our works nor a change of
   that way, and one road on its bridge ≥ 6 m above the other's works there shares no land with it. Two lines that
   both change one old road (QA's railway across ours and the track at km 12.05, the D11 new road and road I/14,
-  the final sweep's new road over the railway viaduct) stay unpriced: an engine limit.
+  the final sweep's new road over the railway viaduct) stayed unpriced: an engine limit. Cost model 40: two changes
+  of one old road conflict only where they reach each other along it (each change's ramps, box or cut piece; a
+  reroute's junction, `ENDPOINT_JUNCTIONS['tie-in'].zone`); further apart each road rebuilds its own piece. Those
+  projects are priced now (D11 new road 8.55 bn, QA's railway 9.68 bn, the final sweep's road 11.70 / railway
+  18.57 bn, all NOT VALID by their free ends only). Where changes do overlap it stays unpriced: the newer edit
+  taking the old road over there (as the player's road does from an automatic reroute) is the next step.
+- **One drag of a mapped road** (playtest of these fixes): grabbing III/3012 80 m further on and dragging 40 px took
+  its old corner along, which, built anew, merged with the next bend into one curve too sharp. The bend the
+  converting drag moves is fitted on release like one it places, and the fit also moves a bend off a too-sharp
+  merge (core/bend-fit.ts). Left: that drag still crosses a track at km 0.1 with no place to reconnect it.
 - **Review fixes**: a held line is held at least the owner's clearance over it (7.5 m over a railway; the crossing
   engine's deck sat 6 m up); a railway's drag preview follows the crossings others built with it; a rebuilt
   stretch's plan line in other roads' networks yields its old corners to Auto as its kernel does; a held road's own
