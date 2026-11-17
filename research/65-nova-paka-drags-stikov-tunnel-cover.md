@@ -154,3 +154,13 @@ portal stretches.
 
 **(c) The research/63 split** stays as recorded there (an ŘSD estimate, our own non-tunnel price, a different
 alignment).
+
+## 5. After the owner's decisions (2026-11-17)
+
+- Geometry: option (c), the editor lowers a set radius a drag leaves too large (`core/fit-radii.ts`); side roads:
+  a crossed side road within 25 m of its old junction is re-joined there. The 24-drag table, as the editor drags:
+  **6 / 0 / 0** invalid (bend 3: 4 × the stream's head under our toe, 2 × the residential street at km 1.5).
+- Rock cover (§4b): not implemented. Only one Czech price book (OTSKP) prices excavation by class; the whole-price
+  factor rests on assumed support quantities; Hessen's chart is a published cost-by-cover table but against a deep
+  VKL 3–4 reference, and its spread (≈ 0.74) disagrees with the Czech derivation (≈ 0.82). Below the bar of two
+  independent price points or a class-by-cover cost table on SPK's base.

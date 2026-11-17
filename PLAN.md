@@ -775,6 +775,27 @@ Research: research/65.
   - That factor is recorded as a proposal and not implemented. It would remove ≈ 0.8–1.0 bn of the 3.3 bn D35
     gap.
 
+### A drag lowers a set radius to fit; side roads re-joined (2026-11-17, after cost model 37)
+
+- **The editor fits hand-set radii during a bend drag** (owner's decision (c), research/65 §1): where the drag
+  leaves a set radius too large for the room between its bends, that radius is lowered just enough, live — the
+  dragged bend first, then the nearer neighbour, else both in proportion; to the editing step; never below the
+  rules' minimum (then the problem and its fix stay) — and goes back up as room returns within the drag. The bend
+  card says "Your radius, lowered from 400 m to 340 m to fit between its neighbours." (`core/fit-radii.ts`,
+  `ui/radius-notes.ts`; ≈ 0.7 ms a move on Nová Paka; Auto radii take the fast path). `small-drag-audit.ts` drags as
+  the editor does (`--raw`: without).
+- **A side road re-joined**: a rebuilt stretch beside our earthworks that crosses a side road within 25 m of the
+  side road's old junction joins it there (game limit; the stub between goes where no other road joins it), instead
+  of failing as "it would cut off a side road".
+- **Nová Paka 24 drags: invalid 11 / 15 / 7 → 6 / 0 / 0** (radii lowered by at most 8 / 80 and 45 / 5 m). The 6
+  left at bend 3: a stream's head 1 m under our toe (4) and the residential street at km 1.5 where its rebuilt line
+  would cross another road on a ramp or misses its east junction (2).
+- **Rock-cover factor for tunnels: left proposed.** The owner's bar (≥ 2 independent price points or a published
+  class-by-cover cost table) is not met: OTSKP 2026 is one price book (excavation items by class), the whole-price
+  factor is a derivation with assumed support quantities, and Hessen's cost-by-cover chart is relative to a deep
+  VKL 3–4 reference, not SPK's TT4, and its spread (deep / 10–20 m ≈ 0.74) disagrees with the Czech derivation
+  (≈ 0.82).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
