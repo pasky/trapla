@@ -38,11 +38,13 @@ try {
   await shot('lowered-local-road-card');
   await T(c => { window.trapla.lookAt(c.x, c.y, 110, 125, 12); }, box); await idle();
   await shot('lowered-local-road-portal');
-  const track = start.lowered.find(c => c.cls === 'track');
-  if (track) {
-    await T(c => { window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, 240, 210, 30); window.trapla.profileFocus(c.s - 250, c.s + 250); }, track); await idle();
-    await shot('lowered-track-oblique');
-  }
+  // another lowered way of the start line, seen from the side (a track, if it has one)
+  const other = start.lowered.find(c => c.cls === 'track') ?? start.lowered.find(c => c.roadId !== box.roadId);
+  if (other) {
+    await T(c => { window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, 240, 210, 30); window.trapla.profileFocus(c.s - 250, c.s + 250); }, other); await idle();
+    console.log('OTHER LOWERED', other.roadId, other.cls, other.lowered);
+    await shot('lowered-way-oblique');
+  } else { console.log('SKIPPED: the start line lowers one way only'); number++; }
   // the player overrides: cut and reroute the local road (a railway lies between it and the next crossing)
   await T(c => window.trapla.selectCrossing(c.roadId), box); await idle();
   await page.click('#crossing-choice [data-crossing="reconnection"]'); await idle();

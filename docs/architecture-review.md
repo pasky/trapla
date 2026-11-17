@@ -48,7 +48,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 16 | Engineering numbers outside `data/` (clearances, ramp limits, side slopes, a default design speed in `ui/`) | medium | low | sequence (list in § Data) |
 | 17 | `View` is a 1,720-line class; `ProfilePanel.paint()` 400 lines; `Inspector` builds every card | medium | medium | next, when touched |
 | 18 | Station-index clamp written out 25 times in 15 files | low | none | next: `stationIndex(r, s)` |
-| 19 | Test wall time is one 16 s test (`player-text`: every violation kind) | low | none | next |
+| 19 | Test wall time is one 16 s test (`player-text`: every violation kind) | low | none | done: four real-pack shards; the next longest file is `edited-network` (13.5 s alone) |
 | 20 | Orphan "foundation" modules only tests import (307 lines), unused contract surface | low | none | owner |
 | 21 | `data/scenario.ts` mixes scenario content (presets with their bends) with engine thresholds | low | low | next, when scenarios grow |
 | 22 | `Result` is one flat interface of ≈ 100 fields (geometry arrays, bill, UI extras) | medium | high | later, with #4 |
@@ -107,7 +107,8 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
     what they show (a road moved beside ours, a way Auto straightens, a side road regraded to a junction
     / a ramp, a walled crossing, a reconnection to shape, a way crossed more than once), so a model change
     picks other ways instead of failing; where the model no longer does a thing at all the script says
-    SKIPPED. Their pictures in `docs/screenshots` (110–119, 150–156, 170–176) are still the old models'.
+    SKIPPED. Their pictures in `docs/screenshots` (111–119, 150–156, 170–175) were retaken on model 31 and
+    the README's captions say what they show now (110, 112, 114 stay: the code before model 19).
   - `violations.mjs` scrolled the HUD while the HUD's own smooth scroll to the selected card was running
     (one run in six framed the list, five the card): it waits for the HUD to rest, then scrolls.
 - Seen while repairing them, not changed: on the D3 motorway starter Auto straightens no skewed way any
@@ -333,8 +334,16 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   is next changed (the route cards moved out of main.ts are the example).
 - The clamp `Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)))` appears 25 times in 15 files: one
   `stationIndex(r, s)` in `core/range.ts` (same arithmetic, so bit-identical).
-- Test wall time (17 s on 24 threads) is `tests/player-text.test.ts` alone (16 s in one `it`): split it
-  per violation family and the suite takes ≈ 10 s. UI modules have no unit tests (no DOM in vitest); the
+- Test wall time was `tests/player-text.test.ts` alone (16.7 s in a worker of its own, 16 s of it one `it`).
+  Its real-pack designs are four files now (`player-text-pack-1…4.test.ts`, each a call of
+  `packShardSuite(k)` in `tests/player-text-helpers.ts`), which run side by side: the five files take 6.6 s
+  together. Each shard fails without the violation kinds it answers for; `player-text.test.ts` checks that
+  those and the synthetic cases cover every kind, and that the shards force every crossing choice.
+  What it buys depends on the host: with a core per file the suite's longest file is now
+  `edited-network.test.ts` (13.5 s alone; then `noise-stages` 8.6 s), so ≈ 17 s → ≈ 14 s; **on this host at
+  load 20 the suite takes 25 s before and after** (every file slows down together, and four more workers
+  load the pack: the files' times sum to ≈ 230 s instead of ≈ 160 s). The real limit now is the amount of
+  real-pack evaluation in the suite (≈ 10 files of 6–14 s), not one test. UI modules have no unit tests (no DOM in vitest); the
   modules moved out of main.ts take their dependencies as an interface, so they can be tested with a fake
   context once a DOM (happy-dom) is added.
 

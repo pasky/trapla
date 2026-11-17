@@ -44,7 +44,7 @@ Other commands:
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, selections / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
-| `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp, a retaining wall) and picking a reroute; screenshots 110–116 |
+| `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp) and picking a reroute; screenshots 110–116 |
 | `node scripts/link-shape-shots.mjs` | shaping a reroute with the mouse; screenshots 117–119 |
 | `node scripts/lowered-underpass-shots.mjs` | player pass over lowered underpasses and engineered reroutes (real clicks, card text checked); screenshots 150–156 |
 | `node scripts/camera-check.mjs [--shots dir]` | the map camera with real mouse input (low views, Voletiny zoom, pans off the map, *Whole route*, overprinted labels); screenshots 157–159 |
@@ -316,11 +316,15 @@ raised to meet it instead of being buried under its slope:
 |---|---|
 | ![Before](docs/screenshots/110-crossing-works-before-junction-street-tie.png) | ![After](docs/screenshots/111-crossing-works-after-junction-street-tie.png) |
 
-[Ramp to a track bridge over us, before](docs/screenshots/112-crossing-works-before-ramp-wall.png) /
-[after: the side street regraded, a retaining wall at the corner](docs/screenshots/113-crossing-works-after-ramp-wall.png);
-[demo junction, before](docs/screenshots/114-crossing-works-before-junction-street-tie-demo.png) /
-[after](docs/screenshots/115-crossing-works-after-junction-street-tie-demo.png);
-[a click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
+The *before* pictures are the code before model 19; the *after* ones were retaken on cost model 31 (other
+bills, the same places): above, the junction with the class I road at km 15.40 of the straight line, a side
+road regraded over 54 m to meet its approach;
+[demo junction at km 6.73, before](docs/screenshots/114-crossing-works-before-junction-street-tie-demo.png) /
+[after](docs/screenshots/115-crossing-works-after-junction-street-tie-demo.png).
+[The ramp to a track bridge over us at km 15.3 of the direct 80 km/h design, before](docs/screenshots/112-crossing-works-before-ramp-wall.png):
+on model 31 that ramp reaches no side street any more, so the picture after it is of another bridge of the same
+design, [the street carried over us at km 6.55, a side street regraded 85 m to meet its ramp](docs/screenshots/113-crossing-works-after-ramp-wall.png).
+[A click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
 (`node scripts/crossing-works-shots.mjs`, `--before` on the older code.)
 
 Noise model 21 and what the route takes (`node scripts/noise-shots.mjs`, `ROOT=` an older checkout for the
@@ -336,15 +340,17 @@ slivers before](docs/screenshots/128-seam-abutment-before.png), [closed now](doc
 Shaping a reroute by dragging it (`node scripts/link-shape-shots.mjs`):
 [the drag](docs/screenshots/117-link-shape-drag.png) (the first drag starts from the automatic path's own bends),
 [the rebuilt road with its bend points and "Automatic path"](docs/screenshots/118-link-shape-built.png),
-[a bend point dragged onto our earthworks: the problem, with the way back](docs/screenshots/119-link-shape-rejected.png).
-Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-underpass-shots.mjs`):
+[a bend point dragged onto our road: the problem, with the way back](docs/screenshots/119-link-shape-rejected.png)
+(retaken on cost model 31: the demo's service road at km 6.89).
+Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-underpass-shots.mjs`; retaken on
+cost model 31, where the start line lowers other roads than it did):
 [the straight start line opens valid](docs/screenshots/150-straight-start-valid.png),
-[a local road lowered 3.3 m under its box, clicked on the map](docs/screenshots/151-lowered-local-road-card.png),
+[a service road lowered 1.8 m under its box, clicked on the map](docs/screenshots/151-lowered-local-road-card.png),
 [its portal](docs/screenshots/152-lowered-local-road-portal.png),
-[a track lowered under a low embankment](docs/screenshots/153-lowered-track-oblique.png),
-[the player's reroute that cannot be built (a railway in the way), its works outlined](docs/screenshots/154-player-reroute-unbuildable.png),
-[town-centre's service road lowered 2.9 m](docs/screenshots/155-town-centre-lowered-service-road.png),
-[an engineered track reroute at its class's steepest grade](docs/screenshots/156-engineered-reroute-best.png).
+[a street lowered 5.7 m under a low embankment](docs/screenshots/153-lowered-way-oblique.png),
+[the player's reroute that cannot be built (no road nearby to reconnect to), its works outlined](docs/screenshots/154-player-reroute-unbuildable.png),
+[town-centre's service road lowered 3.0 m](docs/screenshots/155-town-centre-lowered-service-road.png),
+[an engineered service-road reroute at its class's steepest grade (12 %)](docs/screenshots/156-engineered-reroute-best.png).
 Map camera and labels (`node scripts/camera-check.mjs`): [*Whole route* after panning off the map](docs/screenshots/157-camera-whole-route.png),
 [a low view: no names piled up on the horizon or printed over each other](docs/screenshots/158-camera-low-view-labels.png),
 [noise walls on both sides labelled once](docs/screenshots/159-camera-wall-labels.png).
@@ -358,14 +364,15 @@ Core play polish (model 24): [By hand from Auto's heights: the same bill, handle
 [the player's bridge over km 5.09–5.50: its piers clear the roads (a crossed track's reroute is still reported)](docs/screenshots/167-player-bridge-piers-clear.png),
 [a bought-out house drawn behind the 5 m wall Auto tried: one story](docs/screenshots/168-bought-out-one-story.png),
 [Nová Paka km 1.97: the tower inside the demolished hall goes with it](docs/screenshots/169-nova-paka-tower-with-hall.png).
-Crossing remedies as designers choose them (model 28, `node scripts/crossing-economy-shots.mjs`):
-[D3 motorway: a class III road running along it moved beside it (was a 704 m bridge)](docs/screenshots/170-d3-motorway-road-moved-beside.png),
-[a skewed track straightened through a 50 m box](docs/screenshots/171-d3-motorway-track-straightened-box.png),
-[the player keeps its line](docs/screenshots/172-d3-motorway-track-kept-line.png),
-[two neighbouring tracks led to one box](docs/screenshots/173-d3-motorway-neighbouring-tracks.png),
-[town-centre's skewed service road straightened (57 m box → 25 m)](docs/screenshots/174-town-centre-service-road-straightened.png),
-[best: a service road moved aside](docs/screenshots/175-best-service-road-moved-aside.png),
-[Nová Paka: a service road and a track joined to one box](docs/screenshots/176-nova-paka-roads-joined-to-one-box.png).
+Crossing remedies as designers choose them (model 28, `node scripts/crossing-economy-shots.mjs`; retaken on
+cost model 31, where the D3 motorway starter and town-centre keep their skewed ways on their own lines, so the
+straightened way is one of best):
+[D3 motorway: a class III road running along it moved beside it (+699 m of new road)](docs/screenshots/170-d3-motorway-road-moved-beside.png),
+[a track led to its neighbour's bridge at km 3.71](docs/screenshots/171-d3-motorway-neighbouring-tracks.png),
+[best: a track that met our road at 44° straightened, its bridge 24 m](docs/screenshots/172-best-way-straightened.png),
+[the player keeps its line: a 35 m bridge](docs/screenshots/173-best-way-kept-line.png),
+[best: a service road moved aside](docs/screenshots/174-best-service-road-moved-aside.png),
+[Nová Paka: a service road led along our road to the crossing at km 3.05](docs/screenshots/175-nova-paka-roads-joined-to-one-crossing.png).
 Final-sweep P1s (`tests/edited-network`, `new-line-crossings`, `merged-crossings`): [D11 km 4.1: a track the
 QA dragged beside our reroute, priced](docs/screenshots/180-d11-track-beside-reroute-priced.png),
 [a new road across the Královec valley passes high over our railway bridge on its own](docs/screenshots/181-rail-new-road-over-our-bridge.png),
