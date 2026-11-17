@@ -106,7 +106,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   ownTrack?: OwnTrack,
   /** Bridge styles: those the player asked for per station (STYLE_CODES), and the price of a layout. Without a
    * price, the first style that fits (short spans, else long spans, else an arch). */
-  styles?: { asked?: ArrayLike<number>; price?: BridgePrice }): {
+  styles?: { asked?: ArrayLike<number>; price?: BridgePrice; /** false: an arch only where asked for or nothing else fits (a drag preview) */ arch?: boolean }): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
   /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
    * routine never changes grade, profile controls, or any explicitly requested structure. */
@@ -432,7 +432,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         if (depthCheck(run, plan, isManual)) fits.push(plan); else unfit.push(plan);
       }
     };
-    if (styles?.price) for (const style of BRIDGE_STYLE_ORDER) consider(style);
+    if (styles?.price) {
+      for (const style of BRIDGE_STYLE_ORDER) if (style !== 'arch' || styles.arch !== false || asked === 'arch') consider(style);
+      if (!fits.length && styles.arch === false && asked !== 'arch') consider('arch');
+    }
     else for (const style of asked ? [asked, ...BRIDGE_STYLE_ORDER.filter(x => x !== asked)] : BRIDGE_STYLE_ORDER) { consider(style); if (fits.length) break; }
     // a player's style that does not fit here: said, and the bridge is built as Auto would
     const mine = asked ? fits.filter(p => p.style === asked) : [];

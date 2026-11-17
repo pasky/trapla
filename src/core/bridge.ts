@@ -25,12 +25,11 @@ export function bridgeLayout(length: number): BridgeLayout {
   return { span: length / spans, pierDensity: (spans - 1) / length };
 }
 
-/** Long spans: the equal-span layouts with spans of 45–60 m (fewer, longer where none fits), longest first. */
+/** Long spans: equal-span layouts with spans of 45–60 m (fewer, longer where none fits), longest first: the
+ * longest, the shortest and one between (a long bridge has many; the price is smooth in the span). */
 export function longLayouts(length: number): BridgeLayout[] {
   const n0 = Math.max(1, Math.ceil(length / S.long.span - 1e-9)), n1 = Math.max(n0, Math.floor(length / S.long.minSpan + 1e-9));
-  const out: BridgeLayout[] = [];
-  for (let n = n0; n <= n1; n++) out.push({ span: length / n, pierDensity: (n - 1) / length });
-  return out;
+  return [...new Set([n0, Math.round((n0 + n1) / 2), n1])].map(n => ({ span: length / n, pierDensity: (n - 1) / length }));
 }
 
 /** PROVISIONAL equivalent concrete m³/m² by span regime, continuous at class boundaries.
