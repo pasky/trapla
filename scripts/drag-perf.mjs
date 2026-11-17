@@ -178,7 +178,8 @@ if (mode === 'bend') {
     const r = window.trapla.result(), c = r.crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links?.some(l => l.length > 6))
       .sort((a, b) => (b.linkLength ?? 0) - (a.linkLength ?? 0))[0];
     const link = c.geometry.links.find(l => l.length > 6), q = link[Math.floor(link.length / 2)];
-    window.trapla.select(null); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
+    // (a reroute is shaped once its crossing is selected, as a click on it would)
+    window.trapla.select({ kind: 'crossing', roadId: c.roadId }); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
     return { x: q.x, y: q.y, z: q.z };
   });
   await page.waitForTimeout(1500);

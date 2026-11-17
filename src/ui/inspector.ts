@@ -28,7 +28,7 @@ import { activeStructure } from './structure-bar';
 import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 import { stationIndex } from '../core/range';
 import { CULVERT_RULES } from '../core/data/culverts';
-import { culvertCard } from '../core/terms';
+import { culvertCard, SELECT_TEXT } from '../core/terms';
 import { culvertSection } from '../render/culvert-geometry';
 
 export type Sel =
@@ -122,6 +122,8 @@ export class Inspector {
   private more = false;
   /** one direction of a split motorway is shown: its pieces are that direction's, not the total's */
   oneDirection = false;
+  /** the road is selected: a drag on it bends it (else a click selects it first) */
+  roadSelected = true;
   private r: Result | null = null;
   private d: Design | null = null;
   private networkPending = false;
@@ -307,10 +309,10 @@ export class Inspector {
   private money(r: Result) {
     const top = topPieces(r, 5);
     // a rebuilt stretch still wholly on its old road builds nothing
-    if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. Drag it to change its line.</div>`;
+    if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. ${this.roadSelected ? 'Drag it' : 'Click it, then drag it'} to change its line.</div>`;
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
-      <div class="sub hint">Drag the ${this.d ? CATEGORIES[this.d.category].mode : 'road'} to bend it. Click anything to inspect it.</div>`;
+      <div class="sub hint">${(this.roadSelected ? SELECT_TEXT.selected : SELECT_TEXT.howTo)(this.d ? CATEGORIES[this.d.category].mode : 'road')} Click anything to inspect it.</div>`;
   }
 
   // ---- a piece of road / a dragged stretch ----

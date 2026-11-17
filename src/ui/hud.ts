@@ -281,7 +281,7 @@ export class Hud {
       ${fold('stats', 'Quantities', '<table id="stats"></table>')}
       ${fold('help', 'Help', `
         <ul>
-          <li><b>Bend the road:</b> drag the orange road. Drag a numbered bend to move it; right-click deletes it. Double-click the map adds a bend there. A selected bend's ◇ grips or <kbd>+</kbd> / <kbd>−</kbd> change its curve.</li>
+          <li><b>Bend the road:</b> click the orange road, then drag it (a drag on a road not selected moves the map; Esc or a click on open ground lets go of it). Drag a numbered bend to move it; right-click deletes it. Double-click the map adds a bend to the selected road there. A selected bend's ◇ grips or <kbd>+</kbd> / <kbd>−</kbd> change its curve.</li>
           <li><b>Inspect anything:</b> click the road, a bridge, a bend, a house or a crossed road — on the map or in the profile. The card on the right says what it costs and offers the choices.</li>
           <li><b>Any stretch:</b> drag sideways across the profile.</li>
           <li><b>Road height:</b> drag the black line in the profile up or down to pin it.</li>
