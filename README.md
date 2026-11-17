@@ -428,6 +428,28 @@ Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
 [service reconnection, best km 7.96 (1.6 km → 461 m)](docs/screenshots/crossing-sanity/best-km796-service-reconnection.png).
+
+### Stream culverts
+
+Every billed stream culvert is drawn as what is billed: a precast pipe, a precast frame, or under a high fill the
+buried bridge's concrete vault, through our embankment along the stream from toe to toe; at each toe a headwall cut
+along our road, splayed wing walls, an apron and the water running out onto the stream, the slope down to the
+headwall's top. A click on an end, on its mark over the road or on its ring in the profile opens its card (size,
+length, price, why; "Bridge instead"). (`node scripts/culvert-shots.mjs [--scenario … | --query …] [--design
+demo|starter] [--only km,…]`.)
+
+| Box culvert 4.0 × 2.5 m, demo km 8.82 | Buried bridge under 17 m of fill, demo km 11.93 |
+|---|---|
+| ![box culvert](docs/screenshots/330-culvert-d11-demo-box-end.png) | ![buried bridge](docs/screenshots/333-culvert-d11-demo-buried-bridge-end.png) |
+
+[The box beside the track underpass](docs/screenshots/331-culvert-d11-demo-box-beside-track-underpass.png),
+[a 1000 mm pipe from the closest view](docs/screenshots/332-culvert-d11-demo-pipe-end.png),
+[a buried bridge's end at a retaining wall](docs/screenshots/334-culvert-d11-demo-buried-bridge-at-retaining-wall.png),
+[the card after a click on the pipe's end](docs/screenshots/335-culvert-card-from-3d-click.png),
+[a profile ring selects its culvert, map and profile in sync](docs/screenshots/336-culvert-profile-ring-selects-box.png),
+[D3 5 × 3 m buried bridge](docs/screenshots/337-culvert-d3-buried-bridge-5x3.png),
+[D35 box](docs/screenshots/338-culvert-d35-box-end.png),
+[Královec railway buried bridge](docs/screenshots/339-culvert-kralovec-railway-buried-bridge.png).
 Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall

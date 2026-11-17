@@ -853,8 +853,16 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
 
 ### Known limitations
 
-- Stream culverts and buried bridges ("přesypané mosty", cost model 29) are billed and marked on the map but not
-  drawn in 3D (no barrel, headwalls or wing walls at the slope toes).
+- Stream culverts and buried bridges ("přesypané mosty", cost model 29) are drawn in 3D as billed (2026-11-17,
+  `src/render/culvert-geometry.ts`, `culverts.ts`, screenshots 330–339): the barrel (precast pipe, precast frame, or
+  the buried bridge's vault at the billed plan width) from toe to toe along the mapped stream, each end cut along
+  our road at the toe with a headwall, splayed wing walls, an apron and the water running out onto the stream; the
+  slope comes down to the headwall's top over the barrel's last metres (a few m³ of earth, not billed; the bill's
+  barrel runs toe to toe, a real one ends where the slope covers it). An end at a retaining wall stands 0.5 m out
+  of its face. The drawn barrel is within ≈ ±10 % of the billed length (the toe where the stream really leaves the
+  embankment vs. the station's footprint / sine). A click on an end, its map mark or its profile ring opens the
+  culvert card. Not drawn yet: the culverts under our reroutes and the longer culverts where our slope covers a
+  stream running beside it (footprint culverts; none on the saved designs).
 - Junction approaches on class I–III roads are not length-capped (the 250 m cap is for ramps up to bridges over
   us): since cost model 29 town-centre km 11.65 meets class I road 2136 5.6 m up and regrades it over 271 m.
 - Free haul (1 km) is credited on the pooled haul moment, not per movement.
