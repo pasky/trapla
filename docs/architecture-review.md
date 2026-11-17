@@ -217,6 +217,8 @@ small modules beside it already do.
   `projectDecisions` → `projectTotals`, itself 67 lines: the three early returns and the last lines (hand
   step: one `let` declared where it is first assigned). Each stage's inputs are its parameters now, which is
   what a memo of a stage has to key on (docs/evaluate-performance.md "What a retry pass costs").
+  Interleaved against main `5ea8d7e` (host load 7–10): five D11 designs 30 × 2 min 0.99 / 0.99, CPU 0.99 / 1.01;
+  whole D3 10 × 1 min 0.98, CPU 0.97: unchanged.
   Next: move the stage functions to files (`evaluate-setup.ts` …), a cut and paste with imports since they no
   longer share a scope. **Wait for bridge styles (M3) to land first**: its branch has open hunks inside
   `routeSetup`, `routePrices` and `routeEngineer`, and git does not carry a hunk into a moved function.
