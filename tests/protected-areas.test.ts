@@ -63,7 +63,7 @@ describe('protected-area text', () => {
       for (const works of [['earth'], ['pier'], ['abutment', 'pier'], ['portal', 'pit'], ['pit', 'earth', 'portal']] as NatureWork[][]) {
         const hits: NatureHit[] = works.map((work, k) => ({ site: 0, level: 'ban', work, i0: k, i1: k, s0: 100 * k, s1: 100 * k + 10, area: 25, x: 5, y: 5 }));
         for (const v of natureProblems(terrain, hits, true, 2000)) { checkViolation(v, `${kind} ${zone ?? ''} ${works}`); expect(v.basis).toBe('law'); }
-        check(`${kind} note`, natureNote(terrain, { ...hits[0], level: 'consent' }, false));
+        check(`${kind} note`, natureNote(terrain, hits.map(h => ({ ...h, level: 'consent' as const })), false));
       }
     }
     expect(problems).toEqual([]);

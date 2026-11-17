@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CATEGORIES } from '../src/core/data/categories';
 import { TUNNEL_RULES } from '../src/core/data/prices';
-import { evaluate } from '../src/core/evaluate';
+import { evaluate, type Design } from '../src/core/evaluate';
 import { natureHits } from '../src/core/nature-works';
 import { cutCoverMask, KIND, tunnelGrade } from '../src/core/structures';
 
@@ -14,7 +14,7 @@ describe.skipIf(!['meta.json', 'protected.json', 'height.i16.gz'].every(f => exi
   it('tunnels under Pod skálou and its forest, no steeper than 3 %', async () => {
     const { loadPack, evalContext } = await import('../scripts/loadpack');
     const pack = loadPack(D35), ctx = evalContext(pack);
-    const d = JSON.parse(readFileSync('scripts/scenarios/d35/d35-stage1-motorway.json', 'utf8')).design;
+    const d = JSON.parse(readFileSync('scripts/scenarios/d35/d35-stage1-motorway.json', 'utf8')).design as Design;
     const r = evaluate(ctx, d);
     expect(r.violations.map(v => v.title)).toEqual([]);
     const h = Float64Array.from(r.grade, (g, i) => g - r.ground[i]);

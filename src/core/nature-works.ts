@@ -68,10 +68,12 @@ export function natureHits(r: NatureRoute, terrain: Terrain, motorway: boolean):
 }
 
 const WORK_WORDS: Record<NatureWork, string> = { earth: 'earthworks', pier: 'bridge pier', abutment: 'bridge end', portal: 'tunnel entrance', pit: 'tunnel pit' };
-/** "Pod skálou (nature monument)" and what of ours stands there, for a note on a stretch card */
-export function natureNote(terrain: Terrain, hit: NatureHit, motorway: boolean): string {
-  const areas = terrain.protectedAreas!, site = areas.sites[hit.site], rule = areas.rule(hit.site, motorway);
-  return `${hit.work === 'earth' ? 'Our earthworks reach into' : `Our ${WORK_WORDS[hit.work]} ${hit.work === 'pit' ? 'is dug' : 'stands'} in`} ${protectedName(site)}. ${rule.why}`;
+/** A note on what of ours stands in one area that allows it on conditions (hits of that area), and what it needs. */
+export function natureNote(terrain: Terrain, hits: readonly NatureHit[], motorway: boolean): string {
+  const areas = terrain.protectedAreas!, site = areas.sites[hits[0].site], rule = areas.rule(hits[0].site, motorway);
+  const list = [...new Set(hits.map(h => WORK_WORDS[h.work]))];
+  const what = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0];
+  return `Our ${what} ${list.length > 1 || hits[0].work === 'earth' ? 'stand' : 'stands'} in ${protectedName(site)}. ${rule.why}`;
 }
 export { WORK_WORDS as NATURE_WORK_WORDS };
 
