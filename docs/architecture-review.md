@@ -375,7 +375,8 @@ ends where it does: docs/evaluate-performance.md "What a retry pass costs".
   nothing. (Estimates from the per-pass times, not measured.)
 - **How.** A pass keeps its per-station arrays, crossings and conflicts. A retry compares its re-solved grade
   line with the kept pass's, takes the chainages where they differ plus a margin (a reroute reaches
-  `linkHardReach` = 2 km; walls, structure runs and supports end within a block), evaluates that window as
+  `linkHardReach` = 2 km; support lifts stay within a block; how far a wall or a structure run can carry a
+  change is to be measured), evaluates that window as
   the preview does (`EvalOptions.window`, `stationWindow`, the grades of the kept line at both ends) but with
   the full engineering, and splices the result into the kept pass's (`result-stitch.ts` already does this
   for previews; the bill's parts are per station, each block balances its own earth). `passSetup` (done) is the
