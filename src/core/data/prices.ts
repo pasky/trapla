@@ -106,7 +106,7 @@
  * for that bridge (it was let off all it built within the ramps' reach); a railway of the project crossing ours follows
  * our crossing's height (ours no longer digs under it as under a mapped railway; the crossing is its deck only); a held
  * line high above the deck set for it passes over on that bridge built higher; a mapped road's own curve built anew
- * is Auto's. Frozen single-road bills unchanged. */
+ * is Auto's; a new road that ends nowhere is priced, not valid (it was unpriced). Frozen single-road bills unchanged. */
 export const COST_MODEL_VERSION = 39;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

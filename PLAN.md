@@ -825,7 +825,20 @@ Research: research/65.
 - **P2**: Undo / Redo say what they take back ("Undo: moving bend 3", "Redo: a bridge or tunnel (Road III/3012)"),
   worked out from the designs either side of the step when the button is pointed at (`core/history-label.ts`); the
   profile's tooltip says "River under our bridge, and 1 more".
-- **Bills**: frozen single-road fixtures identical; multi-road projects change (credits, railway crossings): model 39.
+- **A road that ends nowhere is priced, not valid** (owner's decision, 2026-11-17): a road or railway the player
+  builds with an end on open ground was left unpriced; it is now priced as built (nothing is built at the free
+  end) with one "Road ends nowhere · Connect this end to a road" problem at each free end (a click goes there);
+  "not priced" stays for engine limits (interchanges, roads designed together). Reaching the screen of several
+  roads exposed three of its false alarms, fixed: a railway's land is its formation's (it was unknown and failed
+  closed everywhere), a way left as it is under our bridge or over our tunnel is neither our works nor a change of
+  that way, and one road on its bridge ≥ 6 m above the other's works there shares no land with it. Two lines that
+  both change one old road (QA's railway across ours and the track at km 12.05, the D11 new road and road I/14,
+  the final sweep's new road over the railway viaduct) stay unpriced: an engine limit.
+- **Review fixes**: a held line is held at least the owner's clearance over it (7.5 m over a railway; the crossing
+  engine's deck sat 6 m up); a railway's drag preview follows the crossings others built with it; a rebuilt
+  stretch's plan line in other roads' networks yields its old corners to Auto as its kernel does.
+- **Bills**: frozen single-road fixtures identical; multi-road projects change (credits, railway crossings, free
+  ends priced): model 39.
 - Screenshots `docs/screenshots/310…314-qa3fix-*.png`: the new road's card (−48 M), the new railway on its bridge
   over ours, III/3012's old corner built anew (R 176 m, auto), the profile's river tooltip, *Back to Auto*.
 - **Known issue (audit)**: a box lowered under our road for a road of the project (our road too low over it) bills
