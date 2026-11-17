@@ -838,9 +838,9 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   manualStructures = crossingBridgeMask(st.s, rawRoadX, crossingOverrides, manualStructures);
   // Our bridge over a road the player chose (and painted no bridge there): its height is met only in
   // proportion, like the player's box (the retries in evaluate() with choiceFloors / choiceLifts); until then
-  // it neither floors the grade search nor lifts the line for its supports.
-  const choiceDeck = opts.choiceFloors?.length || opts.choiceLifts?.length ? undefined
-    : Uint8Array.from(manualStructures, (k, i) => k === KIND.bridge && painted[i] < 0 ? 1 : 0);
+  // it neither floors the grade search nor lifts the line for its supports (`choiceDeckOf`). The passes share
+  // this setup (passSetup): the mask is the same in each; whether a pass lifts it is its options'.
+  const choiceDeck = Uint8Array.from(manualStructures, (k, i) => k === KIND.bridge && painted[i] < 0 ? 1 : 0);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
   // auto-profile requests an overpass) or pass far enough below for an overbridge
@@ -1133,7 +1133,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     const minH = blocks ? new Float64Array(n).fill(NaN) : clearance.slice();
     const maxH = new Float64Array(n).fill(NaN);
     for (let i = 0; i < n; i++) {
-      if (manualStructures[i] === KIND.bridge && !heldDeck?.[i] && !choiceDeck?.[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
+      if (manualStructures[i] === KIND.bridge && !heldDeck?.[i] && !choiceDeckOf(opts, choiceDeck)?.[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
       // a mined tunnel the player chose: under enough cover to mine; cut and cover: as deep as it can be dug
       if (manualStructures[i] === KIND.tunnel) maxH[i] = cutMethod[i] ? -STRUCTURE_RULES.portalDepth : -STRUCTURE_RULES.tunnelMinDepth;
       if (manualStructures[i] === KIND.tunnel && cutMethod[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], -(STRUCTURE_RULES.portalDepth + TUNNEL_RULES.cutCoverMaxCover));
@@ -1694,7 +1694,8 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
-  const supportHeights = [...supported.clearanceRequirements.filter(q => !choiceDeck?.[Math.round(q.s / ds)]), ...retention.clearanceRequirements.filter(q =>
+  const unlifted = choiceDeckOf(opts, choiceDeck);
+  const supportHeights = [...supported.clearanceRequirements.filter(q => !unlifted?.[Math.round(q.s / ds)]), ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
   // heights the player's box or bridge needs (evaluate's retry): a local lift where the line falls short
   for (const q of opts.choiceLifts ?? []) if (elevations(prof, [q.s])[0] < q.z - 0.01) supportHeights.push(q);
@@ -2398,6 +2399,12 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   const lifting = routeLift(d, setup, caches);
   const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start: VPI[] = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => finishDesign(ctx, d, opts, solved, setup, engineerStage, lifting, prices, caches, relaxed, strict, start, from);
   return { finish };
+}
+
+/** our bridges over roads the player chose (setup's choiceDeck) that a pass neither floors nor lifts: the first
+ * pass's; a regrade retry (choiceFloors / choiceLifts) meets them */
+function choiceDeckOf(opts: EvalOptions, mask: Uint8Array): Uint8Array | undefined {
+  return opts.choiceFloors?.length || opts.choiceLifts?.length ? undefined : mask;
 }
 
 /** The setup of a pass. Nothing in `routeSetup` reads what a retry changes (its floors, lifts, clearances,

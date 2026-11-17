@@ -686,7 +686,7 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
   km 4.38 on long spans; the grade search re-solves around it), d3-0301 5,139 → 5,102, d3-0302 5,066 → 4,935 (the
   113 m high bridge on 62 m spans), d3-0303 5,440, d3-0304 10,152 → 10,174, d3-0305 9,124, d3-full 32,391 →
   32,187, d35 6,729 → 6,610 (the 60 m high 2 km viaduct on 49 m spans), d35-full 29,969 → 29,825, i16-nova-paka
-  2,063; d35 stage-1 motorway 19,497 → 19,390; D3 motorway starter 10,930 → 10,899. Outcome audit (24 random D11
+  2,063; d35 stage-1 motorway 19,497 → 19,390; D3 motorway starter 10,930 → 10,738. Outcome audit (24 random D11
   lines): 6 VALID (6), 84 violations (82), links > 1 km 17 (18), ramps > 250 m 5 (5); the two new: random-3 a 0.1 m
   support lift at km 13.43 Auto cannot make (its lift runs into the pin at km 16.70 with the railway's 13.6 m), and
   random-15's track at the tunnel portal km 5.45 buried again (M2's known case; its split retry no longer triggers).
