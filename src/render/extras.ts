@@ -99,7 +99,7 @@ export class RouteExtras {
           g.setAttribute(name, new THREE.Float32BufferAttribute(data[name], size));
         g.computeVertexNormals(); g.computeBoundingSphere();
         // the earthwork material: the earth over the ends textured and lit as our slopes are, the concrete as structures
-        mesh = new THREE.Mesh(g, this.culvertMaterial ??= this.view.crossingEarthMaterial());
+        mesh = new THREE.Mesh(g, this.culvertMaterial ??= this.culvertMat());
         mesh.name = 'culvert-structures';
         this.culverts.add(mesh);
       }
@@ -108,6 +108,14 @@ export class RouteExtras {
     for (const [key, mesh] of this.culvertMeshes) if (!next.has(key)) { this.culverts.remove(mesh); mesh.geometry.dispose(); }
     this.culvertMeshes = next;
     this.view.requestRender();
+  }
+
+  /** The earthwork material with a constant depth offset only: a slope-scaled one (as crossing roads have) lifts
+   * the barrel's walls, seen edge-on from above, through the slope over them. */
+  private culvertMat() {
+    const m = this.view.crossingEarthMaterial();
+    m.polygonOffsetFactor = 0; m.polygonOffsetUnits = -2;
+    return m;
   }
 
   /** the culvert whose end (headwall, wings, apron) is drawn under a screen point, if close enough to see it */
