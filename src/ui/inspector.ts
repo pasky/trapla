@@ -2,6 +2,7 @@
 // a height point, a crossed road, a building — under the score. Same shape for all of them: what it is,
 // what the game decided (numbers first), its violations with the fix as a button where one exists, the
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
+import type { VPI } from '../core/vertical';
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
@@ -75,8 +76,8 @@ export interface InspectorEvents {
   bendHeight?: (i: number) => void;
   vpiRadius?: (i: number, r: number | null) => void;
   deleteVpi?: (i: number) => void;
-  /** By hand: height pin i moved to station s, height z */
-  moveVpi?: (i: number, s: number, z: number) => void;
+  /** By hand: the height pin at station `at` changed (moved, its radius) or deleted (null) */
+  pinAt?: (at: number, change: Partial<VPI> | null) => void;
 }
 
 /** kilometres as the player reads them on the active line (ui/chainage.ts) */
@@ -462,9 +463,11 @@ export class Inspector {
     // By hand: the player's height pins it is about (the points of this result: the design's own)
     if (d.profileMode === 'manual' && this.r) {
       const pin = (k: number) => this.r!.vpis[k] && k > 0 && k < this.r!.vpis.length - 1;
-      if (t?.movePin && pin(t.movePin.k)) btn(`data-fix-vpi-move="${t.movePin.k},${t.movePin.s.toFixed(1)},${t.movePin.z.toFixed(2)}"`, `Move pin to km ${km(t.movePin.s)}`);
-      if (t?.smallest !== undefined && pin(t.smallest)) btn(`data-fix-vpi-smallest="${t.smallest}"`, 'Smallest radius');
-      for (const k of t?.heightPins ?? []) if (pin(k)) btn(`data-fix-vpi-del="${k}"`, `Delete pin <small>km ${km(this.r.vpis[k].s)}</small>`);
+      // (each pin by its own station: the design may have moved on since this result)
+      const at = (k: number) => this.r!.vpis[k].s;
+      if (t?.movePin && pin(t.movePin.k)) btn(`data-fix-vpi-move="${at(t.movePin.k)},${t.movePin.s},${t.movePin.z}"`, `Move pin to km ${km(t.movePin.s)}`);
+      if (t?.smallest !== undefined && pin(t.smallest)) btn(`data-fix-vpi-smallest="${at(t.smallest)}"`, 'Smallest radius');
+      for (const k of t?.heightPins ?? []) if (pin(k)) btn(`data-fix-vpi-del="${at(k)}"`, `Delete pin <small>km ${km(at(k))}</small>`);
     }
     return b.join('');
   }
@@ -754,9 +757,9 @@ export class Inspector {
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
     if (b.dataset.fixHairpin) { const [pi, speed] = b.dataset.fixHairpin.split(',').map(Number); this.ev.hairpin?.(pi, true, speed); return; }
     if (b.dataset.fixAuto) { const bends = b.dataset.fixAuto.split(',').map(Number); bends.forEach((i, k) => this.ev.radius?.(i, null, k === bends.length - 1)); return; }
-    if (b.dataset.fixVpiMove) { const [k, s, z] = b.dataset.fixVpiMove.split(',').map(Number); this.ev.moveVpi?.(k, s, z); return; }
-    if (b.dataset.fixVpiSmallest) { this.ev.vpiRadius?.(Number(b.dataset.fixVpiSmallest), null); return; }
-    if (b.dataset.fixVpiDel) { this.ev.deleteVpi?.(Number(b.dataset.fixVpiDel)); return; }
+    if (b.dataset.fixVpiMove) { const [from, s, z] = b.dataset.fixVpiMove.split(',').map(Number); this.ev.pinAt?.(from, { s, z }); return; }
+    if (b.dataset.fixVpiSmallest) { this.ev.pinAt?.(Number(b.dataset.fixVpiSmallest), { r: null }); return; }
+    if (b.dataset.fixVpiDel) { this.ev.pinAt?.(Number(b.dataset.fixVpiDel), null); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }

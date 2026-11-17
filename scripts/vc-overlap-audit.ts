@@ -113,7 +113,8 @@ for (const file of suite.designs) {
       label = `new bend at km ${(at / 1000).toFixed(2)} ${off.toFixed(0)} m aside`;
     }
     let r: Result;
-    try { r = run(d); } catch (e) { console.log(`  (${label}: ${(e as Error).message})`); continue; }
+    // (an evaluation that throws is a failure too: a broken drag must not pass for a clean one)
+    try { r = run(d); } catch (e) { failed++; total++; console.log(`  FAIL ${label}: ${(e as Error).message}`); continue; }
     report(label, d, r);
   }
 }

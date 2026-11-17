@@ -8,7 +8,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
 import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type HorizontalRules, type PI, type Vec2 } from './horizontal';
-import { gradeLimitOf, type GradeLimit, type Profile } from './vertical';
+import { buildProfile, gradeLimitOf, type GradeLimit, type Profile, type VCurve, type VPI } from './vertical';
 import { RAIL_MAX_GRADIENT } from './data/railway';
 import { acos, sin, tan } from './detmath';
 
@@ -519,7 +519,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
     if (!byHand) {
       // Auto's own line: it found no gentler one (the ends, the player's pins or what it must clear)
       out.push({
-        kind: 'gradient', s0: a.s, s1: b.s, title,
+        kind: 'gradient', s0: a.s, s1: b.s, title, size: h,
         fix: `Make the route longer between km ${fmt(a.s / 1000, 2)} and km ${fmt(b.s / 1000, 2)}`,
         detail: `The ${line} ${rise ? 'climbs' : 'falls'} ${G(g)} here; the limit is ${G(maxGradient)}. ${lengthen} Auto keeps the ${line} within the limit when it can; here the ends, your height pins or what it must clear leave it no room.`,
         basis: 'norm', rule: gradeRule(maxGradient),
@@ -528,9 +528,9 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
     }
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i, title,
-      fix: cands.length ? `${cands[0].verb} ${pin(cands[0].k)} by ${fmt(h, 1)} m` : `Add a height pin here, or make the route longer`,
+      fix: cands.length ? `${cands[0].verb} ${pin(cands[0].k)} by ${fmt(h, 1)} m` : 'Make the route longer',
       detail: `Between ${pin(i)} and ${pin(i + 1)} the ${line} ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${pin(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''}`,
-      basis: 'norm', rule: gradeRule(maxGradient), ...(cands.length ? { target: { heightPins: [cands[0].k] } } : {}),
+      basis: 'norm', rule: gradeRule(maxGradient), size: h,
     });
   }
   const reported = new Set<string>();
@@ -566,12 +566,12 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
       if (reported.has(key)) continue;
       reported.add(key);
       const both = !!w.nb && w.nb.type !== 'none' && w.nb.len > 0;
-      const gap = Math.abs(p.pts[w.j].s - c.s), more = up(w.short);
+      const gap = Math.abs(p.pts[w.j].s - c.s), pair = { s0: Math.min(c.s, p.pts[w.j].s), s1: Math.max(c.s, p.pts[w.j].s) };
       const rule = `Game rule: the ${line} changes from one slope to the next along a curve of at least the smallest radius; the curves of two height pins must fit between them`;
       if (!byHand) {
         // Never Auto's own result (scripts/vc-overlap-audit.ts): said as the engine's limit, in places only.
         out.push({
-          kind: 'vcOverlap', ...where,
+          kind: 'vcOverlap', ...where, ...pair, size: up(w.short),
           title: `Auto could not fit a change of slope at ${at(c.index)}`,
           fix: 'Drag the route a little here, or pin the height here',
           detail: `Two changes of slope ${fmt(gap)} m apart need ${fmt(c.len / 2 + (both ? w.nb!.len / 2 : 0))} m between them.`,
@@ -580,25 +580,49 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt:
         continue;
       }
       // the pin to move: c, away from its neighbour along the slope behind it (that slope stays, the one between
-      // them becomes a mix of the two), if there is room before its other neighbour
-      const away = c.s - w.dir * more, other = p.pts[c.index - w.dir].s;
-      const room = c.index > 0 && c.index < last && (w.dir > 0 ? away - other : other - away) >= 20;
-      const move = room ? { k: c.index, s: away, z: c.z - w.dir * more * (w.dir > 0 ? c.g1 : c.g2) } : undefined;
+      // them becomes a mix of the two), as far as the curves then need (they change with that slope), and only if
+      // that leaves every curve around it whole
+      const { more, move } = pinMove(p, c, w.j, w.dir, up(w.short), stretch ?? (() => norms));
       const g = both ? (w.dir > 0 ? [c.g1, c.g2, w.nb!.g2] : [w.nb!.g1, c.g1, c.g2]) : [c.g1, c.g2];
       const slopes = `${signed(g[0])} to ${signed(g[1])}${both ? ` and on to ${signed(g[2])}` : ''}`;
       const nbName = w.j === 0 || w.j === last ? pin(w.j) : `your height pin at ${at(w.j)}`;
       out.push({
-        kind: 'vcOverlap', ...where, s0: Math.min(c.s, p.pts[w.j].s), s1: Math.max(c.s, p.pts[w.j].s),
+        kind: 'vcOverlap', ...where, ...pair, size: more,
         title: both ? 'Two height pins too close' : `Height pin too close to ${w.j === 0 ? 'the start' : w.j === last ? 'the end' : 'the next one'}`,
         fix: both ? `Move ${pin(c.index)} at least ${fmt(more)} m away from the one at ${at(w.j)}, or delete one`
           : `Move ${pin(c.index)} at least ${fmt(more)} m further from ${nbName}`,
-        detail: `The ${line} cannot bend from ${slopes} in ${fmt(gap)} m: at the smallest radius that takes ${fmt(c.len / 2 + (both ? w.nb!.len / 2 : 0))} m${both ? ', half of each change of slope on either side of its pin' : ''}. Pins more in line (a smaller change of slope) also help.`,
+        detail: `The ${line} cannot bend from ${slopes} in ${fmt(gap)} m: at ${both ? 'their radii' : 'its radius'} that takes ${fmt(c.len / 2 + (both ? w.nb!.len / 2 : 0))} m${both ? ', half of each change of slope on either side of its pin' : ''}. Pins more in line (a smaller change of slope) also help.`,
         basis: 'game', rule,
         target: { heightPins: both ? [c.index, w.j] : [c.index], ...(move ? { movePin: move } : {}) },
       });
     }
   }
   return out;
+}
+
+/** Pin k of a By-hand line moved `more` m away from its neighbour j (dir: +1 j after it) along the slope behind
+ * it, more where the curves then still overlap (up to five tries): the distance and the move, if one leaves the
+ * curves of k, j and k's other neighbour whole. */
+function pinMove(p: Profile, c: Profile['curves'][number], j: number, dir: -1 | 1, more: number, at: StretchNorms) {
+  const last = p.pts.length - 1, behind = c.index - dir;
+  if (c.index <= 0 || c.index >= last) return { more };
+  // the points with their radii: a curve at the smallest radius for its kind stays so (null), as the player set it
+  const min = (k: number, crest: boolean) => crest ? at(p.pts[k].s).minCrestRadius : at(p.pts[k].s).minSagRadius;
+  const vpis: VPI[] = p.pts.map((q, k) => {
+    const v = p.curves[k - 1];
+    return { s: q.s, z: q.z, r: !v || v.type === 'none' || Math.abs(v.r - min(k, v.type === 'crest')) < 1e-6 ? null : v.r };
+  });
+  for (let i = 0; i < 5; i++) {
+    const s = c.s - dir * more;
+    if ((dir > 0 ? s - p.pts[behind].s : p.pts[behind].s - s) < 20) return { more };
+    const moved = vpis.map((q, k) => k === c.index ? { ...q, s, z: c.z - dir * more * (dir > 0 ? c.g1 : c.g2) } : q);
+    const q = buildProfile(moved, (x) => at(x).minCrestRadius, (x) => at(x).minSagRadius);
+    const near = [behind, c.index, j].map(k => q.curves[k - 1]).filter((v): v is VCurve => !!v);
+    if (near.every(v => v.lenEff >= v.len - 1e-3)) return { more, move: { k: c.index, s, z: moved[c.index].z } };
+    const a = q.curves[c.index - 1], b = q.curves[j - 1];
+    more += Math.max(1, up(a.len / 2 + (b ? b.len / 2 : 0) - Math.abs(p.pts[j].s - s)));
+  }
+  return { more };
 }
 
 export const ROAD_CHECKS: CheckFamily = {

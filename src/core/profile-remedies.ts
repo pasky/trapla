@@ -19,23 +19,25 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
   if (free) vpis = withVertices(vpis, free);
   const locked = vpis.map((p, i) => i === 0 || i === vpis.length - 1 || pins.some(pin => Math.abs(pin.s - p.s) < 0.1)
     || (!!free && (p.s <= free[0] + 0.5 || p.s >= free[1] - 0.5)));
-  // (the issues the line had before, outside the range: not this lift's to answer for)
-  const had = range && new Set(ROAD_CHECKS.vertical(base, norms, maxGradient, false, radii?.stretch).map(v => issueKey(base.pts, v)));
-  const pinZ0 = elevations(buildProfile([...vpis], crest, sag), [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
+  // (the issues the line had before, outside the range: not this lift's to answer for unless it makes them worse)
+  const had = new Map(range ? ROAD_CHECKS.vertical(base, norms, maxGradient, false, radii?.stretch).map(v => [issueKey(base.pts, v), v.size ?? 0]) : []);
+  const pinZ0 = elevations(base, [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
   for (const radius of [600, 1200, 2400]) {
     const candidate = vpis.map(p => ({ ...p }));
     let impossible = false;
     for (let iteration = 0; iteration < 6; iteration++) {
-      const profile = buildProfile(candidate, crest, sag), z = elevations(profile, targets.map(p => p.s));
+      // everything judged on the line it returns (a vertex put in at a free stretch's end and not turning there
+      // is no point of it: it would clip the curves beside it)
+      const out = free ? straightened(candidate) : candidate;
+      const profile = buildProfile(out, crest, sag), z = elevations(profile, targets.map(p => p.s));
       const deficits = targets.map((p, i) => Math.max(0, p.z + 0.15 - z[i]));
       if (deficits.every(d => d <= 0.01)) {
         const pinZ = elevations(profile, [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
-        // With a range (one stretch of several lifted separately): only issues there count, and any the line
-        // it returns has elsewhere that it had not (where it turns at a free stretch's end, beside a rounding).
-        const out = free ? straightened(candidate) : candidate, outProfile = range && buildProfile(out, crest, sag);
-        const issues = [...ROAD_CHECKS.vertical(profile, norms, maxGradient, false, radii?.stretch).filter(v => !range || (v.s1 >= range[0] && v.s0 <= range[1])),
-          ...(outProfile ? ROAD_CHECKS.vertical(outProfile, norms, maxGradient, false, radii?.stretch)
-            .filter(v => !(v.s1 >= range![0] && v.s0 <= range![1]) && !had!.has(issueKey(outProfile.pts, v))) : [])];
+        // With a range (one stretch of several lifted separately): the issues there, and any elsewhere that the
+        // line before did not have, or had smaller (where it turns at a free stretch's end, beside a curve).
+        const inRange = (v: { s0: number; s1: number }) => !range || (v.s1 >= range[0] && v.s0 <= range[1]);
+        const issues = ROAD_CHECKS.vertical(profile, norms, maxGradient, false, radii?.stretch)
+          .filter(v => inRange(v) || (v.size ?? 0) > (had.get(issueKey(profile.pts, v)) ?? -Infinity) + 0.05);
         // a pin keeps the height the line had there (the DP meets a pin within its tolerance, not exactly)
         if (issues.length === 0 && pinZ.every((z, i) => Math.abs(z - pinZ0[i]) <= 0.05)) return out;
         diagnostic?.(`radius ${radius}: ${issues.map(v => `${v.title}@${v.s0.toFixed(0)}`).join(', ') || 'grade pin moved'}`);
@@ -64,9 +66,10 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
   }
 }
 
-/** an issue of a line, by what it is and the height point it names */
-const issueKey = (pts: readonly { s: number }[], v: { kind: string; vpi?: number; s0: number }) =>
-  `${v.kind}@${Math.round((v.vpi === undefined ? v.s0 : pts[v.vpi].s) * 10)}`;
+/** an issue of a line, by what it is and where: a grade or an overlap by the two points it lies between, a curve
+ * too sharp by its point */
+const issueKey = (pts: readonly { s: number }[], v: { kind: string; vpi?: number; s0: number; s1: number }) =>
+  v.kind === 'crest' || v.kind === 'sag' ? `${v.kind}@${Math.round(pts[v.vpi!].s * 10)}` : `${v.kind}@${Math.round(v.s0 * 10)}-${Math.round(v.s1 * 10)}`;
 
 /** The polyline with a vertex at each of the given chainages (on the line: the profile is unchanged). */
 function withVertices(vpis: readonly VPI[], at: readonly number[]): VPI[] {

@@ -246,6 +246,8 @@ export interface EvalOptions {
    * shared heights where the two directions run side by side); Auto only between, continuing that line's
    * grade at both ends. */
   fixedProfile?: { x0: number; x1: number; vpis: readonly VPI[]; /** largest grade change at x0 / x1 */ slack?: [number, number] };
+  /** By-hand heights that are not the player's (an Auto motorway direction's shared line): no problem names them */
+  heightsGiven?: boolean;
   /** The side `leftJoined` means (default left): a separate stretch's directions both run A→B, so the
    * reverse carriageway has the forward one on its right. */
   joinedSide?: 'L' | 'R';
@@ -2008,9 +2010,12 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
     // (our bridge over a road the player chose: not lifted out of proportion, its crossing says what it would take)
     if (setup.choiceDeck?.[Math.min(n - 1, Math.max(0, Math.round(v.s0 / ds)))]) { v.detail = `${v.detail ? `${v.detail} ` : ''}It is the bridge you chose over a road; see that crossing.`; continue; }
     const stop = lift.stop, grade = cat.mode === 'railway' ? `${(maxGradient * 1000).toFixed(1)} ‰` : `${(maxGradient * 100).toFixed(1)} %`;
-    const at = stop === null ? '' : stop < ds ? 'its start' : stop > al.length - ds ? 'its end' : `the height pinned at km ${(stop / 1000).toFixed(2)}`;
+    // (a fixed height that is not an end: the player's pin, else the edge of the stretch a raise may change)
+    const pinned = stop !== null && (d.gradePins ?? []).some(p => Math.abs(p.s - stop) < 1);
+    const at = stop === null ? '' : stop < ds ? 'its start, whose height is fixed' : stop > al.length - ds ? 'its end, whose height is fixed'
+      : pinned ? `your height pin at km ${(stop / 1000).toFixed(2)}` : `km ${(stop / 1000).toFixed(2)}, and Auto changes the line only near the bridge`;
     const why = liftShared ? 'Auto cannot raise it: the heights beyond this stretch are the ones both directions share.'
-      : stop !== null ? `Auto cannot raise it: at the steepest grade allowed (${grade}) the raise runs on to ${at}, whose height is fixed.`
+      : stop !== null ? `Auto cannot raise it: at the steepest grade allowed (${grade}) the raise runs on to ${at}.`
         : 'Auto cannot raise it without making the slope too steep or a hilltop or dip too sharp.';
     v.detail = `${v.detail ? `${v.detail} ` : ''}${why}`;
   }
@@ -2401,7 +2406,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
     ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
     ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, terrain)),
-    ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch, d.profileMode !== 'auto' && d.vpis.length >= 2),
+    ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch, d.profileMode !== 'auto' && d.vpis.length >= 2 && !opts.heightsGiven),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
   ];
   if (!win) hairpinFixes(al, d.pis, d.category, terrain, violations);
