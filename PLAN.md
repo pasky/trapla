@@ -998,11 +998,11 @@ that of the strict ways (an empty strict set), so a check could read the other's
   player's bridge, the cone stands and what it covers is a footprint problem ("A bridge end stands on …").
 - **The wall is billed** as what is drawn (the concrete end cap across the fill's end section): `closedEndWall`, a
   cantilever retaining wall at its height across the crest and falling with the side slopes, `retainingAssembly`
-  prices (OTSKP, research/18; shape PROVISIONAL, research/68 §4.5); with the bridge (≈ 2–5 M CZK per end). The bridge
+  prices (OTSKP, research/18; shape PROVISIONAL, research/68 §4.5); with the bridge (D11: 1.8–3.5 M CZK per end). The bridge
   card: "One end is a wall 9 m high down to the ground, so the fill does not cover what lies below: 2.9 M CZK."
 - **A fill between two bridges closed off by a wall** is bridged where its deck costs less than the fill, its walls and
   cones (after the support layout, Auto's gaps only; the structure choice had weighed cones there). None tips on the
-  packs (decks 1.5–3.4 × the fill); the Královec fill at km 5.61–5.70 became part of one bridge because its walls
+  packs (decks 1.15–3.4 × the fill); the Královec fill at km 5.61–5.70 became part of one bridge because its walls
   were over 10 m.
 - **Results.** Every bridge end of every pack's straight start, saved designs and presets (1,212 ends): a cone or a
   billed wall of at most 10 m (`scripts/bridge-ends-audit.ts`, a full gate; `tests/bridge-ends.test.ts` for D11 and
