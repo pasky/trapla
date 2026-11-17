@@ -44,7 +44,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 12 | Browser gates run against the live working tree (vite); fixed ports collide between worktrees | medium | none | done in part: port per checkout; run gates from a clean checkout (§ Tooling) |
 | 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | 23 on `scripts/lib/browser.mjs` (the gates and every script that set the retired intro key); 17 left, when touched |
 | 14 | Change lists the worker computes (`changedRouteIds` …) are never read: every full result rebuilds every road's 3D body | medium (many roads) | medium | owner / next |
-| 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41, 42, 43 ×2): 33 citations in `src/` are ambiguous | medium | none | next: cite the file name |
+| 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41 ×2, 43 ×2): bare citations of them are ambiguous | medium | none | done: 14 comments cite the file; `tests/research-citations.test.ts` rejects a bare one (5 player-text strings with `research/17` listed there) |
 | 16 | Engineering numbers outside `data/` (clearances, ramp limits, side slopes, a default design speed in `ui/`) | medium | low | sequence (list in § Data) |
 | 17 | `View` is a 1,720-line class; `ProfilePanel.paint()` 400 lines; `Inspector` builds every card | medium | medium | next, when touched |
 | 18 | Station-index clamp written out 25 times in 15 files | low | none | next: `stationIndex(r, s)` |
@@ -310,7 +310,10 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 - **Research numbers collide** because parallel agents take "the next number": 15 (3 files), 16 (5),
   17 (3), 41, 42, 43 (2 each). `research/41` in a source comment may mean the 150 km/h pilot or the
   traffic defaults. Rule: cite the file name (`research/41-traffic-defaults.md`); a new note takes the
-  next free number at merge time, like `COST_MODEL_VERSION`. 33 citations to fix (comments only).
+  next free number at merge time, like `COST_MODEL_VERSION`. Done: the 14 comments that cited 15, 17, 41 or 43
+  bare name their note, and the citation guard rejects a bare number that names several (42 is one note with
+  a folder of extracts). Five rule / source strings the player reads say `research/17` (stream crossings,
+  culvert prices and their validation): left, as changing them changes results; listed in the guard.
 - **Engineering numbers outside `data/`** (engine tuning such as step sizes and search budgets is fine
   where it is; these are numbers a designer or a norm sets):
   `crossing-geometry.ts` `CLEARANCE = 4.8`, `MAX_RAMP_LENGTH = 250`, `SQUARE_BELOW = 70`;

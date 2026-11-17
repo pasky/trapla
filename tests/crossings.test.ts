@@ -74,7 +74,7 @@ describe('explicit crossing choices (automatic policy already covered in town.te
   });
 
   // A rebuilt street (M 7.5) or track (P 4.0) meets the minor roads it crosses in a crossroads, priced as such
-  // (research/43); before, Auto cut each one and rerouted it to the next crossing (D11 Za Vápenkou: 30 M CZK).
+  // (research/43-minor-crossroads.md); before, Auto cut each one and rerouted it to the next crossing (D11 Za Vápenkou: 30 M CZK).
   it('a local road or track meets the minor roads it crosses in a crossroads, without junction spacing', () => {
     const ours = (minor: 'local' | 'track', cs: CrossingResult[]) => resolveCrossings(cs, 9000, [KIND.earth], [30, 30, 30], [0], [0], [], false, undefined, 0, minor);
     const street = [cross(1, 3000, 'residential'), cross(2, 3010, 'track'), cross(3, 3020, 'living_street'), cross(4, 3030, 'primary'), cross(5, 3040, 'trunk')];

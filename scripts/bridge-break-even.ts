@@ -34,7 +34,7 @@ for (const lambda of [MATERIAL_VALUE.lo, 0, 200, MATERIAL_VALUE.hi]) {
     (base + g.area * p + g.width * PRICES.topsoil * PRICES.topsoilDepth + g.works) * sur + g.width * LAND.perM2;
   const threshold = (L: number, g: (h: number) => { area: number; width: number; works: number }, water: 'now' | 'old' | null) => {
     for (let h = STRUCTURE_RULES.bridgeMinHeight; h <= 100; h += 0.01) {
-      // a stream under a fill wider than any culvert may be (100 m, research/17) must be bridged
+      // a stream under a fill wider than any culvert may be (100 m, research/17-stream-crossings.md) must be bridged
       if (water && waterSize(stream, g(h).width, water === 'now' ? h : 0).type === 'bridge') return `${h.toFixed(1)}*`;
       const fill = earth(g(h)) * L + (water ? culvertCost(stream, g(h).width, water === 'now' ? h : 0) * sur : 0);
       if (fill >= model.total(L, h) * sur + b * LAND.perM2 * L) return `${h.toFixed(1)}`;

@@ -56,7 +56,7 @@ const nearest = (r: Result, x: number, y: number) => {
 /** Junction of a side road onto the rebuilt road: an access for tracks and service roads (research/13),
  * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). On a
  * rebuilt local road or track (`minor`) a minor side road's junction is a crossroads of two minor roads
- * (research/43). */
+ * (research/43-minor-crossroads.md). */
 export function sideJunctionCost(cls: string, minor?: 'local' | 'track'): number {
   return minorCrossroads(minor, cls)
     ?? (cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost);

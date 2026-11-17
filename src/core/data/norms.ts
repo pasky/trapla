@@ -7,7 +7,7 @@ export interface SpeedNorms {
   minRadius: number;
   /** radius above which no superelevation is needed, m — information only */
   noSuperelevationRadius: number;
-  /** speed-based transition minimum, m; 2018 also requires ≥ runoff length (not modelled), research/15 */
+  /** speed-based transition minimum, m; 2018 also requires ≥ runoff length (not modelled), research/15-horizontal-pairs.md */
   minTransition: number;
   /** smallest crest vertical radius allowed (stopping sight), m */
   minCrestRadius: number;
@@ -102,7 +102,7 @@ export function designSpeeds(category: CategoryId): number[] {
 // Source: ČSN 73 6101 as reproduced in the VUT teaching text "Aplikace ČSN 73 6101"
 // (fce.vutbr.cz/pko/sad/pdf/aplikace.pdf, chapters "Směrové oblouky" and "Přechodnice").
 // Older edition, not independently verified for 2018. Omission threshold below uses actual model L,
-// whereas VUT prescribes 1.5vn for that calculation: this is a game concession (research/15).
+// whereas VUT prescribes 1.5vn for that calculation: this is a game concession (research/15-horizontal-pairs.md).
 import type { HorizontalRules, PI } from '../horizontal';
 import { CATEGORIES, type CategoryId } from './categories';
 

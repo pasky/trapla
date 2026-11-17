@@ -140,7 +140,7 @@ export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv)
     env.roads?.nearSegments([Math.min(a.x, b.x) - half, Math.min(a.y, b.y) - half, Math.max(a.x, b.x) + half, Math.max(a.y, b.y) + half], s => {
       if (ROAD_CLASSES[s.cls]?.noAtGrade && segmentGap(a, b, { x: s.ax, y: s.ay }, { x: s.bx, y: s.by }) <= half) problems.add('motorway');
     });
-    // A stream under the new road: a culvert sized like ours (research/17), with its cover built up
+    // A stream under the new road: a culvert sized like ours (research/17-stream-crossings.md), with its cover built up
     // where it crosses (one culvert per crossing, also where two pieces meet on it).
     for (const w of env.streams?.(a, b) ?? []) {
       const key = `${w.crossing.id}:${Math.round(w.x)},${Math.round(w.y)}`;
