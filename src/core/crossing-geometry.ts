@@ -38,6 +38,9 @@ export const CLOSURE_ROUND = 500;
 const CARRIED_REACH = CROSSING_RULES.mergeDistance * 2;
 /** PROVISIONAL turning disk at a public road's closed end: radius this × the road's width (as road-realignment.ts). */
 const TURNING_RADIUS = 1.5;
+/** How much of a kept piece's old road beyond its cut end stands for where it now ends (what a road rebuilt
+ * beside our earthworks meets), m. Engine detail, not built. */
+const KEPT_END = 5;
 /** Reroute work kept across evaluate()'s engineering passes (its strict retry), for one design on fixed
  * terrain and roads: the crossed ways' traced lines, and smoothed lines / engineered reroutes, each
  * reused only while our footprint within PERSIST_REACH of its stations is exactly unchanged. */
@@ -1196,6 +1199,13 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     if (!pieces.has(key)) pieces.set(key, pieceAccess({ net: roads, severed: severed(c), ...(MINOR_WAYS.has(c.cls) ? {} : { round: CLOSURE_ROUND + Math.abs(g.removed[1] - g.removed[0]) + 1 }) }, c.roadId, [along(path, g.removed[0]), along(path, g.removed[1])]));
     return pieces.get(key)!;
   };
+  /** A kept piece's cut end `a` and the old way KEPT_END m on beyond it (on the old road itself). */
+  const keptEnd = (c: CrossingResult, g: CrossingGeometry, a: CrossingPoint): CrossingPoint[] => {
+    const path = getPath(c.roadId, c.x, c.y, g);
+    if (path.length < 2 || !g.removed || a.d === undefined) return [a];
+    const out = a.d < (g.removed[0] + g.removed[1]) / 2 ? -1 : 1, d = Math.max(path[0].d, Math.min(path[path.length - 1].d, a.d + out * KEPT_END));
+    return d === a.d ? [a] : [a, terrainPoint(along(path, d))];
+  };
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
   // and beyond the footprint plus half the incoming road width and a physical setback.
   const isTerrain = (q: AnchorSample) => !('surface' in q) || q.surface === 'terrain';
@@ -1440,7 +1450,10 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     for (const side of [-1, 1]) {
       const k = side < 0 ? 0 : 1, a = start?.[k], b = finish?.[k], issuesBefore = g.diagnostics?.length ?? 0;
       if (k === 1 && anchorOnly && (g.diagnostics?.length || spent + straight[1] * linkRate + access >= budget)) { abandon = true; break; }
-      if (!required[k] || !a || !b) { links.push([]); continue; }
+      // (a piece that just ends keeps its cut end as the place what it leads on to meets it: no new road)
+      // (a piece that just ends keeps its cut end and the old road's first metres beyond it as where what it leads
+      // on to meets it: no new road, nothing billed)
+      if (!required[k] || !a || !b) { links.push(c.closure?.connected[k] && a ? keptEnd(c, g, a) : []); continue; }
       let built = buildSide(c, g, a, b, side, c.via?.[k]);
       // (where the shorter line to the target's road cannot be built, the one to its crossing is tried)
       // (nor where it costs more than the one to its crossing: houses bought out, culverts)
@@ -1470,8 +1483,8 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     }
     if (abandon) { if (!g.diagnostics?.length) diagnose(g, OVER_BUDGET); continue; }
     g.links = links as [CrossingPoint[], CrossingPoint[]];
-    g.turnarounds = links.filter(path => path.length > 0).map(path => path[0]);
-    c.linkLength = links.reduce((sum, path) => sum + crossingPlanLength(path), 0);
+    g.turnarounds = links.filter((path, k) => path.length > 0 && required[k]).map(path => path[0]);
+    c.linkLength = links.reduce((sum, path, k) => sum + (required[k] ? crossingPlanLength(path) : 0), 0);
     // (a piece that just ends: a public road's cut end gets a turning area, a track's or service road's none)
     // (its cut end is where the old road now ends: what is left of it beyond our earthworks is kept)
     let heads = 0;

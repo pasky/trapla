@@ -407,7 +407,7 @@ export class CrossingRenderer {
         earth.indices.push(...v);
       }
     }
-    if (g.turnaroundRadius === undefined && s.link && s.crossing.cls !== 'track' && s.path.length &&
+    if (g.turnaroundRadius === undefined && s.link && s.crossing.cls !== 'track' && !s.crossing.closure && s.path.length &&
       (g.turnarounds === undefined || g.turnarounds.some(p => Math.hypot(p.x-s.path[0].x,p.y-s.path[0].y) < .01))) {
       // Turning heads only at explicit severed ends; absent metadata retains legacy link behavior.
       const p = s.path[0], radius = g.width * .72, sections = 20;

@@ -110,34 +110,36 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
   return out;
 }
 
+/** Every pack's starters (each preset's opening project), evaluated as the browser does: each route's clashes. */
+export function* starterClashes(): Generator<{ name: string; result: Result; clashes: WorksClash[] }> {
+  for (const preset of PRESETS) {
+    const id = preset.id, dir = `public/scenarios/${id}`;
+    if (!existsSync(`${dir}/meta.json`)) continue;
+    const pack = loadPack(dir), sc = scenarioParams(id, preset.presetId);
+    const { initial } = projectContext(pack, sc, dir), design = initial();
+    const { ctx } = fullContext(design);
+    const pr = evaluateProject(ctx, { epoch: 'audit', revision: 1, design });
+    for (const [rid, rr] of Object.entries(pr.routes)) if (rr.legacy) {
+      const spec = design.routes.find(x => x.id === rid)!.specification as { category?: string };
+      yield { name: `${preset.presetId ?? id} ${rid}`, result: rr.legacy, clashes: worksClashes(rr.legacy, ctx.legacy, CATEGORIES[(spec.category ?? 'S9.5') as keyof typeof CATEGORIES]?.crownWidth ?? 9.5) };
+    }
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
   let total = 0;
-  const report = (name: string, r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings'>, crown: number) => {
-    const clashes = worksClashes(r, ctx, crown);
+  const report = (name: string, clashes: WorksClash[]) => {
     total += clashes.length;
     const byCrossing = new Map<string, WorksClash[]>();
     for (const c of clashes) { const k = `${Math.round(c.s)} ${c.cls} ${c.roadId} ${c.type}`; (byCrossing.get(k) ?? byCrossing.set(k, []).get(k)!).push(c); }
     console.log(`${name}: ${clashes.length} clashes${[...byCrossing].map(([k, l]) => `\n  km ${k}: ${[...new Set(l.map(c => c.what))].map(w => `${l.filter(c => c.what === w).length} ${w}`).join(', ')}`).join('')}`);
   };
-  if (args.includes('--all') || !args.length) {
-    for (const preset of PRESETS) {
-      const id = preset.id, dir = `public/scenarios/${id}`;
-      if (!existsSync(`${dir}/meta.json`)) continue;
-      const pack = loadPack(dir), sc = scenarioParams(id, preset.presetId);
-      const { initial } = projectContext(pack, sc, dir), design = initial();
-      const { ctx } = fullContext(design);
-      const pr = evaluateProject(ctx, { epoch: 'audit', revision: 1, design });
-      for (const [rid, rr] of Object.entries(pr.routes)) if (rr.legacy) {
-        const spec = design.routes.find(x => x.id === rid)!.specification as { category?: string };
-        report(`${preset.presetId ?? id} ${rid}`, rr.legacy, ctx.legacy, CATEGORIES[(spec.category ?? 'S9.5') as keyof typeof CATEGORIES]?.crownWidth ?? 9.5);
-      }
-    }
-  }
+  if (args.includes('--all') || !args.length) for (const { name, clashes } of starterClashes()) report(name, clashes);
   for (const file of args.filter(a => a.endsWith('.json'))) {
     const pack = loadPack(process.env.SCENARIO ? `public/scenarios/${process.env.SCENARIO}` : undefined), ctx = evalContext(pack);
     const d = JSON.parse(readFileSync(file, 'utf8')).design;
-    report(file, evaluate(ctx, d), ctx, CATEGORIES[d.category as keyof typeof CATEGORIES]?.crownWidth ?? 9.5);
+    report(file, worksClashes(evaluate(ctx, d), ctx, CATEGORIES[d.category as keyof typeof CATEGORIES]?.crownWidth ?? 9.5));
   }
   console.log(`total ${total}`);
 }
