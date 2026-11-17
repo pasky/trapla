@@ -15,7 +15,7 @@ export function startEvalWorkers(pack: Pack, scenario: ScenarioParams, a: { x: n
   const bases = new MessageChannel();
   const init: WorkerInit = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
-    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a, b, buildings: pack.overlays.buildings,
+    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, protectedAreas: pack.terrain.protectedData, a, b, buildings: pack.overlays.buildings,
     binfo: pack.overlays.binfo, net: pack.overlays.net, scenario, junctions: endpointJunctions(meta),
     projectEnvironment,
   };

@@ -10,6 +10,7 @@ import type { ProjectEnvironment } from './core/project';
 import type { NoiseBandOut, ProjectWorkerIn, ProjectWorkerOut } from './core/project-protocol';
 import type { RoadNetData } from './core/roadnet';
 import type { WaterData } from './core/watercourses';
+import type { ProtectedData } from './core/data/protected';
 
 /** The scenario pack and its identities; sent once, before anything else (the height and land-cover grids
  * are transferred, not copied). */
@@ -17,6 +18,8 @@ export interface WorkerInit {
   type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
   a: { x: number; y: number }; b: { x: number; y: number }; buildings: [number, number, number][];
   binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData;
+  /** nature protection areas (the pack's protected.json) */
+  protectedAreas?: ProtectedData;
   projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[];
   /** 'full' passes each full result on `port` to the 'preview' worker (base of its windowed previews). */
   role?: 'full' | 'preview'; port?: MessagePort;
