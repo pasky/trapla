@@ -1040,6 +1040,35 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   overlaps do not bury adjoining roads. Distant terrain silhouettes still show the coarse mesh. Buildings are flat-roofed boxes and stretch with the vertical
   exaggeration. The aerial photo is streamed from ČÚZK's view service (needs a connection; see README).
 
+### Other ways' works and cut ways piece by piece (cost model 42, 2026-11-17)
+
+Owner's Královec review (shots: a street closed by two stubs, a forest track cut by our fill beside a viaduct, a
+road bridge's ramps over houses and the station tracks, a track's bridge ends sliding into our cut). Diagnosis and
+remedies (`scripts/works-clash-audit.ts`: every pack's starters, what is drawn of other ways' works against kept
+houses, mapped railways, our piers and our own body, and each cut way's detour over the network):
+- **Other ways' slopes.** `crossing-works.ts` screened a crossing's ramps only against other roads. Now a junction
+  approach, a bridge over us, a lowered box's ramps, the side roads regraded to them and every reroute keep their
+  slopes off houses (a retaining wall where it can stand, else the house is bought out, billed and drawn
+  demolished; a house the player keeps makes the treatment infeasible), mapped railways (wall, else infeasible) and
+  (bridges over us, reroutes) our own cut, formation and embankment (wing walls; our earth only, not under a bridge
+  or over a tunnel). A bridge over us whose ramps would land on the mapped tracks its way crosses at the same level
+  beside us spans them too (Královec km 12.98: 49 m, clearing them at the railway clearance). A junction whose
+  approach cannot be built that way is cleared by the grade (separation retry).
+- **Cut ways piece by piece** (`way-pieces.ts`; owner's rule, research/45). A cut way's pieces are followed over the
+  mapped network (within 1.5 km; a way under our earthworks is cut whatever is built for it, so a crossing's
+  pieces never depend on another's treatment and the local retry stays exact): a piece that meets a public road
+  just ends (a public road's end gets a billed turning area on its old road; a track's or service road's none);
+  only a piece cut off is led to a crossing. A public road is closed only where its traffic goes round at most
+  500 m further (CLOSURE_ROUND, a game rule: no Czech maximum detour exists); otherwise it is carried or rerouted
+  (km 1.81: the street at the tunnel portal now crosses on a 33 m bridge instead of being cut by two 7 m stubs, its
+  traffic 6.7 km round). A track or service road cut right beside our bridge may be led under it (UNDER_REACH
+  150 m, PROVISIONAL; km 5.69 and 10.22: 181 m and 292 m of new track instead of a closure and a 145 m reroute
+  that bought a home). No reroute joins its own way's line (the stubs). Card and summary say what is closed and why.
+- Screenshots 360–364. Open: a disconnected piece that serves nothing (no building, no field reachable only
+  through it) is still given access rather than closed; the drawn slope of our own embankment beside a bridge end
+  can run far down a valley side (Královec km 5.68: 135 m) and looks billed for less (87 m² of section; not traced);
+  two projects' crossings changing one junction are reported as such (the QA's new railway across Královec).
+
 ### Next steps
 - Editing aid (future, not planned now): a drag on a long straight puts in one bend, so the whole line turns
   about its neighbouring bends (on the D11 straight start, about A and B: 10 px ≈ 230 m moves 15 km of road).
