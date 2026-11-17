@@ -980,6 +980,53 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–301 (`scripts/q
   sky-coloured sliver beside the cone). Left: random-12 / random-19 (already invalid) bury a track / street that
   cannot be moved aside on the 30 m rule's new line (steep ground, a side road it would cut off).
 
+### Protected nature areas; tunnels at most 3 % (cost model 42, 2026-11-17)
+
+Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Act). Code: `pipeline/fetch_protected.py`,
+`build_protected.py` (a pack's `protected.json`), `data/protected.ts`, `protected-areas.ts`, `nature-works.ts`,
+`ui/nature-notes.ts`, `render/nature.ts`. Shots 340–345.
+- **Every pack carries its protected areas** (AOPK open data, CC BY 4.0): small reserves and monuments (NPR, PR, NPP,
+  PP) and their protection zones, Natura 2000 sites (EVL) and bird areas (PO), national park zones and protected
+  landscape area zones. Drawn as borders on the map (no works: a soft green band with a solid edge; protection zone:
+  dashed; works allowed: dotted), legend "protected nature".
+- **What the Act forbids** (Act 114/1992, research/75): no works of ours in a reserve or monument (§§29, 34–36), a
+  Natura 2000 site (§45c, §§45h–i), a national park outside its villages (§16(2)), zones I–II of a protected landscape
+  area (§26(2)–(3)), or anywhere in one for a motorway (§26(1)(f)). Works are earthworks, bridge supports and ends,
+  tunnel entrances and a dug tunnel's pit, rebuilt roads and reroutes; a deck over an area and a mined tunnel under it
+  take nothing. Such works are a problem with basis **law** (new tag) and a computed fix. A protection zone (§37) or a
+  bird area only adds a note on the stretch card ("…need the nature authority's consent"), no problem, no cost
+  (owner's decision).
+- **Auto keeps out like a designer** (evaluate.ts): where an area lies under our crown the grade search must pass a
+  bridge's height over it (only if the area is narrower along the road than the longest span, 180 m) or 14 m under it,
+  mined; beside it, within a dug tunnel end's reach, no tunnel end (the line at most a portal's depth in its cut, or
+  mined). These are hard clearances (a penalty no structure outweighs); the search does not take the narrow corridor or
+  the normal band where they are missed. Piers and bridge ends stand clear of areas (support-layout.ts); a wall keeps
+  our slope out of one beside us, else a bridge or tunnel (retaining.ts); rebuilt roads and reroutes go round.
+- **Tunnels at most 3 %** (NV 264/2009 annex 2.2, Hessen Mobil 2006; research/73 §3): in the grade search's tunnel
+  mode a line steeper than 3 % pays 1 M CZK per metre for each 0.1 % over (PROVISIONAL weight; no price exists), and
+  none is steeper than 5 %. The tunnel card says when a tunnel is steeper than 3 % ("needs extra safety measures after a
+  risk study"); the player's tunnel steeper than 5 % is a problem (basis law); Auto's only where its search found no
+  other way (the Act's own exception), said on its card. The search tries the wide band and the fine grid near a
+  tunnel line (its coarse grade steps miss 3 % by a step).
+- **A stream under an embankment a bridge's height above it**, with no bridge near, gets a short bridge of its own
+  (the D11 starter's tunnel, now 3 %, left a stream at its toe under 13 m of fill).
+- **The real D35** (research/73): Auto's stage-1 motorway now builds a 3,159 m tunnel under Pod skálou at 2.6–3.0 %,
+  out of the protected forest, and 740 m of bridges (real: 3,983 m, ≈ 700 m): 20,029 M. The real-portal line bills
+  21,155 M (+6 %).
+- **Bills** (model 41 → 42): D11 frozen fixtures and the Královec railway unchanged; D11 starter (QA tests) 8,978 →
+  9,052 M; d35 stage-1 19,050 → 20,029, d35 road 6,561 → 9,518 (a 3.1 km tunnel and its escape tunnel where its line
+  ended in the monument), d35-full 32,380 → 34,216, D3 motorway 14,284 → 15,017 (the Sázava viaduct 820 → 929 m, its
+  piers out of the Natura 2000 river), d3-0302 7,045 → 7,026, d3-0304 10,133 → 10,112, d3-full 37,865 → 36,378 (its
+  800 m tunnel at km 9.7 was 3.8 % steep; without it the line stays higher on a longer bridge, 1.5 bn cheaper by our
+  prices), the rest unchanged. Outcome audit (24 random D11 lines): VALID and problem counts unchanged, flags 76 → 74,
+  lines with tunnels −1.1 … +0.6 bn.
+- **Known limits.** A protection zone is a note only; ventilation shafts, groundwater protection zones and the Act's
+  exemptions are not modelled; a national park's villages are the land cover's built-up areas; an area near our road
+  but outside the crown holds no grade limit (a wall or a structure keeps the slope out; a cut 9–14 m deep within
+  about 30 m of an area is avoided as a possible tunnel end). The tunnel penalty is a weight, not a price. The Auto
+  tunnels of steep roads can still exceed 5 % where the structure choice turns a deep cut into a tunnel on a steep
+  grade (QA new road across Královec: 6.1 %; said on the card, not a problem).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout

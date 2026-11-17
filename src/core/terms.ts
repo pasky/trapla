@@ -10,7 +10,8 @@
 // Glossary of player words (allowed): our road, crossed road, track, service road, street, local road,
 // class I–III road, motorway, junction, bridge, tunnel, cutting, embankment, slope, earthworks, ramp,
 // retaining wall, culvert, stream, underpass, rerouted, reconnected, moved aside, closed, turning area,
-// height point, bend, km, m, %. Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
+// height point, bend, km, m, %; nature reserve, nature monument, protection zone, Natura 2000 site, national park,
+// protected landscape area (research/75). Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
 // where a requirement or a price cites its source: a violation's `rule` line and the bill's pricing
 // tooltips.
 import type { CrossingResult } from './crossings';

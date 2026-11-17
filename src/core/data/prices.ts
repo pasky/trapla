@@ -116,8 +116,13 @@
  * only without a lift (research/69); no cut deeper than 30 m, presplit rock faces, rock cut by its kind
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
- * 4,935 → 7,045 M. */
-export const COST_MODEL_VERSION = 41;
+ * 4,935 → 7,045 M.
+ * 42: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
+ * sites, national parks and CHKO zones I–II (over them on a bridge with no supports inside, under them mined);
+ * tunnels kept to 3 %, never steeper than 5 % (NV 264/2009, research/73). D11 frozen unchanged; d35 stage-1
+ * 19,050 → 20,029 M (a 3.2 km tunnel under Pod skálou), d35 road 6,561 → 9,518, d35-full 32,380 → 34,216, D3
+ * motorway 14,284 → 15,017 (the Sázava bridge's piers out of the Natura 2000 river), d3-full 37,865 → 36,378. */
+export const COST_MODEL_VERSION = 42;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

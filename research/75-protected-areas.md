@@ -59,3 +59,23 @@ mined Dětřichov tunnel under PP Pod skálou: "Toto řešení je optimální" (
 - Groundwater protection zones of water sources (research/73 found none relevant on D35).
 - ÚSES (research/53: crossings, not bans).
 - Exemptions and compensation measures.
+
+## Implemented (cost model 42)
+
+Owner's decisions (2026-11-17): a protection zone (§37) takes works with a note ("…need the nature authority's
+consent"), no problem and no invented cost; the no-works rule applies to the areas themselves; tunnels: Auto keeps
+to 3 %, the player gets a note above 3 % and a problem above 5 % (NV 264/2009 annex 2.2). Not taken: the ×0.89 tube
+width and the rock-cover factor (research/73 §5, too weak), running costs (research/74, owner to decide).
+
+- Problems: basis "law", the Act's section in the rule line, a computed fix (a bridge from km … to km … with no
+  supports in the area, a tunnel at least 14 m below the ground, or another line). Notes: one per area on a
+  stretch card.
+- Auto (evaluate.ts): an area under our crown is a hard clearance of the grade search (a bridge's height over it,
+  only where the area is at most 180 m long along the road; or 14 m under it, mined); within a dug tunnel end's
+  reach of it (≈ 30 m), no tunnel end. Bridge supports and ends stand clear (support-layout.ts); a wall keeps a slope
+  out, else a bridge or tunnel (retaining.ts); rebuilt roads and reroutes do not enter.
+- Results (model 41 → 42): every starter VALID; d35 stage-1 Auto builds a 3,159 m tunnel under Pod skálou at
+  ≤ 3 %, out of its forest (research/73 §6); the D3 Sázava viaduct's piers leave EVL Dolní Sázava (820 → 929 m).
+- Not modelled: the QA's new lines across Královec run through EVL Krkonoše and are problems there (their crossing
+  tests load the pack without areas); Auto's tunnel of a steep road may still exceed 5 % where its structure choice
+  tunnels a deep cut on a steep grade (said on the card).

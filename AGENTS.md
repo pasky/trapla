@@ -114,12 +114,11 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   (short spans / long spans / arch, Auto the cheapest that fits; cost model 35, PLAN.md "Bridge styles"); a
   style or method chosen on Auto's structure leaves it Auto's (`StructureOverride.auto`); painting a structure
   as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
-  later. A long mined tube costs less per metre (cost model 36, research/64). The real D35 choice is 10 % dearer in
-  our model with its real portal heights (research/73, not 17 % as in research/63). A protected yew forest on the
-  escarpment (EIA condition) rules out Auto's tunnel portal, which stands in it, and plausibly explains the length;
-  our model has no protected areas. Proposals, not
-  implemented: protected areas, tunnels ≤ 3 %, T-8.0 tube width (research/73 §5), rock cover (research/65 §4),
-  running costs as an optional line (research/74). The Nová Paka
+  later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 42, research/75): no
+  works of ours in reserves, monuments, Natura 2000 sites, national parks, CHKO zones I–II (protection zones: a note);
+  Auto bridges over them (no supports inside) or mines under them; tunnels kept to 3 %, never above 5 %. The real D35
+  layout is now Auto's (3.2 km tunnel under Pod skálou, research/73 §6). Not taken: T-8.0 tube width, rock cover,
+  running costs (research/73 §5, /74). The Nová Paka
   starter follows the mapped bypass. Since cost model 37, most side roads no longer break its small drags: dead ends
   are cut back to their junction, and the separation retry runs on every category. One street still does, where its
   junction lies at our slope's toe. What mostly breaks them is the hand-set radii at the norm's limit (S-bends 4–6,

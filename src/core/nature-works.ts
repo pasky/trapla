@@ -29,8 +29,11 @@ export type NatureRoute = Pick<FootprintRoute, 'n' | 'ds' | 's' | 'x' | 'y' | 't
 /** Our works in protection areas, grouped by area and kind of works over adjacent stations. */
 export function natureHits(r: NatureRoute, terrain: Terrain, motorway: boolean): NatureHit[] {
   if (!terrain.protectedAreas) return [];
-  const cells: (FootprintCell & { work: NatureWork })[] = [];
+  const cells: (FootprintCell & { work: NatureWork })[] = [], areas = terrain.protectedAreas;
   for (let i = 0; i < r.n; i++) {
+    // (a quick test first: most of a route lies far from any area)
+    const reach = Math.max(r.dayL[i], r.dayR[i], r.crownWidth / 2 + 40) + r.ds;
+    if (!areas.mayCover(r.x[i] - reach, r.y[i] - reach, r.x[i] + reach, r.y[i] + reach)) continue;
     const shift = i === 0 ? r.ds / 4 : i === r.n - 1 ? -r.ds / 4 : 0;
     const base = { i, s: r.s[i], x: r.x[i] + r.tx[i] * shift, y: r.y[i] + r.ty[i] * shift, tx: r.tx[i], ty: r.ty[i], along: shift ? r.ds / 4 : r.ds / 2 };
     if (r.kind[i] === KIND.earth) cells.push({ ...base, left: r.dayL[i], right: r.dayR[i], work: 'earth' });
