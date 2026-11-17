@@ -133,8 +133,13 @@ export function createMapGestures(app: MapGestureContext) {
         });
       }
     },
-    // placing a new line: a click beside the map says so (never nothing at all)
-    onPickNothing: () => { if (app.buildTool.active) app.buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); },
+    // placing a new line: a click beside the map says so (never nothing at all); else it lets go of what
+    // is selected, as one on open ground
+    onPickNothing: () => {
+      if (app.buildTool.active) { app.buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); return; }
+      if (app.roadSelected) deselectedAt = performance.now();
+      app.deselect();
+    },
     // (on the selected road only; the first click of the double click may have left it unselected)
     onDoublePick: (x, y) => {
       if (!app.store.read() || app.routeAt(app.lastClient.x, app.lastClient.y, 10)) return;
