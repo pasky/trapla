@@ -1,5 +1,5 @@
 {
-  "modelVersion": 41,
+  "modelVersion": 42,
   "dataset": "current",
   "fixtures": [
     {
@@ -3134,8 +3134,8 @@
         "violations": [
           {
             "kind": "vcOverlap",
-            "s0": 149.746895624681,
-            "s1": 320.88620491003076
+            "s0": 235.31655026735586,
+            "s1": 470.63310053471173
           }
         ]
       }
