@@ -38,13 +38,18 @@ export function createProjectScore(app: ProjectScoreContext) {
     const missionCorridor = mission ? corridorOfRoute(app.projectStore.snapshot.design, mission) : undefined;
     const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
     const groups = Object.fromEntries(app.projectStore.snapshot.design.corridors.flatMap(c => [[c.children.forward, c.id], [c.children.reverse, c.id]]));
+    // which road a bill is, across steps: a rebuilt stretch is the mapped road it rebuilds (a saved or best design
+    // loaded gives it another id; the change line would list it twice), a motorway its corridor
+    const lines: Record<RouteId, string> = { ...groups };
+    for (const r of app.projectStore.snapshot.design.routes) if (!groups[r.id] && r.source?.intervals.length)
+      lines[r.id] = `source:${r.source.intervals.map(i => `${i.sourceId}:${Math.round(i.s0)}-${Math.round(i.s1)}`).join('+')}`;
     // "Our road only" / "This railway only": what the price shown is for, in the active line's own word
     const word = (id: RouteId | null | undefined) => { const k = app.projectStore.snapshot.design.routes.find(r => r.id === id)?.kind; return k === 'railway' ? 'railway' : k === 'motorway' ? 'motorway' : 'road'; };
     const only = (id: RouteId | null | undefined) => `${id && ours.has(id) ? 'Our' : 'This'} ${word(id)} only`;
     const own = app.session.activePreviewPrice !== null ? { total: app.session.activePreviewPrice, approx: true, label: only(active), routeId: active ?? undefined }
       : active && active in alone ? { total: alone[active], approx: false, label: only(active), routeId: active }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission), routeId: mission } : null;
-    app.hud.setProject(app.session.projectFull, pending, app.projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
+    app.hud.setProject(app.session.projectFull, pending, app.projectStore.best, { missionRouteId: mission, ours, groups, lines, legacy: legacyFacade(), ownPrice: own,
       liveTotal: live, dragging: app.session.activePreviewPrice !== null && app.projectStore.inTransaction,
       activeRouteId: active ?? undefined, names: routeNames(),
       lengths: Object.fromEntries(Object.values(app.session.projectFull?.routes ?? {}).flatMap(r => {

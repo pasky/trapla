@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
-import { aloneText, billChangeText, lineBills, listProjectIssues, projectBadge, unpricedText, type LineBill, type ListedIssue } from './project-issues';
+import { aloneText, billChangeText, lineBills, listProjectIssues, projectBadge, StepResults, unpricedText, type ListedIssue } from './project-issues';
 import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
@@ -124,6 +124,8 @@ export class Hud {
   /** `legacy`: the project is exactly one legacy road (the facade): the unchanged single-road score shows,
    * including its live ≈ preview total. Otherwise the project score owns the total and verdict. */
   setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>; legacy?: boolean;
+    /** which road each route's bill is across steps (the change line): a motorway's corridor, a rebuilt stretch's mapped road */
+    lines?: Record<RouteId, string>;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
     ownPrice?: { total: number; approx: boolean; label: string; routeId?: RouteId } | null;
@@ -136,6 +138,7 @@ export class Hud {
     const { missionRouteId, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
     // every road that is "our road" (a motorway's two directions); default: the mission road
     const ours = opts.ours ?? new Set(missionRouteId ? [missionRouteId] : []);
+    this.recordStep(result, ours, names, opts.lines ?? groups);
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -196,15 +199,14 @@ export class Hud {
         + (notChecked.length ? `<li class="not-checked-h">Not checked yet</li>${notChecked.slice(0, 20).map(v => line(v, 'not-checked')).join('')}` : '');
     }
     // The change line follows the shown total: live while dragging, cleared while a result is only checked.
-    const delta = this.baseline !== null && priced && (!pending || liveTotal !== null) ? shownTotal! - this.baseline : 0;
+    const base = this.steps.baseline, baseline = base?.total ?? null;
+    const delta = baseline !== null && priced && (!pending || liveTotal !== null) ? shownTotal! - baseline : 0;
     this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${pending ? '≈ ' : ''}${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
     this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
-    if (!pending) this.lastTotal = priced ? total : null;
     // an edit that changed more than one road's bill (a side road rebuilt under our bridge): which, and why
-    const bills = !pending && priced ? lineBills(result!, ours, names, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups) : null;
-    const why = bills && this.baselineBills && delta ? billChangeText(this.baselineBills, bills, v => czk(v).replace(' CZK', '')) : '';
+    const bills = !pending && priced ? this.recordedBills : null;
+    const why = bills && base?.bills && delta ? billChangeText(base.bills, bills, v => czk(v).replace(' CZK', '')) : '';
     this.$('delta-why').textContent = why; this.$('delta-why').hidden = !why;
-    if (!pending) this.lastBills = bills;
     // no best while the project is not priced: a stored best is not comparable to an unpriced change
     this.$('best').style.display = priced ? '' : 'none';
     const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
@@ -222,13 +224,19 @@ export class Hud {
   private legacyBest: Pick<Best, 'cost'> | null = null;
   private folds: Record<string, boolean> = {};
   private goalText = '';
-  /** total before the edit in progress (the change chip compares against it) */
-  private baseline: number | null = null;
-  /** each road's bill before the edit in progress, and after the last priced result */
-  private baselineBills: Map<string, LineBill> | null = null;
-  private lastBills: Map<string, LineBill> | null = null;
-  private editOpen = false;
-  private lastTotal: number | null = null;
+  /** every step's full result and the step the edit in progress started from (the change chip and line compare
+   *  against it) */
+  private steps = new StepResults();
+  /** the last full project result recorded, and its lines' bills */
+  private recorded: ProjectResult | null = null;
+  private recordedBills: ReturnType<typeof lineBills> | null = null;
+  private recordStep(result: ProjectResult | null, ours: ReadonlySet<RouteId>, names: Record<RouteId, string>, groups?: Record<RouteId, string>) {
+    if (!result || result === this.recorded) return;
+    const total = result.cost.total ?? null;
+    this.recorded = result;
+    this.recordedBills = total === null ? null : lineBills(result, ours, names, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups);
+    this.steps.record(`${result.epoch}:${result.revision}`, total, this.recordedBills);
+  }
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
   /** where the contextual cards go (the bend / height point cards here, the build tools' cards too) */
   readonly context: HTMLElement;
@@ -543,13 +551,13 @@ export class Hud {
     }).join('');
     // the change the last edit made
     const delta = this.$('delta');
-    if (this.baseline !== null && Math.abs(r.cost.total - this.baseline) >= 5e5) {
-      const dv = r.cost.total - this.baseline;
+    const baseline = this.steps.baseline?.total ?? null;
+    if (baseline !== null && Math.abs(r.cost.total - baseline) >= 5e5) {
+      const dv = r.cost.total - baseline;
       delta.textContent = `${dv < 0 ? '−' : '+'}${czk(Math.abs(dv))}`;
       delta.className = `delta ${dv < 0 ? 'down' : 'up'}`;
       delta.title = 'Change made by your last edit';
     } else { delta.textContent = ''; delta.className = 'delta'; }
-    this.lastTotal = r.cost.total;
     const b = this.$('best');
     const isBest = !!best && r.valid && Math.abs(best.cost - r.cost.total) < 1;
     b.innerHTML = best
@@ -561,11 +569,9 @@ export class Hud {
     this.renderProjectScore();
   }
 
-  /** an edit started (a drag counts once, from its start); the change chip compares with the total before it */
-  noteEdit(committed: boolean) {
-    if (!this.editOpen) { this.baseline = this.lastTotal; this.baselineBills = this.lastBills; this.editOpen = true; }
-    if (committed) this.editOpen = false;
-  }
+  /** a change of the design from snapshot `before` (`epoch:revision`; an undo, a redo or a load too; a drag counts
+   *  once, from its start): the change chip and line compare with that snapshot's full result */
+  noteEdit(committed: boolean, before: string) { this.steps.note(before, committed); }
 }
 
 /** A motorway's direction switch: what a drag bends, and where the directions run apart (each with Join). */

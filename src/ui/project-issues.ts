@@ -106,6 +106,31 @@ export function lineBills(result: ProjectResult, ours: ReadonlySet<RouteId>, nam
   return out;
 }
 
+/** What the score's change line compares: every history step's full result (its total, each line's bill), by
+ * the project snapshot it was computed for (`epoch:revision`), and the step an edit started from. The line is
+ * always the current result against the full result of the snapshot the edit (a drag, an undo, a redo, a load)
+ * started from: never a total or a bill left over from another step (QA sweep 3 re-check: a removed road's
+ * −229 M stayed in the next drag's line; Undo kept it; a second Undo flipped its signs). No result of that
+ * snapshot (edits faster than the checks): no change line rather than one from another step. */
+export class StepResults {
+  private steps = new Map<string, { total: number | null; bills: Map<string, LineBill> | null }>();
+  private from: string | null = null;
+  private open = false;
+  constructor(private readonly keep = 64) {}
+  /** a full (not preview) result of snapshot `step`: its total (null: not priced) and its lines' bills */
+  record(step: string, total: number | null, bills: Map<string, LineBill> | null) {
+    this.steps.delete(step); this.steps.set(step, { total, bills });
+    while (this.steps.size > this.keep) this.steps.delete(this.steps.keys().next().value!);
+  }
+  /** a change of the design from snapshot `before` (a drag counts once, from its start); `committed`: it ended */
+  note(before: string, committed: boolean) {
+    if (!this.open) { this.from = before; this.open = true; }
+    if (committed) this.open = false;
+  }
+  /** the full result the change line compares against (null: none known) */
+  get baseline() { return this.from === null ? null : this.steps.get(this.from) ?? null; }
+}
+
 /** Which lines' bills the last edit changed, when it changed more than one: "Road III/1057 +9.8 M ·
  * our motorway −24 M (bridges −35 M)" — a new line with its whole bill, a changed one with the bill line
  * that moved the most where that is most of its change. '' when one line or none changed. */

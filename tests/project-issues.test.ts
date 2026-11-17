@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectIssue, ProjectResult } from '../src/core/project';
 import { czk } from '../src/ui/costgroups';
-import { aloneText, billChangeText, lineBills, listProjectIssues, notCheckedYet, projectBadge, unpricedText } from '../src/ui/project-issues';
+import { aloneText, billChangeText, lineBills, listProjectIssues, notCheckedYet, projectBadge, StepResults, unpricedText } from '../src/ui/project-issues';
 
 const issue = (title: string, routeIds: string[], blocking: ProjectIssue['blocking'], basis: 'engine' | 'game' | 'norm', s0?: number): ProjectIssue => ({
   code: title, blocking, check: basis === 'engine' ? 'not-checked' : 'violation', scope: { routeIds }, locations: s0 === undefined ? [] : [{ routeId: routeIds[0], s0, s1: s0 + 10 }],
@@ -81,5 +81,37 @@ describe('project issue list', () => {
     expect(billChangeText(before, after, money)).toBe('Our motorway −24 M (bridges −35 M) · Road III/1057 +9.8 M');
     // one road's own change needs no breakdown (the change line says it)
     expect(billChangeText(before, lineBills(project({ fwd: 14_000e6 }, { fwd: now, rev: now }), ours, names, 'our motorway'), money)).toBe('');
+  });
+
+  it('the change line is one step\'s change, by road (QA sweep 3 re-check: a removed road\'s −229 M in the next drag\'s line)', () => {
+    const money = (v: number) => czk(v).replace(' CZK', '');
+    const project = (alone: Record<string, number>) => ({ cost: { alone }, routes: {} }) as unknown as ProjectResult;
+    const ours = new Set(['road']), names = { road: 'Road', side: 'New road', iii: 'Road III/3012', iii2: 'Road III/3012' };
+    const bills = (alone: Record<string, number>, lines: Record<string, string> = {}) => lineBills(project(alone), ours, names, 'our road', lines);
+    const steps = new StepResults();
+    // Build → Road (e:1), Remove road (e:2), then a drag of III/3012 (three changes, one step: e:3 … e:5)
+    steps.record('e:1', 9_079e6, bills({ road: 8_850e6, side: 229e6 }));
+    steps.note('e:1', true);
+    steps.record('e:2', 8_850e6, bills({ road: 8_850e6 }));
+    steps.note('e:2', false); steps.note('e:3', false); steps.note('e:4', true);
+    const dragged = bills({ road: 8_616e6, iii: 6.5e6 });
+    steps.record('e:5', 8_622.5e6, dragged);
+    expect(steps.baseline!.total).toBe(8_850e6);
+    expect(billChangeText(steps.baseline!.bills!, dragged, money)).toBe('Our road −234 M · Road III/3012 +6.5 M');
+    // Undo: the step undone, signs flipped once; Undo again: the removed road back, one line (no breakdown)
+    steps.note('e:5', true);
+    const undone = bills({ road: 8_850e6 });
+    steps.record('e:6', 8_850e6, undone);
+    expect(billChangeText(steps.baseline!.bills!, undone, money)).toBe('Our road +234 M · Road III/3012 −6.5 M');
+    steps.note('e:6', true);
+    steps.record('e:7', 9_079e6, bills({ road: 8_850e6, side: 229e6 }));
+    expect(billChangeText(steps.baseline!.bills!, bills({ road: 8_850e6, side: 229e6 }), money)).toBe('');
+    // a change from a snapshot whose result never came (edits faster than the checks): no line from another step
+    steps.note('e:8', true);
+    expect(steps.baseline).toBeNull();
+    // a saved design loaded gives the same rebuilt stretch another id: one road, not "−6.5 M · +5.8 M"
+    const source = 'source:osm:way:1:0-650';
+    expect(billChangeText(bills({ road: 8_616e6, iii: 6.5e6 }, { iii: source }), bills({ road: 8_700e6, iii2: 5.8e6 }, { iii2: source }), money))
+      .toBe('Our road +84 M · Road III/3012 −0.7 M');
   });
 });

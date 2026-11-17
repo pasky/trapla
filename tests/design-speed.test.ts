@@ -123,6 +123,19 @@ describe('hairpins (research/47 §3)', () => {
     expect(Math.max(...w)).toBeCloseTo(1.25, 6);
     expect(w[0]).toBe(0);
   });
+  it('a hairpin squeezed by the bends next to it is a problem with a fix (QA sweep 3 re-check: R 13 m, no word)', () => {
+    // the sweep's lone hairpin between two bends 500 m away: its 30 m curve has no room and is drawn far sharper
+    const p: PI[] = [{ x: 950, y: 200, r: null }, { x: 1000, y: 500, r: null, hairpin: true }, { x: 1050, y: 200, r: null }];
+    const g = buildAlignment(A, { x: 2000, y: 200 }, p, horizontalRules(70, 'S9.5'), bendRules(p, 70, 'S9.5'));
+    expect(g.curves[1].r).toBeCloseTo(30, 6);
+    expect(g.curves[1].rEff).toBeLessThan(29);
+    const squeezed = ROAD_CHECKS.horizontal(g, speedNorms(70, 'S9.5'), { a: A, b: { x: 2000, y: 200 }, pis: p, category: 'S9.5' })
+      .filter(v => v.kind === 'radius' && v.pi === 1);
+    expect(squeezed.map(v => v.title)).toEqual(['Hairpin at bend 2 has no room for its curve']);
+    expect(squeezed[0].fix).toMatch(/^Move the bends next to bend 2 about \d+ m further from it/);
+    // with room, none
+    expect(ROAD_CHECKS.horizontal(al(zig), speedNorms(70, 'S9.5'), { a: A, b: B, pis: zig, category: 'S9.5' }).filter(v => v.kind === 'radius')).toEqual([]);
+  });
   it('is allowed only in the mountains on a stretch at the lowest speed', async () => {
     const { hairpinViolations } = await import('../src/core/design-speed');
     const { syntheticTerrain } = await import('../src/core/terrain');
