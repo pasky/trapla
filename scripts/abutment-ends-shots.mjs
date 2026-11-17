@@ -1,6 +1,6 @@
 // Shots of bridge ends under one rule (cost model 42, PLAN.md "Bridge ends: one rule"): the Královec railway's ends
-// that were walls of 16–28 m (km 5.61 / 5.70, km 10.27: the owner's shot) now on cones, the fill boxed in between them
-// one bridge; D11's straight start: an end that was an 11.4 m wall now on a cone, a closed end within 10 m with its
+// that were walls of 16–28 m (km 5.61 / 5.70, km 10.27: the owner's shot), the fills boxed in by them now under one
+// bridge each; D11's straight start: an end that was an 11.4 m wall now on a cone, a closed end within 10 m with its
 // wall's height and price on the bridge card.
 //   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/abutment-ends-shots.mjs [--out docs/screenshots] [--first 390]
 import assert from 'node:assert/strict';
@@ -21,16 +21,17 @@ const park = async () => { const b = await page.locator('#hud').boundingBox(); a
 const look = (s, dist, bearing, elev) => T(([s, d, b, e]) => { const r = window.trapla.result(), i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], d, b, e); }, [s, dist, bearing, elev]);
 const runNear = (s) => T(s => window.trapla.result().runs.find(r => r.kind === 1 && r.s0 - 30 <= s && r.s1 + 30 >= s), s);
 try {
-  // 1. the Královec railway: the end at km 10.27 (the owner's 28 m wall) on its cone
+  // 1. the Královec railway: the end at km 10.27 (the owner's 28 m wall) goes on over the track under its cone, joining
+  //    the bridge before it: one bridge, its far end on a cone
   await game.open('scenario=d11&preset=d11-rail-kralovec'); await park();
   const at10 = await runNear(10270);
-  assert.ok(at10 && !at10.closedEnds?.[0], 'km 10.27: no closed end');
-  assert.ok((await T(s => window.trapla.result().cones.some(c => Math.abs(c.s - s) < 1), at10.s0)), 'km 10.27: a cone');
-  await T(s => window.trapla.selectPiece(s), (at10.s0 + at10.s1) / 2); await game.idle();
+  assert.ok(at10 && at10.s0 < 10150 && at10.s1 > 10400 && !at10.closedEnds, `km 10.1–10.46 one bridge, no wall (${at10?.s0}–${at10?.s1})`);
+  assert.ok((await T(s => window.trapla.result().cones.some(c => Math.abs(c.s - s) < 1), at10.s1)), 'its far end on a cone');
+  await T(s => window.trapla.selectPiece(s), 10270); await game.idle();
   let text = await card(); console.log('CARD rail km 10.27', text.slice(0, 600));
-  assert.match(text, /Its ends stand on fills/);
-  await look(10265, 200, 240, 15);
-  await shot('rail-kralovec-km-10-27-end-on-a-cone');
+  assert.match(text, /One end stands on a fill|Its ends stand on fills/);
+  await look(10265, 260, 240, 15);
+  await shot('rail-kralovec-km-10-27-under-one-bridge');
   // 2. km 5.46–6.54: the 80 m fill boxed in by walls of 25 and 16 m is now part of one bridge
   const at5 = await runNear(5650);
   assert.ok(at5 && at5.s0 < 5500 && at5.s1 > 6500, `one bridge over km 5.5–6.5 (${at5?.s0}–${at5?.s1})`);
