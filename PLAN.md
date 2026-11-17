@@ -815,8 +815,9 @@ Research: research/65.
   validity change, no bump). It is measured, not proven, that a crossing 2 km from every change cannot come out
   differently: the report below stays a gate.
 - **Time**: whole D3 ≈ 2.35 → 1.98 s (−14 … −18 %, interleaved minima), direct-80 −2 … −7 % (near the noise),
-  designs without a retry unchanged. Numbers, the reach study, the seams and what is left (footprint screen,
-  engineering passes): docs/evaluate-performance.md.
+  designs without a retry unchanged. Numbers, the reach study, the seams and what is left (footprint screen):
+  docs/evaluate-performance.md. The engineering passes since replay what did not change (bit-exact memos of the
+  retaining screen: whole D3 ≈ 2.0 → 1.68 s, D11 designs −4 … −10 %; same document, top section).
 - **Gate**: `npx tsx scripts/local-retry-report.ts` (reference / local / both in each finish on the 177 cases;
   exit 1 on any difference); any script under `--import ./scripts/dev/local-retry-check.ts` checks its own
   evaluations. `LOCAL_RETRY.local = false` is the reference.

@@ -1,5 +1,80 @@
 # Evaluate performance regression
 
+## The engineering passes replay what did not change (bit-exact, 2026-11-17)
+
+Finding 23 of docs/architecture-review.md, its engineering part: `engineer()` (sections → retaining walls →
+cover → structure selection → bridge supports) runs once per lift round and per retry of every pass, 18 times
+on the whole D3, and each call screened the whole route again. Timed per call on the whole D3 (a scratch
+instrumented checkout, minima over 8 evaluations, host load 3; 5,644 stations):
+
+| per evaluation, ms | main `6017767` | now |
+|---|---|---|
+| all 18 `engineer()` calls | 528 | 298 |
+| retaining walls (`planRetainingWalls`) | 264 | 142 |
+| structure selection (`settle`) | 154 | 54 |
+| bridge supports / sections / cover | 29 / 24 / 22 | 29 / 23 / 21 |
+| a call whose grade line is the last call's (4 of the 18) | ≈ 27 | ≈ 10 |
+| the first call (every station new) | 61 | 47 |
+
+**What was wrong, and what is done** (each a memo keyed by everything the step reads, or a plain loop; no
+result can move):
+
+- *The retaining screen asked every station again.* A plan screens the route twice (the walls of the first
+  pass shorten some culvert barrels, the second pass screens with those), and a station kept one outcome: the
+  two passes overwrote each other's at every station near water (≈ 470 stations of the whole D3 screened anew
+  in every pass of every call), and every other station still asked its candidates, built its barrel key and
+  compared its crossing ways. Now a station keeps its last four outcomes (`STATION_MEMOS`), and a pass keeps
+  a record (`PassRecord`, per pass of a plan and set of crossing ways): a later pass replays a station from
+  it when its grade, two widths and barrel key are the record's, without asking the candidates (the key of
+  the barrels is found once per set of reaches and pass). A record's station is dropped when its candidates
+  are asked again.
+- *A crossing way's own stretch* (screened after the stations, against the stretches its crossings own) is
+  screened once per cell and set of owned stretches; *a wall's place and the section it leaves*
+  (`slopeSurfaceFn`, `sideSection`: a walk down the slope each) once per grade, limit, room on the other side
+  and wet / dry (`WallMemo`).
+- *The channel screen built a footprint grid of all cells in every pass*, also when no channel got as far as
+  asking it: now on demand, and the last one serves again while the widths are the same
+  (`channel-relocation.ts`).
+- *`forceWater` marked a bridged watercourse's cells by testing every station of the route* (per crossing,
+  13 times per `engineer()` call and in every balance sample of the grade search): it tests the samples
+  around the crossing (they are evenly spaced; the same test decides).
+- *`chooseStructures` asked "any override?" and "any cut-and-cover station?" through
+  `Array.from(…).some` and `Array.prototype.some.call` on a typed array*, 12 times per `engineer()` call
+  (1.8 % of a whole-D3 evaluation): plain loops.
+
+**Proof.** `scripts/exact.ts`: 177 / 177 whole results identical to main `6017767`. Every retaining plan made
+also by main's `retaining.ts` / `channel-relocation.ts` on its own cache and its own copy of the sections (a
+scratch harness): 589 plans of `exact.ts`, 361 of `outcome-audit.ts --straight scripts/*-design.json --random
+24`, 1,767 of `local-retry-report.ts`, none different (plan, sections, side sections). The corpus does not
+exercise every key (a record that ignored the barrels, or a crossing stretch that ignored its owned stretches,
+was not caught by any of the 589 plans), so `tests/retaining.test.ts` plans thirteen variants of one scene (a
+lift, a crossing way gone or elsewhere, another barrel, narrowed sections, the grade alone) with a shared
+cache and with a fresh one; ten mutants of the keys die on it. Three survive: a record that ignores the left
+width alone (the right width and the grade change with it), one not dropped when candidates are asked again
+(the wider candidates give the same events in the scene), a wall memo that ignores the room on the other side
+or wet / dry (no scene built: a watertight wall over 9 m that does not fit).
+
+**Timing**, interleaved against main `6017767` (`scripts/dev/interleave.ts`; host load 2–4; two runs each):
+
+| design | main, ms (min) | this, ms (min) | min ratio | median ratio | CPU ratio |
+|---|---|---|---|---|---|
+| whole D3 starter (12 rounds) | 1988, 2025 | 1712, 1650 | 0.86, 0.82 | 0.86, 0.88 | 0.91, 0.90 |
+| five D11 designs, sum (30 rounds) | 795, 793 | 749, 757 | 0.94, 0.95 | 0.96, 0.95 | 1.01, 0.98 |
+| town-centre | 221, 222 | 198, 201 | 0.90, 0.90 | | |
+| direct-80 | 211, 210 | 199, 200 | 0.94, 0.95 | | |
+| direct-90 | 138, 139 | 132, 133 | 0.96, 0.96 | | |
+| demo, best | | | 0.96–1.01, noise | | |
+
+Under a host load of 20–30 (other agents' gates) the whole D3 gave min 0.88–0.90, CPU 0.91–0.92. The gain
+is larger than the main thread's profile says (`engineer()` 18.7 % → ≈ 14 % of the samples): the CPU time of
+an evaluation is ≈ 2.5 × its wall time (the collector's threads), so what allocates less gains more.
+
+**Left in `engineer()`** (whole D3, ≈ 300 ms of ≈ 1.7 s): the first call's screening of every station
+(47 ms), the re-screening of the stations a lift or retry moved (inherent: the widths change with the
+grade), the selection's twelve `chooseStructures` runs per call (the fill value is settled over all blocks at
+once), ≈ 4–5 ms of retaining per call that changes nothing (a whole-plan memo for the 4–6 such calls of 18
+would save ≈ 1 %: not built).
+
 ## A retry builds only the crossings near what it changed (no model version, 2026-11-17)
 
 Finding 23 of docs/architecture-review.md ("a retry pass engineers the whole route again"), its first part.
@@ -114,8 +189,7 @@ which this leaves alone.
 **Left of finding 23** (whole D3 profile with this, ≈ % of an evaluation, read off `profile.mjs --tree 2`): the
 crossing build 15 (the first finish's whole build 6), the footprint screen 11 (`planRoadRealignment` most of
 it), `engineer()` 19, the grade solve 14, noise 19, GC 11. Next: the footprint screen the same way (its ledger of rebuilt roads is order-
-dependent across hits: study its reach first), and a memo of the engineering passes over runs of unchanged
-stations (retaining replay is half of `engineer()`). A tighter core than 2 km needs the engine to say what each
+dependent across hits: study its reach first). The memo of the engineering passes is done (the section above). A tighter core than 2 km needs the engine to say what each
 crossing's build read of our road (the reroute cache records it for reroutes: `spatial.reads`).
 
 ## Side roads, lifts on grades, cost model 37 (2026-11-17)

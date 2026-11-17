@@ -79,7 +79,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - A retry's later finishes build only the crossings within 2 km of what they changed (no model version,
   `src/core/crossings-kept.ts`; no result moved, whole D3 −14 … −18 %; `LOCAL_RETRY.local = false` is the
   whole-route reference). A new per-pass input of the crossing build must go into `CrossingInputs`. The footprint
-  screen and the engineering passes of a retry are still whole-route (docs/evaluate-performance.md).
+  screen of a retry is still whole-route. The engineering passes replay what did not change (bit-exact memos in
+  `retaining.ts`, keyed by all a step reads; `tests/retaining.test.ts` plans with a shared and a fresh cache: a new
+  input of the retaining screen must go into the keys; whole D3 −14 … −18 % more; docs/evaluate-performance.md).
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
