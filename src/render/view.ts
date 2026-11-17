@@ -30,6 +30,7 @@ import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
 import { ARCH_DECK_DEPTH, ARCH_RIB_DEPTH, archColumns, archRib } from '../core/bridge';
 import { CATEGORIES } from '../core/data/categories';
+import { natureLayers } from './nature';
 
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
@@ -389,7 +390,8 @@ export class View {
     u.contour.value.w = this.renderer.getPixelRatio();
     const mat = makeTerrainMaterial(u, this.maskUniforms);
     if (this.pack.vectors) {
-      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u, null);
+      const vectors = { ...this.pack.vectors, lines: [...this.pack.vectors.lines, ...natureLayers(this.pack.terrain.protectedData)] };
+      const lc = this.landcover = new LandCover(this.renderer, vectors, T.width, T.height, u, null);
       lc.onChange = () => { this.dirty = true; };
       const ortho = this.pack.meta.orthophoto, [ox, oy] = this.pack.meta.origin;
       if (ortho) {

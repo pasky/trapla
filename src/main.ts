@@ -71,11 +71,12 @@ async function main() {
   if (scenario.ports) { meta.A = { ...scenario.ports.a }; meta.B = { ...scenario.ports.b }; }
   if (scenario.mode === 'railway') meta.official = { ...meta.official, xy: [], kinds: [] };
   const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
-  document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
+  document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...pack.terrain.protectedAreas ? ['© AOPK ČR (protected areas), CC BY 4.0'] : []].join(' · ');
   document.getElementById('attrib')!.title = [document.getElementById('attrib')!.textContent,
     meta.baselineNote].filter(Boolean).join(' · ');
   document.getElementById('legend-official')!.textContent = scenario.labels.official;
   document.getElementById('legend-official')!.parentElement!.hidden = meta.official.xy.length < 2;
+  document.querySelector<HTMLElement>('#legend i.nature')!.parentElement!.hidden = !pack.terrain.protectedAreas;
 
   const presetId = scenario.presetId ?? scenario.id;
   const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
