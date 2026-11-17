@@ -10,18 +10,18 @@ auto-profile cost tables now keep 24 material values instead of 8: one evaluatio
 (start, the fixed steps from it, interpolated ones; lifts and retries revisit them), so 20–35 % fewer table
 entries are computed on a repeated design (≈ 8 MB more heap).
 
-Interleaved against main d88a0db (`scripts/dev/interleave.ts`, 16 rounds, host load 13–18), min / median ms:
+Interleaved against main 099a471 (`scripts/dev/interleave.ts`, 16 rounds, host load 3–8), min / median ms:
 
 | design | main | now |
 |---|---:|---:|
-| best | 163.5 / 265.2 | 177.4 / 246.9 |
-| demo | 185.1 / 240.9 | 180.5 / 262.2 |
-| direct-80 | 181.2 / 270.8 | 214.5 / 282.4 |
-| direct-90 | 254.4 / 326.9 | 214.1 / 298.4 |
-| town-centre | 345.6 / 499.2 | 340.2 / 476.5 |
+| best | 113.1 / 153.2 | 112.1 / 134.9 |
+| demo | 110.7 / 123.8 | 107.0 / 124.7 |
+| direct-80 | 232.5 / 260.4 | 215.7 / 292.2 |
+| direct-90 | 139.0 / 162.0 | 143.0 / 177.6 |
+| town-centre | 225.6 / 303.3 | 230.5 / 281.6 |
 
-CPU per round −7 %, sum of minima −0.3 %, of medians −2 % (the host was loaded; phase timings, min of 8:
-profile 49–52 ms on both, demo +4 ms for its one tunnel-mode solve). Drag budgets pass in all six modes (road
+CPU per round −2 %, sum of minima −1.5 %, of medians +1 % (against d88a0db at load 13–18: CPU −7 %; phase
+timings, min of 8: profile 49–52 ms on both, demo +4 ms for its one tunnel-mode solve). Drag budgets pass in all six modes (road
 failed once at 61 ms median under load 24, passed at 45 ms).
 ## Our line raised for a crossing, cost model 33 (2026-11-17)
 
