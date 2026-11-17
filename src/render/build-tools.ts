@@ -8,7 +8,7 @@ export class BuildAnnotations {
   private points: { el: HTMLButtonElement; x: number; y: number; z: number }[] = [];
   onPin?: (s: number) => void;
   onBuilding?: (j: number) => void;
-  onCulvert?: (s: number) => void;
+  onCulvert?: (id: number, s: number) => void;
   private selectedBuilding: number | null = null;
   private current: { r: Result; d: Design } | null = null;
   constructor(private view: View, private overlay: HTMLElement, private pack: Pack) {
@@ -18,10 +18,13 @@ export class BuildAnnotations {
   private selectedCrossing: number | null = null;
   /** ring around the crossed road whose card is open */
   selectCrossing(roadId: number | null) { if (roadId === this.selectedCrossing) return; this.selectedCrossing = roadId; if (this.current) this.setResult(this.current.r, this.current.d); }
+  private selectedCulvert: number | null = null;
+  /** the culvert whose card is open (its station): its mark stands out */
+  selectCulvert(s: number | null) { if (s === this.selectedCulvert) return; this.selectedCulvert = s; if (this.current) this.setResult(this.current.r, this.current.d); }
   selectBuilding(j: number | null) { if (j === this.selectedBuilding) return; this.selectedBuilding = j; if (this.current) this.setResult(this.current.r, this.current.d); }
   clear() {
     for (const point of this.points) point.el.remove(); this.points = [];
-    this.current = null; this.selectedCrossing = this.selectedBuilding = null;
+    this.current = null; this.selectedCrossing = this.selectedBuilding = this.selectedCulvert = null;
   }
   setResult(r: Result, d: Design) {
     this.current = { r, d };
@@ -39,8 +42,9 @@ export class BuildAnnotations {
         () => this.onPin?.(pin.s));
     }
     for (const c of r.waterCrossings) if (c.structure === 'pipe' || c.structure === 'box') {
-      this.add(c.x, c.y, c.bed + Math.max(c.h, 0) + 3, '○', 'culvert',
-        `Culvert ${c.opening}, ${c.length.toFixed(0)} m`, () => this.onCulvert?.(c.s));
+      const on = this.selectedCulvert !== null && Math.abs(c.s - this.selectedCulvert) < 0.01;
+      this.add(c.x, c.y, c.bed + Math.max(c.h, 0) + 3, '○', on ? 'culvert selected' : 'culvert',
+        `Culvert ${c.opening}, ${c.length.toFixed(0)} m`, () => this.onCulvert?.(c.id, c.s));
     }
     const xing = this.selectedCrossing === null ? undefined : r.crossings.find((c) => c.roadId === this.selectedCrossing);
     // (a cut and rerouted road is gone at the crossing: the mark stands on our road, not in the air above a cutting)

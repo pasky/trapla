@@ -5,6 +5,7 @@
 .build-tools .btns { flex-wrap: wrap; }
 .build-annotation { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; padding: 1px 5px; border: 2px solid #864000; background: #ffb339; border-radius: 50%; color: #673300; font-size: 13px; font-weight: bold; z-index: 4; }
 .build-annotation.culvert { border-color: #167d9a; background: #daf5fc; color: #167d9a; padding: 0 3px; }
+.build-annotation.culvert.selected { background: #ffd400; border-color: #1d232a; color: #1d232a; box-shadow: 0 0 0 2px #ffd400; }
 .build-annotation.kept-building { background: #dcf4be; border-color: #3c730c; color: #315c11; }
 .build-annotation.bought-building { background: #f7c7ed; border-color: #a71c82; color: #8c166e; }
 .build-annotation.selected-crossing { width: 26px; height: 26px; padding: 0; border: 3px solid #1d232a; background: rgba(255,212,0,0.35); box-shadow: 0 0 0 2px #ffd400; pointer-events: none; }

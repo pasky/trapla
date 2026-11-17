@@ -16,7 +16,7 @@ import type { BuildRoadTool } from './build-road';
 import type { CrossingHighlight } from './crossing-highlight';
 import type { CurveEditor } from './curve-edit';
 import type { Hud } from './hud';
-import type { Inspector, Sel } from './inspector';
+import { culvertAt, type Inspector, type Sel } from './inspector';
 import type { Intro } from './intro';
 import type { LinkEditor } from './link-edit';
 import type { MappedRoadCard } from './mapped-road';
@@ -66,6 +66,7 @@ export function createSelection(app: SelectionContext) {
         return { x: b[0], y: b[1], s0: s, s1: s };
       }
       case 'end': { const i = t.end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], s0: r.s[i], s1: r.s[i] }; }
+      case 'culvert': { const c = culvertAt(r, t.id, t.s); return c ? { x: c.x, y: c.y, s0: c.s, s1: c.s } : null; }
     }
   };
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
@@ -97,6 +98,8 @@ export function createSelection(app: SelectionContext) {
     const road = next?.kind === 'crossing' ? next.roadId : null;
     app.profile.selectCrossing(road); app.annotations.selectCrossing(road);
     app.annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
+    const culvert = next?.kind === 'culvert' ? next.s : null;
+    app.profile.selectCulvert(culvert); app.annotations.selectCulvert(culvert);
     app.profile.selectStation(next?.kind === 'pin' ? next.s : null);
     app.profile.select(next?.kind === 'vpi' ? next.i : null);
     app.inspector.set(next);
@@ -143,6 +146,16 @@ export function createSelection(app: SelectionContext) {
       || (app.session.sel.kind === 'crossing' && !r.crossings.some((c) => c.roadId === (app.session.sel as { roadId: number }).roadId))
       || (app.session.sel.kind === 'vpi' && (d.profileMode !== 'manual' || app.session.sel.i >= r.vpis.length - 1))
       || (app.session.sel.kind === 'stretch' && app.session.sel.s0 >= r.length)) { select(null); return; }
+    // a culvert moves a little with an edit upstream: follow it (the same stream, the nearest one), or let it go
+    if (app.session.sel.kind === 'culvert') {
+      const c = culvertAt(r, app.session.sel.id, app.session.sel.s);
+      if (!c) { select(null); return; }
+      if (c.s !== app.session.sel.s) {
+        app.session.sel = { kind: 'culvert', id: c.id, s: c.s }; app.inspector.sel = app.session.sel;
+        app.session.qualifiedSelection = app.store.activeRouteId ? qualifySelection(app.store.activeRouteId, app.session.sel) : null;
+        app.profile.selectCulvert(c.s); app.annotations.selectCulvert(c.s);
+      }
+    }
     if (app.session.sel.kind === 'stretch' && app.session.sel.piece) { app.session.sel = { ...app.session.sel, piece: pieceAt(r, (app.session.sel.s0 + app.session.sel.s1) / 2).kind }; app.inspector.sel = app.session.sel; }
   };
 

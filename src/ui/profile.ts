@@ -40,6 +40,8 @@ export interface ProfileEvents {
   onPinDrag?: (s: number, z: number) => void;
   onPinDragEnd?: () => void;
   onCrossingSelect?: (roadId: number) => void;
+  /** a stream culvert's ring clicked (its stream, station) */
+  onCulvertSelect?: (id: number, s: number) => void;
   /** a station range was picked for the cost breakdown (null = whole route) */
   onSelect?: (r: StationRange | null) => void;
   /** a click at station s (select the piece of road there) */
@@ -61,6 +63,7 @@ type Under =
   | { kind: 'vpi'; k: number }
   | { kind: 'pin'; s: number }
   | { kind: 'crossing'; roadId: number }
+  | { kind: 'culvert'; id: number; s: number }
   | { kind: 'line'; s: number }
   | { kind: 'band'; el: Element };
 
@@ -156,7 +159,7 @@ export class ProfilePanel {
   clear(note = '') {
     this.emptyNote = note;
     this.r = null; this.preview = null; this.vpis = []; this.bends = []; this.sel = null;
-    this.selected = this.selectedBend = this.pinStation = this.selCrossing = null;
+    this.selected = this.selectedBend = this.pinStation = this.selCrossing = this.selCulvert = null;
     this.tip.style.display = 'none'; this.draw();
   }
 
@@ -247,6 +250,9 @@ export class ProfilePanel {
   selectStation(s: number | null) { this.pinStation = s; this.draw(); }
   /** the crossed road whose options are open (highlighted) */
   selectCrossing(roadId: number | null) { this.selCrossing = roadId; this.draw(); }
+  /** the stream culvert whose card is open (its station) */
+  private selCulvert: number | null = null;
+  selectCulvert(s: number | null) { if (s !== this.selCulvert) { this.selCulvert = s; this.draw(); } }
   /** a motorway shown as one line while its directions run apart over these stretches: each direction's
    * own heights there (on the shown line's stations) */
   private apart: { s0: number; s1: number; lines: { label: string; grade: ArrayLike<number>; kind: ArrayLike<number> }[] }[] = [];
@@ -317,6 +323,8 @@ export class ProfilePanel {
 
   /** x of station s in CSS px from the canvas' left edge, and the chart's top (for overlays) */
   stationX(s: number) { this.flush(); return this.X(s); }
+  /** canvas y (CSS px) of height z */
+  heightY(z: number) { this.flush(); return this.Y(z); }
   get chartTop() { return this.pad.t; }
   get chartBottom() { this.flush(); return this.chartB; }
   /** client (page) coordinates of station s at height z (default: on the road line); `band`: in the curve band */
@@ -605,6 +613,10 @@ export class ProfilePanel {
     // Watercourse culverts: blue rings at stream-bed elevation (not a second road crossing).
     g.strokeStyle = '#167d9a'; g.lineWidth = 2;
     for (const c of r.waterCrossings) if ((c.structure === 'pipe' || c.structure === 'box') && c.s >= this.v0 && c.s <= this.v1) {
+      if (this.selCulvert !== null && Math.abs(c.s - this.selCulvert) < 0.01) {
+        g.save(); g.fillStyle = 'rgba(255,212,0,0.85)'; g.strokeStyle = '#1d232a'; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(this.X(c.s), this.Y(c.bed) - 4, 9, 0, 2 * Math.PI); g.fill(); g.stroke(); g.restore();
+      }
       g.beginPath(); g.arc(this.X(c.s), this.Y(c.bed) - 4, 4, 0, 2 * Math.PI); g.stroke();
     }
     // demolished buildings: dark squares on the ground
@@ -767,7 +779,7 @@ export class ProfilePanel {
     const hint = hints.find((t) => g.measureText(t).width < (R - L) * 0.7) ?? hints[hints.length - 1];
     // only while the mouse is over the profile (or before anything is selected): it would otherwise hide
     // the crossing / building marks along the bottom of the chart
-    if (this.hoverClient || (!this.sel && this.pinStation === null && this.selCrossing === null)) {
+    if (this.hoverClient || (!this.sel && this.pinStation === null && this.selCrossing === null && this.selCulvert === null)) {
       const hw = g.measureText(hint).width;
       g.fillStyle = 'rgba(247,245,240,0.8)'; g.fillRect(L + 2, B - 17, hw + 8, 15);
       g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#555'; g.fillText(hint, L + 6, B - 6);
@@ -962,13 +974,13 @@ export class ProfilePanel {
       .filter(([, v]) => v > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 2);
     const facts: string[] = [];
     for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x, this.gradeRule.line)}`);
-    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(ourWords(`${c.waterKind.charAt(0).toUpperCase()}${c.waterKind.slice(1)} ${WATER_UNDER[c.structure]}`, this.gradeRule.line));
+    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(ourWords(`${c.waterKind.charAt(0).toUpperCase()}${c.waterKind.slice(1)} ${c.size?.buried ? 'in a buried bridge under our road' : WATER_UNDER[c.structure]}`, this.gradeRule.line));
     let nb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) nb++;
     if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} demolished`);
     const v = r.violations.find((x) => !x.goal && x.s0 <= r.s[b] + r.ds && x.s1 >= r.s[a] - r.ds);
     const e = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-    const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin';
+    const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin' || this.under.kind === 'culvert';
     // a height drag: the height it is set to and how far it moved
     if (this.dragLabel) this.tip.innerHTML = `<div><b>${this.dragLabel.z.toFixed(1)} m</b> · ${this.dragLabel.dz >= 0 ? 'raised' : 'lowered'} ${Math.abs(this.dragLabel.dz).toFixed(1)} m</div>`;
     else if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
@@ -991,6 +1003,7 @@ export class ProfilePanel {
     switch (u.kind) {
       case 'vpi': { const v = this.vpis[u.k]; return v ? `<b>◆ ${v.z.toFixed(1)} m</b> · drag up / down${manual ? ' · right-click deletes' : ''}` : ''; }
       case 'bend': return `<b>Bend ${bendNo(u.i)}</b> · click to select`;
+      case 'culvert': return '<b>Culvert</b> · click to select';
       case 'pin': { const p = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1); return `<b>Pinned ${p ? p.z.toFixed(1) : ''} m</b> · drag up / down · click for options`; }
       default: return '';
     }
@@ -1035,6 +1048,14 @@ export class ProfilePanel {
       const d = Math.hypot(this.X(c.s) - px, this.Y(r.grade[c.i] - c.h) - py);
       if (d < xd) { xd = d; x = c; }
     }
+    // a culvert's ring at the stream bed (the nearer of it and a crossed road's mark)
+    let culvert: (typeof r.waterCrossings)[number] | null = null, cd = reach;
+    for (const c of r.waterCrossings) {
+      if (!c.size) continue;
+      const d = Math.hypot(this.X(c.s) - px, this.Y(c.bed) - 4 - py);
+      if (d < cd) { cd = d; culvert = c; }
+    }
+    if (culvert && cd < onLine && (!x || cd < xd)) return { kind: 'culvert', id: culvert.id, s: culvert.s };
     if (x && xd <= onLine) return { kind: 'crossing', roadId: x.roadId! };
     if (onLine < 6) return { kind: 'line', s };
     return { kind: 'chart' };
@@ -1083,6 +1104,7 @@ export class ProfilePanel {
       if (u.kind === 'bend') { this.ev.onBendSelect?.(u.i); return; }
       if (u.kind === 'pin' && this.mode === 'manual') { this.ev.onStationSelect?.(u.s); return; }
       if (u.kind === 'crossing') { this.ev.onCrossingSelect?.(u.roadId); return; }
+      if (u.kind === 'culvert') { this.ev.onCulvertSelect?.(u.id, u.s); return; }
       c.setPointerCapture(e.pointerId);
       if (u.kind === 'pin') {
         // keep the grab offset: the pin's point follows the mouse at the distance it was grabbed

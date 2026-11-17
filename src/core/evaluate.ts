@@ -2299,7 +2299,8 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     }
     return { ...c, i, bed: waterGround.get(c)!, h: above, q100: size.q100, structure: !ok ? 'blocked' : isTunnel ? 'tunnel' : kind[i] === KIND.bridge ? 'bridge' : size.type,
       opening: kind[i] === KIND.bridge ? `≥${bridgeSpan.toFixed(1)} m clear` : isTunnel ? 'surface channel retained' : waterOpening(size),
-      length: run?.length ?? tunnelRun?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge' };
+      length: run?.length ?? tunnelRun?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge',
+      ...(ok && !isTunnel && kind[i] === KIND.earth && size.type !== 'bridge' ? { size: { type: size.type, width: size.width, height: size.height, ...(size.buried ? { buried: true } : {}) } } : {}) };
   });
   // Parallel watercourses and support placement are checked by the indexed footprint pass.
   // the whole at-grade footprint must be on terrain data, and every slope must reach the ground
