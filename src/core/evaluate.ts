@@ -1808,6 +1808,32 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
+  // Between two bridges, a fill the support layout closed off with a wall at an end (the structure choice weighed a
+  // cone there): one bridge where its deck costs less than that fill, its walls and its cones (Auto's gaps only).
+  if (!preview) {
+    const fillAt = (i: number) => blockDecision(settled.values[blk[i]]).fillPerM3, wallOf = (q: Run, k: 0 | 1) => q.closedEnds?.[k] ? q.endWalls?.[k].cost ?? 0 : 0;
+    const bridges = supported.runs.filter(q => q.kind === KIND.bridge);
+    let more = false;
+    for (let q = 1; q < bridges.length; q++) {
+      const a = bridges[q - 1].i1, z = bridges[q].i0, walls = wallOf(bridges[q - 1], 1) + wallOf(bridges[q], 0);
+      if (!walls || z <= a + 1) continue;
+      let earth = walls * (1 + surB(0)) + (wallOf(bridges[q - 1], 1) ? 0 : coneEnd(a, -1, fillAt(a))) + (wallOf(bridges[q], 0) ? 0 : coneEnd(z, 1, fillAt(z))), deck = 0, open = true;
+      for (let k = a + 1; k < z && open; k++) {
+        if (supported.kind[k] !== KIND.earth || manualStructures[k] >= 0 || h[k] <= 0) open = false;
+        earth += earthPerM[k] * cellLength(k, n, ds); deck += bridgePerM[k] * cellLength(k, n, ds);
+      }
+      if (open && deck < earth) { for (let k = a + 1; k < z; k++) forced[k] = 1; more = true; }
+    }
+    if (more) {
+      timing['count.wallGap'] = (timing['count.wallGap'] ?? 0) + 1;
+      const again = performance.now();
+      settled = settle(); selection = settled.selection;
+      work('selection', again);
+      supportStart = performance.now();
+      supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+      work('support', supportStart);
+    }
+  }
   const unlifted = choiceDeckOf(opts, choiceDeck);
   const supportHeights = [...supported.clearanceRequirements.filter(q => !unlifted?.[Math.round(q.s / ds)]), ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
@@ -2043,6 +2069,9 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
       return { at, zf, stands, half: cat.crownWidth / 2, top: zf - CONE.deckDepth, x: at.x, y: at.y, tx: at.tx, ty: at.ty };
     });
     for (const [k, e] of ends.entries()) {
+      // (a closed end's wall, where the fill beside it stands: billed with the bridge, as its paving would be)
+      const wall = r.endWalls?.[k];
+      if (wall?.cost && e.at.earthCell >= 0 && e.at.earthCell < n && kind[e.at.earthCell] === KIND.earth) conePaving[e.at.i] += wall.cost;
       if (!e.stands) continue;
       const other = ends[1 - k], c = abutmentCone(setup.terrain, e.at, e.zf, cat.crownWidth / 2, b / 2, r.s1 - r.s0, other.stands ? other : undefined);
       if (!c) continue;
@@ -2385,7 +2414,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
     width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea, additionalLand: remedyLand,
-    cutCover, ...(cones.length ? { coneFill, conePaving } : {}),
+    cutCover, ...(cones.length || conePaving.some(v => v > 0) ? { coneFill, conePaving } : {}),
     ...(widen ? { extraRoadPerM: Float64Array.from(widen, v => 2 * v * hairpinPavementPerM2(d.category)) } : {}),
   });
   const cost = sumParts(parts);

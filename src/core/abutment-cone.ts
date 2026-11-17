@@ -5,6 +5,7 @@
 // 206.02, 206.03; the D5 Rokycany SO 201 bill of quantities bills the "svahové kužele" as quarter cones inside the
 // bridge object). The bridge's first pier stands beyond the cone's toe, so its end span reaches past it.
 import type { Terrain } from './terrain';
+import { retainingAssembly } from './data/remedies';
 
 export const CONE = {
   /** the cone's slope, horizontal per vertical (VL 4 206.02 / 206.03: 1:1.5) */
@@ -27,7 +28,8 @@ export const CONE = {
   maxEndSpan: 60,
   /** the highest fill an abutment closes off with a wall (a closed abutment, no cone) where a cone would cover what
    * lies under the bridge, m (French SETRA practice: "une culée remblayée … pour une hauteur limitée à une dizaine de
-   * mètres", research/68 §1.4, UNVERIFIED, secondary). Above it Auto's bridge goes on instead (support-layout.ts). */
+   * mètres", research/68 §1.4, UNVERIFIED, secondary). Above it Auto's bridge goes on instead (support-layout.ts);
+   * where it cannot, the cone stands and what it covers is a problem (footprint.ts). */
   closedMax: 10,
   /** the grid the cone's volume is summed on, m */
   grid: 2,
@@ -127,6 +129,28 @@ export function abutmentCone(terrain: Terrain, at: { s: number; x: number; y: nu
   const run = Math.max(0, reach - CONE.berm), slant = Math.hypot(run, run / CONE.slope);
   // (two cones meeting under a short bridge: no toe sill between them)
   return { ...at, half, top, reach, height: top - g0, volume, paved: width * slant, sill: met >= Math.min(limit, meet) ? 0 : width, length, side };
+}
+
+/** The ground a cone reaching `reach` m into the bridge covers, in its own frame (`u0`…`u1` m along from the abutment,
+ * `half` m either side of the axis): along the axis out to its toe (the crest and 2 m), and its first half, where the
+ * quarter cones round the crest's corners (radius ≈ its reach on level ground) reach out at least 0.87 of it. What
+ * support-layout.ts keeps clear of what nothing moves aside, and footprint.ts screens (a minor way there is moved
+ * aside, as under an abutment). */
+export function coneFootprint(reach: number, crownWidth: number): { u0: number; u1: number; half: number }[] {
+  return [{ u0: 0, u1: reach + 0.5, half: crownWidth / 2 + 2 }, { u0: 0, u1: reach / 2, half: crownWidth / 2 + 0.87 * reach }];
+}
+
+/** A closed abutment (no cone, CONE.closedMax): the fill ends in a wall from the cone's top (`height` m above the
+ * ground) down to the ground, across the fill's whole end section: full height under the crest (`crownWidth`), falling
+ * with the 1:1.5 side slopes to nothing at their toes (the drawn end face). Billed as a cantilever retaining wall of the
+ * height it has at each point (data/remedies.ts retainingAssembly: OTSKP April 2026 items, research/18; the wall's
+ * shape PROVISIONAL, research/68 §1.4), on top of the abutment the bridge price already holds. */
+export function closedEndWall(height: number, crownWidth: number): { height: number; area: number; cost: number } {
+  if (!(height > 0)) return { height: 0, area: 0, cost: 0 };
+  const side = CONE.slope * height, steps = 20;
+  let cost = crownWidth * retainingAssembly(height).perM;
+  for (let k = 0; k < steps; k++) cost += 2 * side / steps * retainingAssembly(height * (1 - (k + 0.5) / steps)).perM;
+  return { height, area: crownWidth * height + side * height, cost };
 }
 
 /** CZK of a cone's paving and toe sill (billed with the bridge) */

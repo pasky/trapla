@@ -393,8 +393,8 @@ export class Inspector {
       const cones = (r.cones ?? []).filter((c) => c.i >= bridge.i0 && c.i <= bridge.i1);
       const ends = cones.length ? `<div class="sub">${cones.length === 2 ? `Its ends stand on fills ${cones.map((c) => c.height.toFixed(0)).join(' and ')} m high` : `One end stands on a fill ${cones[0].height.toFixed(0)} m high`}, sloping on under the bridge: ${Math.round(cones.reduce((t, c) => t + c.volume, 0)).toLocaleString('en-US')} m³ of fill, ${czk(cones.reduce((t, c) => t + conePavingCost(c), 0))} of paving.</div>` : '';
       // an end whose fill would cover what lies below: a wall down to the ground there (support-layout.ts)
-      const closed = bridge.closedEnds?.filter(Boolean).length ?? 0;
-      const walls = closed ? `<div class="sub">${closed === 2 ? 'Both ends are walls' : 'One end is a wall'} down to the ground, so the fill does not cover what lies below.</div>` : '';
+      const walled = (bridge.endWalls ?? []).filter((w, k) => bridge.closedEnds?.[k] && w.height > 0);
+      const walls = walled.length ? `<div class="sub">${walled.length === 2 ? `Both ends are walls ${walled.map((w) => w.height.toFixed(0)).join(' and ')} m high` : `One end is a wall ${walled[0].height.toFixed(0)} m high`} down to the ground, so the fill does not cover what lies below: ${czk(walled.reduce((t, w) => t + w.cost, 0))}.</div>` : '';
       method = `${ends}${walls}<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;

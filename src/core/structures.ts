@@ -32,8 +32,11 @@ export interface Run {
    * abutment-cone.ts): no pier stands on them. */
   coneReach?: [number, number];
   /** A bridge: an end at its start / its end whose cone would cover a road, railway or water under it, built as a
-   * closed abutment (a wall down to the ground, no cone; support-layout.ts). */
+   * closed abutment (a wall down to the ground, no cone; support-layout.ts), on a fill of at most CONE.closedMax. */
   closedEnds?: [boolean, boolean];
+  /** Those walls: how high from the cone's top to the ground (m) and what they cost (CZK, abutment-cone.ts
+   * closedEndWall; billed with the bridge where the fill beside stands), height 0 at an end that is not closed. */
+  endWalls?: [{ height: number; cost: number }, { height: number; cost: number }];
 }
 
 export interface StructureInput {
