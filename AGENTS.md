@@ -89,12 +89,17 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
   hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /
   sight-distance checks. Tunnels go on as cut and cover out to portals ≈ 9 m deep in their cut, with a method
-  on the card and escape provision (cost model 34, PLAN.md "Tunnels as they are built"); bridge styles (M3) not yet.
+  on the card and escape provision (cost model 34, PLAN.md "Tunnels as they are built"). Bridges have a style
+  (short spans / long spans / arch, Auto the cheapest that fits; cost model 35, PLAN.md "Bridge styles"); a
+  style or method chosen on Auto's structure leaves it Auto's (`StructureOverride.auto`); painting a structure
+  as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
+  later; a long tunnel's per-metre price looks high against the real D35 (research/63, a hint, unchanged).
 - Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
   in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
   boundary at km 11.21 sees that in its window; PLAN.md "Design realism").
 - A player's crossing choice (cost model 32, PLAN.md "Bug-fix sweep"): one that cannot be built is said and
   leaves our road as Auto had it; our line is raised for a crossing (a player's box or bridge, a reroute through
-  homes) only in proportion (model 33, research/61); "Our bridge over it" in a cutting is still met at any price.
+  homes) only in proportion (model 33, research/61); "Our bridge over it" is met through the same retry
+  (no grade floor first) and its crossing card says what raising our road for it cost (D3 km 8.59: 15 m, 1.28 bn).
   `scripts/straighten-audit.ts`, `scripts/choice-audit.ts` and `scripts/toolbar-layout.mjs` are gates.
 - See PLAN.md "Next steps" and each section's "Known issues".

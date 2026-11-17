@@ -1,5 +1,6 @@
 // Close-up screenshots of earthworks (design realism, docs/design-realism-plan.md). Untimed: run under
 //   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/realism-shots.mjs name:design.json:chainage[:dist:az:elev:offset-left[:select]] …
+// SCENARIO selects the pack, PRESET a mission of it (e.g. d3-motorway).
 // select: bN opens bend N's card (0-based PI index), cN the crossing card of pack way N, bridge / tunnel the card of
 // that structure at (else the first one on the route).
 // Writes docs/screenshots/<name>.png and prints what the engine built there.
@@ -12,7 +13,7 @@ const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', arg
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v2', '1'); } catch { /* opaque origin */ } });
-  await page.goto(`${server.resolvedUrls.local[0]}?scenario=${process.env.SCENARIO ?? 'd11'}`);
+  await page.goto(`${server.resolvedUrls.local[0]}?scenario=${process.env.SCENARIO ?? 'd11'}${process.env.PRESET ? `&preset=${process.env.PRESET}` : ''}`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 });
   mkdirSync('docs/screenshots', { recursive: true });
   let loaded = '';

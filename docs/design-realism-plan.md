@@ -83,6 +83,12 @@ TKP-D 7; 7.5 m was its backfill over the vault).*
 
 ### M3 — Bridge style per bridge
 
+*Done (cost model 35, 2026-11-17): PLAN.md "Bridge styles". As planned, plus: a span over 60 m has side spans of at
+least 0.56 × it (Czech cantilevers, research/50 §2e); the player's style (and a tunnel's method) chosen on Auto's
+structure leaves it Auto's (painting a bridge as it stands moved D11 direct-90's grade, +462 M); a house under a
+deck ≥ 15 m up stays unless a pier stands on it (research/62); the player's "Our bridge over it" is met with its
+price said on the crossing card.*
+
 One choice on the bridge card, Auto picks the cheapest that fits, the player can override:
 
 | Style (player word) | Spans | Cost | Drawn | Suits |
