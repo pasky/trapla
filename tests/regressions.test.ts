@@ -60,11 +60,11 @@ describe('review regressions', () => {
     expect(ROAD_CHECKS.vertical(p, speedNorms(90), 0.06).some((v) => v.kind === 'vcOverlap')).toBe(true);
   });
 
-  it('a too steep grade says which height point to move and by how much, and that is enough', () => {
+  it('a too steep grade By hand says which height pin to move and by how much, and that is enough', () => {
     const pts = [{ s: 0, z: 0, r: null }, { s: 500, z: 40, r: null }, { s: 1000, z: 45, r: null }];
-    const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06).filter((v) => v.kind === 'gradient');
+    const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06, false, undefined, true).filter((v) => v.kind === 'gradient');
     const [v] = grades(pts);
-    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower the height point at km 0.50 by 10.0 m' });
+    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower your height pin at km 0.50 by 10.0 m', target: { heightPins: [1] } });
     pts[1].z -= 10;
     expect(grades(pts)).toEqual([]);
   });

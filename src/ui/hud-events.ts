@@ -113,7 +113,10 @@ export function hudEvents(app: HudEventContext): HudEvents {
     app.select(t);
     const i = stationIndex(r, (v.s0 + v.s1) / 2);
     app.view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
-    app.profile.focus(v.s0, v.s1);
+    // the player's height pins it is about: close enough in that each has its own handle
+    const pins = app.store.design.profileMode === 'manual' ? (v.target?.heightPins ?? []).map(k => r.vpis[k]?.s).filter((s): s is number => s !== undefined) : [];
+    if (pins.length) app.profile.focus(Math.min(v.s0, ...pins), Math.max(v.s1, ...pins), 0);
+    else app.profile.focus(v.s0, v.s1);
   };
   return events;
 }

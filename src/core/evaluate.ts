@@ -2011,7 +2011,7 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
     const at = stop === null ? '' : stop < ds ? 'its start' : stop > al.length - ds ? 'its end' : `the height pinned at km ${(stop / 1000).toFixed(2)}`;
     const why = liftShared ? 'Auto cannot raise it: the heights beyond this stretch are the ones both directions share.'
       : stop !== null ? `Auto cannot raise it: at the steepest grade allowed (${grade}) the raise runs on to ${at}, whose height is fixed.`
-        : 'Auto cannot raise it without breaking the grade and rounding limits.';
+        : 'Auto cannot raise it without making the slope too steep or a hilltop or dip too sharp.';
     v.detail = `${v.detail ? `${v.detail} ` : ''}${why}`;
   }
   const retainingWalls = retention.walls.filter(wall => kind[wall.i] === KIND.earth);
@@ -2401,7 +2401,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
     ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
     ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, terrain)),
-    ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch),
+    ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch, d.profileMode !== 'auto' && d.vpis.length >= 2),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
   ];
   if (!win) hairpinFixes(al, d.pis, d.category, terrain, violations);

@@ -95,7 +95,7 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
     its noise source, the wall or cut edge, the house floor by floor in its own noise colour with each floor's
     level (and what it was without the wall), the sightline and the wall's shadow. Hovering a wall height redraws
     both ([a house that hears the road through a junction's gap](docs/screenshots/72-house-noise-plan-junction-gap.png)).
-  - pinned height (Auto) / height point (By hand): its height, typed or dragged, *Unpin* / *Delete*.
+  - pinned height (Auto) / height pin (By hand): its height, typed or dragged, *Unpin* / *Delete*.
 - **The score** (top right, sticky): total cost (struck through while not valid), ✓ VALID / ✗ NOT VALID, **the
   change the last edit made** (a drag counts once), travel time against the goal, the violations chip (click:
   selects the first one), your best valid design (*Load*; a position half-way through a drag never counts) and

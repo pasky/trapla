@@ -75,6 +75,8 @@ export interface InspectorEvents {
   bendHeight?: (i: number) => void;
   vpiRadius?: (i: number, r: number | null) => void;
   deleteVpi?: (i: number) => void;
+  /** By hand: height pin i moved to station s */
+  moveVpi?: (i: number, s: number) => void;
 }
 
 /** kilometres as the player reads them on the active line (ui/chainage.ts) */
@@ -409,9 +411,9 @@ export class Inspector {
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
         ${near || !open ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
-        <div class="ctx-lbl">Road height</div>
+        <div class="ctx-lbl">${CATEGORIES[d.category].mode === 'railway' ? 'Track' : 'Road'} height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
-          : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height point here</button></div>`}
+          : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height pin here</button></div>`}
         ${this.costLines(r, i0, i1)}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
@@ -457,6 +459,13 @@ export class Inspector {
     if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
+    // By hand: the player's height pins it is about (the points of this result: the design's own)
+    if (d.profileMode === 'manual' && this.r) {
+      const pin = (k: number) => this.r!.vpis[k] && k > 0 && k < this.r!.vpis.length - 1;
+      if (t?.movePin && pin(t.movePin.k)) btn(`data-fix-vpi-move="${t.movePin.k},${t.movePin.s.toFixed(1)}"`, `Move pin to km ${km(t.movePin.s)}`);
+      if (t?.smallest !== undefined && pin(t.smallest)) btn(`data-fix-vpi-smallest="${t.smallest}"`, 'Smallest radius');
+      for (const k of t?.heightPins ?? []) if (pin(k)) btn(`data-fix-vpi-del="${k}"`, `Delete pin <small>km ${km(this.r.vpis[k].s)}</small>`);
+    }
     return b.join('');
   }
 
@@ -499,7 +508,7 @@ export class Inspector {
         <input id="pi-slider" type="range" min="${Math.round(n.minRadius * 0.5)}" max="5000" step="5" value="${Math.round(rv)}" title="Or drag the ◇ grips on the map">
         ${cv ? `<div class="sub">curve starts ${m0(cv.t)} before the bend</div>` : ''}
       </div>
-      <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height point here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button>${this.moreToggle()}</div>`;
+      <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height pin here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button>${this.moreToggle()}</div>`;
   }
 
   // ---- pinned height (Auto) ----
@@ -545,11 +554,11 @@ export class Inspector {
     if (i <= 0 || i >= r.vpis.length - 1) return '';
     const vc = r.vcurves[i - 1], v = r.vpis[i];
     const what = vc?.type === 'crest' ? 'hilltop' : vc?.type === 'sag' ? 'dip' : '';
-    const vio = r.violations.filter((x) => x.vpi === i).map((x) => ({ v: x, fixes: '' }));
-    return `${this.head('Height point', `km ${km(v.s)}`)}
-      <div class="ctx-state"><b>${v.z.toFixed(1)} m</b>${what ? ` · ${what}` : ''} · rounding R ${m0(vc?.r ?? 0)}<div class="why">Drag it in the profile.</div></div>
+    const vio = r.violations.filter((x) => x.vpi === i || x.target?.heightPins?.includes(i)).map((x) => ({ v: x, fixes: this.d ? this.fixes(x, this.d) : '' }));
+    return `${this.head('Height pin', `km ${km(v.s)}`)}
+      <div class="ctx-state"><b>${v.z.toFixed(1)} m</b>${what ? ` · ${what}` : ''} · radius ${m0(vc?.r ?? 0)} m<div class="why">Drag it in the profile.</div></div>
       ${this.issues(vio)}
-      <div class="ctx-row"><label>Rounding <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
+      <div class="ctx-row"><label>Radius <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
         <label><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> smallest</label></div>
       <div class="ctx-foot"><button type="button" id="vpi-del" class="danger">Delete</button></div>`;
   }
@@ -745,6 +754,9 @@ export class Inspector {
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
     if (b.dataset.fixHairpin) { const [pi, speed] = b.dataset.fixHairpin.split(',').map(Number); this.ev.hairpin?.(pi, true, speed); return; }
     if (b.dataset.fixAuto) { const bends = b.dataset.fixAuto.split(',').map(Number); bends.forEach((i, k) => this.ev.radius?.(i, null, k === bends.length - 1)); return; }
+    if (b.dataset.fixVpiMove) { const [k, s] = b.dataset.fixVpiMove.split(',').map(Number); this.ev.moveVpi?.(k, s); return; }
+    if (b.dataset.fixVpiSmallest) { this.ev.vpiRadius?.(Number(b.dataset.fixVpiSmallest), null); return; }
+    if (b.dataset.fixVpiDel) { this.ev.deleteVpi?.(Number(b.dataset.fixVpiDel)); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }

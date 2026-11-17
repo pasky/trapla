@@ -103,6 +103,7 @@ export function createDesignEdits(app: DesignEditContext) {
     deletePi,
     bendHeight: (i) => { const b = app.last && bendStations(app.last, app.store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     vpiRadius: (i, r) => app.store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
+    moveVpi: (i, s) => app.store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].s = s; }),
     deleteVpi: (i) => { commitFields(); app.store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); app.select(null); },
   };
   const decisionEvents: DecisionEvents = {
