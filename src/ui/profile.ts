@@ -20,6 +20,7 @@ import type { VPI } from '../core/vertical';
 import type { ProvisionalProfile } from './provisional';
 import type { StationRange } from '../state';
 import { COST_GROUPS, groupLabel, groupShort, perM } from './costgroups';
+import { stationIndex } from '../core/range';
 
 export interface ProfileEvents {
   /** `a`, `b`: the nearest height points shown on either side; the hidden ones between follow the drag */
@@ -940,7 +941,7 @@ export class ProfilePanel {
   private updateTip() {
     const r = this.r, s = this.hoverS, at = this.hoverClient;
     if (!r || s === null || !at) { this.tip.style.display = 'none'; return; }
-    const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+    const i = stationIndex(r, s);
     const hgt = r.grade[i] - r.ground[i];
     const k = r.kind[i];
     const how = k === KIND.bridge ? `bridge ${hgt.toFixed(0)} m high`

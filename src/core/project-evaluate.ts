@@ -25,6 +25,7 @@ import { STEP } from './evaluate';
 import { thisRoadWords } from './terms';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
+import { stationIndex } from './range';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Mapped railway lines (what a rebuilt railway stretch takes up); absent until the transport graph loads. */
@@ -511,7 +512,7 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
       route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined);
     stations.push(t.s);
     if (t.violations.length) { legacy.violations.push(...t.violations); legacy.valid = false; }
-    const i = end === 'a' ? 0 : legacy.n - 1, k = Math.max(0, Math.min(host.n - 1, Math.round(t.s / host.ds)));
+    const i = end === 'a' ? 0 : legacy.n - 1, k = stationIndex(host, t.s);
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
     if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),

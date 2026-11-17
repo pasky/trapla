@@ -10,6 +10,7 @@ import type { EndpointConstraint } from './project';
 import type { RoadNet } from './roadnet';
 import type { Terrain } from './terrain';
 import { landPerM2 } from './cost';
+import { stationIndex } from './range';
 
 /** A road end this close to a legacy way joins it (legacy coordinates are rounded to 1 m), m. */
 const JOIN_TOLERANCE = 1.5;
@@ -225,7 +226,7 @@ export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string
   /** stations of the other junctions on the designed road (its ends count, as for our road's own junctions) */
   junctions: number[] }, terrain: Terrain, buildings?: BuildingIndex, form?: 'roundabout'): { violations: Violation[]; cost: number; label: string; s: number; ring?: ReturnType<typeof ringWorks> } {
   const h = host.result, i = end === 'a' ? 0 : side.n - 1, line = resultLine(h, host.crownWidth / 2);
-  const s = line.station(side.x[i], side.y[i]), k = Math.max(0, Math.min(h.n - 1, Math.round(s / h.ds)));
+  const s = line.station(side.x[i], side.y[i]), k = stationIndex(h, s);
   const zone = ENDPOINT_JUNCTIONS['tie-in'].zone, atStart = end === 'a';
   const s0 = atStart ? 0 : Math.max(0, side.length - zone), s1 = atStart ? Math.min(side.length, zone) : side.length;
   const out: Violation[] = [], what = host.name;

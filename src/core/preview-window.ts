@@ -18,6 +18,7 @@ import type { Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { normalizeVpis, type Design, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { ROAD_CHECKS } from './checks';
+import { stationIndex } from './range';
 
 /** re-solved beyond the changed stretch on each side, m (the auto-profile knots are 250 m apart) */
 export const WINDOW_MARGIN = 1500;
@@ -116,7 +117,7 @@ function at(r: Result, values: ArrayLike<number>, s: number): number {
   const x = Math.max(0, Math.min(r.n - 1, s / r.ds)), i = Math.min(r.n - 2, Math.floor(x)), t = x - i;
   return r.n < 2 ? values[0] : values[i] + (values[i + 1] - values[i]) * t;
 }
-const nearest = (r: Result, s: number) => Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+const nearest = (r: Result, s: number) => stationIndex(r, s);
 
 /** chainage range whose inputs changed between the full result's design and `d`, or null if unmappable */
 function changedRange(base: FullEntry, d: Design, st: Stationing, length: number, curves: readonly CurveInfo[]): [number, number] | null {

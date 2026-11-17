@@ -8,6 +8,7 @@ import type { Alignment, PI } from './horizontal';
 import { groundSlopeAt, routeMountainous, TERRAIN_CLASS } from './terrain-class';
 import type { Terrain } from './terrain';
 import type { Violation } from './checks';
+import { stationIndex } from './range';
 
 export interface SpeedStretch { s0: number; s1: number; speed: number }
 
@@ -165,7 +166,7 @@ export function verticalLimits(st: Stations, al: Pick<Alignment, 'curves' | 'len
 /** whether the road runs through mountains at a route chainage (core/terrain-class.ts routeMountainous) */
 export function mountainousAlong(terrain: Terrain, full: Stations): (s: number) => boolean {
   const cls = routeMountainous(terrain, full);
-  return (s) => cls[Math.max(0, Math.min(full.n - 1, Math.round(s / full.ds)))] === 1;
+  return (s) => cls[stationIndex(full, s)] === 1;
 }
 
 /** Each stretch's own crest / sag radii (the design speeds, not a hairpin's driving speed); numbers where the

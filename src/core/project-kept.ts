@@ -12,6 +12,7 @@ import { KIND } from './structures';
 import { buildAlignment, station } from './horizontal';
 import { bendRules, horizontalRules } from './data/norms';
 import { oldLineWords, type OurLine } from './terms';
+import { stationIndex } from './range';
 
 type Pt = { x: number; y: number };
 /** An old line: its centreline as one or more polylines (a stretch may claim several pieces of old line). */
@@ -146,7 +147,7 @@ export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?:
   if (!cells) return null;
   r.keptCells = kept;
   const within = (s0: number, s1: number) => {
-    const i0 = Math.max(0, Math.min(r.n - 1, Math.round(s0 / r.ds))), i1 = Math.max(i0, Math.min(r.n - 1, Math.round(s1 / r.ds)));
+    const i0 = stationIndex(r, s0), i1 = Math.max(i0, Math.min(r.n - 1, Math.round(s1 / r.ds)));
     for (let i = i0; i <= i1; i++) if (!kept[i]) return false;
     return true;
   };
@@ -162,7 +163,7 @@ export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?:
   // the old road's junctions, culverts and edges stay as they are
   r.crossings = r.crossings.filter(c => !kept[c.i]);
   r.footprintConflicts = r.footprintConflicts.filter(f => !kept[f.i]);
-  r.waterCrossings = r.waterCrossings.filter(c => !kept[Math.max(0, Math.min(r.n - 1, Math.round(c.s / r.ds)))]);
+  r.waterCrossings = r.waterCrossings.filter(c => !kept[stationIndex(r, c.s)]);
   // houses beside a kept part: nothing is built there, so none is removed and no new noise decision is made
   const gone = new Set([...r.demolished.filter(b => kept[b.i]), ...r.boughtOut.filter(b => kept[b.i] && b.reason !== 'manual')].map(b => b.j));
   const beside = new Set([...gone, ...r.noise.receivers.filter(p => kept[p.i]).map(p => p.j)]);

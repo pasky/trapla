@@ -3,6 +3,7 @@
 import { PART_KEYS } from '../core/cost';
 import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
+import { stationIndex } from '../core/range';
 
 export type PieceKind = 'bridge' | 'tunnel' | 'cut' | 'fill';
 export interface Piece { kind: PieceKind; i0: number; i1: number; s0: number; s1: number;
@@ -58,7 +59,7 @@ export function pieces(r: Result): Piece[] {
 
 /** the piece at station s */
 export function pieceAt(r: Result, s: number): Piece {
-  const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+  const i = stationIndex(r, s);
   return pieces(r).find((p) => i >= p.i0 && i <= p.i1) ?? { kind: cellKind(r, i), i0: i, i1: i, s0: s, s1: s };
 }
 

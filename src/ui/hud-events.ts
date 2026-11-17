@@ -14,6 +14,7 @@ import type { Intro } from './intro';
 import { pieceAt } from './pieces';
 import type { ProfilePanel } from './profile';
 import { toast } from './toast';
+import { stationIndex } from '../core/range';
 
 export interface HudEventContext {
   readonly store: ActiveRouteStore; readonly projectStore: ProjectStore; readonly view: View; readonly profile: ProfilePanel;
@@ -107,7 +108,7 @@ export function hudEvents(app: HudEventContext): HudEvents {
               : { kind: 'stretch', s0: v.s0, s1: v.s1 };
     if (!t) { app.hud.reveal('viol'); return; }
     app.select(t);
-    const i = Math.max(0, Math.min(r.n - 1, Math.round((v.s0 + v.s1) / 2 / r.ds)));
+    const i = stationIndex(r, (v.s0 + v.s1) / 2);
     app.view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
     app.profile.focus(v.s0, v.s1);
   };

@@ -23,6 +23,7 @@ import type { ProfilePanel } from './ui/profile';
 import { mappedLineKindFor } from './ui/route-kinds';
 import type { RouteSelection } from './ui/route-selection';
 import type { ViewBar, ViewPrefs } from './ui/viewbar';
+import { stationIndex } from './core/range';
 
 /** Live views of main.ts's state (getters: read at each call, as the closure variables were). */
 export interface AutomationContext {
@@ -88,7 +89,7 @@ export function installAutomation(c: AutomationContext): void {
         const q = p.reduce((a, b) => (Math.abs(b.s - s) < Math.abs(a.s - s) ? b : a));
         return c.view.project(q.x, q.y, c.view.drape(q.x, q.y) + 2.5);
       }
-      const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+      const i = stationIndex(r, s);
       return c.view.project(r.x[i], r.y[i], r.kind[i] === KIND.tunnel ? c.view.drape(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5);
     },
     handledRequest: () => c.received,
@@ -193,7 +194,7 @@ export function installAutomation(c: AutomationContext): void {
     range: () => (c.sel?.kind === 'stretch' ? { s0: c.sel.s0, s1: c.sel.s1 } : null),
     /** the road's screen point (px inside the view) at station s */
     // where the road is drawn to grab: a tunnel at its ground-level indication, as picking uses
-    roadScreen: (s: number) => { if (!c.last) return null; const i = Math.max(0, Math.min(c.last.n - 1, Math.round(s / c.last.ds))); return c.view.project(c.last.x[i], c.last.y[i], routeIndicationHeight(c.last, i, (x, y) => c.view.drape(x, y))); },
+    roadScreen: (s: number) => { if (!c.last) return null; const i = stationIndex(c.last, s); return c.view.project(c.last.x[i], c.last.y[i], routeIndicationHeight(c.last, i, (x, y) => c.view.drape(x, y))); },
     mapWindow: () => (c.profile as unknown as { mapWindow: unknown }).mapWindow,
     setExaggeration: (e: number) => c.viewBar.set({ exag: e }),
     setView: (p: Partial<ViewPrefs>) => c.viewBar.set(p),

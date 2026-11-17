@@ -47,7 +47,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41 ×2, 43 ×2): bare citations of them are ambiguous | medium | none | done: 14 comments cite the file; `tests/research-citations.test.ts` rejects a bare one (5 player-text strings with `research/17` listed there) |
 | 16 | Engineering numbers outside `data/` (clearances, ramp limits, side slopes, a default design speed in `ui/`) | medium | low | sequence (list in § Data) |
 | 17 | `View` is a 1,720-line class; `ProfilePanel.paint()` 400 lines; `Inspector` builds every card | medium | medium | next, when touched |
-| 18 | Station-index clamp written out 25 times in 15 files | low | none | next: `stationIndex(r, s)` |
+| 18 | Station-index clamp written out 25 times in 15 files | low | none | done: `stationIndex(r, s)` in `core/range.ts` at the 22 sites of that form in 17 files |
 | 19 | Test wall time is one 16 s test (`player-text`: every violation kind) | low | none | done: four real-pack shards; the next longest file is `edited-network` (13.5 s alone) |
 | 20 | Orphan "foundation" modules only tests import (307 lines), unused contract surface | low | none | owner |
 | 21 | `data/scenario.ts` mixes scenario content (presets with their bends) with engine thresholds | low | low | next, when scenarios grow |
@@ -336,8 +336,10 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   (`resetCamera` … `zoomAt`, `keepCameraAboveGround`) and the pointer gestures.
 - `ui/profile.ts` `paint()` is 400 lines; `ui/inspector.ts` holds every card. Split per card when a card
   is next changed (the route cards moved out of main.ts are the example).
-- The clamp `Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)))` appears 25 times in 15 files: one
-  `stationIndex(r, s)` in `core/range.ts` (same arithmetic, so bit-identical).
+- The clamp `Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)))` is `stationIndex(r, s)` in `core/range.ts`
+  (the same expression, so bit-identical) at its 22 sites. Left as written: the ones on bare locals `n`, `ds`
+  in `evaluate.ts` and `project-kept.ts` (an object per call for nothing) and the clamps of another shape
+  (`(c.s - s[0]) / ds`, `result-stitch.ts`).
 - Test wall time was `tests/player-text.test.ts` alone (16.7 s in a worker of its own, 16 s of it one `it`).
   Its real-pack designs are four files now (`player-text-pack-1…4.test.ts`, each a call of
   `packShardSuite(k)` in `tests/player-text-helpers.ts`), which run side by side: the five files take 6.6 s

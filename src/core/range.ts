@@ -5,6 +5,9 @@ import { cellLength, sumParts, type CostBreakdown } from './cost';
 import type { Result } from './evaluate';
 import { KIND } from './structures';
 
+/** The station cell of chainage `s` on a stationed line (n stations every ds metres), kept inside it. */
+export const stationIndex = (r: { n: number; ds: number }, s: number): number => Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+
 export interface RangeSummary {
   /** first and last station cell */
   i0: number;
@@ -34,7 +37,7 @@ export interface RangeSummary {
 /** station cells whose station lies in [s0, s1] (at least one) */
 export function cellsInRange(r: { n: number; ds: number }, s0: number, s1: number): [number, number] {
   let i0 = Math.max(0, Math.ceil(s0 / r.ds - 1e-9)), i1 = Math.min(r.n - 1, Math.floor(s1 / r.ds + 1e-9));
-  if (i1 < i0) i0 = i1 = Math.max(0, Math.min(r.n - 1, Math.round((s0 + s1) / 2 / r.ds)));
+  if (i1 < i0) i0 = i1 = stationIndex(r, (s0 + s1) / 2);
   return [i0, i1];
 }
 

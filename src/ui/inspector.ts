@@ -23,6 +23,7 @@ import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
 import { activeStructure } from './structure-bar';
 import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
+import { stationIndex } from '../core/range';
 
 export type Sel =
   | { kind: 'stretch'; s0: number; s1: number; piece?: PieceKind }
@@ -339,7 +340,7 @@ export class Inspector {
       method = `<div class="sub">${cap(how)}</div><div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
     }
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
-    const gi = Math.max(0, Math.min(r.n - 1, Math.round(pinAt / r.ds)));
+    const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
       <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
       ${this.issues(vio)}
@@ -388,7 +389,7 @@ export class Inspector {
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
     else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
     // (not where our road already is on a bridge: a pier or a bridge end on something asks for a longer bridge)
-    const onBridge = !!this.r && this.r.kind[Math.max(0, Math.min(this.r.n - 1, Math.round(v.s0 / this.r.ds)))] === KIND.bridge;
+    const onBridge = !!this.r && this.r.kind[stationIndex(this.r, v.s0)] === KIND.bridge;
     if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
@@ -430,7 +431,7 @@ export class Inspector {
   private pin(r: Result, d: Design, s: number) {
     const p = d.gradePins?.find((q) => Math.abs(q.s - s) < 0.1);
     if (!p) return '';
-    const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
+    const i = stationIndex(r, s);
     const vio = r.violations.filter((v) => v.kind === 'profile' && v.s0 <= s + 1 && v.s1 >= s - 1).map((v) => ({ v, fixes: '' }));
     return `${this.head('Pinned height', `km ${km(s)}`)}
       <div class="ctx-state"><b>${p.z.toFixed(1)} m</b> · road now ${r.grade[i].toFixed(1)} m<div class="why">${d.profileMode === 'auto' ? 'Auto passes within 0.5 m of it. Drag it in the profile.' : 'Not used while the height is set by hand.'}</div></div>

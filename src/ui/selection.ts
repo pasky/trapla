@@ -23,6 +23,7 @@ import type { MappedRoadCard } from './mapped-road';
 import { pieceAt } from './pieces';
 import type { ProfilePanel } from './profile';
 import { activeSelection, qualifySelection } from './route-selection';
+import { stationIndex } from '../core/range';
 
 export interface SelectionContext {
   readonly session: Session;
@@ -51,7 +52,7 @@ export function createSelection(app: SelectionContext) {
   const placeOf = (t: Sel): { x: number; y: number; s0: number; s1: number } | null => {
     const r = app.session.last;
     if (!r) return null;
-    const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return { x: r.x[i], y: r.y[i] }; };
+    const at = (s: number) => { const i = stationIndex(r, s); return { x: r.x[i], y: r.y[i] }; };
     switch (t.kind) {
       case 'stretch': return { ...at((t.s0 + t.s1) / 2), s0: t.s0, s1: t.s1 };
       case 'pin': return { ...at(t.s), s0: t.s, s1: t.s };
@@ -124,7 +125,7 @@ export function createSelection(app: SelectionContext) {
     let small = app.view.metresPerPixel > FRAME_MPP;
     const r = app.session.last;
     if (p.s1 - p.s0 > 1 && r) {
-      const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return app.view.project(r.x[i], r.y[i], r.grade[i]); };
+      const at = (s: number) => { const i = stationIndex(r, s); return app.view.project(r.x[i], r.y[i], r.grade[i]); };
       const a = at(p.s0), b = at(p.s1);
       small = !a.vis || !b.vis || Math.hypot(a.sx - b.sx, a.sy - b.sy) < Math.min(box.width, box.height) / 6;
     }
