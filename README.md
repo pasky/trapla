@@ -404,7 +404,7 @@ road as it was](docs/screenshots/241-d3-motorway-track-cannot-be-straightened.pn
 there](docs/screenshots/244-d11-direct-80-street-reroute-homes.png),
 [town-centre km 10.05: Auto straightens the track, its new line on its own earthworks](docs/screenshots/245-town-centre-track-straightened-on-earthworks.png),
 [the top bars at 1,366 px: no key hints, nothing overlaps](docs/screenshots/246-top-bars-1366.png).
-Tunnels as they are built (cost model 33, PLAN.md "Tunnels as they are built"): [the D35 starter's east portal at the
+Tunnels as they are built (cost model 34, PLAN.md "Tunnels as they are built"): [the D35 starter's east portal at the
 bottom of a 60 m open cut](docs/screenshots/222-d35-portal-before.png) → [the tunnel goes on as cut and cover to where
 the cut is about its own height deep](docs/screenshots/223-d35-portal-after.png),
 [the tunnel card: how it is built, its method (Mined · Cut and cover)](docs/screenshots/224-d35-tunnel-card.png),

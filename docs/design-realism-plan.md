@@ -63,7 +63,7 @@ grade-solve hunk if the P1 agent is mid-change there.
 
 ### M2 — Tunnels that start where real ones do, tunnel methods
 
-*Done (cost model 32, 2026-11-17): PLAN.md "Tunnels as they are built". As planned, plus: the grade search's
+*Done (cost model 34, 2026-11-17): PLAN.md "Tunnels as they are built". As planned, plus: the grade search's
 tunnel mode (a deep stretch all tunnel or all open), streams over cut and cover, and a 30 m limit on the cut in
 front of a tunnel the player paints. The player's cut and cover may have up to 13 m of cover (the Radejčín card in
 TKP-D 7; 7.5 m was its backfill over the vault).*

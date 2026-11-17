@@ -586,22 +586,20 @@ Four findings of the architecture review, then a play of the D3 and D11 missions
   see-through. `scripts/toolbar-layout.mjs` (gate) at 1280–1920 px.
 - **Bills** (model 31 → 32): D11 frozen: direct-90 4,687 → 4,676 (km 8.26 straightened), town-centre 8,879 →
   8,869 (km 10.05 straightened), the rest unchanged; D3 class I road 3,484 → 3,504; whole D3 straight +121 M.
-- **Seen while playing, not changed** (each a design decision or a larger change):
-  - A player's underpass or bridge choice is a hard constraint on the grade: an underpass for a track in our
-    8 m cutting (D3 km 1.76) raises the motorway over 3.8 km (+1.45 bn), on D11 best km 9.93 +0.67 bn with its
-    ramps still too long. Priced and shown in the score's change chip; a "this needs our road raised by X m"
-    card line before the click would help.
-  - Even a plain "Straighten it" adds a hold to the grade solve (the crossing's station): D3 km 2.67 +41 M for a
-    box 1.8 M cheaper, the grade moving up to 2.9 km away (the station-grid lever of AGENTS.md "Open items").
-  - Auto does not move its grade to make a box possible: D11 direct-80 km 6.83 keeps a street reroute through
-    three homes (48.7 M), while the player's underpass there gives a valid design 26 M cheaper.
-  - The player's "Cut and reroute" leads the way to the nearest crossing even where that pins a road Auto would
-    move beside ours (D3 km 15.29 → km 14.18's 2.48 bn bridge along us, +3.1 bn); at km 5.26 it breaks the
-    class II road's reroute to that crossing, the separation retry bridges both (a clash, +577 M).
-  - D3 km 0.43–0.53: a 100 m, 7 m high motorway bridge (219 M) demolishes a garage under its deck
-    (design-realism's bridge work).
+- **Seen while playing, then fixed (cost model 33, research/61):** a player's underpass / bridge choice no longer
+  forces the grade solve (no fixed point; D3 km 2.67's +41 M gone); where Auto's line leaves a crossing too little
+  room — the player's box or bridge, or a reroute through homes where a box would do — the line is lifted locally
+  solved again with that height (else lifted locally), only while it costs no more than the crossing's own
+  treatment (otherwise the problem says how much to raise our road: D3 km 1.76 +1.45 bn → 12.7 M and said);
+  D11 direct-80 km 6.83 is now a box, its three homes kept (4,183 → 4,157 M); a player's unbuildable crossing owns
+  its way's stretch (no phantom relocation); "Cut and reroute" no longer pins a road Auto moves beside ours (D3 km
+  15.29: +3.1 bn → said). `scripts/choice-audit.ts` (gate).
+- **Still open:** "Our bridge over it" in our cutting is met at any price (the painted bridge's support lifts,
+  D3 km 8.59 +1.26 bn); the player's "Cut and reroute" at D3 km 5.26 removes the crossing a class II road is led
+  to (Auto bridges both, a clash, +577 M); D3 km 0.43–0.53: a garage under a 7 m bridge deck demolished
+  (relayed to design-realism).
 
-### Tunnels as they are built: cut-and-cover portals, method, escape provision (cost model 33, 2026-11-17)
+### Tunnels as they are built: cut-and-cover portals, method, escape provision (cost model 34, 2026-11-17)
 
 Plan and sources: docs/design-realism-plan.md M2, research/49 (portals), /51 (methods). Model 31 ended Auto's
 tunnels wherever a tunnel stopped being cheaper per metre than the cut, in open cuts 12–110 m deep (d35's
@@ -631,7 +629,7 @@ starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
   Mobil 121–135 %) above 2,000 veh/day/lane, two tubes above 10,000; motorways have two tubes already, a
   motorway direction's tube has the other's beside it, railways follow their own price book.
 - **Minimum tunnel** 150 → 100 m (TKP-D 7): the outcome audit and every scenario pack unchanged by it.
-- **Bills** (model 32 → 33): every D11 design unchanged (no tunnels). Scenario starters, all VALID: d3-0304
+- **Bills** (model 33 → 34): every D11 design unchanged (no tunnels). Scenario starters, all VALID: d3-0304
   8,524 → 10,152 (a 680 m twin tunnel instead of 240 m between 21–29 m cuts), d35 4,755 → 6,729 (1.1 km
   instead of 740 m between 58–68 m cuts), d35-full 27,332 → 29,969, d35 stage-1 motorway 17,123 → 19,497 M CZK;
   the others unchanged. Křálovec railway (QA fixture) 8.87 → 9.45 bn VALID (one 3.9 km tunnel where three

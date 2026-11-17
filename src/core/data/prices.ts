@@ -69,13 +69,20 @@
  * a player's choice that cannot be built (a straightening, a bridge over us) leaves the rest as Auto had it.
  * D11 frozen bills: direct-90 −11.6 M (km 8.26 track straightened), town-centre −10.2 M (km 10.05 track
  * straightened), direct-80 drawn heights of its straightened legs only.
- * 33: tunnels as they are built (research/49, /51): a tunnel goes on as cut and cover (SPK A.3.H, +7.5 %) out to
+ * 33: our line raised for a crossing (research/61): a reroute through homes where a box would do at a higher
+ * line, and a player's box or bridge our line leaves too little room for, are met by a local lift or a new
+ * grade solve with that height, the cheaper that works and adds no problem, only while the regrade costs no
+ * more than the crossing's own treatment; a player's choice is no fixed point of the first grade solve; a
+ * crossing the player chose owns its way's stretch also where it cannot be built; a player's plain "Cut and
+ * reroute" no longer keeps a crossing Auto moves beside ours. D11 frozen: direct-80 4,183 → 4,157 M (km 6.83:
+ * an underpass at a re-solved line instead of a street reroute through three homes).
+ * 34: tunnels as they are built (research/49, /51): a tunnel goes on as cut and cover (SPK A.3.H, +7.5 %) out to
  * portals where the ground is a structure height (9 m) above the grade, ≥ 12 m per portal, its pit beyond 5 m of
  * cover billed; the grade search's tunnel mode (a deep stretch all tunnel or all open); one 2-lane tube over 500 m
  * gets an escape tunnel (×1.3) or a second tube (NV 264/2009); streams stay over a tunnel 9 m below them; a cutting
  * that never reaches the top of the hillside is a tunnel; the player's method (Mined / Cut and cover); minimum
  * tunnel 100 m. D11 bills unchanged (no tunnels); d3-0304, d35, d35-full and the Královec railway dearer. */
-export const COST_MODEL_VERSION = 33;
+export const COST_MODEL_VERSION = 34;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
