@@ -79,6 +79,92 @@ support lifts, a stream retry), demo plans one more overbridge and reconnection 
 auto-profile DP carries ≈ 12 % more height states on demo (its corridor of reachable heights is wider). Drag budgets pass in all six modes.
 
 
+## Where the time is on cost model 31, and four small bit-exact savings (2026-11-17)
+
+`node scripts/dev/profile.mjs` (new: it bundles the engine so that node's profiler can tell functions and
+lines apart, then prints own time, time with callees, a function's subtree or lines, or sampled allocation)
+on main `06dc5d3`:
+
+| | the five saved D11 designs | the whole D3 (56 km, one evaluation ≈ 2.5 s) |
+|---|---|---|
+| grade search (`autoprofile.ts`: `solve` and its cost tables) | 27 % | 10 % |
+| crossings (`buildCrossingGeometry`; about half of it weighing other remedies in `reconsider`) | 23 % | 24 % |
+| garbage collection | 10–12 % | 12 % |
+| retaining walls (`planRetainingWalls`) | 9 % | 10 % |
+| noise (`noiseOutcome`) | 8 % | 16 % |
+| footprint screen (`footprintConflicts`, mostly `planRoadRealignment`) | 4 % | 15 % |
+| allocated per evaluation | ≈ 280 MB | ≈ 5 GB |
+
+There is no single hot spot left outside the grade search: the profile is flat (the next own-time entries
+are 2–3 % each), and the crossing, noise and retaining code is already written around scratch arrays and
+memos. What the whole D3 pays for is passes: `evaluate` runs the whole route three times (the first pass 29 %,
+the separation retry 28 %, a further retry 13 %) before the noise (16 %). **The lever that would win back the
++11 % of model 31 is there and in the grade search** (a retry that re-engineers only the stretch it changes;
+fewer height states), i.e. in `evaluate.ts` and `autoprofile.ts`, which this pass did not touch (open work
+on both).
+
+Done, each bit-identical (`scripts/exact.ts`: 177 / 177 whole results; `tests/footprint-geometry.test.ts`
+holds the rewritten primitives to their earlier forms on 20,000 random cases each):
+
+- `road-realignment.ts` `chordHits` tested the whole chord against the footprint cells near *each* 5 m
+  sample of it; consecutive samples in one 100 m bucket repeated the same tests (≈ 5 % of the whole D3).
+  It tests a bucket once.
+- Screens that only ask *whether* a segment touches a cell (`chordHits`, the water / rail checks of a
+  rebuilt road and of a moved channel) use `touchesFootprint`, which makes no interval.
+- `FootprintGrid.hits` made a closure and, off the footprint, an empty array per query.
+- `watercourses.ts` `barrelIntervals` built ten small arrays per call (4 % of all allocation on D11).
+
+Interleaved against main `06dc5d3` (`scripts/dev/interleave.ts`, which now takes a pack and designs; host load
+8–16, so read the minima), now / main:
+
+| | rounds × runs | min | median | CPU |
+|---|---|---:|---:|---:|
+| five D11 designs | 30 × 4 | 0.97–0.99 | 0.97–1.03 | 0.98–1.03 |
+| D3 motorway starter (15 km) | 16 × 1 | 0.97 | 0.93 | 0.93 |
+| whole D3 (56 km) | 10 × 4 | 0.94–0.99 | 0.87–0.98 | 0.89–1.05 |
+| whole D35 | 10 × 1 | 0.94 | 0.93 | 0.99 |
+| Nová Paka | 16 × 1 | 0.99 | 1.07 | 1.05 |
+
+So ≈ 1–3 % on D11 and ≈ 3–6 % on the long routes: real, small, and not the +11 %.
+
+Again after merging main `684e77e` (cost model 34; 177 / 177 results identical to main's, host load 2–4): five
+D11 designs 30 × 3: min 0.97–0.98, median 0.96–1.04, CPU 0.98–1.01; whole D3 10 × 2: min 0.90–0.96, median
+0.97–1.03; whole D35 10 × 1: min 1.00, median 0.90. The same picture: 2–3 % at the minima on D11, more on the
+whole D3, medians within the noise.
+
+### What a retry pass costs (model 34, 2026-11-17)
+
+Measured with each `evaluateRoute` call timed (a scratch wrapper; min of 8 evaluations, D3 of 3):
+
+| design | passes of one evaluation, ms |
+|---|---|
+| best, demo, direct-90, town-centre | first 121 / 117 / 147 / 209, no retry |
+| direct-80 | first 134, the regrade retry (model 33) 85 |
+| whole D3 | first 800, separation 566, separation + narrowing 397, separation (buried roads) 310; noise ≈ 470 |
+
+- **The grade solve of a retry is already block-local**: with the pass cache `autoProfile` re-solves only the
+  boundary windows and blocks whose inputs changed (`rangeKey`). direct-80's retry spends 21 ms there (43 ms in
+  the first pass: a floor at km 6.83 reaches the 5 km windows of most of a 19 km route), the D3's 63 / 71 /
+  24 ms against 156 ms. A separate block entry point would re-solve the same blocks.
+- **The rest of a retry is what a pass costs when nothing changes.** The same pass run twice (same options, same
+  pass cache: every block solve, section, retaining screen, support and reroute a cache hit) still takes
+  47–72 ms on the D11 designs (town-centre 136 ms) and 531 ms on the whole D3, i.e. 40–65 % of a first pass.
+  Where (D11): crossing geometry 41 % (the first build of every crossing 18 %, weighing other remedies 19 %),
+  the engineering passes 38 % (replaying the retaining screen station by station 21 %, structure selection 5 %),
+  the footprint screen 8 %, setup 5 %. On the whole D3 a retry is ≈ 45 % crossings and footprint, ≈ 15 % its
+  own strict retry (crossings again), ≈ 25 % engineering, ≈ 11 % grade solve.
+- **Why that part is not stretch-local today, bit for bit.** Each of those steps is a loop over the whole route
+  whose result somewhere may depend on something far away: reroutes and the weighing of remedies reach
+  `linkHardReach` = 2 km along the road and are taken in order of cost over all crossings (the whole D3 has a
+  crossing every ≈ 190 m, so no two stretches of it are independent by distance); structures and walls
+  are chosen in runs that may run on past a stretch's ends, with a fill value settled per block on the result. A result spliced from "the stretch re-engineered, the
+  rest copied" would equal today's on most designs but not provably on all, so it is a model change to be
+  reviewed (like the windowed preview, whose bill is −8 … +10 % off the full one), not a refactor. What can be done
+  bit for bit is more of what the pass cache does: a memo per step keyed by everything the step read
+  (the reroute cache's footprint signature is the pattern). Candidates, by what a retry would save: one
+  crossing's candidate builds (≈ 18 % of a pass that changes nothing), the setup shared by all passes (≈ 5 %).
+
+
 ## Crossing remedies, cost model 28 (2026-11-16)
 
 Straightened crossings, the consolidation pass, moving roads beside ours and reroutes joining their target's

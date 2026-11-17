@@ -83,10 +83,14 @@ export function barrelIntervals(segment: Segment2, b: BarrelEnvelope): [number, 
   const du = (segment.bx - segment.ax) * b.tx + (segment.by - segment.ay) * b.ty;
   const dv = -(segment.bx - segment.ax) * b.ty + (segment.by - segment.ay) * b.tx;
   const out: [number, number][] = [];
-  for (const side of [-1, 1]) {
+  for (let side = -1; side <= 1; side += 2) {
     let lo = 0, hi = 1;
-    for (const [value, slope, max] of [[-side * u, -side * du, 0], [side * u, side * du, b.along],
-      [v - side * u * b.flare, dv - side * du * b.flare, b.left], [-v - side * u * b.flare, -dv - side * du * b.flare, b.right]]) {
+    // (the four edges of this half in turn, without an array of arrays per call: this runs for every channel
+    // segment near every culvert of every engineering pass)
+    for (let edge = 0; edge < 4; edge++) {
+      const value = edge === 0 ? -side * u : edge === 1 ? side * u : edge === 2 ? v - side * u * b.flare : -v - side * u * b.flare;
+      const slope = edge === 0 ? -side * du : edge === 1 ? side * du : edge === 2 ? dv - side * du * b.flare : -dv - side * du * b.flare;
+      const max = edge === 0 ? 0 : edge === 1 ? b.along : edge === 2 ? b.left : b.right;
       if (Math.abs(slope) < 1e-10) { if (value > max) { hi = -1; break; } }
       else if (slope > 0) hi = Math.min(hi, (max - value) / slope);
       else lo = Math.max(lo, (max - value) / slope);

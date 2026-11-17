@@ -30,6 +30,27 @@ export function clipFootprint(a: Segment2, c: FootprintCell, pad = 0): [number, 
   if (hi <= lo + 1e-9) return;
   return [a.d + lo * a.length, a.d + hi * a.length];
 }
+/** Whether clipFootprint() finds a piece of the segment inside the cell: the same tests, without making the
+ * interval (for the screens that only ask whether). */
+export function touchesFootprint(a: Segment2, c: FootprintCell, pad = 0): boolean {
+  const dx = a.ax - c.x, dy = a.ay - c.y;
+  const u = dx * c.tx + dy * c.ty, v = -dx * c.ty + dy * c.tx;
+  const du = (a.bx - a.ax) * c.tx + (a.by - a.ay) * c.ty;
+  const dv = -(a.bx - a.ax) * c.ty + (a.by - a.ay) * c.tx;
+  let lo = 0, hi = 1;
+  if (Math.abs(du) < 1e-10) { if (u < -c.along - pad || u > c.along + pad) return false; }
+  else {
+    const t0 = (-c.along - pad - u) / du, t1 = (c.along + pad - u) / du;
+    lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1));
+  }
+  if (hi <= lo + 1e-9) return false;
+  if (Math.abs(dv) < 1e-10) { if (v < -c.right - pad || v > c.left + pad) return false; }
+  else {
+    const t0 = (-c.right - pad - v) / dv, t1 = (c.left + pad - v) / dv;
+    lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1));
+  }
+  return !(hi <= lo + 1e-9);
+}
 export function cellBounds(c: FootprintCell, pad = 0): [number, number, number, number] {
   const off = (c.left - c.right) / 2, across = (c.left + c.right) / 2 + pad;
   const x = c.x - c.ty * off, y = c.y + c.tx * off;
@@ -42,6 +63,7 @@ export function insideFootprint(p: Point2, c: FootprintCell, pad = 0): boolean {
   return Math.abs(u) < c.along + pad && v > -c.right - pad && v < c.left + pad;
 }
 
+const NO_CELLS: readonly FootprintCell[] = [];
 /** Query only local footprint cells when checking a proposed realignment. */
 export class FootprintGrid {
   private buckets = new Map<number, FootprintCell[]>();
@@ -55,8 +77,13 @@ export class FootprintGrid {
         }
     }
   }
-  near(p: Point2): readonly FootprintCell[] { return this.buckets.get(Math.floor(p.x / 100) * 100003 + Math.floor(p.y / 100)) ?? []; }
-  hits(p: Point2, pad: number): boolean { return this.near(p).some(c => insideFootprint(p, c, pad)); }
+  near(p: Point2): readonly FootprintCell[] { return this.buckets.get(Math.floor(p.x / 100) * 100003 + Math.floor(p.y / 100)) ?? NO_CELLS; }
+  hits(p: Point2, pad: number): boolean {
+    // (no closure and no empty array per query: realignment screens ask this for every sample of every chord)
+    const cells = this.near(p);
+    for (let k = 0; k < cells.length; k++) if (insideFootprint(p, cells[k], pad)) return true;
+    return false;
+  }
   /** Interior of the union, not of each shrunken station cell (shrinking cells invents outlet
    * gaps at every station boundary). A real outer edge has at least one outside neighbour. */
   interior(p: Point2): boolean {
