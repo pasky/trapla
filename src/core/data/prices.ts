@@ -81,8 +81,15 @@
  * cover billed; the grade search's tunnel mode (a deep stretch all tunnel or all open); one 2-lane tube over 500 m
  * gets an escape tunnel (×1.3) or a second tube (NV 264/2009); streams stay over a tunnel 9 m below them; a cutting
  * that never reaches the top of the hillside is a tunnel; the player's method (Mined / Cut and cover); minimum
- * tunnel 100 m. D11 bills unchanged (no tunnels); d3-0304, d35, d35-full and the Královec railway dearer. */
-export const COST_MODEL_VERSION = 34;
+ * tunnel 100 m. D11 bills unchanged (no tunnels); d3-0304, d35, d35-full and the Královec railway dearer.
+ * 35: bridge styles (research/50, data/bridges.ts BRIDGE_STYLES): short spans (≈ 30 m, one span to 60 m over
+ * something below), long spans (equal 45–60 m, or one span to 180 m with side spans ≥ 0.56 × it; over 60 m on a deck
+ * ≥ 40 m high at most 1.2 × the 30 m-span price, PROVISIONAL), an arch (100–250 m, priced as a 30 m-span viaduct as
+ * high as its highest point); Auto takes the cheapest that fits (the grade search and the structure choice see the
+ * cheaper of short and long spans), the player may choose another (only that choice: the bridge stays Auto's).
+ * A house under a deck ≥ 15 m up and 3 m over its roof stays unless a pier stands on it (research/62). Our bridge
+ * over a road the player chose is met through the regrade retry, its price said. */
+export const COST_MODEL_VERSION = 35;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
