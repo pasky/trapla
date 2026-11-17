@@ -38,7 +38,7 @@ own objects). `resolveCrossings` stays whole-route (0.4 ms). The whole route is 
 - the crossings to build are over 90 % of all (`LOCAL_MAX_SHARE`);
 - a context crossing within reach (2 km along the road) of one built again came out other than it was kept:
   the rebuilt ones were then led and weighed among neighbours the whole route would not have given them
-  (once in the 2,068 local builds below; a context crossing further out may differ, its carriers can lie outside);
+  (once in the 2,083 local builds below; a context crossing further out may differ, its carriers can lie outside);
 - a kept crossing is led to one built again that changed.
 
 The grade line, the engineering passes, quantities, buildings and the footprint screen of a retry are whole-route
@@ -51,31 +51,35 @@ treatments decides otherwise than one that sees them mid-pass (7 of 241 finishes
 
 **What it changes: nothing found.** `LOCAL_RETRY.local = false` is the reference (every finish whole);
 `LOCAL_RETRY.check` builds both ways in each later finish on the same inputs and reports the differences.
+On the merged tree (main `30d0ad8`, cost model 38, plus this):
 
 | inputs | local builds | differ from the whole route's | results |
 |---|---|---|---|
-| `exact.ts`, 177 cases (every pack's straight, saved designs, starters, 12 random D11) | 214 of 241 later finishes (24 whole for the share, 3 for the rollback) | 0 | 177 / 177 identical to main `1ba513d` |
-| `local-retry-report.ts --only d11 --random 100 --seed 5` | 522 of 553 (25 share, 5 rollback, 1 context) | 0 | 221 / 221 identical |
-| `outcome-audit.ts --straight scripts/*-design.json --random 24` | 126 of 136 | 0 | output identical to main's but for the times (32 bills, every flag) |
-| `edit-locality.ts` (random edits: D11, D3 sections, whole D3 / D35, the railway) | 324 of 356 | 0 | exit 0 |
+| `exact.ts`, 177 cases (every pack's straight, saved designs, starters, 12 random D11) | 232 of 258 later finishes (23 whole for the share, 3 for the rollback) | 0 | 177 / 177 identical to main `30d0ad8` |
+| `local-retry-report.ts --only d11 --random 100 --seed 5` | 566 of 605 (23 share, 15 rollback, 1 context) | 0 | 221 / 221 identical |
+| `outcome-audit.ts --straight scripts/*-design.json --random 24` | 146 of 155 | 0 | output identical to main's but for the times (32 bills, all 77 flags) |
+| `edit-locality.ts` (random edits: D11, D3 sections, whole D3 / D35, the railway) | 317 of 349 | 0 | exit 0 |
 | `choice-audit.ts`, `straighten-audit.ts`, `bench.ts scripts/*.json`, `eval-regression.ts` | 85, 51, 12, 14 | 0 | exit 0 |
-| `scenarios/check.ts`, ten packs | 720 | 0 | exit 0 |
+| `scenarios/check.ts`, ten packs | 660 | 0 | exit 0 |
 
 No bill, validity or other field of any result moved. It is still a model change, not a refactor: nothing
 proves that a crossing 2 km from every change cannot come out differently (see the seams), so it carries a
 cost model version and the report stays a gate.
 
-**Timing**, interleaved against main `1ba513d` (`scripts/dev/interleave.ts`, host load 3–13; minima; four runs
-of the whole D3 and three of D11, the first of each on the prototype, the others on the commit that turned it on):
+(Before the merge, against main `1ba513d`, the same checks: 2,068 local builds, none different, 177 / 177.)
+
+**Timing**, interleaved against main `30d0ad8` (`scripts/dev/interleave.ts`, host load 3–7; minima of two runs
+each; six earlier runs against `1ba513d`, before the merge and the review fixes, gave the same picture: whole D3
+0.82–0.85):
 
 | design | main, ms | this, ms | ratio | CPU ratio |
 |---|---|---|---|---|
-| whole D3 starter | 2325–2513 | 1962–2102 | 0.82–0.85 | 0.86–0.91 |
-| direct-80 (one regrade retry, 66 % of its crossings built again) | 213–224 | 206–214 | 0.92–0.98 | |
-| best, demo, direct-90, town-centre (no retry pass) | | | 0.97–1.03, noise | D11 sum 0.96–1.01 |
+| whole D3 starter | 2297, 2421 | 1975, 1980 | 0.86, 0.82 | 0.86, 0.88 |
+| direct-80 (one regrade retry, 66 % of its crossings built again) | 214, 219 | 210, 205 | 0.98, 0.93 | |
+| best, demo, direct-90, town-centre (no retry pass) | | | 0.96–1.05, noise | D11 sum 0.98, 0.99 |
 
-The whole D3 gains ≈ 340–425 ms (−15 … −18 %; the estimate from the share of crossings built was ≈ −250 ms).
-direct-80's gain is small and near the noise (−2 … −8 %). The plan's −30 % counted the engineering passes too,
+The whole D3 gains ≈ 320–440 ms (−14 … −18 %; the estimate from the share of crossings built was ≈ −250 ms).
+direct-80's gain is small and near the noise (−2 … −7 %). The plan's −30 % counted the engineering passes too,
 which this leaves alone.
 
 **The seams, reviewed.**
