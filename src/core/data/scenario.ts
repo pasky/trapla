@@ -130,10 +130,13 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
   photoNote: 'The photo was taken while the real bypass was being built: the bare earth you see is its construction site, not our road.',
   // S11.5/70 is the actual project's category (OPD entry); 10,000/day is a GAME PRIOR,
   // not the project's forecast. Eight minutes permits 9.33 km at 70 km/h (reference 8.479 km).
-  // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
-  // bends 0/1 by 23.1/6.6 m (research/27). Not cost-optimised; the roundabout arm is a declared junction.
+  // Editable starter along the mapped bypass: its nine curves as bends at their mapped tangent points and radii
+  // (R 360–1,475 m), then bends 0 and 6 moved 4 / 6 m off two side roads (2026-11-17, PLAN.md "Nová Paka
+  // starter"). The ground already has the real bypass's cuts (photo note): its earthworks come cheap here.
   initial: { category: 'S11.5', speed: 70, pis: [
-    { x: 7832, y: 5962, r: null }, { x: 8841, y: 6871, r: null }, { x: 10208.9, y: 7474.7, r: null }, { x: 10894.3, y: 8418.4, r: null },
+    { x: 6624.2, y: 5430.2, r: 360 }, { x: 7268.3, y: 5556.3, r: 1475 }, { x: 7952.4, y: 6016.8, r: 460 },
+    { x: 8681.1, y: 6184.7, r: 385 }, { x: 8686.4, y: 6756.4, r: 400 }, { x: 8951.8, y: 6960.2, r: 530 },
+    { x: 9478.9, y: 7633.8, r: 770 }, { x: 11069.8, y: 7293.7, r: 500 }, { x: 10748.1, y: 9346.6, r: 470 },
   ] },
   picker: { kind: 'Class I road · 70 km/h', goal: 'Take traffic around town without moving too much earth.',
     note: 'Ground includes the real bypass’s cuts. Photo shows construction.' },
