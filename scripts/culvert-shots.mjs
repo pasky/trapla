@@ -15,7 +15,7 @@ try {
   await game.open('scenario=d11'); await idle();
   await page.evaluate(d => window.trapla.setDesign(d), design); await idle();
   const culverts = await page.evaluate(() => window.trapla.result().waterCrossings.filter(c => c.structure === 'pipe' || c.structure === 'box')
-    .map(c => ({ s: c.s, x: c.x, y: c.y, opening: c.opening, length: c.length, h: c.h, tx: c.channelTx, ty: c.channelTy,
+    .map(c => ({ s: c.s, x: c.x, y: c.y, bed: c.bed, opening: c.opening, length: c.length, h: c.h, tx: c.channelTx, ty: c.channelTy,
       ends: window.trapla.culverts().find(p => p.s === c.s)?.ends })));
   assert(culverts.length > 0, 'design has culverts');
   for (const c of culverts) {
@@ -36,5 +36,36 @@ try {
       await page.screenshot({ path }); console.log(path, JSON.stringify(c));
     }
   }
+  // play it: click a culvert's end on the map, its mark, its ring in the profile; the card and both views agree
+  const c = culverts.find(c => c.ends) ?? culverts[0], e = c.ends[0];
+  await page.evaluate(({ e }) => { window.trapla.lookAt(e.x, e.y, 80, Math.atan2(-e.ox, -e.oy) * 180 / Math.PI + 25, 18); }, { e });
+  await idle(); await game.park();
+  const box = await page.locator('#view canvas, canvas').first().boundingBox();
+  const p = await page.evaluate(({ e }) => window.trapla.screenOf(e.x + e.ox, e.y + e.oy, e.z + 1), { e });
+  await page.mouse.click(box.x + p.sx, box.y + p.sy); await idle();
+  const picked = await page.evaluate(() => window.trapla.selection());
+  assert.equal(picked?.kind, 'culvert', `a click on the culvert's end selects it (got ${JSON.stringify(picked)})`);
+  assert(Math.abs(picked.s - c.s) < 1, 'the clicked culvert');
+  const card = await page.locator('.inspector').innerText();
+  assert.match(card, /culvert|Buried bridge/i); assert.match(card, /m long/); assert.match(card, /CZK/);
+  await page.mouse.move(box.x + p.sx, box.y + p.sy + 40);
+  await page.screenshot({ path: `${out}/culvert-${designName}-card.png` }); console.log(`${out}/culvert-${designName}-card.png`);
+  // the profile shows it selected; a click on another culvert's ring there selects that one, and its mark on the map
+  const other = culverts.find(o => o.s !== c.s);
+  if (other) {
+    await page.evaluate(({ o }) => { window.trapla.profileFocus(o.s - 300, o.s + 300); }, { o: other }); await idle();
+    const ring = await page.evaluate(({ o }) => window.trapla.profileScreen?.(o.s, o.bed), { o: other });
+    if (ring) {
+      const pb = await page.locator('#profile-canvas').boundingBox();
+      await page.mouse.click(pb.x + ring.x, pb.y + ring.y - 4); await idle();
+      const sel = await page.evaluate(() => window.trapla.selection());
+      assert.equal(sel?.kind, 'culvert'); assert(Math.abs(sel.s - other.s) < 1, 'the profile ring selects its culvert');
+      assert.equal(await page.locator('.build-annotation.culvert.selected').count(), 1, 'its mark on the map is the selected one');
+      await page.screenshot({ path: `${out}/culvert-${designName}-profile-pick.png` });
+    }
+  }
+  // the map mark selects too
+  await page.locator('.build-annotation.culvert:not(.selected)').first().click(); await idle();
+  assert.equal((await page.evaluate(() => window.trapla.selection()))?.kind, 'culvert', 'the mark selects its culvert');
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

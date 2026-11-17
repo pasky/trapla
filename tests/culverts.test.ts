@@ -13,7 +13,7 @@ function scene(depth: number, slant: number) {
   const q = new Uint16Array(500 * 100);
   for (let r = 0; r < 100; r++) for (let c = 0; c < 500; c++) q[r * 500 + c] = Math.round(source.sample(c, r) * 100);
   const points = [[1250 - slant, 0], [1250, 250], [1250 + slant, 500]];
-  const terrain = new Terrain({ nx: 500, ny: 100, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length).fill(LC.grass),
+  const terrain = new Terrain({ nx: 500, ny: 100, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length).fill(LC.none),
     watercourses: { version: 1, method: 'synthetic', reaches: [{ id: 7, kind: 'stream', width: null, points,
       catchmentKm2: points.map(() => 0.3), truncated: points.map(() => false) }] } });
   const design: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }] };

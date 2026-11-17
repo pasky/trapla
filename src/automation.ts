@@ -182,6 +182,8 @@ export function installAutomation(c: AutomationContext): void {
       return b && c.view.project(b[0], b[1], c.pack.terrain.heightAt(b[0], b[1]) + up);
     },
     profileFocus: (s0: number, s1: number) => c.profile.focus(s0, s1),
+    /** a point of the profile chart (CSS px inside its canvas): station s, height z */
+    profileScreen: (s: number, z: number) => ({ x: c.profile.stationX(s), y: c.profile.heightY(z) }),
     profileFit: () => c.profile.fit(),
     profileView: () => c.profile.view,
     profileHasRoad: () => c.profile.hasRoad,

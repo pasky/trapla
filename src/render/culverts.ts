@@ -86,7 +86,12 @@ const EARTH = -1;
 export function culvertMeshData(plans: readonly CulvertPlan[], natural: (x: number, y: number) => number,
   local: (x: number, y: number, z: number) => { x: number; y: number; z: number }): CulvertMeshData {
   const out: CulvertMeshData = { position: [], color: [], elev: [], ink: [], ewKind: [], ewGeo: [] };
-  const rgb = (hex: number) => [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255].map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const linear = new Map<number, number[]>();
+  const rgb = (hex: number) => {
+    let c = linear.get(hex);
+    if (!c) linear.set(hex, c = [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255].map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return c;
+  };
   type P = { x: number; y: number; z: number };
   const tri = (a: P, b: P, c: P, hex: number) => {
     const earth = hex === EARTH, col = rgb(earth ? 0x8aa95a : hex);

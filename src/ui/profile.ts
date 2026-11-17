@@ -319,6 +319,8 @@ export class ProfilePanel {
 
   /** x of station s in CSS px from the canvas' left edge, and the chart's top (for overlays) */
   stationX(s: number) { this.flush(); return this.X(s); }
+  /** canvas y (CSS px) of height z */
+  heightY(z: number) { this.flush(); return this.Y(z); }
   get chartTop() { return this.pad.t; }
   get chartBottom() { this.flush(); return this.chartB; }
   /** client (page) coordinates of station s at height z (default: on the road line); `band`: in the curve band */
@@ -1042,15 +1044,15 @@ export class ProfilePanel {
       const d = Math.hypot(this.X(c.s) - px, this.Y(r.grade[c.i] - c.h) - py);
       if (d < xd) { xd = d; x = c; }
     }
-    if (x && xd <= onLine) return { kind: 'crossing', roadId: x.roadId! };
-    // a culvert's ring at the stream bed (below the road line: no conflict with it)
+    // a culvert's ring at the stream bed (the nearer of it and a crossed road's mark)
     let culvert: (typeof r.waterCrossings)[number] | null = null, cd = reach;
     for (const c of r.waterCrossings) {
       if (!c.size) continue;
       const d = Math.hypot(this.X(c.s) - px, this.Y(c.bed) - 4 - py);
       if (d < cd) { cd = d; culvert = c; }
     }
-    if (culvert && cd < onLine) return { kind: 'culvert', id: culvert.id, s: culvert.s };
+    if (culvert && cd < onLine && (!x || cd < xd)) return { kind: 'culvert', id: culvert.id, s: culvert.s };
+    if (x && xd <= onLine) return { kind: 'crossing', roadId: x.roadId! };
     if (onLine < 6) return { kind: 'line', s };
     return { kind: 'chart' };
   }

@@ -41,6 +41,9 @@ export class RouteExtras {
   /** stream culverts (culverts.ts), and where they stand for picking */
   private culverts = new THREE.Group();
   private culvertPlans: CulvertPlan[] = [];
+  /** each culvert's mesh by what it is built from (an edit elsewhere keeps it), one material for all */
+  private culvertMeshes = new Map<string, THREE.Mesh>();
+  private culvertMaterial: THREE.Material | null = null;
   private r: Result | null = null;
   private crown = 9.5;
   private range: StationRange | null = null;
@@ -65,7 +68,10 @@ export class RouteExtras {
   }
   reset() {
     this.r = null; this.range = null; this.wallHits = []; this.culvertPlans = [];
-    for (const group of [this.walls, this.symbols, this.highlight, this.manual, this.culverts]) this.clear(group);
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) this.clear(group);
+    for (const mesh of this.culvertMeshes.values()) { this.culverts.remove(mesh); mesh.geometry.dispose(); }
+    this.culvertMeshes.clear();
+    this.view.retire(this.culvertMaterial ?? undefined); this.culvertMaterial = null;
   }
   dispose() {
     this.reset(); this.removeFrame();
@@ -78,21 +84,29 @@ export class RouteExtras {
     if (culverts) this.buildCulverts();
   }
 
-  /** the stream culverts of the settled result (culverts.ts) */
+  /** the stream culverts of the settled result (culverts.ts); unchanged ones keep their meshes */
   private buildCulverts() {
-    this.clear(this.culverts);
     const r = this.r;
     this.culvertPlans = r ? culvertPlans(r, this.view.watercourses, (x, y) => this.view.groundHeight(x, y)) : [];
-    if (!this.culvertPlans.length) return;
-    const data = culvertMeshData(this.culvertPlans, (x, y) => this.view.groundHeight(x, y), (x, y, z) => this.view.local(x, y, z));
-    const g = new THREE.BufferGeometry();
-    for (const [name, size] of [['position', 3], ['color', 3], ['elev', 1], ['ink', 1], ['ewKind', 1], ['ewGeo', 3]] as const)
-      g.setAttribute(name, new THREE.Float32BufferAttribute(data[name], size));
-    g.computeVertexNormals(); g.computeBoundingSphere();
-    // the earthwork material: the earth over the ends textured and lit as our slopes are, the concrete as structures
-    const mesh = new THREE.Mesh(g, this.view.crossingEarthMaterial());
-    mesh.name = 'culvert-structures';
-    this.culverts.add(mesh);
+    const next = new Map<string, THREE.Mesh>(), v = new THREE.Vector3();
+    for (const plan of this.culvertPlans) {
+      const key = JSON.stringify(plan, (_, x) => (typeof x === 'number' ? Math.round(x * 1000) : x));
+      let mesh = this.culvertMeshes.get(key) ?? next.get(key);
+      if (!mesh) {
+        const data = culvertMeshData([plan], (x, y) => this.view.groundHeight(x, y), (x, y, z) => this.view.local(x, y, z, v));
+        const g = new THREE.BufferGeometry();
+        for (const [name, size] of [['position', 3], ['color', 3], ['elev', 1], ['ink', 1], ['ewKind', 1], ['ewGeo', 3]] as const)
+          g.setAttribute(name, new THREE.Float32BufferAttribute(data[name], size));
+        g.computeVertexNormals(); g.computeBoundingSphere();
+        // the earthwork material: the earth over the ends textured and lit as our slopes are, the concrete as structures
+        mesh = new THREE.Mesh(g, this.culvertMaterial ??= this.view.crossingEarthMaterial());
+        mesh.name = 'culvert-structures';
+        this.culverts.add(mesh);
+      }
+      next.set(key, mesh);
+    }
+    for (const [key, mesh] of this.culvertMeshes) if (!next.has(key)) { this.culverts.remove(mesh); mesh.geometry.dispose(); }
+    this.culvertMeshes = next;
     this.view.requestRender();
   }
 

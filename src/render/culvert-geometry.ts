@@ -43,23 +43,32 @@ export function culvertSection(size: NonNullable<WaterResult['size']>): Pick<Cul
 
 type Route = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'kind' | 'dayL' | 'dayR'>;
 
-/** Inside our earthworks as drawn: in one of the quads between two earthwork stations' daylight points. */
-function insideEarthworks(r: Route, i0: number, i1: number, x: number, y: number): boolean {
-  for (let i = Math.max(0, i0); i < Math.min(r.n - 1, i1); i++) {
-    if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
-    const corner = (k: number, side: number) => {
-      const off = side > 0 ? r.dayL[k] : -r.dayR[k];
-      return [r.x[k] - r.ty[k] * off, r.y[k] + r.tx[k] * off];
-    };
-    const q = [corner(i, 1), corner(i + 1, 1), corner(i + 1, -1), corner(i, -1)];
+/** Inside our earthworks as drawn: in one of the quads between two earthwork stations' daylight points near
+ * station `i` (the quads ±3 stations around it). */
+function insideNear(r: Route, i: number, x: number, y: number): boolean {
+  for (let k = Math.max(0, i - 3); k < Math.min(r.n - 1, i + 3); k++) {
+    if (r.kind[k] !== KIND.earth || r.kind[k + 1] !== KIND.earth) continue;
     let inside = false;
     for (let a = 0, b = 3; a < 4; b = a++) {
-      const [xa, ya] = q[a], [xb, yb] = q[b];
+      // the quad's corners: left daylight at k, at k + 1, right daylight at k + 1, at k
+      const ka = a === 0 || a === 3 ? k : k + 1, kb = b === 0 || b === 3 ? k : k + 1;
+      const oa = a < 2 ? r.dayL[ka] : -r.dayR[ka], ob = b < 2 ? r.dayL[kb] : -r.dayR[kb];
+      const xa = r.x[ka] - r.ty[ka] * oa, ya = r.y[ka] + r.tx[ka] * oa, xb = r.x[kb] - r.ty[kb] * ob, yb = r.y[kb] + r.tx[kb] * ob;
       if ((ya > y) !== (yb > y) && x < (xb - xa) * (y - ya) / (yb - ya) + xa) inside = !inside;
     }
     if (inside) return true;
   }
   return false;
+}
+/** A point-in-earthworks test for points along a path: the nearest station followed from the last point's. */
+function insideTest(r: Route, start: number): (x: number, y: number) => boolean {
+  let i = start;
+  const d2 = (k: number, x: number, y: number) => (r.x[k] - x) ** 2 + (r.y[k] - y) ** 2;
+  return (x, y) => {
+    while (i > 0 && d2(i - 1, x, y) < d2(i, x, y)) i--;
+    while (i + 1 < r.n && d2(i + 1, x, y) < d2(i, x, y)) i++;
+    return insideNear(r, i, x, y);
+  };
 }
 
 const reachIndex = new WeakMap<WaterNet, Map<number, WaterReach>>();
@@ -127,10 +136,9 @@ export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'>, w
     const cos = Math.sqrt(Math.max(0, 1 - c.sine ** 2));
     const tx = c.channelTx ?? r.tx[i] * cos - r.ty[i] * c.sine, ty = c.channelTy ?? r.ty[i] * cos + r.tx[i] * c.sine;
     const reach = Math.max(60, 3 * c.length), cells = Math.ceil(reach / r.ds) + 2;
-    const inside = (x: number, y: number) => insideEarthworks(r, i - cells, i + cells, x, y);
     const w = reachOf(water, c.id);
-    const ends = ([1, -1] as const).map(dir => (w && exit(streamPath(w, c.x, c.y, dir), inside, reach))
-      || exit(straightPath(c.x, c.y, tx * dir, ty * dir), inside, reach));
+    const ends = ([1, -1] as const).map(dir => (w && exit(streamPath(w, c.x, c.y, dir), insideTest(r, i), reach))
+      || exit(straightPath(c.x, c.y, tx * dir, ty * dir), insideTest(r, i), reach));
     if (!ends[0] || !ends[1]) continue;
     const [a, b] = ends as { x: number; y: number }[], len = Math.hypot(b.x - a.x, b.y - a.y);
     if (len < 1) continue;
