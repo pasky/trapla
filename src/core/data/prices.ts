@@ -119,7 +119,7 @@
  * 4,935 → 7,045 M.
  * 42: Auto never squeezes two of its own changes of slope into each other: a support lift whose widened block end
  * would (profile-remedies.ts) fails and the grade solve places its points there instead. Some drags change bill and
- * validity (the owner's Královec drag: NOT VALID 10.76 → VALID 9.15 bn); frozen bills, saved designs unchanged
+ * validity (the owner's Královec drag: NOT VALID → VALID, 9.15 bn); frozen bills, saved designs unchanged
  * (scripts/vc-overlap-audit.ts). */
 export const COST_MODEL_VERSION = 42;
 

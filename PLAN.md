@@ -1687,3 +1687,22 @@ steep for a bridge over our cutting (the "0.1 m" was the text's floor; Auto now 
 way nothing else could carry). The drag: VALID 10.88 bn; the starter 10.55 → 10.59 bn; road bills unchanged.
 `scripts/edit-locality.ts` has a railway suite (reach p90 7.4 km, nothing beyond 10 km).
 Known issues: some random railway edits still leave a problem in the edited stretch itself (research/57 "Left").
+
+## Auto's own changes of slope never squeezed; grade problems in the player's words (cost model 42, 2026-11-17)
+
+Owner's rail-6 shot: after a drag of the Královec railway, "Two roundings of the road height overlap — move the
+height point at km 2.03 at least 32 m further from the height point at km 2.04", on Auto, where no height point is
+drawn. Cause: a support lift that cannot be met within its block of the grade solve is retried with the block
+widened by `LIFT_CLUSTER`; `liftAutoProfile` puts a vertex at each end of the stretch it may move and judged only
+the problems within the lifted cluster's range, so the new turn at the widened end could squeeze the curve of a
+point just beyond it (6–44 m apart). Now a lift fails if the line it returns (its free-end vertices that do not
+turn removed) has a problem outside the range that the line before it did not; the grade solve's retry places its
+points instead. Gate `scripts/vc-overlap-audit.ts` (saved designs, starters, QA repros, seeded drags of every pack
+and the railway; five railway repros found on main). Frozen bills unchanged; some drags' bill and validity move.
+
+Texts (`verticalViolations(…, byHand)`): By hand the ◆ points are "your height pins" (the By-hand handle's name
+everywhere), a problem names them, the card offers *Move pin to km …* (along the slope behind it), *Delete pin*,
+*Smallest radius*, and clicking it zooms the profile until both pins have handles (a By-hand pin is ≥ 20 m from
+the next, `MIN_VPI_GAP`). On Auto no message names a point: a too steep stretch says where and how much longer it
+must be; an overlap would be an engine limit at a km (never shown: the gate). Railways say "track". "Rounding" and
+"height point" are JARGON. Auto's pins are drawn (screenshot 403); Auto's height points are not, by design.
