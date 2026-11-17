@@ -119,6 +119,8 @@ export class Inspector {
   constructor(private el: HTMLElement, private ctx: {
     building: (j: number) => { kind: string; levels: number; dwelling: boolean; rect?: HouseRect };
     maxRadius: (i: number) => number | null;
+    /** a radius the editor lowered to fit during a drag (ui/radius-notes.ts): what was set */
+    radiusNote?: (i: number, r: number | null) => { from: number; to: number } | null;
     /** a house heard by two or more roads and decided once for the project: its project receiver and the
      * roads' names (null: decided by one road alone, or the project is not priced) */
     together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
@@ -415,7 +417,7 @@ export class Inspector {
     if (!pi) return '';
     const speed = bendSpeed(pi, d.speed, d.category), speeds = designSpeeds(d.category);
     const cv = r.curves.find((c) => c.index === i), n = speedNorms(speed, d.category);
-    const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius;
+    const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius, lowered = this.ctx.radiusNote?.(i, pi.r) ?? null;
     const road = CATEGORIES[d.category].mode === 'road' && !CATEGORIES[d.category].minor;
     // (no hairpin note while a violation says it may not stand there)
     const hairpinNote = pi.hairpin && !r.violations.some((v) => v.pis?.includes(i) && /^Hairpin/.test(v.title))
@@ -427,7 +429,7 @@ export class Inspector {
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : 'Your radius.'}</div>${hairpinNote}</div>
+      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
       ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
       ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole road` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>` : ''}

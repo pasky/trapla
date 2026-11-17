@@ -91,11 +91,19 @@
  * over a road the player chose is met through the regrade retry, its price said.
  * 36: a long mined tube costs less per metre (Hessen's length curve, research/64): × 0.957 at 1 km, 0.935 at 2 km,
  * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row).
- * 37: a later finish of an evaluation (a retry) builds again only the crossings within 2 km of where its road
+ * 37: a support lift's target moved onto the traced line's point is raised by what the line falls from there to
+ * where the height is needed (it fell short on steep grades); side roads our earthworks cover: a dead end with no
+ * room to turn round before its junction is cut back to it, an overbridge whose ramps would bury a road beside it
+ * is cleared by the grade on every road (the separation retry), a split-off way is judged with that retry.
+ * D11 frozen +0–5.5 M (the lifts).
+ * 38: a side road whose junction lies on a stretch we rebuild beside our earthworks is re-joined where the new road
+ * crosses it (within 25 m of its old junction; the stub between goes): some designs become valid (Nová Paka drags).
+ * Frozen bills, starters and the outcome audit unchanged.
+ * 39: a later finish of an evaluation (a retry) builds again only the crossings within 2 km of where its road
  * differs from an earlier finish's and takes the others as built there (crossings-kept.ts). No bill, validity
- * or other field moved on any checked design (exact.ts 177 / 177, the outcome audit, 2,068 local builds
- * against whole-route ones); a version because that is measured, not proven. */
-export const COST_MODEL_VERSION = 37;
+ * or other field moved on any checked design (exact.ts, the outcome audit, every local build against a
+ * whole-route one: docs/evaluate-performance.md); a version because that is measured, not proven. */
+export const COST_MODEL_VERSION = 39;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

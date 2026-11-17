@@ -3,6 +3,7 @@
 // in one undo step, a drag on a reroute shapes it, a double click adds a bend. Moved out of main.ts
 // verbatim; what a gesture has grabbed is this module's own state.
 import { fitPlacedBend } from '../core/bend-fit';
+import { fitSetRadii } from '../core/fit-radii';
 import { speedNorms } from '../core/data/norms';
 import { nearestLeg } from '../core/horizontal';
 import type { RouteId, SourceInterval } from '../core/project';
@@ -20,6 +21,7 @@ import type { Intro } from './intro';
 import type { LinkEditor } from './link-edit';
 import type { MapPicks } from './map-picks';
 import type { MappedRoadCard } from './mapped-road';
+import { radiusNotes } from './radius-notes';
 import { bendAt } from './road-edit';
 import { toast } from './toast';
 
@@ -93,6 +95,8 @@ export function createMapGestures(app: MapGestureContext) {
   /** the new bend a drag placed (also the one a rebuilding drag adds): on release it is fitted where its curve
    * has room (core/bend-fit.ts) */
   let placedByDrag: { routeId: RouteId; i: number } | null = null;
+  /** the bend dragged now and the radii set before the drag (core/fit-radii.ts) */
+  let dragWanted: { i: number; r: (number | null)[] } | null = null;
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(app.A, app.B, app.store.design.pis, { x, y });
     app.store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
@@ -167,9 +171,20 @@ export function createMapGestures(app: MapGestureContext) {
       if (!app.store.read()) return null; app.intro.hide(); return bendByDrag(x, y);
     },
     onPiSelect: (i) => { grabOffset = null; placedByDrag = null; app.select(i === null ? null : { kind: 'bend', i }); },
-    onPiDrag: (i, x, y) => { const o = grabOffset?.i === i ? grabOffset : null; app.store.update((d) => { d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0); }, false); },
+    onPiDrag: (i, x, y) => {
+      const o = grabOffset?.i === i ? grabOffset : null, route = app.store.activeRouteId;
+      app.store.update((d) => {
+        d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0);
+        // radii set by hand that the drag leaves too large are lowered just enough (and back up as room returns)
+        if (dragWanted?.i !== i) dragWanted = { i, r: d.pis.map((p, k) => radiusNotes.wanted(route, k, p.r)) };
+        if (!dragWanted.r.some((r, k) => r !== null && Math.abs(k - i) <= 1)) return;
+        const fit = fitSetRadii(app.A, app.B, d.pis, i, dragWanted.r, d.speed, d.category);
+        for (let k = Math.max(0, i - 1); k <= Math.min(d.pis.length - 1, i + 1); k++) d.pis[k].r = fit.pis[k].r;
+        radiusNotes.record(route, i, fit.lowered);
+      }, false);
+    },
     onPiDragEnd: () => {
-      grabOffset = null;
+      grabOffset = null; dragWanted = null;
       const placed = placedByDrag; placedByDrag = null;
       const d = app.store.read(), ends = app.store.route?.endpoints;
       if (placed && d && ends && placed.routeId === app.store.activeRouteId) {

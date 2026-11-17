@@ -1,6 +1,6 @@
 # Evaluate performance regression
 
-## A retry builds only the crossings near what it changed (cost model 37, 2026-11-17)
+## A retry builds only the crossings near what it changed (cost model 39, 2026-11-17)
 
 Finding 23 of docs/architecture-review.md ("a retry pass engineers the whole route again"), its first part.
 Code: `src/core/crossings-kept.ts`, called from `finishCrossings` (evaluate.ts); reference and checks:
@@ -113,6 +113,18 @@ it), `engineer()` 19, the grade solve 14, noise 19, GC 11. Next: the footprint s
 dependent across hits: study its reach first), and a memo of the engineering passes over runs of unchanged
 stations (retaining replay is half of `engineer()`). A tighter core than 2 km needs the engine to say what each
 crossing's build read of our road (the reroute cache records it for reroutes: `spatial.reads`).
+
+## Side roads, lifts on grades, cost model 37 (2026-11-17)
+
+What runs more: the separation retry now runs for every category, but only where an overbridge, reroute or
+clearance is stuck (a problem design; the frozen fixtures are VALID and never take it); the split retry runs it
+too; each support-lift round computes the line's fall at its moved targets (two heights per target). Interleaved
+against main 1ba513d (16 rounds, host load 7–9), min / median ms: best 118.7 / 135.0 → 119.0 / 134.1, demo
+112.3 / 131.2 → 115.5 / 129.2, direct-80 218.0 / 263.5 → 219.3 / 285.1, direct-90 141.0 / 163.0 → 141.1 / 158.3,
+town-centre 231.7 / 275.1 → 229.5 / 299.1; sum B/A min 1.003, median 1.039 (cpu 1.021; an earlier run at load 18:
+min 1.039, median 0.993) — no creep. Drag-perf `--gpu --check`, all six modes, pass. Nová Paka small drags evaluate
+in 85–184 ms (mean over 24; three audits at a time on a loaded host), against 138–281 ms on model 36 measured
+the same way: fewer strict and narrow retries now that the side roads resolve.
 
 ## Bridge styles, cost model 35 (2026-11-17)
 

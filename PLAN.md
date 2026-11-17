@@ -728,29 +728,73 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
   old starter 8 / 10 / 0): the real line threads between class III roads and streets it rebuilt, which our
   earthworks then cover (each with its concrete fix); the crossing engine's rebuilding of such roads is the lever.
 
-### A retry builds only the crossings near what it changed (cost model 37, 2026-11-17)
+### Side roads under our earthworks, lifts on grades; the Štikov valley; tunnel rows (cost model 37, 2026-11-17)
 
-- **What.** An evaluation finishes its design several times (the stream and strict retries of a pass, then the
-  separation, narrowing, regrade and split passes: 10 finishes on the whole D3), and each finish built every
-  crossing of the route. Now a later finish compares what the crossing build reads of our road (grade, kind,
-  widths, urban, demolished houses, each crossing's resolved treatment) with the earlier finishes', builds again
-  the crossings within 2 km in plan (`linkHardReach`) of a changed station (and shaped reroutes, and kept
-  crossings whose works lie beside the change) with those 2 km further out and their carriers and followers as
-  context, and takes the others as built before (`src/core/crossings-kept.ts`). The whole route is built when
-  the engine's rollback fired, when over 90 % would be built anyway, when a context crossing in reach of a
-  rebuilt one came out other than kept, or when a kept crossing is led to a rebuilt one that changed. Grade
-  line, engineering, quantities, buildings and the footprint screen stay whole-route.
-- **Bills** (model 36 → 37): none moved. 177 / 177 whole results of `scripts/exact.ts` identical; outcome audit
-  output identical; 2,068 local builds checked against a whole-route build on the same inputs under the exact
-  cases, 100 more random D11 designs, the outcome audit, edit-locality, choice and straighten audits, bench and
-  the ten scenario checks: no crossing differs. A version all the same: it is not proven that a crossing 2 km
-  from every change cannot come out differently, and a saved best is re-evaluated rather than trusted.
-- **Time**: whole D3 ≈ 2.4 → 2.0 s (−15 … −18 %, interleaved minima), direct-80 −2 … −8 %, designs without a
-  retry unchanged. Numbers, the reach study, the seams and what is left (footprint screen, engineering passes):
-  docs/evaluate-performance.md.
-- **Gate**: `npx tsx scripts/local-retry-report.ts` (reference / local / both in each finish on the 177 cases;
-  exit 1 on any difference); any script under `--import ./scripts/dev/local-retry-check.ts` checks its own
-  evaluations. `LOCAL_RETRY.local = false` is the reference.
+Research: research/65.
+- **Small drags of the Nová Paka starter** (24 seeded drags of ≤ 25 m, `scripts/small-drag-audit.ts`, `DUMP=dir`
+  writes the dragged designs). Invalid 16 / 15 / 9 → **11 / 15 / 7** at km 1.5 / 3.3 / 5.0. Left besides geometry:
+  a dead-end street whose junction's mouth lies at our slope's toe (3 drags: its 2 m past the junction stays under
+  the slope, so it is not cut back; re-joining its side road where a rebuilt street crosses it is the next step) and
+  a stream's head 1 m under our toe (5 drags, all also failing on geometry). The rest is
+  geometry: the starter's hand-set mapped radii leave 2.7 / 2.3 / 0.9 m spare at bends 4→5, 5→6 and 9→B (the real
+  road is at the norm's limit), so a drag that turns them more breaks the S-bend rule, with a concrete fix. Options
+  (owner's call, research/65 §1): leave it as the player's override; a "mapped radius" Auto lowers just enough;
+  or the editor lowering a set radius a drag makes too large.
+- **An overbridge whose ramps would bury a road beside it** (or whose joining road cannot be regraded) counts as
+  stuck. **The separation retry** (the grade asked to clear the road: our cutting 6 m below it or our bridge above)
+  **now runs for every category**, not only motorways. An ordinary road's junctions are 1.5 km apart, so it
+  crosses the roads between them as a motorway does. Nová Paka km 1.84: a support lift a kilometre away raised our
+  line 5 m out of the cutting the class III road crosses over; now it stays in a 6 m cutting.
+- **A dead end our earthworks cut**, with no room for a turning area before the first road it joins, **is cut back
+  to that junction** (its traffic turns there). Before, the turning area went past the junction and severed the
+  third road (only where the whole stretch under our earthworks goes with it). A dead end whose pavement (not only
+  its centreline) reaches into our slope counts as one. The separation retry starts from the options of the result
+  kept so far (a regrade retry's floors and lifts stay; review).
+- **Support lifts on grades**: a lift target moved onto the traced line's point (blocks, model 25) is raised by
+  what the line falls from there to the station that needs the height. On a 5 % descent the station 4.8 m off
+  missed it by 0.25 m in every round (outcome-audit random-3: VALID now).
+- **A split-off way** (a way merged into another crossing of the same way, which our earthworks still bury) is
+  judged together with the separation retry, which lets the grade clear it (random-15: the track at the tunnel
+  portal resolved, the 540 m tunnel replaced by a 12 m cutting with the track over it, 6,701 → 5,137 M).
+- **Bills** (model 36 → 37): D11 frozen fixtures (the lifts) straight 8,224.7 (same), best 3,616.7 → 3,618.5,
+  best-pin 3,612.4 → 3,614.2, best-structures 3,724.0 → 3,729.6, direct-80 4,142.4 → 4,144.7, direct-90 4,673.7 →
+  4,676.4, town-centre 8,968.3 → 8,972.7, demo / best-drag unchanged. Outcome audit (24 random D11 designs): 84 →
+  72 problems, 6 → 8 VALID (random-3, random-23), links > 1 km 17 → 18 and ramps > 250 m 5 → 4 (random-6, VALID,
+  on a re-solved line). Starters all VALID: d3-0303 5,440 → 5,442, d3-0305 9,124 → 9,126, d3-full 32,187 → 32,180,
+  the rest unchanged (i16-nova-paka 1,221).
+- **The Štikov valley** (research/65 §3). No public document gives the reason for the real 423 m estakáda. The 2017
+  EIA notification rules out a stream, a flood zone, a road below, landslides, NATURA 2000 and CHKO. A local
+  biocorridor (LBK 3) and a binding migration study came after the bridge was designed. The real grade runs ≈ 28 m
+  over the valley floor; Auto's runs 14 m over it. With our grade pinned at the real height, Auto bridges the valley
+  itself (180 m, 25 m high, +55 M). So the difference is the grade line, not a missing rule.
+- **The D35 tunnel gap** (research/65 §4):
+  - SPK's method does put the B surcharge on tunnel rows (PZ II.g–h; only rest areas are exempt). No change.
+  - Rock cover: SPK prices TT4 throughout. A derived factor of × 0.92 for more than 20 m of cover, 1.0 at 15–20 m
+    and 1.12 below 15 m comes from OTSKP 2026's excavation items by class and the D11 Poříčí class-by-cover
+    rule (confidence medium-low).
+  - That factor is recorded as a proposal and not implemented. It would remove ≈ 0.8–1.0 bn of the 3.3 bn D35
+    gap.
+
+### A drag lowers a set radius to fit; side roads re-joined (cost model 38, 2026-11-17)
+
+- **The editor fits hand-set radii during a bend drag** (owner's decision (c), research/65 §1): where the drag
+  leaves a set radius too large for the room between its bends, that radius is lowered just enough, live — the
+  dragged bend first, then the nearer neighbour, else both in proportion; to the editing step; never below the
+  rules' minimum (then the problem and its fix stay) — and goes back up as room returns within the drag. The bend
+  card says "Your radius, lowered from 400 m to 340 m to fit between its neighbours." (`core/fit-radii.ts`,
+  `ui/radius-notes.ts`; ≈ 0.7 ms a move on Nová Paka; Auto radii take the fast path). `small-drag-audit.ts` drags as
+  the editor does (`--raw`: without).
+- **A side road re-joined**: a rebuilt stretch beside our earthworks that crosses a side road within 25 m of the
+  side road's old junction joins it there (game limit; the stub between goes where no other road joins it), instead
+  of failing as "it would cut off a side road".
+- **Nová Paka 24 drags: invalid 11 / 15 / 7 → 6 / 0 / 0** (radii lowered by at most 8 / 80 and 45 / 5 m). The 6
+  left at bend 3: a stream's head 1 m under our toe (4) and the residential street at km 1.5 where its rebuilt line
+  would cross another road on a ramp or misses its east junction (2).
+- **Rock-cover factor for tunnels: left proposed.** The owner's bar (≥ 2 independent price points or a published
+  class-by-cover cost table) is not met: OTSKP 2026 is one price book (excavation items by class), the whole-price
+  factor is a derivation with assumed support quantities, and Hessen's cost-by-cover chart is relative to a deep
+  VKL 3–4 reference, not SPK's TT4, and its spread (deep / 10–20 m ≈ 0.74) disagrees with the Czech derivation
+  (≈ 0.82).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
