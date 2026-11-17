@@ -560,6 +560,47 @@ Plan and sources: docs/design-realism-plan.md (M1, M4), research/46–54.
   Whole D3 dragged at km 30: the 30 m span at km 16.66 stays 0.1 m short (the changed stretch, end of a 4 %
   climb; tests/merged-crossings notes it).
 
+### Bug-fix sweep: the player's crossing choices, reroutes and homes, undo, the top bars (cost model 32, 2026-11-17)
+
+Four findings of the architecture review, then a play of the D3 and D11 missions (research/60, screenshots 240–246,
+`node scripts/bugfix-sweep-shots.mjs`).
+- **The player's "Straighten it".** It failed on the D3 motorway's four most skewed ways, twice with "clashes
+  with our bridge or tunnel". The player's underpass now lets the way be lowered (as Auto and resolveCrossings
+  do) and keeps our road on earth over its box where one fits; a straightening that cannot be built leaves the
+  way on its own line with "The … cannot be straightened here" (why, and "Keep its line" on the card) and
+  nothing else changes; a box too low on the new line raises our grade by what it lacks (a retry); a way
+  crossing us again under our bridge passes there. The straightened line's new pieces are profiled like a
+  reroute (earthworks up to 10 m) instead of lying on the ground. `scripts/straighten-audit.ts` (gate): 27
+  skewed crossings of four designs, 9 done, 18 said, none with another new problem.
+- **A player's choice that cannot be built** (e.g. "Its bridge over us" over our 12 m embankment) no longer
+  makes the stream / strict / narrowing / separation retries put our road on a bridge over the way: its
+  problems say what cannot be built.
+- **Reroutes and houses.** D3 km 3.63 buys three sheds, truthfully drawn and billed; the card said "houses".
+  It now says "3 buildings", "a house" only for a home. A reroute takes a home only where nothing else can be
+  built (expropriation as the last resort, zákon 184/2006 Sb. § 3): D3 class I road km 0.65 goes round a house
+  (11.0 → 25.3 M), the whole D3 straight keeps 4 of 6 homes (+121 M).
+- **Undo.** An undo while a step is open (a burst of + steps, the radius slider) takes back that step only;
+  Ctrl+Z during a held drag takes the drag back and the rest of the gesture changes nothing.
+- **Top bars.** Measured (ui/toolbar-fit.ts): where Undo / Redo / Scenarios and the view buttons would overlap,
+  the key hints go, then the view buttons move under Undo / Redo. Disabled Undo / Redo are no longer
+  see-through. `scripts/toolbar-layout.mjs` (gate) at 1280–1920 px.
+- **Bills** (model 31 → 32): D11 frozen: direct-90 4,687 → 4,676 (km 8.26 straightened), town-centre 8,879 →
+  8,869 (km 10.05 straightened), the rest unchanged; D3 class I road 3,484 → 3,504; whole D3 straight +121 M.
+- **Seen while playing, not changed** (each a design decision or a larger change):
+  - A player's underpass or bridge choice is a hard constraint on the grade: an underpass for a track in our
+    8 m cutting (D3 km 1.76) raises the motorway over 3.8 km (+1.45 bn), on D11 best km 9.93 +0.67 bn with its
+    ramps still too long. Priced and shown in the score's change chip; a "this needs our road raised by X m"
+    card line before the click would help.
+  - Even a plain "Straighten it" adds a hold to the grade solve (the crossing's station): D3 km 2.67 +41 M for a
+    box 1.8 M cheaper, the grade moving up to 2.9 km away (the station-grid lever of AGENTS.md "Open items").
+  - Auto does not move its grade to make a box possible: D11 direct-80 km 6.83 keeps a street reroute through
+    three homes (48.7 M), while the player's underpass there gives a valid design 26 M cheaper.
+  - The player's "Cut and reroute" leads the way to the nearest crossing even where that pins a road Auto would
+    move beside ours (D3 km 15.29 → km 14.18's 2.48 bn bridge along us, +3.1 bn); at km 5.26 it breaks the
+    class II road's reroute to that crossing, the separation retry bridges both (a clash, +577 M).
+  - D3 km 0.43–0.53: a 100 m, 7 m high motorway bridge (219 M) demolishes a garage under its deck
+    (design-realism's bridge work).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout

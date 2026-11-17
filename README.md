@@ -394,6 +394,16 @@ slope behind a headwall, the way runs on between wing walls](docs/screenshots/21
 ([before](docs/screenshots/218-box-portal-before-2.png) / [after](docs/screenshots/219-box-portal-after-2.png) from the other side),
 [D3-0302 km 3.51: the local road straightened over our motorway on a 48 m bridge](docs/screenshots/220-d3-0302-road-over-motorway-card.png),
 [that bridge and its ramps close up](docs/screenshots/221-d3-0302-overbridge-and-reconnection.png) (the secondary road 150 m on is led to it).
+Bug-fix sweep (cost model 32, research/60; `node scripts/bugfix-sweep-shots.mjs`): [D3 km 2.67: the player
+straightens the track, a shorter box](docs/screenshots/240-d3-motorway-track-straightened-by-player.png),
+[km 7.94: it cannot be straightened (the bank is too steep even on 10 m of earthworks): said, kept on its line, our
+road as it was](docs/screenshots/241-d3-motorway-track-cannot-be-straightened.png),
+[km 3.63: a field-track reroute buys out three sheds](docs/screenshots/242-d3-motorway-track-reroute-sheds.png)
+([their cleared plots](docs/screenshots/243-d3-motorway-track-reroute-sheds-cleared.png)),
+[D11 direct-80 km 6.83: a street reroute takes three homes, nothing else is buildable
+there](docs/screenshots/244-d11-direct-80-street-reroute-homes.png),
+[town-centre km 10.05: Auto straightens the track, its new line on its own earthworks](docs/screenshots/245-town-centre-track-straightened-on-earthworks.png),
+[the top bars at 1,366 px: no key hints, nothing overlaps](docs/screenshots/246-top-bars-1366.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
