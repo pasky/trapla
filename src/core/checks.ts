@@ -307,6 +307,18 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
           detail: `Its radius is ${R(c.r)}; a hairpin needs at least ${R(RR.minRadius)}.`,
           basis: 'norm', rule: 'ČSN 73 6101:2000 §8.5.7, table 12: hairpins of at least 30 m with 8 % banking, driven at 30 km/h', // research/54 §1
         });
+      } else if (RR.hairpin && c.rEff < RR.minRadius - tol) {
+        // its radius is right, but the bends next to it leave no room for its curve: it is drawn (and priced, and
+        // driven) squeezed, sharper than a hairpin may be (QA sweep 3 re-check: a lone hairpin at R 13 m, no word).
+        // Its tangents grow with the radius: R·tan(Δ/2) at the hairpin's radius, against what is drawn.
+        const room = c.r > 0 ? (RR.minRadius - c.rEff) * (c.t / c.r) : 0;
+        out.push({
+          kind: 'radius', ...where,
+          title: `Hairpin at ${bend(c.index)} has no room for its curve`,
+          fix: `Move the bends next to ${bend(c.index)} about ${fmt(up(room, 5))} m further from it, or make it turn less`,
+          detail: `The bends next to it leave room for a curve of only ${R(c.rEff)}; a hairpin needs at least ${R(RR.minRadius)}.`,
+          basis: 'norm', rule: 'ČSN 73 6101:2000 §8.5.7, table 12: hairpins of at least 30 m with 8 % banking, driven at 30 km/h', // research/54 §1
+        });
       } else if (c.r < RR.minRadius - tol) {
         out.push({
           kind: 'radius', ...where,
