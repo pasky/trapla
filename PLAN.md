@@ -867,7 +867,7 @@ rock slopes), /68 (cones at bridge ends), /69 (P2s). Shots 290–300 (`scripts/q
   and 20 m high, sloping on under the bridge: 22,392 m³ of fill, 3.9 M CZK of paving").
 - **Bills** (model 38 → 39). Frozen D11 fixtures, all VALID: straight 8,224.7 → 8,859.7, best 3,618.5 → 3,650.9,
   best-drag 3,601.1 → 3,651.1, best-pin 3,614.2 → 3,666.0, best-structures 3,729.6 → 3,774.5, best-manual 3,622.2 →
-  3,671.7, demo 4,233.6 → 4,282.9, direct-80 4,144.7 → 4,265.4, direct-90 4,676.4 → 5,444.2, town-centre 8,972.7 →
+  3,646.4, demo 4,233.6 → 4,282.9, direct-80 4,144.7 → 4,265.4, direct-90 4,676.4 → 5,444.2, town-centre 8,972.7 →
   9,420.4, town-controls 8,983.8 → 9,429.1 (shares per mechanism: research/67's table). Starters, all VALID: d3 3,364
   → 3,933, d3-0301 5,102 → 5,158, d3-0302 4,935 → 7,028, d3-0303 5,442 → 5,611, d3-0304 10,118 → 10,145, d3-0305
   9,126 → 9,810, d35 6,481 → 6,587, i16-nova-paka 1,221 → 1,223, d3-full 32,180 → 37,961, d35-full 29,362 → 32,626.
