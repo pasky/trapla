@@ -325,12 +325,13 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
   a folder of extracts). The six places where text the player reads said `research/17` (four rules,
   a price source, a bill line's explanation) say it in plain words now: a deliberate change of wording, the
   results proved identical but for those words (`EXACT_TEXT` in `scripts/exact.ts`).
-  **Open (owner's rule: player text shows no internal references):** ≈ 45 more strings the player reads cite
-  `research/NN` (rules in `checks.ts`, `crossing-geometry.ts`, `crossings.ts`, `tie-in.ts`, `footprint.ts`,
-  `design-speed.ts`, `project-evaluate.ts`; sources in `data/urban.ts`, `retaining.ts`, `project-replacement.ts`,
-  `terms.ts`; bill explanations in `ui/hud.ts`, junction choices in `ui/route-cards.ts`). The norm or price book
-  they name stays; the `(research/NN)` goes, the same way, and then `jargonIn` (terms.ts) can reject
-  `research/` in player text for good. Not done here: four of those files are in bridge styles' open diff.
+  Then the same for 30 more strings (owner's rule: player text shows no internal references): rules in
+  `checks.ts`, `crossing-geometry.ts`, `tie-in.ts`, `design-speed.ts`, `project-evaluate.ts`; price sources in
+  `retaining.ts`, `project-replacement.ts`; bill explanations in `ui/hud.ts`, junction choices in
+  `ui/route-cards.ts`. The norm or price book they name stays, the `(research/NN)` is a comment on the line.
+  **Open, right after bridge styles (M3) lands** (its open diff has these files): the last 13 in
+  `crossings.ts` (4), `data/urban.ts` (6), `terms.ts` (2), `footprint.ts` (1), and then `jargonIn` (terms.ts)
+  rejects `research/` in player text for good. Count them with `scripts/dev/strings.mjs <file> | grep research/`.
 - **Engineering numbers outside `data/`** (engine tuning such as step sizes and search budgets is fine
   where it is; these are numbers a designer or a norm sets):
   `crossing-geometry.ts` `CLEARANCE = 4.8`, `MAX_RAMP_LENGTH = 250`, `SQUARE_BELOW = 70`;

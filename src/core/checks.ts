@@ -219,7 +219,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`; },
     get easing() { return rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
       : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`; },
-    get reverse() { return minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them (research/42)`
+    get reverse() { return minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them` // research/42
       : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`; },
     get compound() { return minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
       : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`; },
@@ -290,7 +290,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
           title: `Hairpin at ${bend(c.index)} is too tight`,
           fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto`,
           detail: `Its radius is ${R(c.r)}; a hairpin needs at least ${R(RR.minRadius)}.`,
-          basis: 'norm', rule: 'ČSN 73 6101:2000 §8.5.7, table 12: hairpins of at least 30 m with 8 % banking, driven at 30 km/h (research/54 §1)',
+          basis: 'norm', rule: 'ČSN 73 6101:2000 §8.5.7, table 12: hairpins of at least 30 m with 8 % banking, driven at 30 km/h', // research/54 §1
         });
       } else if (c.r < RR.minRadius - tol) {
         out.push({
@@ -593,7 +593,7 @@ export function crossingViolation(s: number, what: string, above: number, need: 
     title: `The ${what} cannot be crossed on the level`,
     fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
     detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (then its own bridge carries it over our cutting); it is ${h(above)}.`,
-    basis: 'norm', rule: `ČSN 73 6101: motorways and expressways are crossed only at a different level (research/08). The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
+    basis: 'norm', rule: `ČSN 73 6101: motorways and expressways are crossed only at a different level. The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
     size: Math.min(raise, lower),
   };
 }
@@ -660,7 +660,7 @@ export function categoryViolation(length: number, category: CategoryId, traffic:
     title: 'Road too narrow for the traffic',
     fix: `Switch the category to ${CATEGORIES[needed].label}`,
     detail: `${short(category)} ${CATEGORIES[category].minor ? 'is built for local traffic only' : `carries up to ${fmt(cap(category))} vehicles a day`}; the scenario expects ${fmt(traffic)}.${CATEGORY_RANK[needed] >= CATEGORY_RANK['D27.5'] ? ' (No playable category is wide enough.)' : ''}`,
-    basis: 'norm', rule: 'TP 188 / TP 189: the road must keep traffic flowing at level of service C in the design hour (research/14)',
+    basis: 'norm', rule: 'TP 188 / TP 189: the road must keep traffic flowing at level of service C in the design hour', // research/14
   };
 }
 

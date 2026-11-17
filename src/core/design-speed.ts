@@ -66,7 +66,7 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
   terrain: Terrain): Violation[] {
   const out: Violation[] = [];
   const lowest = Math.min(...designSpeeds(category));
-  const rule = 'ČSN 73 6101:2018 has no hairpins; a road authority approves one only as a departure from it on a mountain road (I/44 Červenohorské sedlo, research/47 §3)';
+  const rule = 'ČSN 73 6101:2018 has no hairpins; a road authority approves one only as a departure from it on a mountain road (I/44 Červenohorské sedlo)'; // research/47 §3
   for (const c of al.curves) {
     if (!pis[c.index]?.hairpin || CATEGORIES[category].minor) continue;
     const where = { s0: c.sStart, s1: Math.max(c.sEnd, c.sStart), pi: c.index, pis: [c.index] };

@@ -175,8 +175,8 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
     const label = document.createElement('span'); label.textContent = end === 'a' ? 'Start junction' : 'End junction';
     const choice = document.createElement('div'); choice.className = 'seg choice';
     const current = route.alignment.controls.junctionForms?.[end];
-    const options: [string, 'roundabout' | undefined, string][] = [['Auto', undefined, 'A priority T junction (research/29)']];
-    if (cls === 'designed' || ROUNDABOUT_HOSTS.includes(cls)) options.push(['Roundabout', 'roundabout', `A roundabout, ${Math.round(ENDPOINT_JUNCTIONS.roundabout.cost / 1e6)} M CZK plus its ring's land (ŘSD awards, research/08)`]);
+    const options: [string, 'roundabout' | undefined, string][] = [['Auto', undefined, 'A priority T junction']]; // research/29
+    if (cls === 'designed' || ROUNDABOUT_HOSTS.includes(cls)) options.push(['Roundabout', 'roundabout', `A roundabout, ${Math.round(ENDPOINT_JUNCTIONS.roundabout.cost / 1e6)} M CZK plus its ring's land (ŘSD awards)`]); // research/08
     if (options.length < 2) continue;
     for (const [text, value, title] of options) {
       const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.dataset.end = end;

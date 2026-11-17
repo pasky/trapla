@@ -99,7 +99,7 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
     const what = row?.label ?? 'road';
     if (row?.noAtGrade) {
       out.push(issue(s0, s1, `A ${what} cannot be joined at the same level`, 'End the road on another road; joining a motorway needs an interchange, which the game does not build yet',
-        'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access (research/08)'));
+        'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access')); // research/08
       continue;
     }
     // Class I spacing: an existing junction rebuilt in place adds none.
@@ -110,21 +110,21 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
       const found = nearestJunction(roads, t), near = [found, ...own].reduce<number | null>((a, d) => d === null ? a : a === null ? d : Math.min(a, d), null);
       if (near !== null && near < CROSSING_RULES.junctionSpacing) out.push(issue(s0, s1, 'Too close to another junction',
         `Move this end along the ${what} to a junction there or at least ${CROSSING_RULES.junctionSpacing} m from the next one (now ${Math.round(near)} m)`,
-        'ČSN 73 6101:2018: junctions on class I roads at least 1.5 km apart (research/12)'));
+        'ČSN 73 6101:2018: junctions on class I roads at least 1.5 km apart')); // research/12
     }
     // The joining road's grade inside the junction.
     let steep = 0;
     for (let k = 1; k < r.n; k++) if (r.s[k] > s0 && r.s[k - 1] < s1) steep = Math.max(steep, Math.abs(r.grade[k] - r.grade[k - 1]) / (r.s[k] - r.s[k - 1]));
     if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins the ${what}`,
       `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
-      'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction (research/29)'));
+      'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction')); // research/29
     if (t.junction.kind === 'roundabout' && !ROUNDABOUT_HOSTS.includes(t.cls)) out.push(issue(s0, s1, `A roundabout cannot be built on a ${what}`,
       'Set this junction back to Auto', 'Game rule: roundabouts join public roads (class I–III and local roads), not tracks or service roads.', 'game'));
     // A roundabout's entries see to the left around the ring (TP 135), not along a through road: the T
     // junction's sight triangle does not apply to it.
     const blocked = t.junction.kind === 'roundabout' ? null : sightBlocked(t, r, wayLine(roads, t.way, terrain), terrain, buildings);
     if (blocked) out.push({ ...issue(s0, s1, `No clear view along the ${what}`, blocked.fix,
-      `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along the ${what} (sight triangle, research/29)`),
+      `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along the ${what} (sight triangle)`), // research/29
       ...(blocked.building !== undefined ? { target: { buildings: [blocked.building] } } : {}) });
   }
   return out;
@@ -236,16 +236,16 @@ export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string
     const near = host.junctions.reduce((a, j) => Math.min(a, Math.abs(j - s)), Infinity);
     if (near < CROSSING_RULES.junctionSpacing) out.push(issue(s0, s1, 'Too close to another junction',
       `Move this end along ${what} to at least ${CROSSING_RULES.junctionSpacing} m from its next junction or end (now ${Math.round(near)} m)`,
-      'ČSN 73 6101:2018: junctions on class I roads at least 1.5 km apart, counting both ends of the route (research/12)'));
+      'ČSN 73 6101:2018: junctions on class I roads at least 1.5 km apart, counting both ends of the route')); // research/12
   }
   let steep = 0;
   for (let q = 1; q < side.n; q++) if (side.s[q] > s0 && side.s[q - 1] < s1) steep = Math.max(steep, Math.abs(side.grade[q] - side.grade[q - 1]) / (side.s[q] - side.s[q - 1]));
   if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins ${what}`,
     `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
-    'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction (research/29)'));
+    'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction')); // research/29
   const blocked = form === 'roundabout' ? null : sightBlocked({ end, x: side.x[i], y: side.y[i] }, side, line, terrain, buildings);
   if (blocked) out.push({ ...issue(s0, s1, `No clear view along ${what}`, blocked.fix,
-    `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along ${what} (sight triangle, research/29)`),
+    `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along ${what} (sight triangle)`), // research/29
     ...(blocked.building !== undefined ? { target: { buildings: [blocked.building] } } : {}) });
   const major = host.legalClass === 'I' || host.legalClass === 'II';
   if (form === 'roundabout') {

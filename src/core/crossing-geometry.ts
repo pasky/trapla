@@ -188,14 +188,14 @@ function squareIssue(c: CrossingResult, messages: readonly string[], lowered: nu
 function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue, 'title' | 'fix' | 'detail' | 'basis' | 'rule'> {
   const what = ROAD_CLASSES[c.cls]?.label ?? 'road', choice = c.requestedType ? 'your crossing choice' : 'this crossing';
   const ramps = { fix: 'Lower our road here (a cutting makes the ramps shorter), or choose "Our bridge over it", an underpass or "Cut and reroute"',
-    rule: `Game rule (research/20): ramps no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % for a ${what}, at most 10 m high` };
+    rule: `Game rule: ramps no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % for a ${what}, at most 10 m high` }; // research/20
   const trace = { title: `The game cannot trace where this ${what} goes`, fix: 'Set this crossing to "Our bridge over it", or move our road a little',
     detail: `The map data of this ${what} is too short or too detailed for the game to build ${choice}.`, basis: 'engine' as const,
     rule: 'Engine limit: crossings are built only along the real line of the crossed road, within 2 km of our road' };
   if (message === RAMP_TOO_LONG && c.type === 'junction') return { title: `The ${what} cannot be brought to our road's height for the junction`,
     fix: 'Move the junction where the two roads are closer in height, or choose "Our bridge over it" or "Its bridge over us"',
     detail: `Within the allowed slope, the ${what} would have to be raised or lowered all the way to where it ends.`, basis: 'game',
-    rule: `Game rule (research/20): a ${what} raised or lowered to a junction is no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} %` };
+    rule: `Game rule: a ${what} raised or lowered to a junction is no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} %` }; // research/20
   if (message === LINK_OVER_OUR_ROAD) return { title: `Your path for the new ${what} runs onto our road's earthworks`,
     fix: 'Drag its bend points clear of our road\'s slopes, or choose "Automatic path" on the crossing card',
     detail: `The new piece of ${what} must run outside our earthworks to reach the next crossing.`, basis: 'game',
@@ -221,7 +221,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     return { title: `No buildable reroute for the ${what}`,
       fix,
       detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
-      rule: `Game rule: a new road is no steeper than its class allows (research/20, ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
+      rule: `Game rule: a new road is no steeper than its class allows (ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
   }
   if (message === SHAPED_LINK.river) return { title: `Your path for the new ${what} crosses a river`,
     fix: 'Drag its bend points so that it stays on this side of the river, or choose "Automatic path" on the crossing card',
@@ -263,12 +263,12 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       detail: message === WORKS_COVER_ROAD
         ? `Where the ${what} is ${raised}, its earth slopes would cover or cut into a road beside it, and a retaining wall cannot stand between them.`
         : `A road joining the ${what} where it is ${raised} would have to be regraded for more than ${MAX_RAMP_LENGTH} m to meet it.`,
-      rule: `Game rule: earthworks of a crossing may not cover other roads. A road joining it is regraded to meet it (no steeper than its class allows, at most ${MAX_RAMP_LENGTH} m); a road beside it is kept clear by a retaining wall up to ${RETAINING_RULES.maxHeight} m high (research/18, research/20)` };
+      rule: `Game rule: earthworks of a crossing may not cover other roads. A road joining it is regraded to meet it (no steeper than its class allows, at most ${MAX_RAMP_LENGTH} m); a road beside it is kept clear by a retaining wall up to ${RETAINING_RULES.maxHeight} m high` }; // research/18, research/20
   }
   if (message === RAMP_TOO_LONG && c.type === 'underpass') return { title: `Ramps down to the underpass would be longer than ${MAX_RAMP_LENGTH} m`,
     fix: 'Raise our road here (a higher embankment needs less lowering), or choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"',
     detail: `The ${what} itself falls (or climbs) towards our road, so a ramp within the allowed slope gets back to it only far away, if at all.`, basis: 'game',
-    rule: `Game rule (research/20): ramps no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % for a ${what}, at most ${MAX_RAMP_LENGTH} m long on each side` };
+    rule: `Game rule: ramps no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % for a ${what}, at most ${MAX_RAMP_LENGTH} m long on each side` }; // research/20
   if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road would be longer than ${MAX_RAMP_LENGTH} m`, ...ramps,
     detail: `The ${what} itself runs downhill (or uphill) away from the bridge, so a ramp within the allowed slope meets it again only far away, if at all.`, basis: 'game',
     rule: `${ramps.rule}, at most ${MAX_RAMP_LENGTH} m long on each side` };
@@ -279,14 +279,14 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     detail: `A dead-end ${what} has no far side for ${c.type === 'underpass' ? 'an underpass' : 'a bridge over our road'} to reach.`, basis: 'game', rule: 'Game rule: a crossing must reach the crossed road on both sides of our road' };
   if (message.startsWith('Underpass would exceed')) return { title: `Underpass would be longer than ${UNDERPASS_RULES.maxLength} m`,
     fix: 'Choose "Our bridge over it", or make our embankment here lower and narrower', detail: 'Our embankment is too wide here for a short concrete box.',
-    basis: 'game', rule: `Game estimate (research/19): an underpass box is at most ${UNDERPASS_RULES.maxLength} m long` };
+    basis: 'game', rule: `Game estimate: an underpass box is at most ${UNDERPASS_RULES.maxLength} m long` }; // research/19
   if (message === UNDERPASS_TOO_LOW) return { title: 'Embankment too low for an underpass',
     fix: 'Raise our road here, or choose another crossing',
     detail: `Somewhere under our road the box would stick out of the embankment${c.lowered === undefined ? '' : `, even with the ${what} lowered as far as it may be (${LOWERING_RULES.maxDepth} m)`}: it needs room for its height, roof and earth cover.`,
-    basis: 'game', rule: `Game estimate (research/19, 37): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
+    basis: 'game', rule: `Game estimate: an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` }; // research/19, research/37
   if (message === 'This road class cannot pass in a small underpass') return { title: `A ${what} cannot pass through a small underpass`,
     fix: 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"', detail: 'Underpass boxes are sized for tracks, service roads and local roads only.',
-    basis: 'game', rule: 'Game estimate (research/19): underpass boxes for tracks, service roads and local roads' };
+    basis: 'game', rule: 'Game estimate: underpass boxes for tracks, service roads and local roads' }; // research/19
   if (message === 'No real ground-level anchor exists for a surviving road branch') return { title: `No place to reconnect the ${what}`,
     fix: 'Choose "Its bridge over us" or an underpass, or "Our bridge over it" if our road is high enough',
     detail: `A cut-off end of the ${what} has no road on the ground nearby to be reconnected to.`, basis: 'game',
@@ -301,7 +301,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     } as Record<string, string>)[problem] ?? problem).join('; ');
     return { title: `The ${what} cannot be straightened here`, fix: 'Choose "Keep its line" on the crossing card, or another kind of crossing',
       detail: `A new line crossing our road at a right angle cannot be built: ${reasons}.`, basis: 'game',
-      rule: `Game rule (research/44): a straightened crossing bends no sharper than ${ROAD_CLASSES[c.cls].minRadius} m and is built like any new road` };
+      rule: `Game rule: a straightened crossing bends no sharper than ${ROAD_CLASSES[c.cls].minRadius} m and is built like any new road` }; // research/44
   }
   if (message === MOVE_FAILS) return { title: `The ${what} cannot just be moved beside our road`,
     fix: 'Choose "Cut and reroute", "Its bridge over us" or an underpass', basis: 'engine',

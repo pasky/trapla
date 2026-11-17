@@ -812,7 +812,7 @@ function projectTotals(ctx: ProjectEvalContext, between: ReturnType<typeof proje
         violation: { kind: 'noise', basis: 'norm', title: 'Too loud with both roads together',
           fix: 'Buy the house out, or build a higher or longer noise wall in front of it',
           detail: `${(h.over).toFixed(1)} dB over the limit at its loudest floor, with the noise of both roads added together. You chose to keep it.`,
-          rule: 'NV 272/2011 annex 3: the noise of all roads at a protected house adds up; the limit of the road that prevails there applies (research/31)' } });
+          rule: 'NV 272/2011 annex 3: the noise of all roads at a protected house adds up; the limit of the road that prevails there applies' } }); // research/31
       valid = false;
       continue;
     }
