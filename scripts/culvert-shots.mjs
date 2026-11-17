@@ -71,7 +71,15 @@ try {
     }
     // the map mark selects too
     await page.locator('.build-annotation.culvert:not(.selected)').first().click(); await idle();
-    assert.equal((await page.evaluate(() => window.trapla.selection()))?.kind, 'culvert', 'the mark selects its culvert');
+    const marked = await page.evaluate(() => window.trapla.selection());
+    assert.equal(marked?.kind, 'culvert', 'the mark selects its culvert');
+    // its alternative: a bridge over the stream instead (one edit; the culvert goes, the card with it)
+    await page.locator('.inspector button[data-fix-bridge]').click(); await idle();
+    const after = await page.evaluate((s) => { const r = window.trapla.result(), i = Math.round(s / r.ds);
+      return { kind: r.kind[i], culvert: r.waterCrossings.some(c => c.size && Math.abs(c.s - s) < 5), sel: window.trapla.selection() }; }, marked.s);
+    assert.equal(after.kind, 1, 'a bridge stands over the stream'); assert(!after.culvert, 'no culvert there any more');
+    assert.notEqual(after.sel?.kind, 'culvert', 'the culvert card closed');
+    await page.screenshot({ path: `${out}/culvert-${designName}-bridge-instead.png` });
   }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }
