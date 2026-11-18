@@ -529,8 +529,12 @@ export class Inspector {
     if (!p) return '';
     const i = stationIndex(r, s);
     const vio = r.violations.filter((v) => v.kind === 'profile' && v.s0 <= s + 1 && v.s1 >= s - 1).map((v) => ({ v, fixes: '' }));
+    // (a pin Auto cannot reach is left out: its line stays as it was, core/autoprofile.ts)
+    const missed = vio.some(({ v }) => 'pin' in v), track = CATEGORIES[d.category].mode === 'railway' ? 'track' : 'road';
+    const why = d.profileMode !== 'auto' ? 'Not used while the height is set by hand.'
+      : missed ? `Auto cannot reach it, so the ${track} stays where it was. Drag it in the profile.` : 'Auto passes within 0.5 m of it. Drag it in the profile.';
     return `${this.head('Pinned height', `km ${km(s)}`)}
-      <div class="ctx-state"><b>${p.z.toFixed(1)} m</b> · road now ${r.grade[i].toFixed(1)} m<div class="why">${d.profileMode === 'auto' ? 'Auto passes within 0.5 m of it. Drag it in the profile.' : 'Not used while the height is set by hand.'}</div></div>
+      <div class="ctx-state"><b>${p.z.toFixed(1)} m</b> · ${track} now ${r.grade[i].toFixed(1)} m<div class="why">${why}</div></div>
       ${this.issues(vio)}
       <div class="ctx-row"><label>Height <input id="pin-z" type="number" step="0.1" value="${p.z.toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${s}">Set</button><button type="button" id="pin-clear" data-s="${s}">Unpin</button></div>`;
   }
