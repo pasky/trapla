@@ -45,6 +45,7 @@ import { crossingWallGaps } from './crossing-walls';
 import { natureCells, protectedRasterCells, railwayNear } from './protected-raster';
 import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
+import { mappedKind, structureLevel, structureLevels } from './mapped-structures';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
 import { allCut, chooseStructures, cutCoverMask, KIND, TUNNEL_TOO_STEEP, tunnelGrade, wallGapsToBridge, type Run } from './structures';
@@ -954,7 +955,10 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   // it neither floors the grade search nor lifts the line for its supports (`choiceDeckOf`). The passes share
   // this setup (passSetup): the mask is the same in each; whether a pass lifts it is its options'.
   const choiceDeck = Uint8Array.from(manualStructures, (k, i) => k === KIND.bridge && painted[i] < 0 ? 1 : 0);
-  const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
+  // (a mapped bridge or tunnel is crossed at its own level, its deck or its road in the tunnel: mapped-structures.ts)
+  const roadMapped = roadX.map(c => mappedKind(ctx.roads, c.way));
+  const heightAt = (x: number, y: number) => terrain.heightAt(x, y);
+  const roadG = roadX.map((c, k) => (roadMapped[k] && structureLevel(ctx.roads, c.way, c.x, c.y, heightAt)) ?? terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
   // auto-profile requests an overpass) or pass far enough below for an overbridge
   // (not a railway of the project: it is held at the height our crossing leaves it, crossing-geometry.ts heldRailway)
@@ -986,7 +990,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
     groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
     mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
     waterGround, G, builtUp, costClasses, profileCostClass, profilePoints, crossingCost, forceWater,
-    sideHits, stationSides, forceParallelWater, tunnelWater, endJunctions, rawRoadX, roadX, roadG, natureCrown };
+    sideHits, stationSides, forceParallelWater, tunnelWater, endJunctions, rawRoadX, roadX, roadG, roadMapped, natureCrown };
 }
 
 interface BalanceSamples {
@@ -999,7 +1003,7 @@ interface BalanceSamples {
 function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
   const { cat, scenario, costClasses, water, waterGround, blocks, ds, terrain, groundPackIds, groundProfiles, al,
     roadX, mustBridge, lineAt, sideHits, rawRoadX, crossingOverrides, vlim, crossingCost, forceWater,
-    forceParallelWater, roadG, tunnelWater, deepCut } = setup;
+    forceParallelWater, roadG, roadMapped, tunnelWater, deepCut } = setup;
   const mk = cat.markup;
   /** a tunnel's tubes and escape provision for its length (NV 264/2009) */
   const tunnelFactor = (length: number) => tunnelTubeFactor(cat, length, scenario.traffic);
@@ -1204,7 +1208,9 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
       roads.forEach(({ k, j }, q) => {
         const c = roadX[j];
         const choice = crossingChoice(c.way, crossingOverrides);
-        if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[q] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0)) return;
+        // (a mapped tunnel that deep under us is kept as it is: mapped-structures.ts)
+        if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[q] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0)
+          || (!choice && roadMapped[j] === 'tunnel')) return;
         // Auto local roads may instead pass through the embankment in a priced underpass.
         const wd = sc.dayL[k] + sc.dayR[k], box = !choice && underpassFits({ cls: c.cls, h: rz[q] - roadG[j] }, wd) ? underpassPrice(c, wd, urban[k]) : undefined;
         if (box) earth[k] += box.cost * (1 + surB(urban[k])) / w;
@@ -1596,7 +1602,7 @@ function routeCaches(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
  * bridge supports. Called once per candidate by `finish` (lifts, retries). */
 function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>) {
   const { timing, st, water, terrain, n, preview, manualStructures, lap, w, ds, ground, waterAt,
-    crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG, natureCrown,
+    crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG, roadMapped, natureCrown,
     crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod, bridgeStyle, choiceDeck, deepCut } = setup;
   const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, tunnelFactor, tunnelRate, surT, roadS, balanceTolerance,
     usable } = prices;
@@ -1721,7 +1727,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
     s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls, roadId: c.way,
-    h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0, ...(ctx.roads?.isDesigned(c.way) ? { designed: true as const } : {}),
+    h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0, ...(ctx.roads?.isDesigned(c.way) ? { designed: true as const } : {}), ...(roadMapped[k] ? { mapped: roadMapped[k] } : {}),
   }));
   roadX.forEach((c, k) => { if (c.members?.length) mergedInto.set(crossings[k], c.members); });
   // A way weaving along our road crosses it again without ever leaving our earthworks in between (and
@@ -1761,7 +1767,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
       if (selectionOverrides === manualStructures) selectionOverrides = Int8Array.from(manualStructures);
       (selectionOverrides as Int8Array)[c.i] = KIND.earth;
     }
-    if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0)) continue;
+    if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) || (!choice && c.mapped === 'tunnel')) continue;
     // An Auto local road may instead keep its level in an underpass: the selector weighs that
     // box (estimated over the footprint width) against our bridge; crossings price the built one.
     const wd = sec.dayL[c.i] + sec.dayR[c.i], box = !choice && underpassFits(c, wd) ? underpassPrice(c, wd, urbanCentre[c.i]) : undefined;
@@ -2413,7 +2419,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     // (the crossing's own way met again within a crossing's merge distance is that same crossing)
     return opts.splitWays!.includes(m.way) && kind[i] === KIND.earth && !ROAD_CLASSES[m.cls].noAtGrade
       && !(m.way === c.roadId && Math.abs(m.s - c.s) <= CROSSING_RULES.mergeDistance)
-      ? [{ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade' as const, cost: 0 }] : [];
+      ? [{ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - (structureLevel(ctx.roads, m.way, m.x, m.y, (x, y) => terrain.heightAt(x, y)) ?? terrain.heightAt(m.x, m.y)), type: 'atGrade' as const, cost: 0,
+        ...(mappedKind(ctx.roads, m.way) ? { mapped: mappedKind(ctx.roads, m.way) } : {}) }] : [];
   })) : [];
   if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
   // a rebuilt stretch's side roads: the crossing of each nearest to where it joined the old road keeps its access
@@ -2527,7 +2534,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
       left, right };
     // (a retry builds only the crossings near what it changed: crossings-kept.ts)
     crossingIssues = buildCrossings(opts.window ? undefined : opts.passCache?.crossings, st, { grade, kind, width: crossWidth, left, right, urban: urbanCentre },
-      new Map(demolished.map(p => [p.j, p.i])), crossings, crossingIssues, items => buildCrossingGeometry(items, route, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes),
+      new Map(demolished.map(p => [p.j, p.i])), crossings, crossingIssues, items => buildCrossingGeometry(items, route, structureLevels(ctx.roads, crossings.map(c => c.roadId), (x, y) => terrain.heightAt(x, y)), ctx.roads, reroutes),
       resolve, () => !!reroutes.rolledBack, path => { timing[`count.crossings.${path}`] = (timing[`count.crossings.${path}`] ?? 0) + 1; });
   }
   const shared = opts.sharedCrossings;

@@ -16,7 +16,7 @@ export function startEvalWorkers(pack: Pack, scenario: ScenarioParams, a: { x: n
   const init: WorkerInit = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, protectedAreas: pack.terrain.protectedData, a, b, buildings: pack.overlays.buildings,
-    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario, junctions: endpointJunctions(meta),
+    binfo: pack.overlays.binfo, net: pack.roadNet, scenario, junctions: endpointJunctions(meta),
     projectEnvironment,
   };
   const previewInit: WorkerInit = { ...init, q: pack.q.slice(), lc: pack.lc.slice(), role: 'preview', port: bases.port2 };

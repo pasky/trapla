@@ -7,8 +7,20 @@ export interface RoadSegment extends Segment2 { way: number; cls: string }
 export interface RoadConnection { way: number; cls: string; d: number; dx: number; dy: number }
 export interface RoadJunction { x: number; y: number; connections: RoadConnection[] }
 
-/** pack format (`overlays.net`): class names and polylines [classIndex, x0, y0, x1, y1, …] in local metres */
-export interface RoadNetData { cls: string[]; ways: number[][] }
+/** pack format (`overlays.net`): class names and polylines [classIndex, x0, y0, x1, y1, …] in local metres.
+ * `structures`: the pack's mapped road bridges and tunnels (its `structures.json`, pipeline/build_structures.py), left
+ * out of `ways`; they become ways `ways.length …` (after the net's own, so a saved choice keeps its way). */
+export interface RoadNetData { cls: string[]; ways: number[][]; structures?: StructureData }
+/** A pack's `structures.json`: ways in the net's format (class index into its own `cls`), what each is. */
+export interface StructureData { version: 1; cls: string[]; ways: number[][]; kind: StructureKind[]; osm?: string[] }
+export type StructureKind = 'bridge' | 'tunnel' | 'covered';
+/** A mapped bridge or tunnel way: what it is, and its polyline as mapped (x0, y0, x1, y1, …). */
+export interface MappedStructure { kind: StructureKind; xy: readonly number[] }
+
+/** The pack's net with its mapped structures as ways after its own (what RoadNet builds from). */
+export function withStructures(net: { cls: string[]; ways: number[][] }, structures: StructureData | null | undefined): RoadNetData {
+  return structures?.ways.length ? { cls: net.cls, ways: net.ways, structures } : { cls: net.cls, ways: net.ways };
+}
 
 export interface RoadCrossing {
   /** station along the route, m */
@@ -56,6 +68,14 @@ export class RoadNet {
   /** `overlay`: the same network as `base` except its `changed` ways (an edit of a few roads costs
    * their segments, not a rebuild of the whole grid). */
   constructor(data: RoadNetData, overlay?: { base: RoadNet; changed: readonly number[] }) {
+    if (data.structures?.ways.length) {
+      // (mapped bridges and tunnels: ways after the net's own, in the net's class list)
+      const s = data.structures, cls = data.cls.slice(), mapped = new Map<number, MappedStructure>();
+      const index = (name: string) => { let i = cls.indexOf(name); if (i < 0) { i = cls.length; cls.push(name); } return i; };
+      const ways = data.ways.slice();
+      s.ways.forEach((w, k) => { mapped.set(ways.length, { kind: s.kind[k], xy: w.slice(1) }); ways.push([index(s.cls[w[0]]), ...w.slice(1)]); });
+      data = { cls, ways }; this.structures = mapped;
+    } else if (overlay) this.structures = overlay.base.structures;
     this.ways = data.ways; this.clsNames = data.cls;
     const count = (w: readonly number[]) => Math.max(0, (w.length - 1) / 2 - 1);
     const base = overlay?.base, kept = base ? base.segments : 0;
@@ -125,6 +145,10 @@ export class RoadNet {
   }
 
   wayClass(way: number): string { return this.wayCls[way]; }
+  /** Mapped bridges and tunnels by way (RoadNetData.structures); an edited network keeps its pack's. */
+  readonly structures: ReadonlyMap<number, MappedStructure> = new Map();
+  /** What a way is when it is a mapped bridge or tunnel (undefined: an ordinary way). */
+  structure(way: number | undefined): MappedStructure | undefined { return way === undefined ? undefined : this.structures.get(way); }
   /** The same network without the given stretches (way chainages d0 < d1): a rebuilt stretch of an
    * existing road is not a road its own replacement crosses. See `edited` for the numbering. */
   without(cuts: readonly { way: number; d0: number; d1: number }[]): RoadNet {
@@ -169,6 +193,7 @@ export class RoadNet {
     }
     // an edit of an edited network (not used by the game) is rebuilt in full
     const net = this.override ? new RoadNet({ cls, ways }) : new RoadNet({ cls, ways }, { base: this, changed });
+    (net as { structures: ReadonlyMap<number, MappedStructure> }).structures = this.structures;
     if (extra.length) {
       net.designedWays = { from: this.ways.length, to: this.ways.length + extra.length };
       net.makeGround = () => this.edited(cuts, extra.map(e => ({ cls: e.cls, xy: [] })));

@@ -14,6 +14,8 @@ import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import { natureHits, natureProblems } from './nature-works';
 import type { RoadNet, RoadSegment } from './roadnet';
+import { structureLevel } from './mapped-structures';
+import { OVERBRIDGE_CLEARANCE } from './data/remedies';
 import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, waterCoverFits, type WaterCrossing, type WaterSegment } from './watercourses';
 import { realignmentReason, roadRemedyDetail, roadRemedySource } from './terms';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
@@ -266,6 +268,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const visitRoad = (segment: RoadSegment) => {
       const hit = clipFootprint(segment, cell, existingHalfWidth(segment.cls));
       if (!hit) return;
+      // A mapped bridge high enough over our road there spans our works (a mapped tunnel deep enough under them runs
+      // beneath): neither is buried (mapped-structures.ts; the same clearances as its crossing, crossings.ts keeps…).
+      if (roads!.structure(segment.way) && !cell.structure) {
+        const t = ((hit[0] + hit[1]) / 2 - segment.d) / (segment.length || 1);
+        const z = structureLevel(roads!, segment.way, segment.ax + t * (segment.bx - segment.ax), segment.ay + t * (segment.by - segment.ay), (x, y) => terrain.heightAt(x, y));
+        // (a bridge: what passes under one, its deck's own depth not counted, unknown for a mapped bridge)
+        if (z !== undefined && (roads!.structure(segment.way)!.kind === 'bridge' ? z - r.grade[cell.i] >= OVERBRIDGE_CLEARANCE
+          : r.grade[cell.i] - z >= CROSSING_RULES.overHeight)) return;
+      }
       // The joined road's own pavement inside the junction zone is rebuilt as part of the junction.
       // Bridge supports on it are not ordinary junction works and stay conflicts.
       const junction = !cell.structure ? junctionAt(cell.i, segment.way) : undefined;

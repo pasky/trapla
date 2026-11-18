@@ -157,6 +157,8 @@ function dense(path: readonly WayPoint[]): WayPoint[] {
 export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry = true): RoadRealignmentPlan {
   const { route: r, terrain, roads, grid, way, cls, hit: h, covered, bounds } = input;
   const row = ROAD_CLASSES[cls], half = row.width / 2, pad = half + SETBACK;
+  /** another way that is a mapped bridge or tunnel (not the one moved) */
+  const mapped = (other: number) => other !== way && !!roads.structure(other) && roads.structure(other)!.kind !== 'covered';
   const point = (q: WayPoint): CrossingPoint => {
     const ground = terrain.heightAt(q.x, q.y);
     return { ...q, z: ground, ground, surface: 'terrain' };
@@ -452,7 +454,8 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         if (len > 1e-6 && (distance(p, along(raw, p.d)) > 0.01 || distance(q, along(raw, q.d)) > 0.01)) {
           const hits: { t: number; way: number; d: number }[] = [];
           roads.nearSegments([Math.min(p.x, q.x) - 1, Math.min(p.y, q.y) - 1, Math.max(p.x, q.x) + 1, Math.max(p.y, q.y) + 1], segment => {
-            if (ROAD_CLASSES[segment.cls].noAtGrade) return;
+            // (nor a mapped bridge or tunnel: at its own level, mapped-structures.ts, it passes over or under the new piece)
+            if (ROAD_CLASSES[segment.cls].noAtGrade || mapped(segment.way)) return;
             const ex = segment.bx - segment.ax, ey = segment.by - segment.ay, den = dx * ey - dy * ex;
             if (Math.abs(den) < 1e-9) return;
             const t = ((segment.ax - p.x) * ey - (segment.ay - p.y) * ex) / den, u = ((segment.ax - p.x) * dy - (segment.ay - p.y) * dx) / den;
@@ -629,7 +632,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     const roadObstacles = (cell: FootprintCell, p?: CrossingPoint, q?: CrossingPoint, at = 0) => roads.nearSegments(cellBounds(cell, 14), segment => {
       const other = ROAD_CLASSES[segment.cls], otherHalf = other.width / (segment.cls === 'motorway' ? 4 : 2);
       const overlap = clipFootprint(segment, cell, otherHalf);
-      if (!overlap) return;
+      if (!overlap || mapped(segment.way)) return;
       if (other.noAtGrade) { problems.add('new pavement intersects a grade-separated road'); return; }
       const margin = (half + otherHalf) * Math.SQRT2 + 0.05; // rotated ribbon end-cap at an actual source tie-in
       const contains = (a: number, b: number) => overlap[0] >= a - margin && overlap[1] <= b + margin;

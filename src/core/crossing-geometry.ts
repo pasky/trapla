@@ -2,6 +2,7 @@
 import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute, LinkEnd, LinkEndTo, UnderpassWing } from './crossings';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJunctionCost } from './data/urban';
 import type { RoadNet } from './roadnet';
+import { bridgeOnPath } from './mapped-structures';
 import { bridgeModel } from './bridge';
 import { STRUCTURE_RULES } from './data/prices';
 import { END_AUTO_TEXT } from './terms';
@@ -993,6 +994,12 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     });
     // The deck may slope like the road it carries (its class gradient, research/20): on a valley side
     // a level deck would leave one end high above the ground and its ramp far too long.
+    // A mapped bridge (c.mapped) whose deck already clears all of that, its ends at or beyond the edges of our works
+    // (bank-top abutments, as a new one's), is kept as it stands: its deck at its own level from end to end, no ramps,
+    // nothing built or billed. (Not where the player has it laid on a new line.)
+    const existing = isRaised && c.mapped === 'bridge' && !keep ? bridgeOnPath(linkEnv.roads, c.roadId, path, heightAt) : undefined;
+    const kept = !!existing && existing.d0 <= d0 + extra + 1e-6 && existing.d1 >= d1 - extra - 1e-6 && clear.every(q => existing.at(q.d) >= q.z - 1e-6);
+    if (kept) { d0 = Math.max(path[0].d, existing.d0); d1 = Math.min(path[path.length - 1].d, existing.d1); c.kept = true; } else delete c.kept;
     const ground0 = heightAt(along(path, d0).x, along(path, d0).y), ground1 = heightAt(along(path, d1).x, along(path, d1).y);
     let deck = { base: -Infinity, slope: 0 }, deckCost = Infinity;
     // (or as steep as the old road across the cutting: it is not rebuilt gentler than it was)
@@ -1004,7 +1011,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       const cost = Math.abs(base + slope * d0 - ground0) + Math.abs(base + slope * d1 - ground1) + (k === 0 ? 0 : 1e-6);
       if (cost < deckCost) { deckCost = cost; deck = { base, slope }; }
     }
-    const deckAt = (d: number) => deck.base + deck.slope * d;
+    const deckAt = kept ? existing.at : (d: number) => deck.base + deck.slope * d;
     const edgeZ = (d: number) => isRaised ? deckAt(d) : project(along(path, d)).z;
     // A rebuilt road's side road met where it joined the old road (c.oldJunction): its piece beyond us on that side led
     // only to the old road, now taken up: it ends at our road there, the piece is removed (not drawn, not regraded)
@@ -1067,7 +1074,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     if (isRaised) {
       g.deck = { start, end, depth: DEPTH };
       c.span = d1 - d0; c.approachLength = heldRailway(c) ? 0 : d0 - f0 + f1 - d1;
-      c.cost = deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
+      c.cost = kept ? 0 : deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
     }
   } else if (c.type === 'reconnection' || c.type === 'diversion') {
     // The severed way is removed wherever it lies inside the footprint plus link corridor,
@@ -1091,6 +1098,14 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     while (lo > 0 && margin(path[lo], corridor + STEP) < 0) lo--;
     while (hi + 1 < path.length && margin(path[hi], corridor + STEP) < 0) hi++;
     road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(terrainPoint);
+  } else if (c.type === 'underpass' && c.kept) {
+    // A mapped tunnel deep enough under us (crossings.ts keepsTunnel): it passes under us as it is, at its own level
+    // (the heights here are its road in the tunnel, mapped-structures.ts); nothing built, nothing billed.
+    let centre = path.findIndex(q => q.d >= 0), lo = centre, hi = centre;
+    while (lo > 0 && margin(path[lo], corridor + STEP) < 0) lo--;
+    while (hi + 1 < path.length && margin(path[hi], corridor + STEP) < 0) hi++;
+    road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(terrainPoint);
+    c.cost = 0; delete c.underpassLength;
   } else if (c.type === 'underpass') {
     // The way keeps its own terrain level through a closed box spanning the earthwork
     // footprint toe to toe along the way (skew and bends included); under a low embankment it is
