@@ -132,6 +132,7 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     const sides = c.endTo!.map(e => e?.toward), other = parts.length === 1 ? 1 - parts[0].k : undefined;
     // (the other part: as Auto has it)
     const rest = other === undefined ? '' : c.closure?.connected[other] ? `; the ${sides[other] ?? c.closure.sides[other]} part still reaches other roads, so it just ends at our earthworks`
+      : c.closure?.nothing?.[other] ? '; the other part is a short stub that serves nothing (no house, no other road) and is left as it is'
       : c.targetS !== undefined || c.targetRoadId !== undefined ? `; the other part is led to ${crossesAt}` : '';
     const head = parts.length === 2 ? `Led to ${dest(parts[0].e)} and ${dest(parts[1].e)}` : `The ${parts[0].e.toward} part led to ${dest(parts[0].e)}`;
     return { tag: 'rerouted', label: `${head} (+${m(c.linkLength)} m of new ${piece})`,

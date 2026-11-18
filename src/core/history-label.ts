@@ -16,7 +16,7 @@ function crossingChange(a: Crossings, b: Crossings): string {
   const key = (c: NonNullable<Crossings>[number]) => JSON.stringify(c.target), had = new Set((a ?? []).map(key));
   const fresh = (b ?? []).filter(c => !had.has(key(c)));
   if (fresh.length === 1 && fresh[0].choice === 'reconnection' && fresh[0].ends && !fresh[0].via
-    && same(a, (b ?? []).filter(c => c !== fresh[0]))) return 'where a reroute leads';
+    && same(a ?? [], (b ?? []).filter(c => c !== fresh[0]))) return 'where a reroute leads';
   if (same(without(a, 'via'), without(b, 'via'))) return "a reroute's path";
   return 'a crossing';
 }

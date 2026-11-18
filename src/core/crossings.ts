@@ -493,7 +493,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (c.roadId !== undefined && designed(c.roadId)) {
       if (c.requestedType === 'reconnection') issue(c, 'reach', 'A new road cannot be cut and rerouted', 'Choose "Our bridge over it", "Its bridge over us" or a junction');
       if (box && boxTotal < overTotal) { c.type = 'underpass'; Object.assign(c, priced(box)); } else { c.type = 'overbridge'; Object.assign(c, over); }
-    } else if (c.requestedType === 'reconnection' && !target && c.ends?.some(Boolean)) {
+    } else if (c.requestedType === 'reconnection' && (!target || !Number.isFinite(gap)) && c.ends?.some(Boolean)) {
       // (no crossing of ours to lead it to, but the player led its pieces to roads of their choosing: those are
       // built, the geometry says whether every part that needs one has a road; priced meanwhile on the straight
       // line to the farthest of them)
@@ -510,7 +510,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       c.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       const { linkCost: _linkCost, ...priced } = link;
       Object.assign(c, priced); c.targetS = target!.s; c.targetRoadId = target!.roadId;
-      if (c.requestedType && gap > CROSSING_RULES.linkHardReach) issue(c, 'reach', 'Reroute would be too long',
+      // (not where both pieces are led where the player chose)
+      if (c.requestedType && gap > CROSSING_RULES.linkHardReach && !(c.ends?.[0] && c.ends[1])) issue(c, 'reach', 'Reroute would be too long',
         `Choose "Its bridge over us" or an underpass, or make a crossing it can reach within ${CROSSING_RULES.linkHardReach} m along our road (now ${gap.toFixed(0)} m)`, gap, CROSSING_RULES.linkHardReach, target!.s);
     } else if (box && boxTotal < overTotal) {
       c.type = 'underpass'; Object.assign(c, priced(box));

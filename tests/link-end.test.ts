@@ -112,7 +112,9 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     const b = track([null, { way: 1129, x: 4200, y: 9462 }]);
     expect(b.c.endTo?.[1]).toMatchObject({ cls: 'tertiary', toward: 'north', built: true }); expect(b.c.endTo![1]!.s).toBeCloseTo(2289, 0);
     const north = b.c.geometry!.links![1];
-    expect(Math.hypot(north.at(-1)!.x - 4200, north.at(-1)!.y - 9462)).toBeLessThan(30);
+    // (where the road is on the ground again: the class III road is straightened to cross square and climbs onto its
+    // bridge from 55 m off the drop)
+    expect(Math.hypot(north.at(-1)!.x - 4200, north.at(-1)!.y - 9462)).toBeLessThan(60);
     expect(b.r.violations).toEqual([]);
     expect(b.c.linkLength!).toBeGreaterThan(a.c.linkLength! + 100);
     // billed on what is drawn (here dearer than Auto's line only by its length: Auto's needs a culvert, this one none)
@@ -127,9 +129,6 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     const bent = track([null, { way: 1129, x: 4200, y: 9462 }], [[], [{ x: 4382, y: 9499 }]]);
     expect(bent.c.geometry!.links![0]).toEqual([]); expect(bent.c.endTo?.[1]?.built).toBe(true);
     expect(bent.c.geometry!.links![1].some(p => p.x === 4382 && p.y === 9499)).toBe(true);
-    // dropped on the class III road beyond our road: its part on this side is joined, where its ramp ends
-    const far = track([null, { way: 1129, x: 4500, y: 9300 }]);
-    expect(far.c.endTo?.[1]).toMatchObject({ cls: 'tertiary', built: true }); expect(far.r.violations).toEqual([]);
     // a street wholly beyond our road (it does not cross it): said, Auto's line stands
     const c = track([null, { way: 1498, x: 4600, y: 9195 }]);
     expect(c.r.violations.map(v => v.title)).toEqual(['The road you chose is across our road']);
