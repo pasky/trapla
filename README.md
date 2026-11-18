@@ -248,6 +248,12 @@ an end that meets an interchange or a road has a sign and [a card](docs/screensh
 ("Interchange with road I/18 — its ramps are not part of this job"); the total
 [follows a drag live](docs/screenshots/148-whole-d3-live-price-drag.png) (≈); the D35 first section
 [joins the open D35 and goes on as the next section](docs/screenshots/149-d35-first-section-ends.png).
+Trutnov offers the real D11 as a motorway ([picker](docs/screenshots/570-d11-motorway-picker.png), research/87),
+D 27.5 at 110 km/h from where [the D11 from Jaroměř joins](docs/screenshots/572-d11-motorway-end-a.png) to the border,
+where it [goes on as the S3 in Poland](docs/screenshots/573-d11-motorway-end-b.png); its starter follows the official
+line ([overview](docs/screenshots/571-d11-motorway-overview.png), [the Poříčí viaduct](docs/screenshots/574-d11-motorway-bridge.png)),
+14.09 bn against the real 11.71 bn contract. The class I road stays beside it as the simpler job
+(`node scripts/d11-motorway-shots.mjs --docs 570`).
 A local edit re-solves only its own stretch of the grade line (model 25, research/39 "Local edits",
 `scripts/locality.ts`).
 

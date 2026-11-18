@@ -303,7 +303,7 @@ export const D11_MOTORWAY: ScenarioParams = {
     [10102.1, 10610.2], [10834.1, 12046], [10670.3, 13528.3], [10008.6, 14908.1], [10279.5, 16368.1], [11399.3, 17363], [11619.5, 18839.6],
     [12099.7, 20182.6]]) },
   picker: { kind: 'Motorway · 110 km/h', goal: 'Take the D11 over the hills to the Polish S3.',
-    note: 'Built 27.5 m wide, our usual motorway; the planned road is 21.5 m wide. Its contract: 11.7 bn CZK.' },
+    note: 'Built 27.5 m wide, our usual motorway; the planned road is 21.5 m wide and contracted for 11.7 bn CZK.' },
   traffic: 13_000, heavyShare: MOTORWAY_TRAFFIC.heavyShare, maxTravelMin: 12.6,
   labels: { ...D11_SCENARIO.labels, brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border, where the S3 goes on)' },
   ends: { a: { kind: 'joins', with: 'the D11 from Jaroměř' }, b: { kind: 'continues', with: 'the S3 in Poland' } },
