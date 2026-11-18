@@ -156,7 +156,7 @@ export class View {
   private exag = 1;
   private dirty = true;
   private routeGroups = new RouteGroups(this.world,
-    () => new Set<THREE.Material>([this.collarMaterial(), this.ribbonMaterial(), ...Object.values(this.markerMats)]), (material) => this.retire(material));
+    () => new Set<THREE.Material>([this.collarMaterial(), this.ribbonMaterial(), this.portalMaterial(), ...Object.values(this.markerMats)]), (material) => this.retire(material));
   private routeInputs = new Map<string, { result: Result; surfaces: readonly CrossingSurface[] }>();
   /** editing guide: the tangent lines through the active bend (dragged, hovered or selected) */
   private guide: THREE.Group | null = null;
@@ -1100,7 +1100,8 @@ export class View {
     }
     flushGround();
     // bridge deck edges and piers, tunnel portals
-    const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
+    // (`into`: the index list it goes to; `lid`: closed on top)
+    const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color, into = idx, lid = false) => {
       const nx = -ty, ny = tx;
       const corners: number[] = [];
       for (const [sa, sc] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
@@ -1109,9 +1110,13 @@ export class View {
       }
       for (let f = 0; f < 4; f++) {
         const a0 = corners[2 * f], a1 = corners[2 * f + 1], b0 = corners[(2 * f + 2) % 8], b1 = corners[(2 * f + 3) % 8];
-        idx.push(a0, b0, a1, b0, b1, a1);
+        into.push(a0, b0, a1, b0, b1, a1);
       }
+      if (lid) into.push(corners[1], corners[3], corners[5], corners[1], corners[5], corners[7]);
     };
+    // The tunnel portals: drawn without the earthworks' depth offset (seen from the hill above, that offset pulls
+    // their walls, almost edge-on, through the ground as thin lines)
+    const portalIdx: number[] = [];
     const shade = (c: THREE.Color, f: number) => c.clone().multiplyScalar(f);
     const supports = structureFootprints({ ...r, crownWidth });
     // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
@@ -1201,11 +1206,14 @@ export class View {
           }
         }
       } else if (run.kind === KIND.tunnel) {
-        for (const i of [Math.max(0, run.i0 - 1), Math.min(n - 1, run.i1 + 1)]) for (const [lo, hi] of strips) {
-          // one portal per tube, centred on its carriageway
+        for (const [i, out] of [[Math.max(0, run.i0 - 1), -1], [Math.min(n - 1, run.i1 + 1), 1]]) for (const [lo, hi] of strips) {
+          // one portal per tube, centred on its carriageway, standing out of the portal face into the approach
+          // cut (behind the face it would lie a metre or two under the hill, close enough for the earthworks'
+          // depth offset to show its edges through the ground as thin lines)
           const half = (hi - lo) / 2, [cx, cy] = across({ x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i] }, (lo + hi) / 2);
-          boxAt(cx, cy, r.tx[i], r.ty[i], r.grade[i] - 0.5, r.grade[i] + 8, 1.5, half + 1.5, new THREE.Color(0x55555c));
-          boxAt(cx, cy, r.tx[i], r.ty[i], r.grade[i], r.grade[i] + 6.5, 1.8, half - 0.5, new THREE.Color(0x111114));
+          const ox = r.tx[i] * out, oy = r.ty[i] * out;
+          boxAt(cx + ox * 1.5, cy + oy * 1.5, r.tx[i], r.ty[i], r.grade[i] - 0.5, r.grade[i] + 8, 1.5, half + 1.5, new THREE.Color(0x55555c), portalIdx, true);
+          boxAt(cx + ox * 1.65, cy + oy * 1.65, r.tx[i], r.ty[i], r.grade[i], r.grade[i] + 6.5, 1.65, half - 0.5, new THREE.Color(0x111114), portalIdx);
         }
       }
     }
@@ -1225,6 +1233,20 @@ export class View {
     yield;
     g.computeVertexNormals();
     yield;
+    if (portalIdx.length) {
+      // (their own vertices: flat-shaded boxes, the ribbon's attributes per vertex)
+      const attrs = { position: [pos, 3], color: [col, 3], elev: [elev, 1], ink: [ink, 1], ewKind: [kinds, 1], ewGeo: [geo, 3] } as const;
+      const pg = new THREE.BufferGeometry();
+      for (const [name, [src, size]] of Object.entries(attrs)) {
+        const a: number[] = [];
+        for (const k of portalIdx) for (let c = 0; c < size; c++) a.push(src[k * size + c]);
+        pg.setAttribute(name, new THREE.Float32BufferAttribute(a, size));
+      }
+      pg.computeVertexNormals(); pg.computeBoundingSphere();
+      const portals = new THREE.Mesh(pg, this.portalMaterial());
+      portals.name = 'tunnel-portals';
+      out.push(portals);
+    }
 
     out.push(...this.centreline(r, bad));
 
@@ -1325,6 +1347,9 @@ export class View {
     return ribbonMaterial;
   }
   private ribbonMat: THREE.Material | null = null;
+  /** the tunnel portals' material: the ribbon's, without its depth offset */
+  private portalMaterial() { return this.portalMat ??= makeEarthworkMaterial(this.terrainU, { side: THREE.DoubleSide }); }
+  private portalMat: THREE.Material | null = null;
 
   /** Centreline (screen-space width so it reads at any zoom) and its see-through ghost. */
   private centreline(r: Result, bad: Uint8Array): THREE.Object3D[] {
