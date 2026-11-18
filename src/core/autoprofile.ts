@@ -102,9 +102,12 @@ export interface AutoProfileOptions {
    * has a tunnel mode (the cost function then answers kinds PROFILE_KIND.open / .inTunnel), else a tunnel is
    * priced station by station. */
   portalDepth?: number;
-  /** With `portalDepth`: the steepest a line wholly in a tunnel between two knots may be, as a fraction (NV 264/2009
-   * annex 2.2: no new tunnel steeper than 5 %): the tunnel mode takes no steeper one. Undefined: the road's own limit. */
+  /** With `portalDepth`: the steepest a line in a tunnel longer than `tunnelHardFrom` may be, as a fraction (NV 264/2009
+   * annex 2.2: no new tunnel over 500 m steeper than 5 %): the tunnel mode takes no line steeper between two knots wholly
+   * in a tunnel, and where its line still has a tunnel that long steeper anywhere (at its ends), none steeper anywhere
+   * in a tunnel. Undefined: the road's own limit. */
   tunnelHardGrade?: number;
+  tunnelHardFrom?: number;
   /** optional upper h bound (manual tunnel cover); NaN = none */
   maxH?: ArrayLike<number>;
   /** search for the material value that balances cut and fill (see BalanceSearch) */
@@ -590,6 +593,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const x = solve(lut, opt.maxGradient, u, pd, null, r);
       if (!check(x)) continue;
       if (lawful && missesHard(x, r)) { fallback ??= x; continue; }
+      // A line with a tunnel the law forbids (over 500 m, steeper than 5 %: solve) that the normal band holds: the
+      // wide band's line, where it has none (a tunnel kept to the limit may run deeper than the band; D35 road)
+      if (!gentle && pd === pad && steepLongTunnel(x, r)) {
+        const wide = solve(lut, opt.maxGradient, u, pad * 5, null, r);
+        if (check(wide) && !(lawful && missesHard(wide, r)) && !steepLongTunnel(wide, r)) return wide;
+      }
       if (gentle && pd === pad && missesClearance(x, r)) {
         const wide = solve(lut, opt.maxGradient, u, pad * 5, null, r);
         if (check(wide) && wide.cost < x.cost) return wide;
@@ -736,7 +745,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       add(clrX[q]); add(g[i]); add(minH?.[i] ?? NaN); add(maxH?.[i] ?? NaN); add(opt.eitherH?.above[i] ?? NaN); add(opt.eitherH?.below[i] ?? NaN);
       add(penaltyAt ? penaltyAt[i] : clearancePenalty); add(hard?.[i] ?? 0);
     }
-    add(opt.tunnelHardGrade ?? NaN);
+    add(opt.tunnelHardGrade ?? NaN); add(opt.tunnelHardFrom ?? NaN);
     return `${tag}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}:${count}`;
   }
 
@@ -862,12 +871,33 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step = 1): Solved | null {
     const plain = solveIn(table, gmax, u, padM, around, range, step, false);
     if (!plain?.tunnel) return plain;
-    return solveIn(table, gmax, u, padM, around, range, step, true) ?? plain;
+    const t = solveIn(table, gmax, u, padM, around, range, step, true);
+    if (!t || !steepLongTunnel(t, range)) return t ?? plain;
+    return solveIn(table, gmax, u, padM, around, range, step, true, undefined, true) ?? t;
+  }
+  /** Whether a line has a tunnel (deeper than its portal at the cost samples) longer than `tunnelHardFrom` that is
+   * steeper than `tunnelHardGrade` between two knots anywhere in it. */
+  function steepLongTunnel(x: Solved, r: Range): boolean {
+    const cap = opt.tunnelHardGrade, portal = opt.portalDepth, from = opt.tunnelHardFrom ?? 0;
+    if (cap === undefined || portal === undefined) return false;
+    let start = NaN, steep = false;
+    for (let k = r.ka; k < r.kb; k++) {
+      const slope = (x.z[k + 1] - x.z[k]) / Dk(k);
+      for (let q = costStart[k]; q < costStart[k + 1]; q++) {
+        if (x.z[k] + slope * (cS[q] - knotS[k]) - cG[q] <= -portal) {
+          if (Number.isNaN(start)) { start = cS[q]; steep = false; }
+          if (Math.abs(slope) > cap + 1e-9) steep = true;
+          if (steep && cS[q] - start > from) return true;
+        } else start = NaN;
+      }
+    }
+    return false;
   }
   /** `probe`: only the height range each knot's line may take (grid units from zA, with B's correction `corrAt`)
    * and the steepest grade step of each interval, handed to it; no line is searched. */
+  /** `strict` (tunnel mode): the tunnel grade limit holds for every interval with any of its line in a tunnel. */
   function solveIn(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step: number, tunnelMode: boolean,
-    probe?: (zlo: Int32Array, zhi: Int32Array, dzMaxK: Int32Array, corrAt: (k: number) => number) => void): Solved | null {
+    probe?: (zlo: Int32Array, zhi: Int32Array, dzMaxK: Int32Array, corrAt: (k: number) => number) => void, strict = false): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
     // the end correction below spreads ≤ u/2 over the knots after corrFrom: keep that much grade in
@@ -1083,7 +1113,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           }
           seg[d2] = c;
           // no line wholly in a tunnel steeper than the law allows
-          if (tunnelMode) segIn[d2] = tunnelGrade === undefined || !deepIn[d2] || openIn[d2] || Math.abs(slope) <= tunnelGrade + 1e-9 ? ci : Infinity;
+          if (tunnelMode) segIn[d2] = tunnelGrade === undefined || !deepIn[d2] || (openIn[d2] && !strict) || Math.abs(slope) <= tunnelGrade + 1e-9 ? ci : Infinity;
         }
         // a line may enter or leave a tunnel here where the ground is shallower than a portal
         const free = tunnelMode && gKnot - (zm + cIn) < portalDepth;
