@@ -1271,13 +1271,21 @@ The two "Open:" items of the sections above, shots 510–513 (`scripts/render-wo
 - **Bills.** D11 frozen (M CZK): straight +11.3, demo +53.9, direct-80 +46.8, direct-90 +13.7 (each explained at
   COST_MODEL_VERSION 52); best*, town-centre, town-controls unchanged. Validity unchanged everywhere. Starters: D11
   8,787.0 → 8,798.2; Královec railway 10,690.3 → 10,742.0 (km 12.98: three houses 53 M, the ramp's walls 109 → 82 m);
-  D3 full 36,143.5 → 36,185.2; D3 road 3,904.2 → 3,914.2; D3 0302 −0.2; D3 0304 10,089.0 → 10,024.5 (below); D11
-  retired railway −2.3 (not valid either way); the rest unchanged.
+  D3 full 36,143.5 → 36,185.2; D3 road 3,904.2 → 3,914.2; D3 0302 −0.2; D3 0304 10,089.0 → 10,115.5; D11 retired
+  railway −2.3 (not valid either way); the rest unchanged.
+- **A reroute through homes weighed against our road over it.** D3 0304 km 9.14: the tertiary road's bridge over us cannot
+  get back down to it (its ramp, as on main; no house in its way), and no box under us carries a tertiary road. On main
+  the stuck bridge sent the separation retry, which put our road over it. With the strip the 2.8 km reroute became
+  buildable (main's said "steep": the house-priced line search now finds another one), through 3 homes and 6 other
+  buildings (261 M), and only stuck crossings ask that retry. A reroute through homes already asked the grade retry for a
+  box under us (model 33, raised only in proportion: kept where the whole bill rises by no more than the reroute's
+  price); where the road gets no box, that retry now weighs our road over it on its bridge instead. D3 0304: +94 M on
+  the whole bill for 261 M of reroute, so our bridge km 9.09–9.18 over the road again, nothing bought out there
+  (10,115.5 M; main 10,089.0). The whole D3 km 33.04, the same village, which main had rerouted through 8 houses
+  (259 M): our bridge too. Frozen bills unchanged.
 - **Open:**
-  - D3 0304 km 9.14 (and the whole D3 km 33.04): the tertiary road is now rerouted 2.8 km through 3 homes and 6 other
-    buildings (261 M), Auto's last resort, where its overbridge, which could not get back down, used to send the grade
-    over it (our bridge, 64 M dearer, nothing demolished). A reroute through homes does not ask the separation retry
-    for room.
+  - A crossing's own works that buy out a home (a junction approach, a bridge's ramps) do not ask that retry; only
+    reroutes through homes, Auto's last resort, do.
   - The strip's width is not differentiated by the size of the works (a track's regrade and a motorway's embankment
     keep the same 3 m); no source tells them apart (research/85).
 

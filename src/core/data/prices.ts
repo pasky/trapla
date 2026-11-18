@@ -180,7 +180,8 @@
  * behind a wall the strip's width from it (no wall squeezed in closer); a reroute's new road (its pieces round at their
  * ends), a turning area and a road moved aside buy out what stands within it (a kept house: a problem, or the reroute
  * keeps clear). A reroute's earthworks keep off our bridge's piers. A reroute led to a crossing whose works take a home
- * anyway takes none more (Auto's last resort, and the retry for reroutes through homes, count each home once). Where
+ * anyway takes none more (Auto's last resort, and the retry for reroutes through homes, count each home once); for a road
+ * no box under us carries, that retry weighs our road over it on its bridge (in proportion, model 33). Where
  * another road's crossing lifts or lowers a rebuilt stretch kept on its old road, the stretch is built on the old road's
  * line (which that road crossed), not on the kernel's line up to 12 m off it. D11 frozen (M CZK): straight +11.3 (a house
  * 11.0 beside the km 6.32 underpass ramp, its wall 1.5 m from it before; a shed by the km 16.58 reroute; noise walls

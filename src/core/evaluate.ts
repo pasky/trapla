@@ -467,7 +467,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const home = !c.requestedType && (c.type === 'reconnection' || c.type === 'diversion') && ownHomes(c, result.crossings, dwelling).length > 0;
       if (!asked && !home) return [];
       const g = ctx.terrain.heightAt(c.x, c.y), box = c.requestedType === 'bridge' ? undefined : underpassPrice(c, 0, 0);
-      if (c.requestedType !== 'bridge' && !box) return [];
+      // (a reroute through homes of a road no box under us carries: our road over it, on its bridge, is what is weighed)
+      if (c.requestedType !== 'bridge' && !box && !home) return [];
       let z = box ? g + box.minHeight - LOWERING_RULES.maxDepth : g + (ROAD_CLASSES[c.cls].noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight);
       for (const v of c.issues ?? []) if (v.crossing.code === 'square' && v.crossing.actual !== undefined && v.crossing.required !== undefined)
         z = Math.max(z, result.grade[c.i] + v.crossing.actual - v.crossing.required);
