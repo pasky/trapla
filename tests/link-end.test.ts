@@ -105,7 +105,9 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     expect(Math.hypot(north.at(-1)!.x - 4200, north.at(-1)!.y - 9462)).toBeLessThan(30);
     expect(b.r.violations).toEqual([]);
     expect(b.c.linkLength!).toBeGreaterThan(a.c.linkLength! + 100);
-    expect(b.c.cost).toBeGreaterThan(a.c.cost);
+    // billed on what is drawn (here dearer than Auto's line only by its length: Auto's needs a culvert, this one none)
+    expect(b.c.cost).toBeCloseTo(b.c.linkLength! * b.c.roadPerKm! / 1000 + (b.c.culvertCost ?? 0) + (b.c.houseCost ?? 0), 0);
+    expect(b.c.culverts).toBeUndefined(); expect(a.c.culverts).toBe(1);
     // only this crossing's bill moves: our road's own works stay as they were
     const ours = (r: typeof a.r) => r.cost.total - r.cost.crossings - r.cost.surcharge;
     expect(ours(b.r)).toBeCloseTo(ours(a.r), -3);

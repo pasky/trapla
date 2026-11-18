@@ -1429,7 +1429,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     } else {
       // Built as a designer would (link-route.ts): a profile within the class gradient, culverts,
       // nothing it may not cross; an automatic line that cannot is searched for a gentler one.
-      const routeKey = `${key}|${c.cls}|${shape?.length ? JSON.stringify(shape) : ''}`;
+      const routeKey = `${key}|${c.cls}|${shape?.length ? JSON.stringify(shape) : ''}${ended ? '|ended' : ''}`;
       let plan = routed.get(routeKey);
       const rate = (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       if (!plan) plan = remember(`r|${routeKey}|${rate}`, () => {
@@ -1445,6 +1445,16 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
         if (plan.problems.includes('steep') && row.rampSteepest > row.rampGradient) {
           const steeper = profileLink(survey, row.rampSteepest, linkEnv);
           if (better(steeper, plan)) plan = steeper;
+        }
+        // (to a road the player chose away from our road: also straight across the fields, where that is better)
+        if (ended && !shape?.length) {
+          const chord = surveyLink([a, b], g.width, linkEnv);
+          let direct = profileLink(chord, row.rampGradient, linkEnv);
+          if (direct.problems.includes('steep') && row.rampSteepest > row.rampGradient) {
+            const steeper = profileLink(chord, row.rampSteepest, linkEnv);
+            if (better(steeper, direct)) direct = steeper;
+          }
+          if (better(direct, plan)) plan = direct;
         }
         // (a river or a motorway between its ends cannot be gone around beside our road, nor,
         // practically, a railway the straight line between its ends crosses as well)
