@@ -1997,3 +1997,44 @@ leaving one out.
 Left: a reachable pin's envelope also narrows the boundary windows that do not
 contain it (the pin −9 m at km 2.7 moves km 12.7, EXPECTED in edit-locality): physics there (a line at its limit),
 and leaving those windows unpruned made that pin's line 1.3 bn dearer, so it stays.
+
+## A pin that leaves a crossing; bends left straight (P2 fixes re-check P1/P2s, cost model 50, 2026-11-18)
+
+**A met pin left a stream in the railway's cut** (Královec starter, the suggested 439.5 m at km 2.03: the cut and cover
+began at km 2.15 instead of km 2.0, the stream at km 2.087 ran through the 8 m open cut, not valid, 198 M cheaper, both
+fixes unbuildable). Where the cover starts is not the question: a tunnel goes on to its portal where the ground is a
+structure height (9 m) over the grade (`structures.ts`, the search's tunnel mode), and a stream stays over a tunnel
+only 9 m under its bed (`waterBelow`), else it needs our line 2.8 m over its bed for a culvert (`waterMin`), the grade
+search's either-or clearance. The pinned line is 8.1 m under the bed there: a box 9 m high would stand 0.9 m above the
+stream, and from 439.0 m at km 2.03 (the pin's tolerance) a 12.5 ‰ line with its rounding cannot get 0.3–0.8 m lower
+57 m on. So the pin and the stream conflict: the search paid the clearance penalty for the pin (pins are hard), and
+the engineering had no remedy. A designer told to hold that height would carry the stream over the cut in a trough
+(not modelled: a new structure, its price and drawing) or move the pin.
+Now (`autoProfile`, a wrapper round the search): a pin met only by missing a crossing's own clearance (`pinBounds`:
+streams, rivers, railways, motorways passed under, protected areas, the player's structures; not a retry's floors,
+narrowings or roads to clear) that Auto's own line keeps is left out like a pin out of the slopes' reach, blamed on
+the pin nearest the miss, reason `clearance`: "Pinned height out of reach: a stream", the detail says where and why.
+Only a clearance the search must keep counts: the law's (`hardClearance`) or one a first pass missed and the
+separation retry asks again at any price (`clearancePenaltyAt` > CLEARANCE_PENALTY); a first pass's miss may still be
+met by the retries (D3 whole, a pin −9 m at km 9.41: the stream at km 8.13 missed in the first pass, cleared by the
+retry, VALID as before). A suggested height must meet every such crossing in its first solve (`pinStrict`): 438.3 m
+here, met, VALID. The repro bills 10.69 bn (Auto's own line) with only the pin's problem
+(tests/rail-drag-locality.test.ts). A pin left out holds no support lift (they kept the line's height there). Found
+on the way: the block memo's key left out pins outside the range, though every pin bounds every knot (the envelope)
+and adds a finer pass; a pinned and an unpinned solve now share a memo, so the key holds all pins of a pinned solve.
+Edit-locality: Královec pin +5 m at km 4.2 10.49 → 10.69 bn and D11 pin −8 m at km 7.2 3.82 → 3.66 bn ("out of reach:
+a stream / a railway" instead of the clearance problems), both not valid either way; nothing else moved.
+A stream in our cutting (By hand, a player's structure) no longer offers a bridge: "Lower our road here by 1.3 m to
+tunnel under the stream, or raise it by 10.5 m for a 2.0 × 2.0 m culvert" (the nearer first), and the footprint's
+"Our earthworks block a stream" says "our cutting runs through it" instead of "−8.0 m of earth".
+
+**The unreachable pin's fix is a button** ("Set it to 438.3 m", on the pin's card and with every problem that has a
+suggested pin), like the other cards' fixes (screenshots 480, 481).
+
+**A dragged bend left on the line** (D35 km 4.2 dragged back past bend 2: "Bend 3 · turns 0° · no curve (straight)",
+its number over bend 2's; D11 a drag along the straight: "turns 0° · R 1,350 m · 4 m of curve"). On release
+(`map-gestures.ts onPiDragEnd`, `core/bend-order.ts dropStraightBends`), the dragged bend and its two neighbours that
+turn less than half a degree (the card's whole degrees would say 0°; game rule, no norm) go, hairpins and an old
+road's own corners excepted, with their radius notes; the line is the same (D35: 19.06 bn either way). A drag along a
+straight road then leaves it as it was. Live drags unchanged (screenshots 484, 485; tests/bend-order.test.ts).
+Left: a pin and a stream in conflict could be met by a trough carrying the stream over our cut (a new structure).
