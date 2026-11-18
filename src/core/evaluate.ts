@@ -278,7 +278,7 @@ export interface EvalOptions {
   /** A rebuilt stretch: the ways that joined its old road (the stretch's side roads, as legacy way ids). Where
    * the new line crosses one at its level, Auto keeps its access there: the side road joins the new road in a
    * junction (an access for a track or service road), as it joined the old one, rather than being cut. */
-  sideWays?: readonly number[];
+  sideWays?: readonly { way: number; x: number; y: number }[];
   /** Drag preview of a long route (core/preview-window.ts): evaluate only the stations within
    * [s0, s1] of the route's own chainage as if they were the whole route, with the grade continuing
    * `grades` at its ends (endpointElevations give the heights). Never used for a scored result. */
@@ -1859,20 +1859,28 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     const key = `${e.s.toFixed(3)}/${e.into}/${e.top.toFixed(3)}/${limit.toFixed(2)}`, known = coneHouseMemo.get(key);
     if (known) return known;
     let cost = 0, kept = false;
-    const c = { x: e.x, y: e.y, tx: e.tx, ty: e.ty, half: b / 2, top: e.top };
+    // (none where the ground stands at the cone's top: the abutment is set into a bank, coneStands)
+    if (e.top - e.ground < 0.5) { const none = { cost, kept }; coneHouseMemo.set(key, none); return none; }
+    const c = { x: e.x, y: e.y, tx: e.tx, ty: e.ty, half: b / 2, top: e.top }, bi = wallable.index;
     const strip = coneCovers(c, limit, BUILDING_RULES.clearance, (x, y) => terrain.heightAt(x, y));
     const reach = Math.min(limit, c.half + CONE.berm + 3 * CONE.slope * (e.top - e.ground)) + c.half + BUILDING_RULES.clearance;
-    // (a house under the deck where it is low goes whatever the end is: finishBuildings, BUILDING_RULES.underDeckFalsework)
-    const deck = (x: number, y: number) => {
+    // (a house the deck takes anyway, where it is low over it, goes whatever the end is: finishBuildings' underDeck,
+    // with the deck's underside at the abutment's depth; a garage or shed under it always goes)
+    const underDeck = (j: number) => (x: number, y: number) => {
       const dx = x - e.x, dy = y - e.y, u = dx * e.tx + dy * e.ty;
-      return u >= -BUILDING_RULES.clearance && u <= limit && Math.abs(-dx * e.ty + dy * e.tx) <= c.half + BUILDING_RULES.clearance
-        && e.top + CONE.deckDepth - terrain.heightAt(x, y) < BUILDING_RULES.underDeckFalsework;
+      if (u < -BUILDING_RULES.clearance || u > limit || Math.abs(-dx * e.ty + dy * e.tx) > c.half + BUILDING_RULES.clearance) return false;
+      return bi.kind[j] === BUILDING_KIND.minor || e.top + CONE.deckDepth - 1.2 - terrain.heightAt(x, y)
+        < Math.max(BUILDING_RULES.underDeckFalsework, bi.levels[j] * NOISE.storeyHeight + BUILDING_RULES.underDeckGap);
     };
-    // (in front of the abutment only: behind it is the embankment, screened as earthworks)
+    // (in front of the abutment only: behind it is the embankment, screened as earthworks; a house the player buys
+    // goes anyway; `near` may name a house twice)
     const along = (limit + BUILDING_RULES.clearance) / 2, mx = e.x + e.tx * (limit - BUILDING_RULES.clearance) / 2, my = e.y + e.ty * (limit - BUILDING_RULES.clearance) / 2;
-    wallable.index.near(e.x, e.y, reach, (j) => {
-      if (!wallable.index.hits(j, mx, my, e.tx, e.ty, along, reach) || !wallable.index.anyPoint(j, 2, strip)) return;
-      if (wallable.keep.has(j)) kept = true; else if (!wallable.index.anyPoint(j, 2, deck)) cost += wallable.index.cost[j];
+    const seen = new Set<number>();
+    bi.near(e.x, e.y, reach, (j) => {
+      if (seen.has(j) || wallable.skip.has(j)) return;
+      seen.add(j);
+      if (!bi.hits(j, mx, my, e.tx, e.ty, along, reach) || !bi.anyPoint(j, 2, strip)) return;
+      if (wallable.keep.has(j)) kept = true; else if (!bi.anyPoint(j, 2, underDeck(j))) cost += bi.cost[j];
     });
     const out = { cost, kept };
     coneHouseMemo.set(key, out);
@@ -2355,9 +2363,16 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
       ? [{ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade' as const, cost: 0 }] : [];
   })) : [];
   if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
+  // a rebuilt stretch's side roads: the crossing of each nearest to where it joined the old road keeps its access
+  const sideAccess = new Set<CrossingResult>();
+  for (const w of opts.sideWays ?? []) {
+    let near: CrossingResult | undefined;
+    for (const c of crossings) if (c.roadId === w.way && (!near || Math.hypot(c.x - w.x, c.y - w.y) < Math.hypot(near.x - w.x, near.y - w.y))) near = c;
+    if (near) sideAccess.add(near);
+  }
   const resolve = () => resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
     ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor,
-    opts.sideWays?.length ? (c: CrossingResult) => c.roadId !== undefined && opts.sideWays!.includes(c.roadId) ? sideJunctionCost(c.cls, cat.minor) : undefined : undefined);
+    sideAccess.size ? (c: CrossingResult) => sideAccess.has(c) ? sideJunctionCost(c.cls, cat.minor) : undefined : undefined);
   let crossingIssues = resolve();
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
   // other roads' works it is kept clear of).
@@ -2374,6 +2389,15 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     // a house you keep is never demolished for a reroute
     if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
+  };
+  /** Houses on a paved turning disk: bought out with it (a kept one: a problem). */
+  const housesOnDisk = (x: number, y: number, radius: number) => {
+    const take: number[] = []; let kept = false;
+    if (bld) bld.near(x, y, radius + 5, (j) => {
+      if (gone[j] || take.includes(j) || bld.facadeDistanceSq(j, x, y) >= radius * radius) return;
+      if (keptIds.has(j)) kept = true; else take.push(j);
+    });
+    return { take, kept };
   };
   /** Houses still standing under a new road (a reroute): bought out and demolished with it. */
   const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
@@ -2418,7 +2442,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   if (!preview) {
     const left = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i]));
     const right = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i]));
-    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, beside, railway, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
+    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, housesOnDisk, beside, railway, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
       streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
       left, right };
     // (a retry builds only the crossings near what it changed: crossings-kept.ts)
@@ -2478,7 +2502,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++)
       if (!onOld(path[k - 1]) || !onOld(path[k])) under(path[k - 1], path[k], g.width / 2);
     const R = g.turnaroundRadius ?? 0;
-    if (R > 0) for (const p of g.turnarounds ?? []) under({ x: p.x - R, y: p.y }, { x: p.x + R, y: p.y }, R);
+    if (R > 0) for (const p of g.turnarounds ?? []) { const d = housesOnDisk(p.x, p.y, R); for (const j of d.take) found.add(j); if (d.kept) bld.near(p.x, p.y, R + 5, j => { if (keptIds.has(j) && bld.facadeDistanceSq(j, p.x, p.y) < R * R) kept.add(j); }); }
+    for (const k of houses.kept) if (kept.has(k.j)) k.hit = true;
     for (const j of found) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'reroute', strip: false }); }
     if (kept.size) houses.buildingViolations.push({ kind: 'building', basis: 'game', s0: c.s0, s1: c.s1, title: 'Road through a kept building',
       fix: 'Buy it out, or move the road', detail: 'Kept: it cannot be demolished. A road we move aside runs over it.', target: { buildings: [...kept] },

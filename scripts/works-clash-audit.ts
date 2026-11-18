@@ -83,7 +83,12 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
     };
     for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++) if (!onOld(path[k - 1]) || !onOld(path[k])) check(path[k - 1], path[k], g.width / 2, 'moved');
     const R = g.turnaroundRadius ?? 0;
-    if (R > 0) for (const p of g.turnarounds ?? []) check({ x: p.x - R, y: p.y }, { x: p.x + R, y: p.y }, R, 'turn');
+    if (R > 0) for (const p of g.turnarounds ?? []) bld.near(p.x, p.y, R + 5, j => {
+      const key = `${f.s0}:${f.roadId}:moved:${j}`;
+      if (!gone.has(j) && !seen.has(key) && bld.facadeDistanceSq(j, p.x, p.y) < R * R) {
+        seen.add(key); out.push({ path: 'turn', i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
+      }
+    });
   }
   for (const surface of surfaces) {
     const c = surface.crossing, pathKind = surface.tie ? 'tie' : surface.link ? 'link' : 'road';

@@ -111,7 +111,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const sideWays = route.source ? project.connections.flatMap(c => {
     if (!c.id.includes(':branch:') || !c.ports.some(p => p.kind === 'route' && p.routeId === route.id)) return [];
     const port = c.ports.find(p => p.kind === 'source'), way = port?.kind === 'source' ? options.sourceWays?.get(port.location.sourceId) : undefined;
-    return way === undefined ? [] : [way];
+    return way === undefined ? [] : [{ way, x: c.position.x, y: c.position.y }];
   }) : [];
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,

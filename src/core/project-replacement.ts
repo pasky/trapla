@@ -98,7 +98,9 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
   // Every side road that joined the old stretch stays connected.
   const crossed = new Set<number>();
   // (a free at-grade meeting right at the stretch's end is that end's old junction: reconnected below)
-  for (const c of r.crossings) if (c.roadId !== undefined && (c.cost > 0 || (c.s > 1 && c.s < r.length - 1))) crossed.add(c.roadId);
+  // (one carried past the new road on a bridge, under it or over it has no access to it there: reconnected below)
+  for (const c of r.crossings) if (c.roadId !== undefined && (c.cost > 0 || (c.s > 1 && c.s < r.length - 1))
+    && !['bridge', 'tunnel', 'overbridge', 'underpass'].includes(c.type)) crossed.add(c.roadId);
   // (a continuation's joint at the stretch end builds no junction: side roads there are reconnected below)
   for (const f of r.footprintConflicts) if (f.roadId !== undefined && f.action !== 'blocked' && !f.continuation) crossed.add(f.roadId);
   // At a stretch end the old road goes on, often as another mapped way of the same class: that is the

@@ -368,16 +368,18 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       if (row.noAtGrade && c.h > -CROSSING_RULES.underDepth + 1e-6) issue(c, 'depth', 'A bridge over our road needs a deeper cutting here',
         `Lower our road here by ${(c.h + CROSSING_RULES.underDepth).toFixed(1)} m, to ${CROSSING_RULES.underDepth} m below the crossed road`, -c.h, CROSSING_RULES.underDepth);
     } else if (choice === 'junction') {
-      c.cost = junctionCost(c) ?? JUNCTION;
+      // (a rebuilt road's side road keeps its access at its price, an existing access: no spacing)
+      const access = gradeSeparated || row.noAtGrade ? undefined : sideAccess?.(c);
+      c.cost = access ?? junctionCost(c) ?? JUNCTION;
       const near = junctions.reduce((a, s) => Math.abs(c.s - s) < Math.abs(c.s - a) ? s : a, junctions[0]);
       const gap = Math.abs(c.s - near);
-      if (gap < junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
+      if (access === undefined && gap < junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
         `Keep at least ${junctionSpacing} m from the junction (or route end) at km ${(near / 1000).toFixed(2)} — now ${gap.toFixed(0)} m — or choose a bridge instead`, gap, junctionSpacing, near);
       if (c.h <= -CROSSING_RULES.underDepth) issue(c, 'depth', 'Junction would lie deep below the crossed road',
         `Raise our road here by more than ${(-CROSSING_RULES.underDepth - c.h).toFixed(1)} m, out of the ${CROSSING_RULES.underDepth} m deep cutting, or choose "Its bridge over us"`, c.h, -CROSSING_RULES.underDepth);
       if (c.h >= CROSSING_RULES.overHeight) issue(c, 'clearance', 'Junction would lie high above the crossed road',
         `Lower our road here by more than ${(c.h - CROSSING_RULES.overHeight).toFixed(1)} m, below ${CROSSING_RULES.overHeight} m above the crossed road, or choose "Our bridge over it"`, c.h, CROSSING_RULES.overHeight);
-      if (!row.noAtGrade) junctions.push(c.s);
+      if (!row.noAtGrade && (access === undefined || row.junction)) junctions.push(c.s);
     } else if (choice === 'underpass') {
       const box = underpassPrice(c, footprint[c.i], urban[c.i]);
       if (!box) issue(c, 'underpass', `A ${row.label} cannot pass through a small underpass`, 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"');
@@ -404,7 +406,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (!row.noAtGrade) anchors.push(c);
   }
   for (const c of priority) {
-    const access = gradeSeparated ? undefined : sideAccess?.(c);
+    const access = gradeSeparated || ROAD_CLASSES[c.cls].noAtGrade ? undefined : sideAccess?.(c);
     if (access === undefined || c.requestedType || c.type !== 'atGrade' || c.h <= -CROSSING_RULES.underDepth || c.h >= CROSSING_RULES.overHeight) continue;
     c.type = 'junction'; c.cost = access; anchors.push(c);
     if (ROAD_CLASSES[c.cls].junction) junctions.push(c.s);
@@ -510,6 +512,8 @@ export interface CrossingRoute {
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => LinkObstacle | null;
   /** Houses still standing under a new road from a to b, and what buying one out costs. */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
+  /** Houses on a paved disk (a turning area) still standing: those bought out with it, and whether one is kept. */
+  housesOnDisk?: (x: number, y: number, radius: number) => { take: number[]; kept: boolean };
   /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
   beside?: import('./crossing-works').WorksContext['beside'];
   /** A mapped railway under a road of this half-width from a to b. */

@@ -1,6 +1,6 @@
 // Bounded study geometry on real OSM polylines. Quantities are measured from these same paths.
 import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute, UnderpassWing } from './crossings';
-import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
+import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJunctionCost } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { STRUCTURE_RULES } from './data/prices';
@@ -36,6 +36,8 @@ const MINOR_WAYS = new Set(['track', 'service']);
 export const CLOSURE_ROUND = 500;
 /** PROVISIONAL turning disk at a public road's closed end: radius this × the road's width (as road-realignment.ts). */
 const TURNING_RADIUS = 1.5;
+/** a closed road's turning area would stand on a house the player keeps */
+const TURN_ON_KEPT = 'turning area on a kept house';
 /** How much of a kept piece's old road beyond its cut end stands for where it now ends (what a road rebuilt
  * beside our earthworks meets), m. Engine detail, not built. */
 const KEPT_END = 5;
@@ -282,6 +284,10 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       detail: `A new ${what} cannot cross ${thing} on the ground.`, basis: 'game',
       rule: 'Game rule: a new road crosses motorways and railways only on a bridge, and does not run through water or buildings' };
   }
+  if (message === TURN_ON_KEPT) return { title: `The turning area at the closed ${what}'s end lies on a house you keep`,
+    fix: 'Let the house go, or choose "Our bridge over it", an underpass or "Its bridge over us"', basis: 'game',
+    detail: `The ${what} is closed at our road and its cut end gets a turning area; the house stands on it.`,
+    rule: 'Game rule: a closed public road ends in a turning area; houses on it are bought out, one you keep may not be' };
   if (message === LINK_TOO_STEEP) return { title: `Your path for the new ${what} is too steep in places`,
     fix: 'Drag its bend points so that it runs more along the slope, or choose "Automatic path" on the crossing card',
     detail: `Even with earthworks up to ${LINK_MAX_SUPPORT} m deep it would be steeper than a ${what} may be.`, basis: 'game',
@@ -1545,10 +1551,11 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     }
     if (minor) heads = 0;
     if (heads) g.turnaroundRadius = TURNING_RADIUS * g.width; else delete g.turnaroundRadius;
-    // (a house the turning area stands on is bought out with it, as one under a new piece of road: the disk's square)
+    // (a house the turning area stands on is bought out with it, as one under a new piece of road; one you keep: a problem)
     for (const p of heads ? g.turnarounds.slice(-heads) : []) {
-      const R = TURNING_RADIUS * g.width;
-      for (const j of route.houses?.({ x: p.x - R, y: p.y }, { x: p.x + R, y: p.y }, R) ?? []) houses.add(j);
+      const on = route.housesOnDisk?.(p.x, p.y, TURNING_RADIUS * g.width);
+      for (const j of on?.take ?? []) houses.add(j);
+      if (on?.kept) diagnose(g, TURN_ON_KEPT);
     }
     const houseCost = [...houses].reduce((a, j) => a + (route.houseCost?.(j) ?? 0), 0);
     // (a turning disk paved like the road: its area over the road's width, at the road's rate per metre)
@@ -2188,7 +2195,9 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.realignCost ?? 0) + (c.houseCost ?? 0);
       if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Overbridge bill differs from measured quantities');
     }
-    if (c.type === 'junction' && works.every(w => Math.abs(JUNCTION + w + (c.houseCost ?? 0) - c.cost) > 0.01)) report('Junction bill differs from measured quantities');
+    // (the all-in junction, or a rebuilt road's side road's access / minor crossroads: sideJunctionCost)
+    const lumps = [JUNCTION, ...[undefined, 'local', 'track'].map(m => sideJunctionCost(c.cls, m as 'local' | 'track' | undefined))];
+    if (c.type === 'junction' && works.every(w => lumps.every(lump => Math.abs(lump + w + (c.houseCost ?? 0) - c.cost) > 0.01))) report('Junction bill differs from measured quantities');
   }
   return issues;
 }

@@ -94,6 +94,20 @@ describe('explicit crossing choices (automatic policy already covered in town.te
       .toEqual([MINOR_CROSSROADS.local, MINOR_CROSSROADS.mixed, ENDPOINT_JUNCTIONS['tie-in-minor'].cost]);
   });
 
+  // A rebuilt road's side road crossed by its new line keeps its access there (EvalOptions.sideWays): Auto's and the
+  // player's junction alike, at the access's price and without junction spacing; never on a motorway.
+  it("a rebuilt road's side road keeps its access, chosen or not", () => {
+    const access = (c: CrossingResult) => [1, 2].includes(c.roadId!) ? sideJunctionCost(c.cls) : undefined;
+    const side = (overrides: CrossingOverride[]) => {
+      const cs = [cross(1, 120, 'track'), cross(2, 200, 'motorway')];
+      return { cs, issues: resolveCrossings(cs, 300, [KIND.earth], [30, 30, 30], [0], [0], overrides, false, undefined, undefined, undefined, access) };
+    };
+    const auto = side([]), chosen = side([{ roadId: 1, type: 'junction' }]);
+    expect([auto.cs[0].type, auto.cs[0].cost, chosen.cs[0].type, chosen.cs[0].cost]).toEqual(['junction', sideJunctionCost('track'), 'junction', sideJunctionCost('track')]);
+    expect(chosen.issues).toEqual([]);
+    expect(auto.cs[1].type).not.toBe('junction');
+  });
+
   it('validates all requested bridge hits and motorway clearance, while the main-road bill owns their cost', () => {
     const cs = [cross(1, 3000, 'primary', 7), cross(1, 3050, 'primary', 4), cross(2, 5000, 'motorway', 7)];
     const issues = resolve(cs, [{ roadId: 1, type: 'bridge' }, { roadId: 2, type: 'bridge' }], [KIND.bridge]);
