@@ -33,3 +33,18 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('other ways\' wor
     expect(failures).toEqual([]);
   }, 300_000);
 });
+
+// Roads we move aside (footprint relocations) and the turning areas at cut roads' ends: what they are drawn over
+// is bought out (the demo design's service road at km 6.93 was moved aside through a 550 m² building, unbilled).
+describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('roads moved aside', () => {
+  it('stand on no house left standing', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { evalContext, loadPack } = await import('../scripts/loadpack');
+    const { evaluate } = await import('../src/core/evaluate');
+    const { worksClashes } = await import('../scripts/works-clash-audit');
+    const ctx = evalContext(loadPack('public/scenarios/d11'));
+    const r = evaluate(ctx, JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design);
+    expect(worksClashes(r, ctx, 9.5).filter(c => c.what === 'house')).toEqual([]);
+    expect(r.demolished.filter(d => d.in === 'reroute').map(d => d.j)).toContain(22326);
+  }, 120_000);
+});

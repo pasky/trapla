@@ -1,6 +1,6 @@
 // Invariant screen: does any crossed way's drawn earthworks (ramps to a bridge over us, junction approaches,
 // side-road regrades, reroutes) stand on a house that is kept, on a mapped railway, on one of our bridge's
-// piers or up into our deck — with no billed remedy? What is screened is what the renderer draws
+// piers or up into our deck — with no billed remedy? Also the turning areas at cut roads' ends against kept houses. What is screened is what the renderer draws
 // (render/crossing-surface.ts crossingSurfaces: the 1:1.5 slopes, cut short by priced walls).
 // npx tsx scripts/works-clash-audit.ts [--all] [design.json …]   (--all: every pack's starters and saved designs)
 import { existsSync, readFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { CATEGORIES } from '../src/core/data/categories';
 import { KIND } from '../src/core/structures';
 import { bridgeLayout } from '../src/core/bridge';
 import { protectedRasterCells } from '../src/core/protected-raster';
-import { crossingBaseHeight, crossingSurfaces, groundSegment } from '../src/render/crossing-surface';
+import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../src/render/crossing-surface';
 
 export interface WorksClash { path: string; i: number; s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck' | 'ours'; x: number; y: number; j?: number }
 
@@ -55,7 +55,37 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       piers.push({ x: r.x[i] + (r.x[i + 1] - r.x[i]) * t, y: r.y[i] + (r.y[i + 1] - r.y[i]) * t });
     }
   }
-  for (const surface of [...crossingSurfaces(r.crossings, natural, base)]) {
+  const surfaces = crossingSurfaces(r.crossings, natural, base);
+  // the paved turning disks at the ends of closed public roads: no house left standing on one
+  if (ctx.buildings) for (const t of turnaroundSurfaces(surfaces, natural)) {
+    const c = t.crossing, bld = ctx.buildings, inside = (x: number, y: number) => Math.hypot(x - t.center.x, y - t.center.y) < t.radius;
+    bld.near(t.center.x, t.center.y, t.radius + 5, j => {
+      const key = `${c.s}:${c.roadId}:turn:${j}`;
+      if (!gone.has(j) && !seen.has(key) && bld.anyPoint(j, 1, inside)) {
+        seen.add(key); out.push({ path: 'turn', i: 0, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
+      }
+    });
+  }
+  // roads moved aside (footprint relocations): their new pavement and turning areas keep off houses left standing
+  if (ctx.buildings) for (const f of r.footprintConflicts) if (f.feature === 'road' && f.action === 'relocation' && f.geometry) {
+    const g = f.geometry, bld = ctx.buildings, old = f.original ?? [];
+    const onOld = (p: { x: number; y: number }) => old.some((a, k) => k > 0 && (() => {
+      const b = old[k - 1], dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 1; })());
+    const check = (p: { x: number; y: number }, q: { x: number; y: number }, half: number, path: string) => {
+      const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+      bld.near(x, y, len / 2 + half + 5, j => {
+        const key = `${f.s0}:${f.roadId}:moved:${j}`;
+        if (!gone.has(j) && !seen.has(key) && bld.hits(j, x, y, tx, ty, len / 2, half)) {
+          seen.add(key); out.push({ path, i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
+        }
+      });
+    };
+    for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++) if (!onOld(path[k - 1]) || !onOld(path[k])) check(path[k - 1], path[k], g.width / 2, 'moved');
+    const R = g.turnaroundRadius ?? 0;
+    if (R > 0) for (const p of g.turnarounds ?? []) check({ x: p.x - R, y: p.y }, { x: p.x + R, y: p.y }, R, 'turn');
+  }
+  for (const surface of surfaces) {
     const c = surface.crossing, pathKind = surface.tie ? 'tie' : surface.link ? 'link' : 'road';
     let at = 0;
     const add = (what: WorksClash['what'], x: number, y: number, j?: number) => {

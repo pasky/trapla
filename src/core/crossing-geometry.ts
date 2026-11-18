@@ -1545,6 +1545,11 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     }
     if (minor) heads = 0;
     if (heads) g.turnaroundRadius = TURNING_RADIUS * g.width; else delete g.turnaroundRadius;
+    // (a house the turning area stands on is bought out with it, as one under a new piece of road: the disk's square)
+    for (const p of heads ? g.turnarounds.slice(-heads) : []) {
+      const R = TURNING_RADIUS * g.width;
+      for (const j of route.houses?.({ x: p.x - R, y: p.y }, { x: p.x + R, y: p.y }, R) ?? []) houses.add(j);
+    }
     const houseCost = [...houses].reduce((a, j) => a + (route.houseCost?.(j) ?? 0), 0);
     // (a turning disk paved like the road: its area over the road's width, at the road's rate per metre)
     const headLength = heads * Math.PI * (TURNING_RADIUS * g.width) ** 2 / g.width;

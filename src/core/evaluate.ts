@@ -2440,6 +2440,33 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     motorway: cat.mode === 'motorway', cutCover,
     ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}), ...(retiredAt ? { railRetired: retiredAt } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
+  // houses a road moved aside (its new pieces and the turning area at a cut end) stands on are bought out with it, as
+  // under a reroute; one you keep is a problem
+  for (const c of footprintCheck.conflicts) if (c.feature === 'road' && c.action === 'relocation' && c.geometry && bld) {
+    const g = c.geometry, found = new Set<number>(), kept = new Set<number>();
+    const under = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+      const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0;
+      bld.near((p.x + q.x) / 2, (p.y + q.y) / 2, len / 2 + half + 5, (j) => {
+        if (!gone[j] && bld.hits(j, (p.x + q.x) / 2, (p.y + q.y) / 2, tx, ty, len / 2, half)) (keptIds.has(j) ? kept : found).add(j);
+      });
+    };
+    // (not where it stays on its old line: the houses beside that are as they were)
+    const old = c.original ?? [], onOld = (p: { x: number; y: number }) => {
+      for (let k = 1; k < old.length; k++) {
+        const a = old[k - 1], b = old[k], dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 1) return true;
+      }
+      return false;
+    };
+    for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++)
+      if (!onOld(path[k - 1]) || !onOld(path[k])) under(path[k - 1], path[k], g.width / 2);
+    const R = g.turnaroundRadius ?? 0;
+    if (R > 0) for (const p of g.turnarounds ?? []) under({ x: p.x - R, y: p.y }, { x: p.x + R, y: p.y }, R);
+    for (const j of found) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'reroute', strip: false }); }
+    if (kept.size) houses.buildingViolations.push({ kind: 'building', basis: 'game', s0: c.s0, s1: c.s1, title: 'Road through a kept building',
+      fix: 'Buy it out, or move the road', detail: 'Kept: it cannot be demolished. A road we move aside runs over it.', target: { buildings: [...kept] },
+      rule: 'Game rule: a building you keep must stay clear of our road, its slopes and its working strip.' });
+  }
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
   // Grouped wall annotations must not relocate their construction to the first station's
