@@ -446,6 +446,11 @@ a 28 m wall, under one bridge with the one before it](docs/screenshots/390-rail-
 at km 5.61–5.70, once boxed in by walls of 25 and 16 m, part of one bridge](docs/screenshots/391-rail-kralovec-km-5-6-one-bridge-no-boxed-fill.png),
 [D11 km 2.42, once an 11.4 m wall beside road III/3012, on a cone](docs/screenshots/392-d11-km-2-42-end-on-a-cone-beside-the-road.png),
 [a closed end on an 8.5 m fill, its wall's height and price on the bridge card](docs/screenshots/393-d11-km-3-49-wall-within-10-m-billed.png).
+Cost model 49 (before | after, `node scripts/render-cones-shots.mjs`): [D3 0304: no lines poke out of the hill above the
+tunnel portal](docs/screenshots/450-d3-0304-portal-lines-before-after.png), [D11 km 4.07: a house under a bridge end's cone is
+bought out](docs/screenshots/451-d11-house-under-cone-before-after.png), [a road moved aside through a farm building: bought
+out](docs/screenshots/452-d11-demo-road-moved-aside-through-building-before-after.png), [road III/3012 rebuilt 23 m east: the
+field track that joined it joins the new line](docs/screenshots/453-d11-iii3012-track-joins-rebuilt-road-before-after.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses
