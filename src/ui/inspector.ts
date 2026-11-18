@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingEnds, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, END_AUTO_TEXT, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, END_AUTO_TEXT, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine, type RoadNamer } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, horizontalRules, speedNorms } from '../core/data/norms';
@@ -154,6 +154,8 @@ export class Inspector {
     together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
     /** the house stands where a roundabout's ring goes (bought out with it) */
     onRing?: (j: number) => boolean;
+    /** a mapped road's own name or number, by its index in the pack's network (ui/road-links.ts), if it has one */
+    roadName?: RoadNamer;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
     el.addEventListener('click', (e) => this.click(e));
@@ -622,13 +624,17 @@ export class Inspector {
     const line = CATEGORIES[d.category].mode;
     // (a new road of the project is not there today: the ground where it crosses)
     const level = c.designed ? 'the ground where they cross' : 'the crossed road’s level today';
-    const rel = Math.abs(c.h) < 0.5 ? `our ${line} at ${level}`
-      : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} ${level}`, outcome = crossingOutcome(c, line);
+    // (a way cut at our road is not at any height to ours: no level line)
+    const cut = c.type === 'reconnection' || c.type === 'diversion';
+    const rel = cut ? '' : Math.abs(c.h) < 0.5 ? `our ${line} at ${level}`
+      : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} ${level}`, outcome = crossingOutcome(c, line, this.ctx.roadName);
+    // (a part led where the player dragged it says "your choice" on its own line)
+    const relLine = rel ? `${rel}${choice ? ' · your choice' : ''}` : choice && !crossingEnds(c.roadId, d.crossingOverrides ?? []) ? 'Your choice' : '';
     // a new road of the project is bridged, carried over us or met, never cut and rerouted
     const options = crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road', !!CATEGORIES[d.category].minor).filter(([v]) => !c.designed || v !== 'reconnection');
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our ${line} ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
     const body = `
-      <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div>${c.raised && c.raised.cost > 0
+      <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}${relLine ? `<div class="why">${relLine}</div>` : ''}${c.raised && c.raised.cost > 0
         ? `<div class="why">For it our ${line} is built up to ${c.raised.m.toFixed(1)} m higher: ${czk(c.raised.cost)} more in all.</div>` : ''}</div>
       ${ourWords(this.issues(vio), line)}
       ${this.linkPath(c, d)}
@@ -655,13 +661,15 @@ export class Inspector {
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {
-    // (a closed way builds no new road: nothing to drag)
-    if ((c.type !== 'reconnection' && c.type !== 'diversion') || c.moved || !c.geometry?.links?.some(l => l.length > 1)) return '';
-    if (!shapeable(this.r, d, c.roadId!)) return `<div class="why link-path">This road crosses ours more than once: choose "Cut and reroute" for it to reshape its new roads.</div>`;
+    if ((c.type !== 'reconnection' && c.type !== 'diversion') || c.moved) return '';
+    // (a part that just ends: its end on the map can be led onto another road, ui/link-edit.ts)
+    if (!c.geometry?.links?.some(l => l.length > 1)) return c.closure?.connected.some(Boolean) && c.under === undefined && shapeable(this.r, d, c.roadId!)
+      ? `<div class="why link-path">Drag a part’s end on the map onto another road to lead it there.</div>` : '';
+    if (!shapeable(this.r, d, c.roadId!)) return `<div class="why link-path">This road crosses ours more than once: choose "Cut it" for it to reshape its new roads.</div>`;
     const via = crossingVia(c.roadId, d.crossingOverrides ?? []), bends = via ? via[0].length + via[1].length : 0;
     // where it leads: the player's road (their choice, kept even where it cannot be built: the problem says why)
     const ends = crossingEnds(c.roadId, d.crossingOverrides ?? []);
-    const end = ends ? `<div class="ctx-row link-end"><span>${ends.flatMap((e, k) => e ? [this.endWords(c, k as 0 | 1)] : []).join('; ')} · your choice</span>
+    const end = ends ? `<div class="ctx-row link-end"><span>${ends.flatMap((e, k) => e ? [this.endWords(c, k as 0 | 1, e.way)] : []).join('; ')} · your choice</span>
         <button type="button" data-crossing-end="auto" title="Lead it where the game would">${END_AUTO_TEXT}</button></div>` : '';
     const path = bends ? `<div class="ctx-row link-path"><span>Path: your shape, ${bends} bend point${bends === 1 ? '' : 's'}</span>
         <button type="button" data-crossing-path="auto" title="Let the game route the new road again">Automatic path</button></div>`
@@ -670,9 +678,9 @@ export class Inspector {
   }
 
   /** "the class III road at km 2.29" / "a track", for a side the player led elsewhere */
-  private endWords(c: Result['crossings'][number], k: 0 | 1) {
-    const to = c.endTo?.[k], what = ROAD_CLASSES[to?.cls ?? '']?.label ?? 'road';
-    return esc(`${to ? `${cap(to.toward)} part` : 'Led'} to ${to?.s !== undefined ? `the ${what} at km ${km(to.s)}` : `a ${what}`}`);
+  private endWords(c: Result['crossings'][number], k: 0 | 1, way: number) {
+    const to = c.endTo?.[k], what = ROAD_CLASSES[to?.cls ?? '']?.label ?? 'road', own = this.ctx.roadName?.(way);
+    return esc(`${to ? `${cap(to.toward)} part` : 'Led'} to ${own ?? (to?.s !== undefined ? `the ${what} at km ${km(to.s)}` : `a ${what}`)}`);
   }
 
   // ---- building ----

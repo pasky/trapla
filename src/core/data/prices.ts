@@ -193,8 +193,22 @@
  * (km 6.55 carried over us with a third house; km 15.29 the track's reroute round a home by the road moved aside at km
  * 15.94, +15.0; houses and sheds by the km 6.83 and 14.34 underpass ramps and a road moved aside at km 4.15); direct-90
  * +13.7 (a garage block of 14 beside the km 4.10 underpass ramps); best, best-*, town-centre, town-controls unchanged.
- * Starters: see PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old line". */
-export const COST_MODEL_VERSION = 53;
+ * Starters: see PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old line".
+ * 54: a track's or service road's part that serves buildings (a house, flats, a farm or works, a civic building, no shed
+ * or garage, within 30 m of its stretch from the cut to the road network and not within 30 m of a public road) is closed
+ * only as a public road is: both parts still reach the network and its traffic goes round at most CLOSURE_ROUND (500 m,
+ * PROVISIONAL: research/86, the road act asks only that access be kept) further; otherwise Auto keeps the way across (a
+ * box, a bridge over us or a reroute, priced as usual) and closes it only where nothing of that can be built (as the
+ * player's "Cut it" whose new road cannot reach a crossing; the card says so). D11 frozen (M CZK): best +33.6 (km 7.96
+ * the service road 4742 to houses, closed before, through a box; km 17.64 the track to the hamlet at km 17.67 through a
+ * box, a house under its ramps bought out, 7.7; km 8.74 the track's reroute becomes its bridge over us and km 9.04's box a
+ * reroute to it), best-drag / -pin / -structures / -manual alike (+33.2 / +34.8 / +36.0 / +33.6); demo +19.4 (km 17.93 the
+ * hamlet's track carried over us); direct-80 +58.0 (km 4.62 a box, km 6.20 and km 18.88 bridges over us, each a farm
+ * track closed before); direct-90 −0.8 (km 4.61 and km 6.22 boxes, km 16.08 a 188 m reroute; a reroute through a home
+ * on the way makes the regrade retry raise our line there: bridges −15.1, borrow −10.8, cuts +6.9); town-centre and
+ * town-controls +32.9 (km 6.28, 11.53 and 16.24 rerouted, 484 / 222 / 582 m); straight unchanged. Starters: PLAN.md
+ * "A cut way that serves houses; what each part still reaches". */
+export const COST_MODEL_VERSION = 54;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

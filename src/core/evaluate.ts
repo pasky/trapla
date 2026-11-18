@@ -2484,6 +2484,24 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!gone[j] && !keptIds.has(j) && near(j, p, q, half + strip)) out.push(j); });
     return out;
   };
+  /** a public road (not a track or service road) within `apart` of building j's outline */
+  const onPublicRoad = (j: number, apart: number) => {
+    const [x, y, r] = bld!.items[j];
+    let hit = false;
+    ctx.roads?.nearSegments([x - r - apart, y - r - apart, x + r + apart, y + r + apart], (g) => {
+      if (hit || g.cls === 'track' || g.cls === 'service') return;
+      const dx = g.bx - g.ax, dy = g.by - g.ay, t = Math.max(0, Math.min(1, ((x - g.ax) * dx + (y - g.ay) * dy) / (dx * dx + dy * dy || 1)));
+      if (bld!.facadeDistanceSq(j, g.ax + t * dx, g.ay + t * dy) < apart * apart) hit = true;
+    });
+    return hit;
+  };
+  const served = (p: { x: number; y: number }, q: { x: number; y: number }, reach: number, apart?: number) => {
+    let hit = false;
+    if (!bld) return hit;
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    bld.near((p.x + q.x) / 2, (p.y + q.y) / 2, len / 2 + reach + 5, (j) => { if (!hit && !gone[j] && bld!.kind[j] !== BUILDING_KIND.minor && near(j, p, q, reach) && !(apart && onPublicRoad(j, apart))) hit = true; });
+    return hit;
+  };
   /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts): railways
    * within `reach`, houses within it and the working strip beyond. */
   const beside = (x: number, y: number, tx: number, ty: number, along: number, sign: number, slopes: number) => {
@@ -2522,7 +2540,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   if (!preview) {
     const left = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i]));
     const right = Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i]));
-    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, housesOnDisk, beside, railway, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
+    const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, served, housesOnDisk, beside, railway, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
       streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
       left, right };
     // (a retry builds only the crossings near what it changed: crossings-kept.ts)

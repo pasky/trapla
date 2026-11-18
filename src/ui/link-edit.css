@@ -9,6 +9,10 @@
 /* the selected crossing's works (src/ui/crossing-highlight.ts) */
 #overlay > svg.crossing-works { width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .crossing-works path { fill: none; stroke: #ffd400; stroke-width: 4; stroke-opacity: 0.85; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.8)); }
+/* a cut way's part that just ends: dashed from its end (a bar beyond our earthworks) to the road it still reaches (a dot) */
+.crossing-works path.piece { stroke-width: 3.5; stroke-dasharray: 9 6; stroke-linecap: butt; }
+.crossing-works path.piece-end { stroke: #1d232a; stroke-width: 5; stroke-opacity: 1; stroke-linecap: butt; filter: drop-shadow(0 0 1.5px #ffd400) drop-shadow(0 0 1px #ffd400); }
+.crossing-works circle.piece-join { fill: #ffd400; stroke: #1d232a; stroke-width: 2; }
 /* the end of a new piece, where it joins its road: drag it onto another road (src/ui/link-edit.ts) */
 .via.via-end { width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 3px; background: #1d232a; border: 3px solid #ffd400; }
 .via.via-end:hover, .via.via-end.drag { background: #ffd400; border-color: #1d232a; }

@@ -2186,3 +2186,53 @@ goes back. One undo step ("where a reroute leads"). Dragging the middle of the n
 - **Known limits.** For a way crossing ours more than once, the ends belong to the crossing nearest the drop (as a
   shape belongs to the one nearest its bend points), not to the one whose end was dragged. A new piece led far away
   may run beside an existing road that already leads there (509).
+
+## A cut way that serves houses; what each part still reaches (owner request, cost model 54, 2026-11-18)
+
+Owner (D11, the service road at km 17.67, set to "Cut and reroute"): the card said "Closed here · Both parts still
+reach other roads, so each just ends at our earthworks. our road 5 m above the crossed road's level today", the button
+read "Cut and reroute", and the map showed nothing rerouted, nor where the parts end or what they reach. And: it is the
+only access to a hamlet of about eight buildings east of our road, closed with no limit on how far round its traffic goes.
+- **Detour limit for access to buildings** (`crossing-geometry.ts` `crossingReroutes`, `way-pieces.ts`): a track's or
+  service road's part that serves buildings (one people go to: a house, flats, a farm or works, a civic building, no shed
+  or garage, within STUB_HOUSE = 30 m of its stretch from the cut to where it meets a public road, and not within 30 m of a
+  public road, which serves it instead: the houses of a village a field track ends in) is closed only as a public road
+  is: both parts still reach the road network and its traffic goes round at most CLOSURE_ROUND = 500 m further. No Czech
+  number exists (research/86: the road act §7(1) and §24(4) and the civil code §1029 ask only that properties keep
+  access), so 500 m stays PROVISIONAL. Over it Auto keeps the way across (a box, a bridge over us or a reroute, priced
+  as usual, also one whose works take a home); a field track serving nothing keeps the research/45 rule (it just ends,
+  however far round). How far round is measured over the mapped network (up to 1.5 km beyond the cut for tracks and
+  service roads; public roads as before).
+- **Last resort** (`farClosure`): where nothing that keeps it across can be built, Auto closes it anyway (both parts
+  still reach the network), and so does the player's "Cut it" whose new road cannot reach a crossing; the card says so.
+  Without it the Královec railway QA projects (track 5550 at km 12.89, beside the mapped railway) were left with an
+  unbuildable reroute.
+- **D11 km 17.67** (the saved best design, its bend near km 17.6 moved 60 m east; `tests/cut-access.test.ts`): Auto
+  now carries the hamlet's service road through our embankment in a box (24.6 M, a house under its ramps bought out);
+  the player's "Cut it" cannot lead it to a crossing (a railway on the ground between it and every crossing), so it is
+  closed: "Cut · no new road needed · The service road is cut by our road. The east part still reaches road I/16, the
+  west part a class III road; each just ends at our earthworks. Its traffic goes round over other roads, more than
+  1.5 km further. No new road can lead it to a crossing from here."
+- **Changed closures** (Auto, every installed pack's starters and the five saved D11 designs): 90 → 56; 34 tracks or
+  service roads that served buildings now keep their way across (17 reroutes, 8 bridges over us, 9 boxes). Bills: D11
+  starter unchanged, Královec railway +14.1 M, best +33.5, demo +19.4, direct-80 +58.0, direct-90 −0.8, town-centre
+  +32.9, D3 0301 +11.8, 0302 +8.4, 0303 +28.2, 0304 +65.1, 0305 +12.9, D35 stage 1 unchanged, Nová Paka +43.6, D35 full
+  +198.5 (km 22.08 a farm building's track carried over the motorway, 153 M), D3 full +105.3. All VALID as before (the
+  Královec starter was not VALID before either).
+- **Words.** The choice is "Cut it" (it cuts the way; a part is led on only where it needs to be). A cut with nothing new
+  built is "Cut · no new road needed", its body names what each part still reaches (the way's own name or number from
+  the road links, e.g. "road I/16", else its class: "a class III road") and how far round its traffic goes and along
+  which road ("Its traffic goes round 1.9 km further, via road II/325"). A part led on says "the north part, cut off, is
+  led to …". The "our road N m above the crossed road's level today" line is gone from cut crossings (closures and
+  reroutes alike). The road links load the first time such a card asks for a name.
+- **Map** (`ui/crossing-highlight.ts`): with the crossing selected each part that just ends is lit dashed from where it
+  now ends, the ground just beyond our earthworks and its setback (what the engine keeps of it: nothing billed, nothing
+  drawn into our slope), a bar across it there, to a dot where it meets the road it still reaches.
+- **Leading a part elsewhere** (`ui/link-edit.ts`): the model-52 square end handle now also stands at the end of a part
+  that just ends; dragged onto a road, the part is led there by a new road (`CrossingOverride.ends` as before; the other
+  part still just ends, or is closed as the last resort above). Played: `node scripts/cut-card-shots.mjs`, screenshots
+  530–535 (the hamlet's part led to road I/16, +299 m, 10.3 M).
+- **Known issues.** How far round a track's traffic goes is not measured beyond 1.5 km ("more than 1.5 km further").
+  The buildings a part serves are those along its stretch up to the first public road; a farm beyond a second track
+  junction is not looked for. direct-90 now runs the regrade retry once more (a reroute through a home on the way to
+  its km 4.61 box: +≈ 300 ms of its full evaluation).

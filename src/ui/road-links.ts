@@ -16,6 +16,7 @@ import type { WorkerIn } from '../worker-protocol';
 import type { ActiveRouteStore } from './active-route-store';
 import type { Sel } from './inspector';
 import { MappedRoadCard } from './mapped-road';
+import { mappedRoadName } from '../core/terms';
 import { coveredStretches } from './road-edit';
 import { mappedLineKindOf } from './route-kinds';
 import { StretchEnds } from './stretch-ends';
@@ -88,12 +89,22 @@ export function createRoadLinks(app: RoadLinksContext) {
     legacyNet ??= new RoadNet(app.pack.overlays.net);
     return legacyNet.nearestWay(x, y, Math.max(min, px * app.view.metresPerPixel)) !== undefined;
   };
+  /** a mapped road's own name or number by its index in the pack's network ("road II/325", a street's name), once the
+   * road links are parsed (undefined: none, or not loaded yet) */
+  let names: Map<number, string> | null = null;
+  const wayName = (way: number) => {
+    if (!names && transportGraph) {
+      names = new Map();
+      for (const s of transportGraph.sources) if (s.legacyNetIndex !== undefined && (s.tags.name || s.tags.ref)) names.set(s.legacyNetIndex, mappedRoadName(s.tags));
+    }
+    return names?.get(way);
+  };
   /** a mapped road in a pack without road links (its card says it cannot be changed here) */
   const legacyRoadAt = (x: number, y: number) => !app.transportData && mappedRoadNear(x, y, 4, 4);
   return {
     /** null until the road links are parsed (or in a pack without them) */
     get index() { return transportIndex; }, get picker() { return sourcePicker; }, get graph() { return transportGraph; },
     get editor() { return sourceEditor; },
-    ensure: ensureTransport, syncEnds, claimedSources, mappedRoadNear, legacyRoadAt,
+    ensure: ensureTransport, syncEnds, claimedSources, mappedRoadNear, legacyRoadAt, wayName,
   };
 }

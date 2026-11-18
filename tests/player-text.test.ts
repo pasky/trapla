@@ -30,6 +30,17 @@ describe('player-facing text', () => {
       }
     expect(crossingOutcome({ type: 'diversion', cls: 'track', linkLength: 412, targetS: 2310 }).label)
       .toBe('Rerouted to the nearest crossing at km 2.31 (+412 m of new track)');
+    // a way cut where no new road is needed: what each part still reaches and how far round its traffic goes (research/86)
+    const reach = (cls: string, way: number) => ({ path: [{ x: 0, y: 0 }, { x: 0, y: 50 }], way, cls });
+    const closure = { connected: [true, true] as [boolean, boolean], sides: ['north', 'south'] as [string, string], reach: [reach('tertiary', 7), reach('secondary', 9)] as [ReturnType<typeof reach>, ReturnType<typeof reach>] };
+    const names = (way: number) => way === 9 ? 'road II/325' : undefined;
+    const closed = crossingOutcome({ type: 'reconnection', cls: 'service', closure: { ...closure, extra: 1900, via: { way: 9, cls: 'secondary' } } }, 'road', names);
+    expect(closed.label).toBe('Cut · no new road needed');
+    expect(closed.explain).toBe('The service road is cut by our road. The north part still reaches a class III road, the south part road II/325; each just ends at our earthworks. Its traffic goes round 1.9 km further, via road II/325.');
+    for (const c of [{ closure }, { closure, farClosure: true as const }, { closure, farClosure: true as const, requestedType: 'reconnection' as const },
+      { closure: { ...closure, connected: [true, false] as [boolean, boolean], nothing: [false, true] as [boolean, boolean] } },
+      { closure: { ...closure, connected: [false, true] as [boolean, boolean] }, linkLength: 240, targetS: 1200 }])
+      for (const cls of ['track', 'service', 'tertiary']) { const o = crossingOutcome({ type: 'reconnection', cls, ...c }, 'road', names); for (const text of [o.label, o.explain]) check(`closure ${cls}`, text); }
     for (const action of ['relocation', 'retaining-wall', 'culvert', 'channel-relocation', 'blocked'] as const)
       for (const feature of ['road', 'railway', 'water', 'stream', 'nature'] as const) {
         const o = footprintOutcome({ feature, action, cls: 'service', length: 50, affectedLength: 20 });
