@@ -90,7 +90,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a cut way is judged piece
   by piece (model 42, `way-pieces.ts`): a piece still reaching the road network just ends, a piece cut off is led to
   a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour; other
-  ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts);
+  ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts; no working
+  strip beside them, ours is 3 m: Královec km 12.98's toes end 0.2–0.3 m from houses); a rebuilt road's side road crossed by
+  its new line joins it there (an access, model 49);
   merged crossings of different ways
   within 30 m keep one remedy for the group unless that leaves one buried (then it is a crossing of its own,
   a retry). Lowered underpasses ignore groundwater; pier placement near the Polish border can fail (engine limit).
@@ -107,7 +109,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   54 m cut in Carboniferous interbeds: 9.1 → 10.6 bn), and stands bridge ends in fills on cones; where a cone would
   cover what nothing moves aside the end is a wall (fill ≤ 10 m, billed: cost model 42, PLAN.md "Bridge ends: one
   rule"; `scripts/bridge-ends-audit.ts` is a gate) or Auto's bridge goes on; a minor way under a cone is moved aside.
-  Open: houses under a cone are not screened (the building screen sees earthworks and piers only); the cones' fill is not in the structure choice's earth balance (it pins blocks at the top fill value and
+  Houses under a cone (and roads moved aside, turning areas) are bought out, a ≤ 10 m end walled where cheaper (model 49,
+  PLAN.md "Portals, cones over houses, …"). Open: the cones' fill is not in the structure choice's earth balance (it pins blocks at the top fill value and
   over-bridges); no arch inside a viaduct over 3.3 × its arch; the support lifts after the grade search bump the line
   up without regard to cost (direct-90: Auto 422 M dearer than holding its pre-presplit line, all of it from lifts for
   bridge clearances the search never saw; three fixes tried, none merged, the last judged by the whole bill: +45 % D11

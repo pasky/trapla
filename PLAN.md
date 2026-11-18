@@ -1026,7 +1026,7 @@ that of the strict ways (an empty strict set), so a check could read the other's
   19.246, d35 road 6.561 → 6.590, Nová Paka 1.223 (unchanged). Shots 390–393 (`scripts/abutment-ends-shots.mjs`).
 - **Open:** the wall's shape is a study allowance (no Czech height rule for closed abutments was found, research/68
   §1.4); the structure choice still weighs a cone at every end (a closed end's wall is known only after the support
-  layout); houses under a cone are not screened (the building screen sees the earthworks and the piers).
+  layout); houses under a cone are bought out since cost model 49 ("Portals, cones over houses, side roads of a rebuilt road").
 
 ### Protected nature areas; tunnels at most 3 % (cost model 45, 2026-11-17)
 
@@ -1164,6 +1164,51 @@ research/73 §7 (D35 again). Shots 410–414.
       edits). A far edit changes which pass wins.
     - Open: a cheaper judge than a second whole pass (e.g. the regrade inside the lift loop, priced by the engineering
       pass's own quantities), local by construction.
+
+### Portals, cones over houses, side roads of a rebuilt road (cost model 49, 2026-11-18)
+
+Sweep-3 P2s (docs/playtest-findings.md), shots 450–453 (`scripts/render-cones-shots.mjs`, before | after).
+- **Lines above the D3 0304 portal** (km 1.59, seen from the hill). They were the portal boxes' side walls. The boxes
+  were centred on the portal face, so half of each lay 1–2 m under the hill. Seen almost edge-on from above, the
+  earthworks' depth offset pulled them through the ground. Now the boxes stand in front of the face, out in the
+  approach cut. They are a mesh of their own without that offset (`tunnel-portals`) and closed on top. Display only.
+- **A rebuilt road's side roads.** A way that joined the old stretch and is crossed by the new line at its level now
+  joins the new road there in a junction. A track or service road gets an access (`sideJunctionCost`, 0.5 M; it is an
+  existing access, so no spacing applies). Before, it was cut and led to a crossing with nowhere to go.
+  - III/3012 dragged 23 m east of its corner (qa3/designs/d11-iii3012-dragged-23m.json) had "covers 16 m of a track"
+    and "No place to reconnect the track". It is now VALID, 10.4 M (`EvalOptions.sideWays`,
+    project-road.ts; tests/qa3-sweep.test.ts).
+  - The track's 17 m stub to where the old road was is left as it is: a stub serving nothing (model 46).
+- **Houses under a cone.** The building screen now reads the billed cone. A house is taken where the cone's surface lies
+  over the ground, or within the 3 m working strip round it. This also holds under a deck high enough for a house to
+  stay, because the fill buries it. Such a house is bought out and drawn demolished; its card says "Under the fill in
+  front of our bridge's end".
+  - The one rule decides the end. Houses can be moved aside at a price, so they do not count as covered.
+  - On a fill of at most 10 m, the end is closed by its wall where the wall costs less than the houses its cone would
+    take. Houses the low deck takes anyway are not counted.
+  - A house the player keeps counts as what nothing moves aside. The end is then closed by a wall, or Auto's bridge goes
+    on. On D11 straight, keeping the km 4.07 house makes the bridge 240 m longer (+116 M); it stays VALID.
+  - Before this, D11's designs had 11 houses standing under cones. `scripts/bridge-ends-audit.ts` now flags any house
+    left standing under a cone. Across 1,220 ends it finds none, with 262 closed ends (was 236).
+- **Turning areas and roads moved aside** buy out the houses they stand on, drawn demolished; a house the player keeps
+  there is a problem. This covers a closed public road's turning disks and a footprint relocation's new pieces off its
+  old line, with its turning area.
+  - Unbilled before: the demo design's service road at km 6.93 was moved aside through a 550 m² farm building (17.3 M).
+    Also two sheds on direct-80 and a 262 m² house on the Nová Paka starter (km 2.60).
+  - `scripts/works-clash-audit.ts` now screens both, and tests/works-clash.test.ts runs it on the demo design.
+- **Královec km 12.98, the road bridge's ramps by the houses (shot 424).** The clearance is truthful. Against the drawn
+  ramp bodies, slopes included and the deck excluded, no house is touched.
+  - The nearest are 0.2–0.3 m from a slope's toe (a 1.2 m side-road regrade, a 3.8 m ramp fill). Others are 0.9–1.5 m
+    from the retaining walls, which stand at `RETAINING_RULES.clearance` from them.
+  - Open: other ways' works have no working strip. Our road's strip is 3 m (BUILDING_RULES.clearance, PROVISIONAL).
+- **Bills.** D11 frozen (M CZK):
+  - straight −0.2: a house under the km 4.07 cone +17.8, three walls instead of cones, and a track rerouted instead of
+    carried over now that the house it skirted is gone (−14.5);
+  - demo +17.3; direct-80 +19.0; direct-90 +1.4; town-centre / town-controls +0.7; best* unchanged.
+  - Starters: Nová Paka 1,185.7 → 1,194.0, D3 motorway +1.2, others unchanged. Validity unchanged everywhere.
+- **Open:**
+  - Above 10 m, a house under a cone is bought out. Lengthening the bridge instead is not weighed.
+  - The structure choice still does not see cones' houses.
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
