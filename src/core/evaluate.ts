@@ -1845,7 +1845,11 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   // (the cones in front of the abutments: no pier on them, none over what lies below; support-layout)
   // (houses its cone and the working strip round it would cover: their price, and whether one is kept; support-layout
   // closes an end of at most CONE.closedMax with a wall where that is cheaper, and keeps a cone off a kept house)
+  // (asked again by each layout pass and the final check: kept per end; sampled every 2 m, the 3 m strip bridges the gaps)
+  const coneHouseMemo = new Map<string, { cost: number; kept: boolean }>();
   const coneHouses = wallable && ((e: BridgeEnd, limit: number) => {
+    const key = `${e.s.toFixed(3)}/${e.into}/${e.top.toFixed(3)}/${limit.toFixed(2)}`, known = coneHouseMemo.get(key);
+    if (known) return known;
     let cost = 0, kept = false;
     const c = { x: e.x, y: e.y, tx: e.tx, ty: e.ty, half: b / 2, top: e.top };
     const strip = coneCovers(c, limit, BUILDING_RULES.clearance, (x, y) => terrain.heightAt(x, y));
@@ -1856,11 +1860,15 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
       return u >= -BUILDING_RULES.clearance && u <= limit && Math.abs(-dx * e.ty + dy * e.tx) <= c.half + BUILDING_RULES.clearance
         && e.top + CONE.deckDepth - terrain.heightAt(x, y) < BUILDING_RULES.underDeckFalsework;
     };
+    // (in front of the abutment only: behind it is the embankment, screened as earthworks)
+    const along = (limit + BUILDING_RULES.clearance) / 2, mx = e.x + e.tx * (limit - BUILDING_RULES.clearance) / 2, my = e.y + e.ty * (limit - BUILDING_RULES.clearance) / 2;
     wallable.index.near(e.x, e.y, reach, (j) => {
-      if (!wallable.index.anyPoint(j, 1, strip)) return;
-      if (wallable.keep.has(j)) kept = true; else if (!wallable.index.anyPoint(j, 1, deck)) cost += wallable.index.cost[j];
+      if (!wallable.index.hits(j, mx, my, e.tx, e.ty, along, reach) || !wallable.index.anyPoint(j, 2, strip)) return;
+      if (wallable.keep.has(j)) kept = true; else if (!wallable.index.anyPoint(j, 2, deck)) cost += wallable.index.cost[j];
     });
-    return { cost, kept };
+    const out = { cost, kept };
+    coneHouseMemo.set(key, out);
+    return out;
   });
   const withCones = preview ? {} : { coneReachAt, ...(coneHouses ? { coneHouses } : {}) };
   let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
@@ -2253,9 +2261,10 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
     // lies over the ground (also under a deck high enough for a house to stay: the fill buries it)
     for (const c of cones) {
       const strip = coneCovers(c, c.length, BUILDING_RULES.clearance, (x, y) => ctx.terrain.heightAt(x, y)), under = coneCovers(c, c.length, 0, (x, y) => ctx.terrain.heightAt(x, y));
-      bld.near(c.x + c.tx * c.length / 2, c.y + c.ty * c.length / 2, Math.hypot(c.length, c.side) + BUILDING_RULES.clearance, (j) => {
+      const along = c.length / 2 + BUILDING_RULES.clearance, across = c.side + BUILDING_RULES.clearance, mx = c.x + c.tx * c.length / 2, my = c.y + c.ty * c.length / 2;
+      bld.near(mx, my, Math.hypot(along, across), (j) => {
         const p = best.get(j);
-        if (p?.core || !bld.anyPoint(j, 1, strip)) return;
+        if (p?.core || !bld.hits(j, mx, my, c.tx, c.ty, along, across) || !bld.anyPoint(j, 2, strip)) return;
         const core = bld.anyPoint(j, 1, under), u = (items[j][0] - c.x) * c.tx + (items[j][1] - c.y) * c.ty;
         if (!p) best.set(j, { i: c.i, along: u, core, cone: true });
         else if (core) { p.i = c.i; p.along = u; p.core = true; p.cone = true; }
