@@ -225,7 +225,12 @@ function touchedRoads(result: Result): { roads: Map<number, { x: number; y: numb
   for (const c of result.crossings) if (c.type !== 'junction' && !(unchanged(c))) {
     add(c.roadId, c.x, c.y, extent(c));
     // (a reroute joins the road it is led to where its new pieces end: a junction there)
-    if (c.targetRoadId !== undefined) for (const p of [c, ...(c.geometry?.links ?? []).flatMap(l => l.length ? [l[l.length - 1]] : [])]) add(c.targetRoadId, p.x, p.y, ENDPOINT_JUNCTIONS['tie-in'].zone);
+    // (a piece the player led to a road of their choosing joins that road)
+    if (c.targetRoadId !== undefined) add(c.targetRoadId, c.x, c.y, ENDPOINT_JUNCTIONS['tie-in'].zone);
+    (c.geometry?.links ?? []).forEach((l, k) => {
+      const way = c.endTo?.[k]?.built ? c.ends?.[k]?.way : c.targetRoadId;
+      if (l.length && way !== undefined) add(way, l[l.length - 1].x, l[l.length - 1].y, ENDPOINT_JUNCTIONS['tie-in'].zone);
+    });
   }
   const closes: { x: number; y: number; reach: number }[] = [];
   for (const f of result.footprintConflicts) {

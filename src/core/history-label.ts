@@ -12,6 +12,11 @@ type Crossings = Extract<RouteDesign['alignment'], { kind: 'pi' }>['controls']['
 function crossingChange(a: Crossings, b: Crossings): string {
   const without = (list: Crossings, key: 'ends' | 'via') => list?.map(c => { const { [key]: _gone, ...rest } = c; return rest; });
   if (same(without(a, 'ends'), without(b, 'ends'))) return 'where a reroute leads';
+  // (an automatic reroute led elsewhere for the first time: its choice to reroute comes with it)
+  const key = (c: NonNullable<Crossings>[number]) => JSON.stringify(c.target), had = new Set((a ?? []).map(key));
+  const fresh = (b ?? []).filter(c => !had.has(key(c)));
+  if (fresh.length === 1 && fresh[0].choice === 'reconnection' && fresh[0].ends && !fresh[0].via
+    && same(a, (b ?? []).filter(c => c !== fresh[0]))) return 'where a reroute leads';
   if (same(without(a, 'via'), without(b, 'via'))) return "a reroute's path";
   return 'a crossing';
 }

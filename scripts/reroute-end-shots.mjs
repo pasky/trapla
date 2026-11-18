@@ -87,8 +87,8 @@ try {
   assert(bent.via?.[1]?.length > 0); assert.equal(bent.ends[1].way, ROAD);
   await game.park();
   await page.screenshot({ path: `${out}/505-reroute-end-bent.png` });
-  // the end dragged onto the class III road's part south of our road: across ours, the card says so, the choice stays
-  const h2 = await handle(1), across = await (async () => { const q = onWay(ROAD, 4520, 9302); return ground(q.x, q.y); })();
+  // the end dragged onto a street wholly south of our road: across ours, the card says so, the choice stays
+  const h2 = await handle(1), across = await (async () => { const q = onWay(1498, 4600, 9195); return ground(q.x, q.y); })();
   await page.mouse.move(h2.x, h2.y); await page.mouse.down();
   for (let k = 1; k <= 14; k++) await page.mouse.move(h2.x + (across.x - h2.x) * k / 14, h2.y + (across.y - h2.y) * k / 14);
   await page.mouse.up(); await idle(800);

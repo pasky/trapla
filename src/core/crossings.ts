@@ -493,10 +493,13 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (c.roadId !== undefined && designed(c.roadId)) {
       if (c.requestedType === 'reconnection') issue(c, 'reach', 'A new road cannot be cut and rerouted', 'Choose "Our bridge over it", "Its bridge over us" or a junction');
       if (box && boxTotal < overTotal) { c.type = 'underpass'; Object.assign(c, priced(box)); } else { c.type = 'overbridge'; Object.assign(c, over); }
-    } else if (c.requestedType === 'reconnection' && c.ends?.[0] && c.ends[1]) {
-      // (both new pieces led where the player chose: no crossing of ours needed)
+    } else if (c.requestedType === 'reconnection' && !target && c.ends?.some(Boolean)) {
+      // (no crossing of ours to lead it to, but the player led its pieces to roads of their choosing: those are
+      // built, the geometry says whether every part that needs one has a road; priced meanwhile on the straight
+      // line to the farthest of them)
       c.type = c.cls === 'track' ? 'diversion' : 'reconnection';
-      const { linkCost: _linkCost, ...priced } = link;
+      const reach = Math.max(...c.ends.map(e => e ? Math.hypot(e.x - c.x, e.y - c.y) : 0));
+      const { linkCost: _linkCost, ...priced } = reconnectionPrice(c, reach, urban[c.i]);
       Object.assign(c, priced);
     } else if (c.requestedType === 'reconnection' && !target) {
       // A grade-separated route has no crossing yet that a cut road could be led to: say so and keep

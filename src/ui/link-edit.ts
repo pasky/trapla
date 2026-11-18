@@ -85,7 +85,7 @@ export class LinkEditor {
   private crossing(roadId = this.host.selected()) {
     if (roadId === null) return null;
     const all = this.host.result()?.crossings.filter(c => c.roadId === roadId && (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && c.geometry?.links) ?? [];
-    return all.find(c => c.via) ?? all[0] ?? null;
+    return all.find(c => c.via || c.ends) ?? all[0] ?? null;
   }
   private via(roadId: number): LinkVia {
     const v = crossingVia(roadId, this.host.design().crossingOverrides ?? []);
@@ -222,9 +222,11 @@ export class LinkEditor {
       if (ev.pointerId !== id) return;
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
       const p = this.view.pick(ev.clientX, ev.clientY);
-      if (!p) return;
       if (!moved) { moved = true; h.classList.add('drag'); this.svg.classList.add('ending'); }
-      this.ending = { roadId, side, at: p, snap: this.snapAt(p, roadId) };
+      // (off the ground, e.g. over the sky: nothing to snap to)
+      const at = p ?? this.ending?.at ?? this.endPaths()[side]?.at(-1);
+      if (!at) return;
+      this.ending = { roadId, side, at: { x: at.x, y: at.y }, snap: p ? this.snapAt(p, roadId) : null };
       h.classList.toggle('snap', !!this.ending.snap);
       this.place();
     };
@@ -233,7 +235,8 @@ export class LinkEditor {
       done = true;
       for (const [type, fn] of [['pointermove', move], ['pointerup', up], ['pointercancel', up], ['lostpointercapture', up]] as const) h.removeEventListener(type, fn);
       h.classList.remove('drag', 'snap'); this.svg.classList.remove('ending');
-      const snap = ev.type === 'pointerup' ? this.ending?.snap : null;
+      // (where it is let go: the road under the pointer then, if any)
+      const p = ev.type === 'pointerup' ? this.view.pick(ev.clientX, ev.clientY) : null, snap = p ? this.snapAt(p, roadId) : null;
       this.ending = null;
       // (dropped on a road: it leads there; anywhere else it goes back)
       if (moved && snap) this.host.setEnd(roadId, side, { way: snap.way, x: snap.x, y: snap.y });

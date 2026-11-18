@@ -22,10 +22,10 @@ const route: CrossingRoute = { s, x: s, y: new Float64Array(s.length), tx: new F
 const roads = new RoadNet({ cls: ['primary', 'residential', 'track'], ways: [[0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 300],
   [1, 3900, 200, 4600, 200], [2, 3900, -200, 4600, -200]] });
 const cross = (roadId: number, x: number, cls: string): CrossingResult => ({ roadId, s: x, cls, h: 0, i: 0, x, y: 0, type: 'atGrade', cost: 0 });
-const build = (overrides: CrossingOverride[]) => {
+const build = (overrides: CrossingOverride[], obstacle?: CrossingRoute['obstacle']) => {
   const cs = [cross(0, 3000, 'primary'), cross(1, 3800, 'residential')];
   resolveCrossings(cs, 9000, [0], [30], [0], [0], [{ roadId: 0, type: 'junction' }, ...overrides]);
-  buildCrossingGeometry(cs, route, () => 400, roads);
+  buildCrossingGeometry(cs, { ...route, obstacle }, () => 400, roads);
   return cs[1];
 };
 const auto = build([{ roadId: 1, type: 'reconnection' }]);
@@ -64,6 +64,16 @@ describe('a reroute led to a road the player chose', () => {
       expect(led.issues?.map(v => [v.crossing.code, v.title])).toEqual([['end', expect.stringMatching(title)]]);
       expect(led.endTo!.find(Boolean)!.built).toBe(false);
     }
+  });
+  it('one the new piece cannot reach (a railway between): Auto\'s line stands and the card says why', () => {
+    // a railway north of us along x = 3950, between the cut street and the street it is led to
+    const railway: CrossingRoute['obstacle'] = (a, b) => (a.x - 3950) * (b.x - 3950) <= 0 && Math.max(a.y, b.y) > 0 ? 'railway' : null;
+    const auto = build([{ roadId: 1, type: 'reconnection' }], railway);
+    const led = build([{ roadId: 1, type: 'reconnection', ends: [null, { way: 2, x: 4000, y: 200 }] }], railway);
+    expect(led.geometry!.links).toEqual(auto.geometry!.links); expect(led.cost).toBeCloseTo(auto.cost, 6);
+    expect(led.endTo![1]!.built).toBe(false);
+    expect(led.issues?.map(v => [v.crossing.code, v.title, v.detail])).toEqual([['end', 'The new piece of road cannot reach the road you chose', expect.stringMatching(/railway/)]]);
+    expect(crossingOutcome(led).label).toBe(crossingOutcome(auto).label);
   });
   it('is stored with the choice and survives a save; garbage is dropped', () => {
     expect(normalizeCrossingOverrides([{ roadId: 1, type: 'reconnection', ends: [null, { way: 2, x: 4000, y: 200 }] },
@@ -117,7 +127,11 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     const bent = track([null, { way: 1129, x: 4200, y: 9462 }], [[], [{ x: 4382, y: 9499 }]]);
     expect(bent.c.geometry!.links![0]).toEqual([]); expect(bent.c.endTo?.[1]?.built).toBe(true);
     expect(bent.c.geometry!.links![1].some(p => p.x === 4382 && p.y === 9499)).toBe(true);
-    const c = track([null, { way: 1129, x: 4500, y: 9300 }]);
+    // dropped on the class III road beyond our road: its part on this side is joined, where its ramp ends
+    const far = track([null, { way: 1129, x: 4500, y: 9300 }]);
+    expect(far.c.endTo?.[1]).toMatchObject({ cls: 'tertiary', built: true }); expect(far.r.violations).toEqual([]);
+    // a street wholly beyond our road (it does not cross it): said, Auto's line stands
+    const c = track([null, { way: 1498, x: 4600, y: 9195 }]);
     expect(c.r.violations.map(v => v.title)).toEqual(['The road you chose is across our road']);
     expect(c.c.geometry!.links).toEqual(a.c.geometry!.links);
   }, 60_000);

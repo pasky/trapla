@@ -1353,18 +1353,22 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     // (a track or service road may join any road; a public road only another public road)
     if (row.noAtGrade || (c.cls !== 'track' && c.cls !== 'service' && (cls === 'track' || cls === 'service'))) return { problem: `class:${cls}`, to };
     if (cut) return { problem: 'cut', to };
-    // (a crossing's own line knows its ramps and deck: only its ground beyond them is joined; another way lies on the ground)
-    const raw: readonly AnchorSample[] = t && rawPaths.has(t) ? rawOf(t)! : roads.crossingPath(e.way, e.x, e.y, END_REACH);
+    // (that way itself around the drop, on the ground: not where a crossing of ours raises or lowers it onto its ramps)
+    const raised: [XY, XY][] = [];
+    for (const x of crossings) if (x.roadId === e.way && rawPaths.has(x)) {
+      const line = rawOf(x)!;
+      for (let i = 1; i < line.length; i++) if (!isTerrain(line[i - 1]) || !isTerrain(line[i])) raised.push([line[i - 1], line[i]]);
+    }
+    const way = roads.crossingPath(e.way, e.x, e.y, END_REACH);
     const clear = g.width / 2 + SETBACK;
     let best: CrossingPoint | undefined, bestGap = Infinity, across = false;
-    for (let i = 1; i < raw.length; i++) {
-      const p = raw[i - 1], q = raw[i];
-      if (!isTerrain(p) || !isTerrain(q)) continue;
+    for (let i = 1; i < way.length; i++) {
+      const p = way[i - 1], q = way[i];
       const len = Math.hypot(q.x - p.x, q.y - p.y), count = Math.max(1, Math.ceil(len / END_STEP));
       if (Math.min(Math.hypot(p.x - e.x, p.y - e.y), Math.hypot(q.x - e.x, q.y - e.y)) > Math.min(bestGap, END_REACH) + len) continue;
       for (let k = 0; k <= count; k++) {
         const v = { x: p.x + (q.x - p.x) * k / count, y: p.y + (q.y - p.y) * k / count }, gap = Math.hypot(v.x - e.x, v.y - e.y);
-        if (gap >= bestGap || gap > END_REACH || margin(v, clear, false) < 0) continue;
+        if (gap >= bestGap || gap > END_REACH || margin(v, clear, false) < 0 || raised.some(([a, b]) => segDist2(v, a, b) < 1)) continue;
         if (side * project(v, false).lateral <= 0) { across = true; continue; }
         bestGap = gap; best = terrainPoint(v);
       }
@@ -1550,7 +1554,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     // The player led a side's new piece onto a road of their choosing (CrossingOverride.ends): it joins that road
     // there instead (one that cannot take it leaves Auto's line standing on that side, and says why).
     delete c.endTo;
-    const ended: [boolean, boolean] = [false, false];
+    const ended: [boolean, boolean] = [false, false], autoFinish = finish;
     if (c.ends && c.under === undefined) {
       const joined: [CrossingPoint | undefined, CrossingPoint | undefined] = [finish?.[0], finish?.[1]];
       const p = at(c.s), compass = (vx: number, vy: number) => Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'east' : 'west') : (vy > 0 ? 'north' : 'south');
@@ -1582,7 +1586,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
         || !survivingSides.get(c)?.every(Boolean)) diagnose(g, `${REROUTE_FAILS}none`);
     }
     // (a side the player shaped or led elsewhere is built as they drew it; the other side is Auto's)
-    const own = (k: 0 | 1) => ended[k] || !!c.via?.[k]?.length;
+    const own = (k: 0 | 1) => ended[k] || !!c.via?.[k]?.length, closed: [boolean, boolean] = [false, false];
     if (c.under === undefined) {
       const path = getPath(c.roadId, c.x, c.y, g), access = path.length > 1 ? piecesOf(c, path, g) : null;
       if (access) {
@@ -1598,7 +1602,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
         });
         const extra = access.round - Math.abs(g.removed![1] - g.removed![0]);
         const closable = !MINOR_WAYS.has(c.cls) ? connected[0] && connected[1] && extra <= CLOSURE_ROUND : true;
-        if (closable) for (const k of [0, 1] as const) if ((connected[k] || nothing[k]) && !own(k)) required[k] = false;
+        if (closable) for (const k of [0, 1] as const) if (connected[k] || nothing[k]) { closed[k] = true; if (!own(k)) required[k] = false; }
         if (closable && (connected.some(Boolean) || nothing.some(Boolean))) {
           // (which way each side lies, for the card: the compass point of our road's normal there)
           const p = at(c.s), compass = (vx: number, vy: number) => Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'east' : 'west') : (vy > 0 ? 'north' : 'south');
@@ -1627,11 +1631,22 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       // on to meets it: no new road, nothing billed)
       if (!required[k] || !a || !b) { links.push([]); if (c.closure?.connected[k] && a) kept.push(keptEnd(c, g, a)); continue; }
       let built = buildSide(c, g, a, b, side, c.via?.[k], ended[k]);
+      // (a road the player chose that the new piece cannot reach: Auto's line stands on that side, the problem says why)
+      const auto = autoFinish?.[k];
+      let end = b, why: string[] = [];
+      if (ended[k] && !c.via?.[k]?.length && auto && auto !== b && (g.diagnostics?.length ?? 0) > issuesBefore) {
+        why = g.diagnostics!.slice(issuesBefore);
+        g.diagnostics!.length = issuesBefore; if (!issuesBefore) delete g.diagnostics;
+        ended[k] = false; c.endTo![k]!.built = false;
+        // (where Auto just ends that part, it ends)
+        if (closed[k]) { for (const m of why) diagnose(g, m); links.push([]); if (c.closure?.connected[k]) kept.push(keptEnd(c, g, a)); continue; }
+        built = buildSide(c, g, a, end = auto, side);
+      }
       // (where the shorter line to the target's road cannot be built, the one to its crossing is tried)
       // (nor where it costs more than the one to its crossing: houses bought out, culverts)
       const fallback = beside?.[k];
       const price = (x: typeof built) => crossingPlanLength(x.link) * linkRate + x.culvertCost + x.houses.reduce((sum, j) => sum + (route.houseCost?.(j) ?? 0), 0);
-      if (fallback && fallback !== b && !ended[k]) {
+      if (fallback && fallback !== end && !ended[k]) {
         const failed = (g.diagnostics?.length ?? 0) > issuesBefore, saved = g.diagnostics?.slice(issuesBefore) ?? [];
         // (only a line that cannot be built, or that buys houses or needs culverts, can lose to it)
         if (failed || (price(built) > crossingPlanLength(built.link) * linkRate + 1 && price(built) > Math.hypot(fallback.x - a.x, fallback.y - a.y) * linkRate)) {
@@ -1646,6 +1661,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
           } else built = other;
         }
       }
+      for (const m of why) diagnose(g, m);
       const link = built.link;
       culverts += built.culverts; culvertCost += built.culvertCost;
       for (const h of built.houses) houses.add(h);
@@ -1654,6 +1670,12 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       spent += crossingPlanLength(link) * linkRate + (k === 0 ? culvertCost : 0);
     }
     if (abandon) { if (!g.diagnostics?.length) diagnose(g, OVER_BUDGET); continue; }
+    // (a part the player shaped or led on does not just end: where neither does, nothing is closed here)
+    if (c.closure) {
+      for (const k of [0, 1] as const) if (links[k].length) { c.closure.connected[k] = false; if (c.closure.nothing) c.closure.nothing[k] = false; }
+      if (!c.closure.connected.some(Boolean) && !c.closure.nothing?.some(Boolean)) delete c.closure;
+      else if (!c.closure.connected.every(Boolean)) delete c.closure.extra;
+    }
     // (led under our bridge: the two new pieces meet across under the deck)
     if (c.under !== undefined && links[0].length && links[1].length) links[0] = [...links[0], { ...links[1][links[1].length - 1] }];
     g.links = links as [CrossingPoint[], CrossingPoint[]];
@@ -1665,11 +1687,12 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     let heads = 0;
     // (a public road's turning area lies on its old road beyond the cut end, its rim at that end: off our earthworks)
     const minor = MINOR_WAYS.has(c.cls);
-    if (c.closure) for (const k of [0, 1] as const) if (c.closure.connected[k] && start?.[k] && !own(k)) {
+    if (c.closure) for (const k of [0, 1] as const) if (c.closure.connected[k] && start?.[k]) {
       g.turnarounds.push(minor ? { ...start[k]! } : keptEnd(c, g, start[k]!, TURNING_RADIUS * g.width).at(-1)!); heads++;
     }
     if (minor) heads = 0;
-    if (heads) g.turnaroundRadius = TURNING_RADIUS * g.width; else delete g.turnaroundRadius;
+    // (with turning areas: only they are drawn as turning areas, as billed; a new piece goes on from its cut end)
+    if (heads) { g.turnarounds = g.turnarounds.slice(-heads); g.turnaroundRadius = TURNING_RADIUS * g.width; } else delete g.turnaroundRadius;
     // (a house the turning area stands on is bought out with it, as one under a new piece of road; one you keep: a problem)
     for (const p of heads ? g.turnarounds.slice(-heads) : []) {
       const on = route.housesOnDisk?.(p.x, p.y, TURNING_RADIUS * g.width);
@@ -1886,7 +1909,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const FIELDS = ['span', 'approachLength', 'linkLength', 'targetS', 'targetRoadId', 'underpassLength', 'worksCost', 'tieLength', 'wallLength', 'culverts', 'culvertCost', 'houses', 'houseCost', 'homes', 'linkGrade', 'lowered', 'drainage', 'drainCost', 'square', 'squared', 'realignLength', 'realignCost', 'moved', 'closure', 'overRailway', 'under'] as const;
   const leadsTo = (x: CrossingResult, c: CrossingResult) => x !== c && (x.type === 'reconnection' || x.type === 'diversion') && !x.moved && x.targetS === c.s && x.targetRoadId === c.roadId;
   /** a road the player led another's new piece to (CrossingOverride.ends): Auto keeps it carrying traffic */
-  const endsOn = (c: CrossingResult) => c.roadId !== undefined && crossings.some(x => x !== c && x.ends?.some(e => e?.way === c.roadId));
+  const endsOn = (c: CrossingResult) => c.roadId !== undefined && crossings.some(x => x !== c
+    && x.ends?.some((e, k) => e?.way === c.roadId && x.endTo?.[k]?.built && x.endTo[k]!.s === c.s));
   // (a way that comes back out of our earthworks on the side it went in carries nothing across our road)
   const carries = (t: CrossingResult) => feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
     && !t.geometry?.sameSide;

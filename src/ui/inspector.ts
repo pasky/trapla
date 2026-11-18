@@ -609,7 +609,7 @@ export class Inspector {
   private crossing(r: Result, d: Design, roadId: number) {
     const all = r.crossings.filter((x) => x.roadId === roadId);
     // (a road crossing ours more than once: the card describes the crossing the player shaped, if any)
-    const c = all.find((x) => x.via) ?? all[0];
+    const c = all.find((x) => x.via || x.ends) ?? all[0];
     if (!c) return '';
     const choice = crossingChoice(roadId, d.crossingOverrides ?? []) ?? '';
     const cost = all.reduce((a, x) => a + x.cost, 0);
