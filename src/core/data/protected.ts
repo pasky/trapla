@@ -65,9 +65,9 @@ export function protectedRule(site: Pick<ProtectedSiteData, 'kind' | 'zone' | 'o
     // Not a ban (§§45h–45i): works that may harm the site need a Natura assessment, and with a significant impact an
     // overriding public interest and compensation; motorways do cross such sites (the D3 Sázava bridge over EVL
     // Dolní Sázava). The assessment and any compensation are not costed (no source): a note, like a bird area.
-    case 'EVL': return { level: 'info', label, why: 'Works here need a Natura assessment; if they would harm the site, they are allowed only for an overriding public interest, with compensation.',
+    case 'EVL': return { level: 'info', label, why: 'Works here need a Natura assessment.',
       rule: 'Act 114/1992 §45c(2), §§45h–45i: works in a Natura 2000 site need a Natura assessment' };
-    case 'PO': return { level: 'info', label, why: 'A bird area: works there need a Natura assessment, but are not forbidden as such.',
+    case 'PO': return { level: 'info', label, why: 'Works here need a Natura assessment.',
       rule: 'Act 114/1992 §45e, §§45h–45i: works in a bird area need a Natura assessment' };
     case 'NP': return builtUp ? { level: 'info', label, why: 'Inside a village of a national park building is allowed.', rule: 'Act 114/1992 §16(2)' }
       : { level: 'ban', label, why: 'Outside its villages, nothing may be built in a national park.',
