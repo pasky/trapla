@@ -64,6 +64,17 @@ describe('pinned Auto DP heights', () => {
     expect(r.pinViolations![0].pin).toMatchObject({ reason: 'gradient-envelope', actualZ: 0,
       reachable: { min: -6, max: 6 }, suggested: { s: 100, z: 6 } });
     expect(r.pinViolations![0].fix).toContain('6.00 m');
+    // reported, not obeyed by another line: Auto's own, engineered as such (QA sweep 3: the straight line from
+    // A to B in its place moved the Královec railway 25 m at km 7)
+    expect(r.lineOk).toBe(true);
+    expect(r.vpis).toEqual(autoProfile(s, g, opt).vpis);
+  });
+
+  it('keeps meeting the reachable pins beside an unreachable one', () => {
+    const r = autoProfile(s, g, { ...opt, pins: [{ s: 100, z: 20 }, { s: 1200, z: 8 }] });
+    expect(r.lineOk).toBe(true);
+    expect(r.pinViolations!.map((v) => v.pin.index)).toEqual([0]);
+    expect(Math.abs(elevationAt(buildProfile(r.vpis, opt.minCrest, opt.minSag), 1200) - 8)).toBeLessThanOrEqual(GRADE_PIN_TOLERANCE + 1e-9);
   });
 
   it('does not replace ground tie-ins with conflicting endpoint pins', () => {
@@ -125,8 +136,9 @@ describe('pinned Auto DP heights', () => {
     const pins = Array.from({ length: 81_000 }, (_, i) => ({ s: 24999 + i / 100_000, z: 0 }));
     const r = autoProfile([0, 12500, 25000], [0, 0, 0], { ...opt, pins,
       knotSpacing: 12500, pad: 1000, minCrest: 1e8, minSag: 1e8 });
-    expect(r.cost).toBe(Infinity); // bounded search skipped, explicitly priced as no DP solution
-    expect(r.feasible).toBe(true); // the fixed straight fallback itself satisfies every pin
+    // bounded search skipped: Auto's line without the pins, which here meets every one of them
+    expect(r.lineOk).toBe(true);
+    expect(r.feasible).toBe(true);
     expect(r.pinViolations).toEqual([]);
   });
 

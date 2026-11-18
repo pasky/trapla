@@ -153,11 +153,18 @@ export interface AutoProfileResult {
   balance?: number;
   /** Present for active pins; append to evaluation violations. No-pin results stay unchanged. */
   pinViolations?: GradePinViolation[];
+  /** Set when pins no legal line meets were left out (`feasible` is then false, `pinViolations` says which):
+   * the line is Auto's own without them, and this says whether it keeps every limit itself, i.e. can be
+   * engineered as Auto's line. An unreachable pin is reported, not obeyed by bending the whole route. */
+  lineOk?: boolean;
   /** With `blocks`: the blocks used (their ends, from 0 to the route length) and, with a balance
    * search or fixed values, each block's material value. */
   blockBounds?: number[];
   blockValues?: number[];
 }
+
+/** A grade line that can be engineered as Auto's: every limit kept (pins it could not meet left out, reported). */
+export const usableLine = (r: AutoProfileResult): boolean => r.feasible || r.lineOk === true;
 
 /** A block boundary is the middle of the longest straight within this distance on either side, m. */
 export const BLOCK_SPACING = 2000;
@@ -331,8 +338,17 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const pinViolations = pinChecks(r.vpis);
     return { ...r, feasible: r.feasible && pinViolations.length === 0, pinViolations };
   };
-  if (hasPins && pinChecks(straight).some((v) => v.pin.reason !== 'search')) {
-    return finish({ vpis: straight, feasible: false, cost: Infinity });
+  /** Auto's line without the pins it cannot meet (`kept`: the rest), each pin reported against it. Neither
+   * the straight line from A to B nor any other far-reaching stand-in: what an unreachable pin changes is
+   * its own problem, not the whole route (QA sweep 3: a pin 4 m over the climb at the Královec portal
+   * used to move the line 25 m at km 7). */
+  const without = (kept: GradePin[]): AutoProfileResult => {
+    const r = autoProfile(s, g, { ...opt, pins: kept }), pinViolations = pinChecks(r.vpis);
+    return { ...r, feasible: r.feasible && !pinViolations.length, pinViolations, lineOk: r.feasible };
+  };
+  if (hasPins) {
+    const out = new Set(pinChecks(straight).filter((v) => v.pin.reason !== 'search').map((v) => v.pin.index));
+    if (out.size) return without((opt.pins ?? []).filter((_, i) => !out.has(i)));
   }
   const spacing = opt.knotSpacing ?? 250;
   // A gentle gradient limit (track: 12.5 ‰ × 250 m = 3.1 m a knot, 2 m on the 1 m grid after the end
@@ -619,7 +635,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   /** last resort when no compliant line was found: relaxed gradients, reported as not feasible */
   const relaxed = (lut: CostLut): AutoProfileResult => {
     // Pins never enable a relaxed-gradient search or a posthoc edited/manual profile.
-    if (hasPins) return finish({ vpis: straight, feasible: straightOk, cost: Infinity });
+    if (hasPins) return without([]);
     if (straightOk) return { vpis: straight, feasible: true, cost: Infinity };
     for (const [gm, u] of [[opt.maxGradient * 1.5, 1], [opt.maxGradient * 2.5, 2]]) {
       const r = solve(lut, gm, u, pad, null, ALL);
@@ -701,7 +717,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   }
   // the whole route at once: one material value
   const whole = searchBalance(ALL, v => Array(nb).fill(v), bal.balanceOf, bal.tolerance);
-  if ('fail' in whole) return { ...relaxed(whole.fail), materialValue: whole.v, ...blockInfo(anchored ? Array(nb).fill(whole.v) : null) };
+  // (with pins: Auto's own line without them, at its own material value)
+  if ('fail' in whole) return hasPins ? without([]) : { ...relaxed(whole.fail), materialValue: whole.v, ...blockInfo(anchored ? Array(nb).fill(whole.v) : null) };
   return finish({ vpis: whole.line.vpis, cost: whole.line.cost, feasible: true, materialValue: whole.v, balance: whole.b,
     ...blockInfo(anchored ? Array(nb).fill(whole.v) : null) });
 

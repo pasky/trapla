@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
+import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable, usableLine } from './autoprofile';
 import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
@@ -1437,7 +1437,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         : { ...apOpt, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
       // A clearance refinement must not replace an already pin-compliant solution by its straight
       // fallback. Keep the useful grade and report its clearance shortfall instead.
-      if (d.gradePins?.length && !retry.feasible) break;
+      if (d.gradePins?.length && !usableLine(retry)) break;
       ap = retry;
     }
     vpis = ap.vpis;
@@ -1451,7 +1451,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         materialAt[i] = blockValues[j];
       }
     }
-    profileFeasible = ap.feasible;
+    profileFeasible = usableLine(ap);
     pinViolations = ap.pinViolations ?? [];
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
@@ -2020,7 +2020,7 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
       const retry = floorSolve(retried, setup, solved, prices, caches)!;
       // kept only if it meets a stretch the lifts could not (a target it cannot reach either, e.g. next
       // to a fixed end, would only trade the line for one that pays its clearance penalty)
-      if (retry.feasible) {
+      if (usableLine(retry)) {
         const again = liftAll(retry.vpis);
         if (fresh.some(c => !again.failed.includes(c))) { baseLine = retry.vpis; ({ out, failed } = again); }
       }
