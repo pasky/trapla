@@ -23,7 +23,26 @@ it('a fill between two bridges closed off by a wall is bridged where its deck co
 for (const id of ['d11', 'i16-nova-paka']) describe.skipIf(!existsSync(`public/scenarios/${id}/meta.json`))(`bridge ends: ${id}`, () => {
   it('each a cone, or a billed wall within the limit', () => {
     const problems: string[] = [];
-    packResults(id, (name, r, category) => problems.push(...bridgeEndProblems(r, category).map(p => `${name}: ${p}`)));
+    packResults(id, (name, r, category, ground) => problems.push(...bridgeEndProblems(r, category, ground).map(p => `${name}: ${p}`)));
+    expect(problems).toEqual([]);
+  }, 120_000);
+});
+
+// A house under a cone goes (billed, drawn demolished), unless the player keeps it: then the cone keeps off it as off
+// anything nothing moves aside (D11 straight start: a 206 m² house beside the km 4.07 bridge end, on a 13.8 m fill).
+describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('a house under a cone', () => {
+  it('is demolished; kept, the bridge goes on past it', async () => {
+    const { evalContext, loadPack } = await import('../scripts/loadpack');
+    const { evaluate } = await import('../src/core/evaluate');
+    const ctx = evalContext(loadPack('public/scenarios/d11'));
+    const design = { category: 'S9.5' as const, speed: 90, pis: [], profileMode: 'auto' as const, vpis: [] };
+    const house = evaluate(ctx, design).demolished.find(d => d.cone && !d.strip)!;
+    expect(house).toMatchObject({ j: 11400, in: 'embankment' });
+    const kept = evaluate(ctx, { ...design, buildingOverrides: [{ j: house.j, action: 'keep' }] });
+    expect(kept.demolished.some(d => d.j === house.j)).toBe(false);
+    expect(kept.violations.filter(v => v.kind === 'building')).toEqual([]);
+    const problems: string[] = [];
+    problems.push(...bridgeEndProblems(kept, 'S9.5', ctx));
     expect(problems).toEqual([]);
   }, 120_000);
 });

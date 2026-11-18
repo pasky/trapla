@@ -51,7 +51,7 @@ import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from '
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { planPis, planSpeeds } from './plan-speeds';
-import { abutmentCone, CONE, coneReach, conePavingCost, coneStands, type AbutmentCone } from './abutment-cone';
+import { abutmentCone, CONE, coneCovers, coneReach, conePavingCost, coneStands, type AbutmentCone, type BridgeEnd } from './abutment-cone';
 import { carryCrossingPrices, keptOwnHeights, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { LOWERING_RULES } from './data/remedies';
@@ -149,6 +149,8 @@ export interface Result {
   demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute' | 'works'; strip: boolean;
     /** under a high deck, where one of its piers stands */
     pier?: true;
+    /** under the cone of fill in front of a bridge's abutment (or its working strip) */
+    cone?: true;
     /** a small structure standing within this demolished building, which goes with it */
     host?: number }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
@@ -1841,7 +1843,26 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   work('selection', selectionStart);
   let supportStart = performance.now();
   // (the cones in front of the abutments: no pier on them, none over what lies below; support-layout)
-  const withCones = preview ? {} : { coneReachAt };
+  // (houses its cone and the working strip round it would cover: their price, and whether one is kept; support-layout
+  // closes an end of at most CONE.closedMax with a wall where that is cheaper, and keeps a cone off a kept house)
+  const coneHouses = wallable && ((e: BridgeEnd, limit: number) => {
+    let cost = 0, kept = false;
+    const c = { x: e.x, y: e.y, tx: e.tx, ty: e.ty, half: b / 2, top: e.top };
+    const strip = coneCovers(c, limit, BUILDING_RULES.clearance, (x, y) => terrain.heightAt(x, y));
+    const reach = Math.min(limit, c.half + CONE.berm + 3 * CONE.slope * (e.top - e.ground)) + c.half + BUILDING_RULES.clearance;
+    // (a house under the deck where it is low goes whatever the end is: finishBuildings, BUILDING_RULES.underDeckFalsework)
+    const deck = (x: number, y: number) => {
+      const dx = x - e.x, dy = y - e.y, u = dx * e.tx + dy * e.ty;
+      return u >= -BUILDING_RULES.clearance && u <= limit && Math.abs(-dx * e.ty + dy * e.tx) <= c.half + BUILDING_RULES.clearance
+        && e.top + CONE.deckDepth - terrain.heightAt(x, y) < BUILDING_RULES.underDeckFalsework;
+    };
+    wallable.index.near(e.x, e.y, reach, (j) => {
+      if (!wallable.index.anyPoint(j, 1, strip)) return;
+      if (wallable.keep.has(j)) kept = true; else if (!wallable.index.anyPoint(j, 1, deck)) cost += wallable.index.cost[j];
+    });
+    return { cost, kept };
+  });
+  const withCones = preview ? {} : { coneReachAt, ...(coneHouses ? { coneHouses } : {}) };
   let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
   work('support', supportStart);
   // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
@@ -2164,7 +2185,7 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
  * demolitions and their cost, the player's Keep and Buy out choices. */
 function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>) {
   const { n, w, st, ds } = setup;
-  const { kind, sec, grade, cutCover, h, runs } = quantities;
+  const { kind, sec, grade, cutCover, h, runs, cones } = quantities;
   const crown = CATEGORIES[d.category].crownWidth;
   // Under a high deck a building stays (BUILDING_RULES.underDeck*), unless a pier stands on it: the deck's
   // underside per cell (its local span's depth), and the piers of the bridges.
@@ -2201,7 +2222,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
   const buildingViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
-    const best = new Map<number, { i: number; along: number; core: boolean; pier?: true }>();
+    const best = new Map<number, { i: number; along: number; core: boolean; pier?: true; cone?: true }>();
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel && !cutCover[i]) continue;
       const pit = cutCover[i] ? cutCoverPitHalfWidth(-h[i], crown) : 0;
@@ -2228,6 +2249,18 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
         if (!p) best.set(j, { i: f.i, along, core: true, pier: true }); else if (!p.core) { p.i = f.i; p.along = along; p.core = true; p.pier = true; }
       });
     }
+    // the cones of fill in front of the abutments (abutment-cone.ts), with their working strip: where the billed cone
+    // lies over the ground (also under a deck high enough for a house to stay: the fill buries it)
+    for (const c of cones) {
+      const strip = coneCovers(c, c.length, BUILDING_RULES.clearance, (x, y) => ctx.terrain.heightAt(x, y)), under = coneCovers(c, c.length, 0, (x, y) => ctx.terrain.heightAt(x, y));
+      bld.near(c.x + c.tx * c.length / 2, c.y + c.ty * c.length / 2, Math.hypot(c.length, c.side) + BUILDING_RULES.clearance, (j) => {
+        const p = best.get(j);
+        if (p?.core || !bld.anyPoint(j, 1, strip)) return;
+        const core = bld.anyPoint(j, 1, under), u = (items[j][0] - c.x) * c.tx + (items[j][1] - c.y) * c.ty;
+        if (!p) best.set(j, { i: c.i, along: u, core, cone: true });
+        else if (core) { p.i = c.i; p.along = u; p.core = true; p.cone = true; }
+      });
+    }
     for (const [j, p] of best) {
       if (keptIds.has(j)) {
         buildingViolations.push({ kind: 'building', basis: 'game', s0: st.s[p.i], s1: st.s[p.i],
@@ -2243,7 +2276,8 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
       const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
       const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
-      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core, ...(p.pier ? { pier: true as const } : {}) });
+      demolished.push({ j, i: k, cost: bld.cost[j], in: p.cone ? 'embankment' : kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core,
+        ...(p.pier ? { pier: true as const } : {}), ...(p.cone ? { cone: true as const } : {}) });
     }
     // a chimney, silo or tower standing within a demolished building's outline goes with it
     for (const p of demolished.slice()) bld.near(items[p.j][0], items[p.j][1], items[p.j][2], (k) => {

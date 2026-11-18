@@ -144,6 +144,17 @@ export class BuildingIndex {
     return Math.max(b[2], Math.hypot(this.ox[j] - b[0], this.oy[j] - b[1]) + Math.hypot(this.hl[j], this.hw[j]));
   }
 
+  /** Whether `f` holds at any point of building j's oriented rectangle, sampled on a grid of at most `step` m
+   * (its edges included). */
+  anyPoint(j: number, step: number, f: (x: number, y: number) => boolean): boolean {
+    const na = Math.max(1, Math.ceil(2 * this.hl[j] / step)), nb = Math.max(1, Math.ceil(2 * this.hw[j] / step));
+    for (let a = 0; a <= na; a++) for (let b = 0; b <= nb; b++) {
+      const p = -this.hl[j] + 2 * this.hl[j] * a / na, q = -this.hw[j] + 2 * this.hw[j] * b / nb;
+      if (f(this.ox[j] + this.ux[j] * p - this.uy[j] * q, this.oy[j] + this.uy[j] * p + this.ux[j] * q)) return true;
+    }
+    return false;
+  }
+
   /** Horizontal distance to the nearest façade of the oriented rectangle (zero inside it). */
   facadeDistance(j: number, x: number, y: number): number {
     const dx = x - this.ox[j], dy = y - this.oy[j];

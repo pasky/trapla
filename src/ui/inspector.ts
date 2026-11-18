@@ -652,6 +652,7 @@ export class Inspector {
         : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
         : removed.pier ? `A pier of our bridge stands on it, km ${km(r.s[removed.i])}.`
+        : removed.cone ? `Under the fill in front of our bridge's end, km ${km(r.s[removed.i])}.`
         : removed.in === 'bridge' ? `Under our bridge, km ${km(r.s[removed.i])}: ${this.ctx.building(j).kind === BUILDING_KINDS[BUILDING_KIND.minor].label
           ? 'a garage or shed may not stay under a bridge (fire).' : `the deck is too low above it (less than ${BUILDING_RULES.underDeckFalsework} m up, it is built on scaffolding standing on the ground; higher, it needs ${BUILDING_RULES.underDeckGap} m over the roof).`}`
         : `${removed.in === 'cut' ? 'In' : 'Under'} ${ours}, km ${km(r.s[removed.i])}.`;

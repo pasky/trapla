@@ -171,6 +171,17 @@ export function coneGround(terrain: Terrain, e: BridgeEnd, half: number, limit =
   return rows;
 }
 
+/** Whether a cone lies over the ground at a point of the map (`grow` > 0: or within `grow` m of where it does, its
+ * surface grown by that much out over the ground: a working strip round it). `length`: how far it goes into the bridge. */
+export function coneCovers(c: Pick<AbutmentCone, 'x' | 'y' | 'tx' | 'ty' | 'half' | 'top'>, length: number, grow: number,
+  heightAt: (x: number, y: number) => number): (x: number, y: number) => boolean {
+  return (x, y) => {
+    const dx = x - c.x, dy = y - c.y, u = dx * c.tx + dy * c.ty;
+    if (u < -grow || u > length + grow) return false;
+    return coneSurface(c, Math.max(0, u), -dx * c.ty + dy * c.tx) + grow / CONE.slope > heightAt(x, y);
+  };
+}
+
 /** A closed abutment (no cone, CONE.closedMax): the fill ends in a wall from the cone's top (`height` m above the
  * ground) down to the ground, across the fill's whole end section: full height under the crest (`crownWidth`), falling
  * with the 1:1.5 side slopes to nothing at their toes (the drawn end face). Billed as a cantilever retaining wall of the

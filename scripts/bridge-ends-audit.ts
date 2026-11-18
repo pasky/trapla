@@ -1,10 +1,12 @@
 // Every bridge end standing in a fill: a cone in front of its abutment, or a closed end (a wall down to the ground) on
 // a fill of at most CONE.closedMax, whose wall is billed with the bridge (abutment-cone.ts, support-layout.ts). Runs
 // every installed pack's straight start and saved designs and every preset as the game starts it, and lists each end
-// that breaks the rule; exit 1 if any does.
+// that breaks the rule, and each house standing under a cone (what is drawn is what is billed: it goes); exit 1 if any does.
 //   npx tsx scripts/bridge-ends-audit.ts [--only d11,d3-0302]
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { CONE, conePavingCost } from '../src/core/abutment-cone';
+import { CONE, coneCovers, conePavingCost } from '../src/core/abutment-cone';
+import type { BuildingIndex as Buildings } from '../src/core/buildings';
+import type { Terrain } from '../src/core/terrain';
 import { bridgeModel, bridgeVariableCosts } from '../src/core/bridge';
 import { CATEGORIES, type CategoryId } from '../src/core/data/categories';
 import { EXCAVATION_BY_CLASS } from '../src/core/data/prices';
@@ -18,8 +20,19 @@ import { evalContext, loadPack, projectContext } from './loadpack';
 /** what is wrong with the bridge ends of a full (not a preview) result of a line of `category`: none, or one line per
  * end; and whether its bill holds exactly its bridges' decks, abutments, regrading, cones' paving and the walls of its
  * closed ends (the bill's bridges line taken apart independently of where the walls are billed) */
-export function bridgeEndProblems(r: Result, category: CategoryId | 'existing'): string[] {
+export function bridgeEndProblems(r: Result, category: CategoryId | 'existing', ground?: { buildings?: Buildings; terrain: Terrain }): string[] {
   const out: string[] = [], km = (s: number) => (s / 1000).toFixed(2);
+  // (a house the cone's fill lies on is demolished, bought out, or kept by the player: then the cone is not there)
+  const bld = ground?.buildings;
+  if (bld) {
+    const gone = new Set([...r.demolished, ...r.boughtOut].map(d => d.j));
+    for (const c of r.cones ?? []) {
+      const under = coneCovers(c, c.length, 0, (x, y) => ground!.terrain.heightAt(x, y));
+      bld.near(c.x + c.tx * c.length / 2, c.y + c.ty * c.length / 2, Math.hypot(c.length, c.side), j => {
+        if (!gone.has(j) && bld.anyPoint(j, 1, under)) out.push(`the cone at km ${km(c.s)} stands on house ${j}, which stays`);
+      });
+    }
+  }
   /** the cone's top over the ground at the abutment (the bridge's end), on the stations */
   const fillAt = (s: number) => {
     const f = Math.max(0, Math.min(r.n - 1 - 1e-9, s / r.ds)), j = Math.floor(f), t = f - j;
@@ -55,7 +68,7 @@ export function bridgeEndProblems(r: Result, category: CategoryId | 'existing'):
 
 /** every result a pack's cases give: the straight start and the saved designs (single-road evaluator), every preset
  * as the game starts it (each route of the project) */
-export function packResults(id: string, each: (name: string, r: Result, category: CategoryId | 'existing') => void) {
+export function packResults(id: string, each: (name: string, r: Result, category: CategoryId | 'existing', ground: { buildings?: Buildings; terrain: Terrain }) => void) {
   const pack = loadPack(`public/scenarios/${id}`), ctx = evalContext(pack);
   const designs: [string, Design][] = [['straight', { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }]];
   const dir = id === 'd11' ? 'scripts' : `scripts/scenarios/${id}`;
@@ -63,11 +76,11 @@ export function packResults(id: string, each: (name: string, r: Result, category
     const design = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')).design as Design | undefined;
     if (design?.pis && !PRESETS.some(p => p.id === id && p.ports && f === `${p.presetId}.json`)) designs.push([`${dir}/${f}`, design]);
   }
-  for (const [name, design] of designs) each(`${id} ${name}`, evaluate(ctx, design), design.category);
+  for (const [name, design] of designs) each(`${id} ${name}`, evaluate(ctx, design), design.category, ctx);
   for (const scenario of PRESETS.filter(p => p.id === id)) {
     const { ctx: project, initial } = projectContext(pack, scenario);
     const design = initial(), result = evaluateProject(project, { epoch: 'audit', revision: 1, design });
-    for (const route of design.routes) { const legacy = result.routes[route.id]?.legacy; if (legacy) each(`${id} ${scenario.presetId ?? id} ${route.id}`, legacy, routeCategory(route)); }
+    for (const route of design.routes) { const legacy = result.routes[route.id]?.legacy; if (legacy) each(`${id} ${scenario.presetId ?? id} ${route.id}`, legacy, routeCategory(route), project.legacy); }
   }
 }
 
@@ -75,10 +88,10 @@ if (process.argv[1]?.endsWith('bridge-ends-audit.ts')) {
   const only = (() => { const i = process.argv.indexOf('--only'); return i < 0 ? undefined : process.argv[i + 1].split(','); })();
   const packs = [...new Set(PRESETS.map(p => p.id))].filter(id => existsSync(`public/scenarios/${id}/meta.json`) && (!only || only.includes(id)));
   let bad = 0, ends = 0, closed = 0;
-  for (const id of packs) packResults(id, (name, r, category) => {
+  for (const id of packs) packResults(id, (name, r, category, ground) => {
     const bridges = r.runs.filter(q => q.kind === KIND.bridge), walls = bridges.reduce((t, q) => t + (q.closedEnds?.filter(Boolean).length ?? 0), 0);
     ends += 2 * bridges.length; closed += walls;
-    const problems = bridgeEndProblems(r, category);
+    const problems = bridgeEndProblems(r, category, ground);
     bad += problems.length;
     console.log(`${name}: ${(r.cost.total / 1e9).toFixed(3)} bn ${r.valid ? 'VALID' : 'not valid'}, ${bridges.length} bridges, ${r.cones?.length ?? 0} cones, ${walls} walls`
       + (problems.length ? `\n  ${problems.join('\n  ')}` : ''));

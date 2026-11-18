@@ -37,6 +37,9 @@ export interface SupportRoute {
   /** how far the cone of fill in front of a bridge end in end cell i reaches into the bridge (`into`: the direction
    * into it), m; 0 where there is no fill (abutment-cone.ts). Without it (a preview), no cones. */
   coneReachAt?: (i: number, into: number) => number;
+  /** the houses a bridge end's cone (and its working strip) would cover, out to `limit` m into the bridge: their price,
+   * and whether one of them is kept (it counts as what nothing moves aside) */
+  coneHouses?: (e: BridgeEnd, limit: number) => { cost: number; kept: boolean };
   /** Our road is a motorway (a protected landscape area takes no motorway's supports, research/75). */
   motorway?: boolean;
 }
@@ -165,7 +168,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     const u = (row.u0 + row.u1) / 2, s = e.s + e.into * u;
     return obstacle({ s, i: Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))), x: e.x + e.tx * u, y: e.y + e.ty * u, tx: e.tx, ty: e.ty,
       along: (row.u1 - row.u0) / 2, left: row.left, right: row.right }, strictWays) > -Infinity;
-  });
+  }) || !!r.coneHouses?.(e, limit).kept;
   const heldRun = (run: { i0: number; i1: number }) => {
     if (!held) return false;
     for (let i = run.i0; i <= run.i1; i++) if (!held[i]) return false;
@@ -285,7 +288,9 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   if (r.coneReachAt) for (const run of runs) if (run.kind === KIND.bridge && !heldRun(run)) {
     const reach: [number, number] = [coneReachAt(run.i0, 1), coneReachAt(run.i1, -1)];
     const ends = [endAt(run.s0, 1), endAt(run.s1, -1)];
-    const closed = ends.map(e => !highCone(e) && coneBuries(e, run.length)) as [boolean, boolean];
+    // (also where the houses the cone would take cost more than the wall: a designer closes the end off)
+    const closed = ends.map(e => !highCone(e) && (coneBuries(e, run.length)
+      || (r.coneHouses?.(e, run.length).cost ?? 0) > closedEndWall(e.top - e.ground, r.crownWidth).cost)) as [boolean, boolean];
     run.coneReach = [closed[0] ? 0 : reach[0], closed[1] ? 0 : reach[1]];
     if (closed[0] || closed[1]) {
       run.closedEnds = closed;
