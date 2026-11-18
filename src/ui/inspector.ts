@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingEnds, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, END_AUTO_TEXT, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, horizontalRules, speedNorms } from '../core/data/norms';
@@ -468,7 +468,7 @@ export class Inspector {
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
     // a road the player led its new piece to that cannot take it: back to where Auto leads it
-    else if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'end') btn(`data-fix-crossing-end="${roadId}"`, 'Automatic');
+    else if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'end') btn(`data-fix-crossing-end="${roadId}"`, END_AUTO_TEXT);
     else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
     // (not where our road already is on a bridge: a pier or a bridge end on something asks for a longer bridge)
     const onBridge = !!this.r && this.r.kind[stationIndex(this.r, v.s0)] === KIND.bridge;
@@ -662,7 +662,7 @@ export class Inspector {
     // where it leads: the player's road (their choice, kept even where it cannot be built: the problem says why)
     const ends = crossingEnds(c.roadId, d.crossingOverrides ?? []);
     const end = ends ? `<div class="ctx-row link-end"><span>${ends.flatMap((e, k) => e ? [this.endWords(c, k as 0 | 1)] : []).join('; ')} · your choice</span>
-        <button type="button" data-crossing-end="auto" title="Lead it where the game would">Automatic</button></div>` : '';
+        <button type="button" data-crossing-end="auto" title="Lead it where the game would">${END_AUTO_TEXT}</button></div>` : '';
     const path = bends ? `<div class="ctx-row link-path"><span>Path: your shape, ${bends} bend point${bends === 1 ? '' : 's'}</span>
         <button type="button" data-crossing-path="auto" title="Let the game route the new road again">Automatic path</button></div>`
       : `<div class="why link-path">Drag the new road on the map to reshape it${ends ? '' : ', or its end onto another road to lead it there'}.</div>`;

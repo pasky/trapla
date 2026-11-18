@@ -4,6 +4,7 @@ import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJunctionCost } from
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { STRUCTURE_RULES } from './data/prices';
+import { END_AUTO_TEXT } from './terms';
 import { pieceAccess, type PieceAccess } from './way-pieces';
 import { smoothLink } from './crossing-link';
 import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
@@ -270,7 +271,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   }
   if (message.startsWith(END_FAILS)) {
     const why = message.slice(END_FAILS.length), piece = c.cls === 'track' ? 'track' : 'road';
-    const fix = 'Drag its end onto another road, or choose "Automatic" for where it leads on the crossing card';
+    const fix = `Drag its end onto another road, or choose "${END_AUTO_TEXT}" on the crossing card`;
     const rule = 'Game rule: a new piece of a cut road joins, on its own side of our road, a road that leads on (one that crosses ours on a bridge, under it or in a junction, or one that does not cross it)';
     const other = why.startsWith('class:') ? ROAD_CLASSES[why.slice(6)]?.label ?? 'road' : '';
     const plain: Record<string, Pick<CrossingIssue, 'title' | 'detail'>> = {

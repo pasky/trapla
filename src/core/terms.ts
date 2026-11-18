@@ -199,6 +199,9 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
  * what a motorway direction leads towards. */
 export const placeName = (label: string) => label.replace(/\s*\([^()]*\)\s*$/, '');
 /** Selecting a road before dragging it (a drag on a road not selected moves the map): `line` is road / motorway / railway. */
+/** The button that leads a reroute's new piece back where Auto leads it (the player's end dropped; not the crossing's
+ * own "Automatic" choice). */
+export const END_AUTO_TEXT = 'Lead it where Auto does';
 export const SELECT_TEXT = {
   /** the map's hover label over a road a click would select */
   hover: 'click to select',

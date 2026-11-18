@@ -2109,9 +2109,9 @@ goes back. One undo step ("where a reroute leads"). Dragging the middle of the n
   drawn. A road that crosses ours carries it on across (on its bridge, under ours, in a junction): dropped on its part
   beyond our road, its part on this side is joined. The card says "The north part led to the class III road that
   crosses at km 2.29 (+420 m of new track)" and "North part to the class III road at km 2.29 · your choice
-  [Automatic]". Auto keeps a crossing a player's end is built to carrying traffic (it is not cut or led on itself).
+  [Lead it where Auto does]". Auto keeps a crossing a player's end is built to carrying traffic (it is not cut or led on itself).
 - **A road that cannot take it** leaves Auto's line on that side (or Auto's closure: a part that reaches other roads
-  still just ends) and says why (issue code `end`, with *Automatic* as its fix): the road is across ours, ours cuts it
+  still just ends) and says why (issue code `end`, with *Lead it where Auto does* as its fix): the road is across ours, ours cuts it
   too, it is the cut way itself, a track or private road cannot take a public road's traffic, a motorway takes no
   road at the same level, no road on the ground there, or the new piece cannot reach it (steep, a railway, a river …).
 - **A shaped side no longer builds the other side** (fixed on the way, a bill change for designs with shaped
@@ -2125,7 +2125,7 @@ goes back. One undo step ("where a reroute leads"). Dragging the middle of the n
 - Played (`node scripts/reroute-end-shots.mjs`, screenshots 500–509): the north part led to the class III road at km
   2.29 instead, 420 m, 5.88 M against Auto's 217 m to km 2.70 at 5.43 M (that road is straightened to cross ours square:
   the piece joins it where its new line meets the old one, off its ramp); bent in its middle (+bend point, the south part
-  still just ends); onto a street wholly south of our road (said, Auto's line stands); *Automatic*; onto the track
+  still just ends); onto a street wholly south of our road (said, Auto's line stands); *Lead it where Auto does*; onto the track
   north of us that does not cross ours (+818 m, 13.6 M: it runs beside our earthworks, then up beside the track 1505,
   whose own line leads there: a player's choice, built as asked). `tests/link-end.test.ts` (synthetic cases and the
   D35 case).

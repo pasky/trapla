@@ -76,7 +76,7 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   another road (one that crosses ours on a bridge, under it or in a junction, or one on that side that does not
   cross ours at all; the road it would join lights up) and let go. The game builds and prices the new road there
   like its own; a road it cannot take (across our road, cut by ours too, out of reach) is said on the card, with
-  *Automatic* to lead it where the game would.
+  *Lead it where Auto does* to take it back.
 - **Bend the road:** click the orange road to select it (its numbered bends show), then drag it — a new bend
   appears under the mouse and follows it (the cursor turns into a hand over the selected road; over one not
   selected it says *click to select*). <kbd>Esc</kbd> or a click on open ground lets go of it. A first-time player
@@ -360,10 +360,10 @@ Leading a reroute to another road by dragging its end (`node scripts/reroute-end
 km 2.51): [Auto leads its north part to the track under our bridge at km 2.70](docs/screenshots/500-reroute-end-auto.png),
 [its end dragged over a field (nothing to join)](docs/screenshots/501-reroute-end-drag-field.png),
 [over the class III road that crosses at km 2.29 (lit up)](docs/screenshots/502-reroute-end-snap.png),
-[let go: built there, "your choice" and *Automatic* on the card](docs/screenshots/503-reroute-end-led.png),
+[let go: built there, "your choice" and *Lead it where Auto does* on the card](docs/screenshots/503-reroute-end-led.png),
 [undone](docs/screenshots/504-reroute-end-undo.png), [redone and bent in its middle](docs/screenshots/505-reroute-end-bent.png),
 [onto a street across our road: said, Auto's line stands](docs/screenshots/506-reroute-end-across.png),
-[*Automatic*](docs/screenshots/507-reroute-end-automatic.png), [onto a track that does not cross ours](docs/screenshots/508-reroute-end-snap-track.png),
+[*Lead it where Auto does*](docs/screenshots/507-reroute-end-automatic.png), [onto a track that does not cross ours](docs/screenshots/508-reroute-end-snap-track.png),
 [built there](docs/screenshots/509-reroute-end-track.png).
 Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-underpass-shots.mjs`; retaken on
 cost model 31, where the start line lowers other roads than it did):
