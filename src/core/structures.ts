@@ -70,6 +70,9 @@ export interface StructureInput {
   forcedTunnel?: ArrayLike<number>;
   /** Auto builds no open cut deeper than this, m: a tunnel (STRUCTURE_RULES.deepCut); the player may paint one */
   deepCut?: number;
+  /** the grade line's height at each station, m: Auto builds no tunnel the law forbids (over TUNNEL_RULES.gradeFromLength,
+   * steeper than TUNNEL_RULES.maxGrade, NV 264/2009) where an open cut may stand instead */
+  grade?: ArrayLike<number>;
   /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
   overrides?: ArrayLike<number>;
   /** 1 = a higher-ranking road's deck this road rides (its bridge over that road, built and billed
@@ -113,6 +116,12 @@ export function allCut(i0: number, i1: number, cutMethod?: ArrayLike<number>): b
   if (!cutMethod) return false;
   for (let i = i0; i <= i1; i++) if (!cutMethod[i]) return false;
   return true;
+}
+
+/** An Auto tunnel the law forbids (NV 264/2009 annex 2.2: over 500 m, steeper than 5 %): left an open cut, unless
+ * something keeps it a tunnel (a cut deeper than designers dig, a stream over it). */
+function illegalTunnel(inp: StructureInput, i0: number, i1: number, length: number): boolean {
+  return !!inp.grade && length > TUNNEL_RULES.gradeFromLength && tunnelGrade({ i0, i1 }, inp.grade, inp.ds) > TUNNEL_RULES.maxGrade + 1e-6;
 }
 
 /** Does any station's value pass? (A plain loop: the selection asks this of the whole route on every call.) */
@@ -181,6 +190,14 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     for (let j = r.i1 + 1; j <= n - 2 && kind[j] === 0 && -inp.h[j] >= rules.portalDepth; j++) kind[j] = KIND.tunnel;
   }
   mergeGaps(kind, KIND.tunnel, gapStations(rules.tunnelGapMerge), (i) => inp.h[i] < 0);
+  // No tunnel the law forbids (NV 264/2009 annex 2.2: over 500 m, steeper than 5 %): where a long one steepens (its
+  // ends on a vertical curve, a steep stretch inside) the cut stays open, at most as deep as Auto cuts (deeper:
+  // a tunnel whatever its grade, the Act's own exception where nothing else can be built)
+  if (inp.grade) for (const r of findRuns(kind)) {
+    if (r.kind !== KIND.tunnel || (r.i1 - r.i0 + 1) * inp.ds <= TUNNEL_RULES.gradeFromLength) continue;
+    const steep = (i: number) => i < r.i1 && Math.abs(inp.grade![i + 1] - inp.grade![i]) / inp.ds > TUNNEL_RULES.maxGrade + 1e-6;
+    for (let i = r.i0; i <= r.i1; i++) if (!locked[i] && (steep(i) || (i > r.i0 && steep(i - 1)))) kind[i] = 0;
+  }
   // run-level decision
   const runs: Run[] = [];
   const whole = () => inp.ds;
@@ -232,7 +249,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
         }
         if (r.kind === KIND.tunnel) structure = tunnelRunCost(r.i0, r.i1, length, cellOf);
         if (r.kind === KIND.bridge && inp.bridgeRunCost) structure = inp.bridgeRunCost(r.i0, r.i1, length);
-        if (length < min || structure >= earth) {
+        if (length < min || structure >= earth || (r.kind === KIND.tunnel && illegalTunnel(inp, r.i0, r.i1, length))) {
           for (let i = r.i0; i <= r.i1; i++) kind[i] = KIND.earth;
           continue;
         }

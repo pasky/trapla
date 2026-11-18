@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { evaluateProject } from '../src/core/project-evaluate';
 import { createRailwayRoute } from '../src/core/project-railway';
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
+import { TUNNEL_RULES } from '../src/core/data/prices';
+import { KIND, tunnelGrade } from '../src/core/structures';
 
 const D11 = 'public/scenarios/d11';
 const fixture = (name: string) => JSON.parse(readFileSync(`tests/fixtures/qa-final/${name}.json`, 'utf8')) as ProjectDesign;
@@ -20,6 +22,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(problems(r)).toEqual([]);
     const c = r.routes['route:railway'].legacy!.crossings.find(c => c.crossedRoute?.id === design.routes[1].id)!;
     expect(c).toMatchObject({ type: 'bridge', above: true });
+    // (and Auto builds the new road no tunnel the law forbids: once 760 m at 6.6 %, its end on a vertical curve)
+    const road = r.routes[design.routes[1].id].legacy!;
+    for (const t of road.runs) if (t.kind === KIND.tunnel && t.length > TUNNEL_RULES.gradeFromLength) expect(tunnelGrade(t, road.grade, road.ds)).toBeLessThanOrEqual(TUNNEL_RULES.maxGrade + 1e-6);
   }, 60_000);
   it('a new railway or motorway across it is crossed by our railway, not left as "roads cross here"', () => {
     for (const name of ['rail-new-railway', 'rail-new-motorway']) {

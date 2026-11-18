@@ -43,6 +43,26 @@ describe('a tunnel goes on as cut and cover out to its portals', () => {
     expect(chooseStructures({ ds, h, earthPerM: earth, bridgePerM: 1e9, tunnelPerM: tunnel }).runs).toEqual([]);
   });
 
+  it('no tunnel over 500 m steeper than 5 %: where a long one steepens the cut stays open, deeper than Auto cuts a tunnel still', () => {
+    // a 1 km hill 60 m high over a grade at 3 % that steepens to 7 % over its last 300 m (QA new road across Královec)
+    const n = 101, ds = 10, h = hill(n, 60);
+    const grade = Float64Array.from({ length: n }, (_, i) => i <= 70 ? 0.03 * i * ds : 0.03 * 700 + 0.07 * (i - 70) * ds);
+    const input = { ds, h, earthPerM: earthOf(h, 100), bridgePerM: 1e9, tunnelPerM: 50_000, deepCut: STRUCTURE_RULES.deepCut };
+    const all = chooseStructures(input).runs, kept = chooseStructures({ ...input, grade }).runs;
+    expect(all).toHaveLength(1);
+    expect(all[0].length).toBeGreaterThan(TUNNEL_RULES.gradeFromLength);
+    for (const r of kept) {
+      let steep = 0;
+      for (let i = r.i0; i < r.i1; i++) if (Math.abs(grade[i + 1] - grade[i]) / ds > TUNNEL_RULES.maxGrade + 1e-6) steep = Math.max(steep, -h[i], -h[i + 1]);
+      // (steep only where the cut would be deeper than Auto digs: no other way)
+      if (r.length > TUNNEL_RULES.gradeFromLength && steep) expect(steep).toBeGreaterThan(STRUCTURE_RULES.deepCut);
+    }
+    // the steep end is an open cut no deeper than Auto cuts
+    const end = kept[kept.length - 1];
+    expect(end.i1).toBeLessThan(all[0].i1);
+    for (let i = end.i1 + 1; i <= all[0].i1; i++) expect(-h[i]).toBeLessThanOrEqual(STRUCTURE_RULES.deepCut);
+  });
+
   it('a stream above a grade a structure height below its bed keeps a tunnel, which goes on to its portals', () => {
     const n = 81, ds = 10, h = hill(n, 30), forcedTunnel = new Uint8Array(n);
     forcedTunnel[40] = 1;
