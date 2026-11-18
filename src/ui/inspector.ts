@@ -468,6 +468,9 @@ export class Inspector {
     const onBridge = !!this.r && this.r.kind[stationIndex(this.r, v.s0)] === KIND.bridge;
     if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
+    // a pin Auto cannot reach: the height it suggests (one Auto meets, core/grade-pins.ts), then unpin
+    const pinAt = (v as Violation & { pin?: { requested: { s: number }; suggested: { z: number } | null } }).pin;
+    if (pinAt?.suggested && d.profileMode === 'auto') btn(`data-fix-pin="${pinAt.requested.s},${pinAt.suggested.z}"`, `Set it to ${pinAt.suggested.z.toFixed(1)} m`);
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
     // By hand: the player's height pins it is about (the points of this result: the design's own)
     if (d.profileMode === 'manual' && this.r) {
@@ -528,7 +531,9 @@ export class Inspector {
     const p = d.gradePins?.find((q) => Math.abs(q.s - s) < 0.1);
     if (!p) return '';
     const i = stationIndex(r, s);
-    const vio = r.violations.filter((v) => v.kind === 'profile' && v.s0 <= s + 1 && v.s1 >= s - 1).map((v) => ({ v, fixes: '' }));
+    // (its fixes as buttons; Unpin is the card's own)
+    const vio = r.violations.filter((v) => v.kind === 'profile' && v.s0 <= s + 1 && v.s1 >= s - 1)
+      .map((v) => ({ v, fixes: this.fixes(v, d).replace(/<button[^>]*data-fix-unpin[^>]*>Unpin<\/button>/, '') }));
     // (a pin Auto cannot reach is left out: its line stays as it was, core/autoprofile.ts)
     const missed = vio.some(({ v }) => 'pin' in v), track = CATEGORIES[d.category].mode === 'railway' ? 'track' : 'road';
     const why = d.profileMode !== 'auto' ? 'Not used while the height is set by hand.'
@@ -776,6 +781,7 @@ export class Inspector {
     if (b.dataset.fixVpiMove) { const [from, s, z] = b.dataset.fixVpiMove.split(',').map(Number); this.ev.pinAt?.(from, { s, z }); return; }
     if (b.dataset.fixVpiSmallest) { this.ev.pinAt?.(Number(b.dataset.fixVpiSmallest), { r: null }); return; }
     if (b.dataset.fixVpiDel) { this.ev.pinAt?.(Number(b.dataset.fixVpiDel), null); return; }
+    if (b.dataset.fixPin) { const [s, z] = b.dataset.fixPin.split(',').map(Number); this.ev.pin?.(s, z); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }

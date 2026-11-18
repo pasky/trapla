@@ -187,10 +187,10 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     }
     return left && right ? undefined : { metres: Math.max(1, Math.ceil(need)), away: left ? 'right' : 'left' };
   };
-  const moveOrBridge = (c: FootprintConflict, points: readonly Point2[], half: number, what: string) => {
+  const moveOrBridge = (c: FootprintConflict, points: readonly Point2[], half: number, what: string, instead?: string) => {
     const move = sideClearance(points, c.i, c.i + Math.round((c.s1 - c.s0) / r.ds), half);
-    return move ? `Move the route at km ${kmText(c.s0)} about ${move.metres} m to the ${move.away} (away from the ${what}), or ${bridgeIt(c)}`
-      : `${cap(bridgeIt(c))} (the ${what} lies on both sides of our road here)`;
+    return move ? `Move the route at km ${kmText(c.s0)} about ${move.metres} m to the ${move.away} (away from the ${what}), or ${instead ?? bridgeIt(c)}`
+      : instead ? cap(instead) : `${cap(bridgeIt(c))} (the ${what} lies on both sides of our road here)`;
   };
   const roadCovered = new Map<number, [number, number][]>(), tieInCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
   const screened = (way: number) => [...roadCovered.get(way) ?? [], ...tieInCovered.get(way) ?? []];
@@ -506,7 +506,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const plainReasons = [bankOnly ? 'only its bank lies under our slope, so there is no line for a culvert' : '',
       h.structure ? 'a bridge support would stand in it' : '', size.type === 'bridge' ? 'it is too big for a culvert' : '',
       !compatible ? 'it would have to join a culvert of a different size' : '', !outlets ? 'its outlet would be buried' : '',
-      !waterCoverFits(minCover, size.minHeight) ? `${Number.isFinite(minCover) ? `there is only ${minCover.toFixed(1)} m of earth over it` : 'there is no earth over it'}, a culvert needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
+      !waterCoverFits(minCover, size.minHeight) ? minCover < 0 ? 'our cutting runs through it' : `${Number.isFinite(minCover) ? `there is only ${minCover.toFixed(1)} m of earth over it` : 'there is no earth over it'}, a culvert needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
       s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length, affectedLength,
       cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,
@@ -515,7 +515,10 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       source: ok ? 'OTSKP 2026 culvert items and estimated assemblies' : undefined };
     if (ok) conflicts.push(conflict);
     else block(conflict, h.structure ? `A bridge ${h.structure === 'pier' ? 'pier' : 'support'} stands in a stream` : 'Our earthworks block a stream',
-      h.structure ? `Move the route at km ${kmText(conflict.s0)} a little so the support misses the stream, or make the bridge longer here` : moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream'),
+      h.structure ? `Move the route at km ${kmText(conflict.s0)} a little so the support misses the stream, or make the bridge longer here`
+        // (in a cutting no bridge can carry our road over it: under it in a tunnel, or over it on a culvert)
+        : minCover < 0 ? moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream', 'lower our road here to tunnel under the stream, or raise it over the stream for a culvert')
+          : moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream'),
       'Game rule: a stream under our earthworks needs a culvert with enough earth over it and open ends; the game does not move streams it cannot reroute safely',
       h.structure ? 'engine' : 'game');
   }

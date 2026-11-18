@@ -3,7 +3,7 @@
 // a Web Worker in the app.
 
 import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable, usableLine } from './autoprofile';
-import { reachableSuggestions } from './grade-pins';
+import { reachableSuggestions, type GradePinViolation } from './grade-pins';
 import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
@@ -1207,6 +1207,13 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
     balanceTolerance, tpl, roadS, balanceOf };
 }
 
+/** A stream our cutting runs through: lower our line `down` m to tunnel under it, or raise it `up` m for a culvert,
+ * the nearer first. */
+function cutStreamFix(down: number, up: number, opening: string): string {
+  const lower = `lower our road here by ${(-down).toFixed(1)} m to tunnel under the stream`, raise = `raise it by ${up.toFixed(1)} m for a ${opening} culvert`;
+  return -down <= up ? `${lower[0].toUpperCase()}${lower.slice(1)}, or ${raise}` : `Raise our road here by ${up.toFixed(1)} m for a ${opening} culvert, or lower it by ${(-down).toFixed(1)} m to tunnel under the stream`;
+}
+
 /** Stage 3, the vertical alignment: Auto's grade line (the block solve, its material value and pins) or
  * the player's height points. */
 function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>) {
@@ -1467,6 +1474,20 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     pinViolations = ap.pinViolations ?? [];
     // a pin Auto cannot meet: the height it does reach instead, found by the same solve (core/grade-pins.ts)
     if (firstOpt && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, pins => solveAuto({ ...firstOpt, pins }));
+    // a pin left out for a crossing its line would not clear: what lies there (the nearest such crossing)
+    pinViolations = pinViolations.map(v => {
+      const at = (v as GradePinViolation).pin?.clearanceAt;
+      if (at === undefined) return v;
+      const c = mustBridge.reduce<MustBridge | undefined>((m, x) => !m || Math.abs(x.s - at) < Math.abs(m.s - at) ? x : m, undefined);
+      const near = c && Math.abs(c.s - at) <= 2 * ds ? c : undefined;
+      const what = !near ? (natureCrown[Math.min(n - 1, Math.round(at / ds))] ? 'a protected area' : 'a crossing')
+        : near.what === 'watercourse' ? 'a stream' : near.what === 'river' ? 'a river' : near.what === 'railway' ? 'a railway' : `a ${near.what}`;
+      const km = (at / 1000).toFixed(2);
+      const how = near?.what === 'watercourse' || near?.what === 'river'
+        ? `our road would run through the ${what.slice(2)} at km ${km}: too high to pass under it in a tunnel, too low to bridge it`
+        : `our road would not clear the ${what.slice(2)} at km ${km}`;
+      return { ...v, title: `Pinned height out of reach: ${what}`, detail: `You asked for ${(v as GradePinViolation).pin.requested.z.toFixed(2)} m; there ${how}. Auto leaves the pin out.` };
+    });
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
@@ -1961,14 +1982,14 @@ interface LiftState { targets: Map<number, number>; retried: Map<number, number>
 /** The lift tool of the design passes: `liftProfile` raises Auto's line to height targets (a bridge that
  * needs more room under it); `lift.stop` remembers the fixed height (an end or a pin) the last failed lift
  * ran into, for the problem's wording. */
-function routeLift(d: Design, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>) {
+function routeLift(d: Design, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>, pins = d.gradePins) {
   const { vlim, maxGradient, timing } = setup;
   const { work } = caches;
   /** why the last lift failed: the station whose fixed height (an end or a pin) its steepest grade ran into */
   const lift: { stop: number | null } = { stop: null };
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[], range?: readonly [number, number], free?: readonly [number, number]) => {
     const start = performance.now();
-    const lifted = liftAutoProfile(candidate, targets, d.speed, vlim.gradeAt ?? maxGradient, d.gradePins, (m) => {
+    const lifted = liftAutoProfile(candidate, targets, d.speed, vlim.gradeAt ?? maxGradient, pins, (m) => {
       const k = /fixed km (\d+(?:\.\d+)?)/.exec(m); if (k) lift.stop = Number(k[1]) * 1000;
     }, d.category, range, free, vlim);
     work('lift', start);
@@ -2652,7 +2673,9 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       ...(!shortTunnel && kind[i] === KIND.earth && size.type !== 'bridge' ? { clearance: 'water' as const } : {}),
       title: shortTunnel ? 'Tunnel under a stream is too short' : above < 0 ? 'Our cutting runs through a stream' : `Our road blocks a ${c.waterKind === 'river' ? 'river' : 'stream'}`,
       fix: shortTunnel ? `Make the tunnel at least ${STRUCTURE_RULES.minTunnelLength} m long and deep enough, or pass above the stream` : size.type === 'bridge' || kind[i] === KIND.bridge ? `Put our road on a bridge spanning the water and its banks (${bridgeSpan.toFixed(0)} m along our road), at least ${need.toFixed(1)} m above the bed`
-        : `Raise our road here to at least ${need.toFixed(1)} m above the stream bed for a ${waterOpening(size)} culvert, or use a bridge`,
+        // (in a cutting no bridge can carry our road over it: under it in a tunnel, or up over it on a culvert)
+        : above < 0 ? cutStreamFix(-above - STRUCTURE_RULES.portalDepth, need - above, waterOpening(size))
+          : `Raise our road here to at least ${need.toFixed(1)} m above the stream bed for a ${waterOpening(size)} culvert, or use a bridge`,
       detail: `It may carry about ${size.q100.toFixed(1)} m³/s in a 100-year flood, from ${c.catchmentKm2.toFixed(1)} km² of land draining into it${c.truncated ? ' (a rough estimate: its area runs off the map)' : ''}. The game does not move streams for you; a deep tunnel can pass under it.`,
       basis: 'game', rule: 'Game estimate: flood size, culvert cover and fish passage are screened, not a hydraulic design',
     });
@@ -2787,7 +2810,9 @@ function finishDesign(ctx: EvalContext, d: Design, opts: EvalOptions, solved: Re
  * above: its four steps and completeDesign). */
 function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>, engineerStage: ReturnType<typeof routeEngineer>, prices: ReturnType<typeof routePrices>) {
   const { autoVpis } = solved;
-  const lifting = routeLift(d, setup, caches);
+  // (a pin Auto left out holds nothing: the line there is Auto's own)
+  const out = new Set(solved.pinViolations.flatMap(v => 'pin' in v ? [(v as GradePinViolation).pin.index] : []));
+  const lifting = routeLift(d, setup, caches, out.size ? d.gradePins?.filter((_, k) => !out.has(k)) : d.gradePins);
   const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start: VPI[] = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => finishDesign(ctx, d, opts, solved, setup, engineerStage, lifting, prices, caches, relaxed, strict, start, from);
   return { finish };
 }

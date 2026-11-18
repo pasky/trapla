@@ -41,3 +41,32 @@ export function passBends(a: Vec2, b: Vec2, pis: readonly PI[], i: number): { pi
   }
   return { pis: out, i: k };
 }
+
+/** cos of the least turn that is a bend: one turning less than half a degree is no bend (its card would read "turns
+ * 0°"). Game rule: the editor's whole-degree display, no norm. */
+const STRAIGHT_COS = 0.9999619230641713; // cos 0.5°
+
+/**
+ * `pis` without the bends among `near` (indices) that no longer bend: a drag along the road leaves the dragged bend
+ * on the line, or one dragged past a neighbour leaves that neighbour on the line between it and the next (QA P2
+ * re-check: "Bend 3 · turns 0° · no curve (straight)", its number over bend 2's). A hairpin or an old road's own
+ * corner stays. `dropped`: the indices taken out (of the input), ascending.
+ */
+export function dropStraightBends(a: Vec2, b: Vec2, pis: readonly PI[], near: readonly number[]): { pis: readonly PI[]; dropped: number[] } {
+  const keep = pis.map((p, k) => ({ p, k }));
+  const watched = new Set(near.filter(k => k >= 0 && k < pis.length));
+  for (let again = true; again;) {
+    again = false;
+    for (let q = 0; q < keep.length; q++) {
+      const { p, k } = keep[q];
+      if (!watched.has(k) || p.hairpin || p.mapped) continue;
+      const prev = q > 0 ? keep[q - 1].p : a, next = q + 1 < keep.length ? keep[q + 1].p : b;
+      if (turn(prev, p, next) < STRAIGHT_COS) continue;
+      keep.splice(q, 1); again = true;
+      break;
+    }
+  }
+  if (keep.length === pis.length) return { pis, dropped: [] };
+  const left = new Set(keep.map(x => x.k));
+  return { pis: keep.map(x => x.p), dropped: pis.flatMap((_, k) => left.has(k) ? [] : [k]) };
+}

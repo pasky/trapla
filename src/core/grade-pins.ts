@@ -28,7 +28,9 @@ export interface GradePinViolation extends Violation {
     requested: GradePin;
     actualZ: number | null;
     tolerance: number;
-    reason: 'invalid' | 'gradient-envelope' | 'search';
+    reason: 'invalid' | 'gradient-envelope' | 'search' | 'clearance';
+    /** reason 'clearance': the chainage of the crossing Auto's line keeps clear and a line through the pin would not */
+    clearanceAt?: number;
     /** Necessary gradient-only bounds given fixed tie-ins and the OTHER pins' tolerance bands.
      * Not a claim that a vertical curve or a path through all pins exists. null = invalid station. */
     reachable: { min: number; max: number } | null;
@@ -100,6 +102,16 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
   return out;
 }
 
+/** A pin Auto meets only by missing a clearance its own line keeps (at chainage `at`): left out, the line stays
+ * Auto's own. evaluate.ts names what lies there. */
+export function clearancePinViolation(v: GradePinViolation, at: number): GradePinViolation {
+  const z = v.pin.actualZ!;
+  return { ...v, basis: 'game', title: 'Pinned height out of reach: a crossing',
+    fix: `Set it to ${z.toFixed(2)} m, or unpin`,
+    detail: `You asked for ${v.pin.requested.z.toFixed(2)} m; through it our road would not clear what it crosses at km ${(at / 1000).toFixed(2)}.`,
+    pin: { ...v.pin, reason: 'clearance', clearanceAt: at } };
+}
+
 /** Inward to the editor's 0.1 m step (towards `from`): a height typed from the card is the one checked. */
 const inward = (z: number, from: number) => (z > from ? Math.floor(z * 10 + 1e-9) : Math.ceil(z * 10 - 1e-9)) / 10;
 /** Most solves spent on one pin's suggestion (each re-solves only the windows and blocks around the pin when the
@@ -126,7 +138,7 @@ export function reachableSuggestions(violations: readonly GradePinViolation[], p
       return !r.pinViolations?.some((x) => x.pin.index === met.length);
     };
     // (a failed search suggests the height now: the edge to try is the request itself)
-    const from = inward(actualZ, requested.z), edge = inward(reason === 'search' ? requested.z : suggested.z, actualZ);
+    const from = inward(actualZ, requested.z), edge = inward(reason === 'search' || reason === 'clearance' ? requested.z : suggested.z, actualZ);
     let best = from;
     if (Math.abs(edge - from) > 1e-9) {
       if (reaches(edge)) best = edge;
@@ -142,7 +154,7 @@ export function reachableSuggestions(violations: readonly GradePinViolation[], p
     }
     if (best === suggested.z) return v;
     return { ...v, fix: `Set it to ${best.toFixed(1)} m, or unpin`,
-      detail: `You asked for ${requested.z.toFixed(2)} m; the road is at ${actualZ.toFixed(2)} m. Auto can reach at ${requested.z > actualZ ? 'most' : 'least'} ${best.toFixed(1)} m here.`,
+      detail: reason === 'clearance' ? v.detail : `You asked for ${requested.z.toFixed(2)} m; the road is at ${actualZ.toFixed(2)} m. Auto can reach at ${requested.z > actualZ ? 'most' : 'least'} ${best.toFixed(1)} m here.`,
       pin: { ...v.pin, suggested: { s: suggested.s, z: best } } };
   });
 }

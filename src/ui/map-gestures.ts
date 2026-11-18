@@ -5,7 +5,7 @@
 // a click selects it first (the owner's review: random presses while panning bent the road). What a gesture
 // has grabbed is this module's own state.
 import { fitPlacedBend } from '../core/bend-fit';
-import { passBends } from '../core/bend-order';
+import { dropStraightBends, passBends } from '../core/bend-order';
 import { fitSetRadii } from '../core/fit-radii';
 import { speedNorms } from '../core/data/norms';
 import { nearestLeg } from '../core/horizontal';
@@ -104,6 +104,8 @@ export function createMapGestures(app: MapGestureContext) {
   let placedByDrag: { routeId: RouteId; i: number } | null = null;
   /** the bend dragged now and the radii set before the drag (core/fit-radii.ts) */
   let dragWanted: { i: number; r: (number | null)[] } | null = null;
+  /** the bend the drag holds now (its number after any swap) */
+  let held: number | null = null;
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(app.A, app.B, app.store.design.pis, { x, y });
     app.store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
@@ -162,7 +164,7 @@ export function createMapGestures(app: MapGestureContext) {
       // (let go of between the press and the first move, e.g. Esc: the drag is the map's no more, nor the road's)
       if (!app.store.read() || !app.roadSelected) return null; app.intro.hide(); return bendByDrag(x, y);
     },
-    onPiSelect: (i) => { grabOffset = null; placedByDrag = null; app.select(i === null ? null : { kind: 'bend', i }); },
+    onPiSelect: (i) => { grabOffset = null; placedByDrag = null; held = null; app.select(i === null ? null : { kind: 'bend', i }); },
     onPiDrag: (dragged, x, y) => {
       const o = grabOffset?.i === dragged ? grabOffset : null, route = app.store.activeRouteId;
       let i = dragged;
@@ -188,15 +190,28 @@ export function createMapGestures(app: MapGestureContext) {
         radiusNotes.record(route, i, fit.lowered);
       }, false);
       if (i !== dragged) app.select({ kind: 'bend', i });
+      held = i;
       return i;
     },
     onPiDragEnd: () => {
       grabOffset = null; dragWanted = null;
       const placed = placedByDrag; placedByDrag = null;
+      const i = held; held = null;
       const d = app.store.read(), ends = app.store.route?.endpoints;
       if (placed && d && ends && placed.routeId === app.store.activeRouteId) {
         const fitted = fitPlacedBend(ends.a.position, ends.b.position, d.pis, placed.i, d.category, d.speed);
         if (fitted) app.store.update(draft => { draft.pis = fitted; }, false);
+      }
+      // a bend the drag left on the line (it, or a neighbour it passed) is no bend: it goes (core/bend-order.ts)
+      const now = app.store.read();
+      if (i !== null && now) {
+        const straight = dropStraightBends(app.A, app.B, now.pis, [i - 1, i, i + 1]);
+        if (straight.dropped.length) {
+          const route = app.store.activeRouteId;
+          app.store.update(draft => { draft.pis = straight.pis.map(p => ({ ...p })); }, false);
+          for (const k of [...straight.dropped].reverse()) radiusNotes.drop(route, k);
+          app.select(straight.dropped.includes(i) ? null : { kind: 'bend', i: i - straight.dropped.filter(k => k < i).length });
+        }
       }
       app.store.commit();
     },

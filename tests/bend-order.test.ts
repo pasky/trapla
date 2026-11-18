@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { fitPlacedBend } from '../src/core/bend-fit';
-import { passBends } from '../src/core/bend-order';
+import { dropStraightBends, passBends } from '../src/core/bend-order';
 import { ROAD_CHECKS } from '../src/core/checks';
 import { bendRules, horizontalRules, speedNorms } from '../src/core/data/norms';
 import { buildAlignment, nearestLeg, type PI } from '../src/core/horizontal';
@@ -46,4 +46,31 @@ it('leaves a hairpin and an ordinary sharp neighbour alone', () => {
   // a bend pulled out sideways: its neighbours turn sharply, but it has passed none of them
   const side: PI[] = [{ x: 0, y: 1000, r: null }, { x: 300, y: 1200, r: null }, { x: 600, y: 1000, r: null }];
   expect(passBends({ x: 0, y: 0 }, { x: 600, y: 0 }, side.map((p, k) => k === 1 ? { ...p, y: 3000 } : p), 1).i).toBe(1);
+});
+
+// QA P2 fixes re-check (screenshot 471): D35 km 4.2, the new bend dragged 50 px back along the road passes bend 2 and
+// ends 137 m before it, on the line through bend 2 and bend 3: bend 2 is then "Bend 3 · turns 0° · no curve
+// (straight)". On release it goes; a real bend, a hairpin and the dragged bend where it bends stay.
+it('a bend a drag leaves on the line goes on release', () => {
+  const d = JSON.parse(readFileSync('scripts/scenarios/d35/d35-stage1-motorway.json', 'utf8')).design;
+  const a = { x: 2393.8, y: 3212 }, b = { x: 18222.3, y: 2459.4 };
+  const b2: PI = d.pis[1], b3: PI = d.pis[2];
+  const L = Math.hypot(b3.x - b2.x, b3.y - b2.y), ux = (b3.x - b2.x) / L, uy = (b3.y - b2.y) / L;
+  const start = { x: b2.x + 0.3 * L * ux, y: b2.y + 0.3 * L * uy }, end = { x: b2.x - 137 * ux, y: b2.y - 137 * uy };
+  let pis: readonly PI[] = d.pis.map((p: PI) => ({ ...p }));
+  let i = nearestLeg(a, b, [...pis], start);
+  pis = [...pis.slice(0, i), { ...start, r: null }, ...pis.slice(i)];
+  for (let f = 1; f <= 10; f++) {
+    const moved = pis.map((p, k) => k === i ? { ...p, x: start.x + (end.x - start.x) * f / 10, y: start.y + (end.y - start.y) * f / 10 } : p);
+    ({ pis, i } = passBends(a, b, moved, i));
+  }
+  expect(i).toBe(1);
+  expect(pis[2]).toMatchObject({ x: b2.x, y: b2.y });
+  const out = dropStraightBends(a, b, pis, [i - 1, i, i + 1]);
+  expect(out.dropped).toEqual([2]);
+  expect(out.pis.length).toBe(d.pis.length);
+  expect(out.pis[1]).toMatchObject(end);
+  // a hairpin on the line stays; nothing else of the line goes
+  expect(dropStraightBends(a, b, pis.map((p, k) => k === 2 ? { ...p, hairpin: true } : p), [1, 2, 3]).dropped).toEqual([]);
+  expect(dropStraightBends(a, b, d.pis, [0, 1, 2, 3]).dropped).toEqual([]);
 });

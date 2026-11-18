@@ -46,6 +46,24 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(v.pin.suggested!.z).toBeLessThan(440.44);
     expect(v.fix).toBe(`Set it to ${v.pin.suggested!.z.toFixed(1)} m, or unpin`);
     const set = run(pinned(v.pin.suggested!.z)).routes['route:railway'].legacy!;
-    expect(set.violations.filter(x => 'pin' in x)).toEqual([]);
+    expect(set.violations).toEqual([]);
+  }, 120_000);
+
+  // QA P2 fixes re-check (main 5331cc1): the height suggested then, 439.5 m, was met only 0.9 m too high for the
+  // tunnel under the stream at km 2.087 (9 m under its bed), so the cut and cover began at km 2.15 and the stream ran
+  // through the open cut: not valid, 198 M cheaper, its fixes (a bridge in the cut, a culvert 11 m up) unbuildable.
+  // A pin met only by missing a crossing Auto's own line clears is out of reach like one too steep.
+  it('leaves out a pin that would leave a stream in the cut', () => {
+    const base = fixture('rail-kralovec'), rail = base.routes.find(r => r.kind === 'railway')!;
+    const pinned = (z: number) => replaceRailwayFromDesign(base, rail.id, { ...railwayDesign(base, rail), gradePins: [{ s: 2030, z }] });
+    const r0 = run(base).routes['route:railway'].legacy!, out = run(pinned(439.5)).routes['route:railway'].legacy!;
+    expect(out.cost.total).toBe(r0.cost.total);
+    const v = out.violations.find(v => 'pin' in v) as GradePinViolation;
+    expect(out.violations).toEqual([v]);
+    expect(v.title).toBe('Pinned height out of reach: a stream');
+    const stream = out.waterCrossings.find(w => Math.abs(w.s - 2087) < 5)!;
+    expect(stream.structure).toBe('tunnel');
+    const set = run(pinned(v.pin.suggested!.z)).routes['route:railway'].legacy!;
+    expect(set.violations).toEqual([]);
   }, 120_000);
 });

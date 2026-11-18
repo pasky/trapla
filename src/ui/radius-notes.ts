@@ -21,6 +21,13 @@ export const radiusNotes = {
     for (const [k, n] of m) moved.set(k === from ? to : from < to && k > from && k <= to ? k - 1 : to < from && k >= to && k < from ? k + 1 : k, n);
     notes.set(route ?? '', moved);
   },
+  /** bend `i` is gone (left straight by a drag, core/bend-order.ts): its note with it, the later ones one down */
+  drop(route: string | null, i: number) {
+    const m = notes.get(route ?? ''); if (!m) return;
+    const kept = new Map<number, { from: number; to: number }>();
+    for (const [k, n] of m) if (k !== i) kept.set(k > i ? k - 1 : k, n);
+    notes.set(route ?? '', kept);
+  },
   /** a drag of bend `dragged`: its and its neighbours' notes are now `lowered` */
   record(route: string | null, dragged: number, lowered: readonly LoweredRadius[]) {
     let m = notes.get(route ?? '');

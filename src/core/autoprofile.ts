@@ -37,7 +37,7 @@
 //   chainage they apply at); give a new one its exact chainage there.
 
 import { buildProfile, gradeLimitOf, type GradeLimit, type RadiusLimit, type VPI } from './vertical';
-import { GRADE_PIN_TOLERANCE, gradePinViolations, type GradePin, type GradePinViolation } from './grade-pins';
+import { clearancePinViolation, GRADE_PIN_TOLERANCE, gradePinViolations, type GradePin, type GradePinViolation } from './grade-pins';
 
 export interface BalanceSearch {
   /** cost per metre of road for grade-minus-ground h, given the value of a m³ of fill material */
@@ -320,7 +320,67 @@ export function profileOk(vpis: VPI[], maxGradient: GradeLimit, minCrest: Radius
   return true;
 }
 
+/** The stations whose clearance (`minH`, `maxH`, `eitherH`) a grade polygon misses, as the search judges them: the
+ * polygon through the VPIs at the clearance's own chainage, against the bound itself. */
+function missedClearances(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, vpis: readonly VPI[]): number[] {
+  const out: number[] = [];
+  const { minH, maxH, eitherH, clearanceS } = opt;
+  for (let i = 0, k = 0; i < s.length; i++) {
+    const lo = minH ? minH[i] : NaN, hi = maxH ? maxH[i] : NaN, above = eitherH ? eitherH.above[i] : NaN, below = eitherH ? eitherH.below[i] : NaN;
+    if (Number.isNaN(lo) && Number.isNaN(hi) && Number.isNaN(above)) continue;
+    const x = clearanceS && !Number.isNaN(clearanceS[i]) ? clearanceS[i] : s[i];
+    k = 0;
+    while (k < vpis.length - 2 && vpis[k + 1].s < x) k++;
+    const a = vpis[k], b = vpis[k + 1], h = a.z + (b.z - a.z) * (x - a.s) / (b.s - a.s || 1) - g[i];
+    const eps = 1e-6;
+    if (h < lo - eps || h > hi + eps || (h < above - eps && h > below + eps)) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * Auto's grade line (searchProfile), with the pins it can meet only by missing a clearance its own line keeps
+ * (a stream it would leave in an open cut, a railway it would cross at grade) left out like a pin out of the
+ * slopes' reach: the line stays Auto's own and the pin says why (QA P2 re-check: a pin met 0.9 m too high for the
+ * tunnel under a stream left the stream in the railway's cut, the design 198 M cheaper and not valid). Each new miss
+ * is put down to the pin nearest to it; without pins, or where the pinned line misses nothing new, it is the
+ * search's result as it was.
+ */
 export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions): AutoProfileResult {
+  const r = searchProfile(s, g, opt);
+  const pins = opt.pins ?? [];
+  if (!pins.length || !(opt.minH || opt.maxH || opt.eitherH)) return r;
+  const mine = missedClearances(s, g, opt, r.vpis);
+  if (!mine.length) return r;
+  const own = new Set(missedClearances(s, g, opt, autoProfile(s, g, { ...opt, pins: [] }).vpis));
+  const fresh = mine.filter(i => !own.has(i));
+  if (!fresh.length) return r;
+  const L = s[s.length - 1], out = new Set(r.pinViolations?.map(v => v.pin.index) ?? []);
+  const blamed = new Map<number, number>();
+  for (const i of fresh) {
+    const x = opt.clearanceS && !Number.isNaN(opt.clearanceS[i]) ? opt.clearanceS[i] : s[i];
+    let best = -1;
+    pins.forEach((p, k) => {
+      if (out.has(k) || !(p.s >= 0 && p.s <= L) || !Number.isFinite(p.z)) return;
+      if (best < 0 || Math.abs(p.s - x) < Math.abs(pins[best].s - x)) best = k;
+    });
+    if (best >= 0 && !blamed.has(best)) blamed.set(best, x);
+  }
+  if (!blamed.size) return r;
+  const kept = pins.filter((_, k) => !blamed.has(k) && !out.has(k));
+  const line = autoProfile(s, g, { ...opt, pins: kept });
+  const crestR: RadiusLimit = opt.crestAt ?? opt.minCrest, sagR: RadiusLimit = opt.sagAt ?? opt.minSag;
+  // (the pins the kept ones' own line had to leave out for a clearance too)
+  const keptIndex = pins.flatMap((_, k) => !blamed.has(k) && !out.has(k) ? [k] : []);
+  for (const v of line.pinViolations ?? []) if (v.pin.clearanceAt !== undefined) blamed.set(keptIndex[v.pin.index], v.pin.clearanceAt);
+  const pinViolations = gradePinViolations(pins, buildProfile(line.vpis, crestR, sagR), opt.maxGradient).map(v => {
+    const at = blamed.get(v.pin.index);
+    return at === undefined || v.pin.reason !== 'search' ? v : clearancePinViolation(v, at);
+  });
+  return { ...line, feasible: line.feasible && !pinViolations.length, pinViolations, lineOk: usableLine(line) };
+}
+
+function searchProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions): AutoProfileResult {
   const n = s.length;
   const L = s[n - 1];
   const zA = opt.endpointElevations?.a ?? g[0], zB = opt.endpointElevations?.b ?? g[n - 1];
@@ -763,6 +823,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       add(penaltyAt ? penaltyAt[i] : clearancePenalty); add(hard?.[i] ?? 0);
     }
     add(opt.tunnelHardGrade ?? NaN); add(opt.tunnelHardFrom ?? NaN);
+    // (every pin bounds every knot's heights by the slopes' reach from it, and pins add a finer pass: a solve with
+    // pins is not one without them, however far they are; a pinned and an unpinned solve share a memo)
+    if (hasPins) { add(-1); for (const p of pins!) { add(p.s); add(p.z); } }
     return `${tag}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}:${count}`;
   }
 
