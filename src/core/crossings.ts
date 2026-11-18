@@ -151,7 +151,9 @@ export interface CrossingResult {
   overRailway?: true;
   /** A cut way's pieces that still reach the road network over other ways and just end here ([right, left] of our
    * road), and, where both do, how much further its traffic goes round over the network, m (way-pieces.ts). */
-  closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number };
+  closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number;
+    /** a side whose piece is cut off but is only a short stub serving nothing: left as it is */
+    nothing?: [boolean, boolean] };
   /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
   houses?: number[];
   houseCost?: number;

@@ -127,9 +127,12 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   if (c.closure && (c.type === 'reconnection' || c.type === 'diversion')) {
     const [right, left] = c.closure.connected, both = right && left, round = c.closure.extra !== undefined ? `${km(c.closure.extra)} km further round` : '';
     const ends = ROAD_CLASSES[c.cls]?.label === 'track' || c.cls === 'service' ? 'just ends at our earthworks' : 'ends at our earthworks in a turning area';
+    if (!right && !left && !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: 'Closed here',
+      explain: `The ${what} is cut by our road. What is left of it on either side is a short stub that serves nothing (no house, no other road): it is left as it is.${link}` };
     if (both || !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: `Closed here${round ? ` (${round})` : ''}`,
       explain: `The ${what} is cut by our road. ${both ? `Both parts still reach other roads, so each ${ends}${round ? `; its traffic goes round, ${round}` : ''}`
-        : `The ${right ? c.closure.sides[0] : c.closure.sides[1]} part still reaches other roads, so it ${ends}; nothing is left of the other beyond our earthworks`}.${link}` };
+        : `The ${right ? c.closure.sides[0] : c.closure.sides[1]} part still reaches other roads, so it ${ends}; ${c.closure.nothing?.[right ? 1 : 0]
+          ? 'the other is a short stub that serves nothing (no house, no other road) and is left as it is' : 'nothing is left of the other beyond our earthworks'}`}.${link}` };
     const kept = right ? c.closure.sides[0] : c.closure.sides[1], led = right ? c.closure.sides[1] : c.closure.sides[0];
     return { tag: 'rerouted', label: `The ${led} part led to ${crossesAt} (+${m(c.linkLength)} m of new ${c.cls === 'track' ? 'track' : 'road'})`,
       explain: `The ${what} is cut by our road. The ${kept} part still reaches other roads, so it ${ends}; the ${led} part, cut off, is led to ${crossesAt} by a new piece of ${c.cls === 'track' ? 'track' : 'road'} along the outside of the earthworks.${link}` };

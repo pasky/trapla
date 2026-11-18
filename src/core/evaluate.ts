@@ -112,6 +112,8 @@ export interface Result {
   kind: Uint8Array;
   cut: Float64Array; fill: Float64Array;
   dayL: Float64Array; dayR: Float64Array; zDayL: Float64Array; zDayR: Float64Array;
+  /** Fill faces the simple drawn slope would not draw truly: heights at sections.ts FACE_AT (render/view.ts). */
+  faceL?: (number[] | undefined)[]; faceR?: (number[] | undefined)[];
   /** a hairpin's widened lanes: extra crown width on each side per station, m (absent: none anywhere) */
   widen?: Float32Array;
   oob: Uint8Array;
@@ -2620,7 +2622,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   return {
     length: al.length, ds, n, s: st.s, x: st.x, y: st.y, tx: st.tx, ty: st.ty, ground, grade, kind,
     geology: { ids: groundIds, profiles: groundProfiles },
-    cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs, ...(cones.length ? { cones } : {}),
+    cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, ...(sec.faceL ? { faceL: sec.faceL, faceR: sec.faceR } : {}), oob, runs, ...(cones.length ? { cones } : {}),
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     ...(roadX.some(c => c.members?.length) ? { mergedWays: roadX.flatMap(c => (c.members ?? []).map(m => m.way)) } : {}),

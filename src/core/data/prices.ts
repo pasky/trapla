@@ -141,12 +141,16 @@
  * tunnels kept to 3 %, never steeper than 5 % (NV 264/2009, research/73). D11 frozen unchanged; d35 stage-1
  * 19,203 → 20,084 M (a 3.2 km tunnel under Pod skálou), d35 road 6,590 → 9,468, d35-full 32,738 → 34,414, D3
  * motorway 14,446 → 15,248 (the Sázava bridge's piers out of the Natura 2000 river), d3-full 38,077 → 36,530.
- * 46: a Natura 2000 site takes works, with a note (Act 114/1992 §§45h–i, research/75); no 3 % tunnel preference (no
+ * 46: a piece of a cut way that is only a short stub serving nothing (≤ 100 m over the network, no house within 30 m:
+ * PROVISIONAL) is left as it is instead of given a new road; fill faces drawn as billed (sections.ts face samples).
+ * A crossing other cut ways are led to is never closed or led under our bridge itself (it carries them). D11 frozen
+ * 0 … +10 M.
+ * 47: a Natura 2000 site takes works, with a note (Act 114/1992 §§45h–i, research/75); no 3 % tunnel preference (no
  * source prices the safety measures, research/76); no tunnel over 500 m steeper than 5 %, also at its ends; a boundary
  * corridor held at its band's edge tries the wide band. D11 frozen unchanged; d35 stage-1 19,949 → 19,627 M, d35 road
  * 9,438 → 6,667, d35-full 34,169 → 33,963, D3 motorway 15,198 → 14,396 (the Sázava bridge's piers in the river again),
  * D3 road 3,868 → 3,904, d3-0302 6,772 → 6,765, d3-0304 10,083 → 10,099, d3-full 36,260 → 36,156. */
-export const COST_MODEL_VERSION = 46;
+export const COST_MODEL_VERSION = 47;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
