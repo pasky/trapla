@@ -1260,6 +1260,9 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       }
       mustBelow.push({ s: c.s, g });
     }
+    // what a pin may not make the line miss: the crossings' own clearances and the player's structures (not what a
+    // retry asks for: floors, narrowings, roads to clear; a crossing hold, an old road's band)
+    const pinBounds = d.gradePins?.length ? { minH: minH.slice(), maxH: maxH.slice(), eitherH: { above: waterMin.slice(), below: waterBelow.slice() } } : undefined;
     for (const f of opts.choiceFloors ?? []) {
       const i0 = Math.min(n - 2, Math.floor(f.s / ds));
       for (const i of [i0, i0 + 1]) {
@@ -1312,6 +1315,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
           const j = freeStation(x, taken);
           if (j < 0) continue;
           minH[j] = z - ground[j]; clearanceS[j] = x; slots.push(j);
+          if (pinBounds) pinBounds.minH[j] = minH[j];
         }
         for (const c of r.items) runSlots.set(c, slots);
       }
@@ -1353,6 +1357,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       ...(vlim.gradeAt ? { gradeAt: vlim.gradeAt } : {}),
       ...(typeof vlim.crest === 'number' ? {} : { crestAt: vlim.crest }), ...(typeof vlim.sag === 'number' ? {} : { sagAt: vlim.sag }),
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: either, structureKind: manualStructures, pins: d.gradePins,
+      ...(pinBounds ? { pinBounds } : {}),
       portalDepth: STRUCTURE_RULES.portalDepth, tunnelHardGrade: TUNNEL_RULES.maxGrade, tunnelHardFrom: TUNNEL_RULES.gradeFromLength,
       // A motorway or railway structure costs far more than the default penalty (a 70 m motorway bridge):
       // clear rivers, railways and roads rather than pay it.
@@ -1391,6 +1396,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
           minH: cut(o.minH), maxH: cut(o.maxH), structureKind: cut(o.structureKind), costClass: cut(o.costClass),
           clearancePenaltyAt: cut(o.clearancePenaltyAt), hardClearance: cut(o.hardClearance),
           ...(o.eitherH ? { eitherH: { above: cut(o.eitherH.above)!, below: cut(o.eitherH.below)! } } : {}),
+          ...(o.pinBounds ? { pinBounds: { minH: cut(o.pinBounds.minH), maxH: cut(o.pinBounds.maxH),
+            ...(o.pinBounds.eitherH ? { eitherH: { above: cut(o.pinBounds.eitherH.above)!, below: cut(o.pinBounds.eitherH.below)! } } : {}) } } : {}),
           pins: (o.pins ?? []).filter(p => p.s > sa && p.s < sb).map(p => ({ ...p, s: p.s - sa })),
           ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
         return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(v => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa })) };
@@ -1473,7 +1480,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     profileFeasible = usableLine(ap);
     pinViolations = ap.pinViolations ?? [];
     // a pin Auto cannot meet: the height it does reach instead, found by the same solve (core/grade-pins.ts)
-    if (firstOpt && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, pins => solveAuto({ ...firstOpt, pins }));
+    if (firstOpt && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, pins => solveAuto({ ...firstOpt, pins, pinStrict: true }));
     // a pin left out for a crossing its line would not clear: what lies there (the nearest such crossing)
     pinViolations = pinViolations.map(v => {
       const at = (v as GradePinViolation).pin?.clearanceAt;

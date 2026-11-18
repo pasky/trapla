@@ -116,6 +116,13 @@ export interface AutoProfileOptions {
   minH?: ArrayLike<number>;
   /** Disjunctive crossing clearance: pass above a channel OR tunnel sufficiently below it. */
   eitherH?: { above: ArrayLike<number>; below: ArrayLike<number> };
+  /** With pins: the clearances a pin may not make the line miss (a line through the pin that misses one Auto's own
+   * line keeps leaves the pin out). The crossings' own, where a retry has raised the search's bounds for a margin
+   * or added floors; default `minH` / `maxH` / `eitherH`. */
+  pinBounds?: Pick<AutoProfileOptions, 'minH' | 'maxH' | 'eitherH'>;
+  /** With pins: every clearance of `pinBounds` counts (a height to suggest), not only those the law demands
+   * (`hardClearance`) or a retry asks for at any price (`clearancePenaltyAt` raised over CLEARANCE_PENALTY). */
+  pinStrict?: boolean;
   /** CZK per unmet clearance station (default CLEARANCE_PENALTY); larger where a motorway's
    * structures dwarf the default and a missed clearance would rather be paid than built. */
   clearancePenalty?: number;
@@ -324,7 +331,7 @@ export function profileOk(vpis: VPI[], maxGradient: GradeLimit, minCrest: Radius
  * polygon through the VPIs at the clearance's own chainage, against the bound itself. */
 function missedClearances(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, vpis: readonly VPI[]): number[] {
   const out: number[] = [];
-  const { minH, maxH, eitherH, clearanceS } = opt;
+  const { minH, maxH, eitherH } = opt.pinBounds ?? opt, clearanceS = opt.clearanceS;
   for (let i = 0, k = 0; i < s.length; i++) {
     const lo = minH ? minH[i] : NaN, hi = maxH ? maxH[i] : NaN, above = eitherH ? eitherH.above[i] : NaN, below = eitherH ? eitherH.below[i] : NaN;
     if (Number.isNaN(lo) && Number.isNaN(hi) && Number.isNaN(above)) continue;
@@ -342,17 +349,23 @@ function missedClearances(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoP
  * Auto's grade line (searchProfile), with the pins it can meet only by missing a clearance its own line keeps
  * (a stream it would leave in an open cut, a railway it would cross at grade) left out like a pin out of the
  * slopes' reach: the line stays Auto's own and the pin says why (QA P2 re-check: a pin met 0.9 m too high for the
- * tunnel under a stream left the stream in the railway's cut, the design 198 M cheaper and not valid). Each new miss
- * is put down to the pin nearest to it; without pins, or where the pinned line misses nothing new, it is the
+ * tunnel under a stream left the stream in the railway's cut, the design 198 M cheaper and not valid). Only the
+ * crossings' own clearances count (`pinBounds`), and of those the ones the search must keep: the law's, or one a
+ * pass missed and the separation retry asks again at any price (a first pass's miss may still be met there). Each new
+ * miss is put down to the pin nearest to it; without pins, or where the pinned line misses nothing new, it is the
  * search's result as it was.
  */
 export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions): AutoProfileResult {
   const r = searchProfile(s, g, opt);
   const pins = opt.pins ?? [];
-  if (!pins.length || !(opt.minH || opt.maxH || opt.eitherH)) return r;
-  const mine = missedClearances(s, g, opt, r.vpis);
+  const bounds = opt.pinBounds ?? opt;
+  if (!pins.length || !(bounds.minH || bounds.maxH || bounds.eitherH)) return r;
+  // (only a clearance the search must keep, or was asked again to keep at any price after a pass missed it: a first
+  // pass's miss may still be met by the retries, D3 km 8.13 under a pin at km 9.41)
+  const binding = (i: number) => !!opt.pinStrict || !!opt.hardClearance?.[i] || (opt.clearancePenaltyAt?.[i] ?? 0) > CLEARANCE_PENALTY;
+  const mine = missedClearances(s, g, opt, r.vpis).filter(binding);
   if (!mine.length) return r;
-  const own = new Set(missedClearances(s, g, opt, autoProfile(s, g, { ...opt, pins: [] }).vpis));
+  const ownLine = autoProfile(s, g, { ...opt, pins: [] }), own = new Set(missedClearances(s, g, opt, ownLine.vpis));
   const fresh = mine.filter(i => !own.has(i));
   if (!fresh.length) return r;
   const L = s[s.length - 1], out = new Set(r.pinViolations?.map(v => v.pin.index) ?? []);
@@ -368,7 +381,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   }
   if (!blamed.size) return r;
   const kept = pins.filter((_, k) => !blamed.has(k) && !out.has(k));
-  const line = autoProfile(s, g, { ...opt, pins: kept });
+  const line = kept.length ? autoProfile(s, g, { ...opt, pins: kept }) : ownLine;
   const crestR: RadiusLimit = opt.crestAt ?? opt.minCrest, sagR: RadiusLimit = opt.sagAt ?? opt.minSag;
   // (the pins the kept ones' own line had to leave out for a clearance too)
   const keptIndex = pins.flatMap((_, k) => !blamed.has(k) && !out.has(k) ? [k] : []);

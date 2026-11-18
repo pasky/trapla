@@ -141,7 +141,8 @@ export function reachableSuggestions(violations: readonly GradePinViolation[], p
     const from = inward(actualZ, requested.z), edge = inward(reason === 'search' || reason === 'clearance' ? requested.z : suggested.z, actualZ);
     let best = from;
     if (Math.abs(edge - from) > 1e-9) {
-      if (reaches(edge)) best = edge;
+      // (a pin left out for a crossing was just found out of reach itself)
+      if (reason !== 'clearance' && reaches(edge)) best = edge;
       else {
         // (lo reachable, hi not, in 0.1 m steps)
         let lo = Math.round(from * 10), hi = Math.round(edge * 10);
