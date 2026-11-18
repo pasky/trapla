@@ -10,7 +10,7 @@ import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 import * as dm from './detmath';
 import { KIND } from './structures';
-import { bridgeLayout } from './bridge';
+import { bridgeLayout, frameColumns } from './bridge';
 import type { KeepClear } from './keep-clear';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
@@ -162,7 +162,11 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     for (const s of run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + run.length * (k + 1) / spans)) {
       const k = Math.max(0, Math.min(result.n - 2, Math.floor(s / result.ds))), t = Math.max(0, Math.min(1, (s - result.s[k]) / result.ds));
       const x = result.x[k] + (result.x[k + 1] - result.x[k]) * t, y = result.y[k] + (result.y[k + 1] - result.y[k]) * t;
-      out.push({ ax: x, ay: y, bx: x, by: y, r: Math.max(1.2, halfWidth * 0.55) + pad, top: Math.max(result.grade[k], result.grade[k + 1]) });
+      const top = Math.max(result.grade[k], result.grade[k + 1]), frame = frameColumns(2 * halfWidth);
+      // (a frame pier: its two columns, a way may pass between them)
+      if (run.framePiers?.includes(s)) for (const o of [-frame.offset, frame.offset])
+        out.push({ ax: x - result.ty[k] * o, ay: y + result.tx[k] * o, bx: x - result.ty[k] * o, by: y + result.tx[k] * o, r: Math.max(1.2, frame.half) + pad, top });
+      else out.push({ ax: x, ay: y, bx: x, by: y, r: Math.max(1.2, halfWidth * 0.55) + pad, top });
     }
   }
   const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0, reroute = false) => {

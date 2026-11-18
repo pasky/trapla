@@ -12,7 +12,7 @@ import { evaluateProject } from '../src/core/project-evaluate';
 import { projectContext as fullContext } from './eval-project';
 import { CATEGORIES } from '../src/core/data/categories';
 import { KIND } from '../src/core/structures';
-import { bridgeLayout } from '../src/core/bridge';
+import { bridgeLayout, frameColumns } from '../src/core/bridge';
 import { protectedRasterCells } from '../src/core/protected-raster';
 import { BUILDING_RULES } from '../src/core/data/urban';
 import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../src/render/crossing-surface';
@@ -52,9 +52,12 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
   for (const run of r.runs) if (run.kind === KIND.bridge) {
     const length = run.s1 - run.s0, spans = Math.max(1, Math.round(length / bridgeLayout(length).span));
     const stations = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans);
+    // (a frame pier: its two columns, as footprint.ts structureFootprints places them)
+    const frame = frameColumns(crownWidth);
     for (const s of stations) {
-      const i = Math.min(r.n - 2, Math.floor(s / r.ds)), t = s / r.ds - i;
-      piers.push({ x: r.x[i] + (r.x[i + 1] - r.x[i]) * t, y: r.y[i] + (r.y[i + 1] - r.y[i]) * t });
+      const i = Math.min(r.n - 2, Math.floor(s / r.ds)), t = s / r.ds - i, x = r.x[i] + (r.x[i + 1] - r.x[i]) * t, y = r.y[i] + (r.y[i + 1] - r.y[i]) * t;
+      if (run.framePiers?.includes(s)) for (const o of [-frame.offset, frame.offset]) piers.push({ x: x - r.ty[i] * o, y: y + r.tx[i] * o });
+      else piers.push({ x, y });
     }
   }
   const surfaces = crossingSurfaces(r.crossings, natural, base);

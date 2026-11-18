@@ -42,7 +42,9 @@ try {
 
   await page.goto(base);
   await page.waitForSelector('.scenario-picker-card');
-  await page.locator('.scenario-picker-group', { hasText: 'Trutnov' }).first().scrollIntoViewIfNeeded();
+  const trutnov = page.locator('.scenario-picker-card', { hasText: 'Trutnov → Polish border' }).first();
+  await trutnov.scrollIntoViewIfNeeded();
+  await trutnov.locator('.scenario-picker-section', { hasText: 'Motorway D11' }).click();
   await shot('picker');
   await page.goto(`${base}?scenario=d11&preset=d11-motorway`);
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180_000 });

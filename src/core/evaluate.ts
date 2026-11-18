@@ -424,7 +424,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (opts.preview && !opts.window && !opts.geometrySpeeds && keptOwnHeights(ctx, d, opts)) opts = { ...opts, geometrySpeeds: d.pis.map(() => null) };
   if (opts.preview && !opts.window) {
     const windowed = windowedPreview(ctx, d, opts, evaluateRoute);
-    if (windowed) return windowed;
+    // (its bends' slowed curves are the design's, not the full result's: a drag may add a bend before one)
+    if (windowed) { delete windowed.planSpeeds; return withPlanSpeeds(ctx, d, windowed); }
   }
   // Every pass of a full evaluation shares its caches and leaves the noise for the one kept.
   if (!opts.preview && !opts.window && !opts.passCache) {
@@ -950,7 +951,9 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const endJunctions = (ctx.junctions ?? []).flatMap(j => {
-    const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;
+    // (one direction of a split motorway ends a quarter of the formation beside the mission's port: project-motorway.ts)
+    const near = (p: { x: number; y: number }) => Math.hypot(j.x - p.x, j.y - p.y) < CATEGORIES['D27.5'].crownWidth / 4 + 1e-3;
+    const end = near(ctx.a) ? 'a' as const : near(ctx.b) ? 'b' as const : null;
     return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
   });
   // The road an end joins, met again inside that junction (an end placed a metre beside the mapped line,
@@ -2466,7 +2469,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   // other roads' works it is kept clear of).
   const clearOf = opts.keepClear?.length ? capsuleTest(opts.keepClear) : undefined;
   /** Our bridges' piers (as drawn: at their stations, else evenly spaced), worked out once when a reroute asks. */
-  let pierPoints: { x: number; y: number }[] | undefined;
+  let pierPoints: { x: number; y: number; half: number }[] | undefined;
   const piers = () => pierPoints ??= runs.filter(u => u.kind === KIND.bridge).flatMap(run => {
     const length = run.s1 - run.s0, spans = Math.max(1, Math.round(length / bridgeLayout(length).span));
     // (a frame pier: its two columns; a way may run between them)
@@ -2474,7 +2477,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     return (run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans)).flatMap(s => {
       const i = Math.max(0, Math.min(n - 2, Math.floor(s / ds))), t = s / ds - i;
       const x = st.x[i] + (st.x[i + 1] - st.x[i]) * t, y = st.y[i] + (st.y[i + 1] - st.y[i]) * t;
-      return run.framePiers?.includes(s) ? [-frame.offset, frame.offset].map(o => ({ x: x - st.ty[i] * o, y: y + st.tx[i] * o })) : [{ x, y }];
+      return run.framePiers?.includes(s) ? [-frame.offset, frame.offset].map(o => ({ x: x - st.ty[i] * o, y: y + st.tx[i] * o, half: frame.half })) : [{ x, y, half: 0 }];
     });
   });
   // Other ways' works keep the working strip from houses as ours does (research/85: a game rule, PROVISIONAL width).
@@ -2495,9 +2498,9 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     if (!hit && clearOf?.(p, q, half)) hit = 'works';
     // (nor bury one of our bridge's piers)
     if (!hit) for (const o of piers()) {
-      if (Math.abs(o.x - x) > len / 2 + half || Math.abs(o.y - y) > len / 2 + half) continue;
+      if (Math.abs(o.x - x) > len / 2 + half + o.half || Math.abs(o.y - y) > len / 2 + half + o.half) continue;
       const u = (o.x - x) * tx + (o.y - y) * ty, v = -(o.x - x) * ty + (o.y - y) * tx;
-      if (Math.abs(u) <= len / 2 && Math.abs(v) <= half) { hit = 'pier'; break; }
+      if (Math.abs(u) <= len / 2 && Math.abs(v) <= half + o.half) { hit = 'pier'; break; }
     }
     // a house you keep is never demolished for a reroute (nor within its working strip)
     if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!hit && keptIds.has(j) && near(j, p, q, half + strip)) hit = 'building'; });

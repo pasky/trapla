@@ -202,8 +202,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   };
   const roadCovered = new Map<number, [number, number][]>(), tieInCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
   const screened = (way: number) => [...roadCovered.get(way) ?? [], ...tieInCovered.get(way) ?? []];
-  /** the exact pieces of cut ways (reconnections, diversions) that are taken up: nothing of them is left under our bridge
-   * ends, piers or tunnel entrances either (nor of their cut ends, `tieInCovered`: the way is cut back to its tie-in) */
+  /** the pieces of cut ways (reconnections, diversions) that are taken up, with their cut ends out to their tie-ins
+   * (half the way's width and the setback, as `tieInCovered`: the way is cut back to where its new piece joins it):
+   * nothing of them is left under our bridge ends, piers or tunnel entrances either */
   const severed = new Map<number, [number, number][]>();
   const fixedConnections: PreservedRoadConnection[] = [];
   /** classes of the roads each route end lies on (index 0 / n − 1) */
@@ -219,8 +220,12 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     // A severed way's link/turnaround tie-in is a construction transition: its own ribbon may
     // graze the toe within half a width plus setback beyond the exact removed end. Screening
     // tolerance only; planning and ownership keep the exact interval.
+    // (a cut way only: a squared crossing's rebuilt approaches are not taken up)
+    for (const interval of severedCrossingIntervals(crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && c.squared === undefined), roads)) {
+      const tieIn = ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
+      const list = severed.get(interval.way) ?? []; list.push([interval.a - tieIn, interval.b + tieIn]); severed.set(interval.way, list);
+    }
     for (const interval of severedCrossingIntervals(crossings, roads)) {
-      const list = severed.get(interval.way) ?? []; list.push([interval.a, interval.b]); severed.set(interval.way, list);
       const tieIn = ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
       const graze = tieInCovered.get(interval.way) ?? [];
       graze.push([interval.a - tieIn, interval.a], [interval.b, interval.b + tieIn]); tieInCovered.set(interval.way, graze);
@@ -299,7 +304,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const key = `${segment.way}:${structure ?? 'earth'}`;
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
-      for (const [a, b] of subtract(hit, structure ? [...severed.get(segment.way) ?? [], ...tieInCovered.get(segment.way) ?? []] : screened(segment.way)))
+      for (const [a, b] of subtract(hit, structure ? severed.get(segment.way) ?? [] : screened(segment.way)))
         group.hits.push({ a, b, i: cell.i, j: cell.i, structure });
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);

@@ -164,8 +164,13 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
     }
   }
   // A reshaped reroute (the same choices, see `shapeless`): the stretch from its crossing to the one it leads to.
-  const shapes = (list: Design['crossingOverrides']) => new Map((list ?? []).map(o => [o.roadId, JSON.stringify([o.via ?? null, o.to ?? null, o.ends ?? null])]));
-  const now = shapes(d.crossingOverrides), then = shapes(base.design.crossingOverrides);
+  // (one led to another crossing or road, `to` / `ends`: the whole route, its new target may lie anywhere)
+  const shapes = (list: Design['crossingOverrides'], what: 'via' | 'to' | 'ends') => new Map((list ?? []).map(o => [o.roadId, JSON.stringify(o[what] ?? null)]));
+  for (const what of ['to', 'ends'] as const) {
+    const now = shapes(d.crossingOverrides, what), then = shapes(base.design.crossingOverrides, what);
+    for (const id of new Set([...now.keys(), ...then.keys()])) if (now.get(id) !== then.get(id)) return [0, length];
+  }
+  const now = shapes(d.crossingOverrides, 'via'), then = shapes(base.design.crossingOverrides, 'via');
   for (const id of new Set([...now.keys(), ...then.keys()])) {
     if (now.get(id) === then.get(id)) continue;
     const at = r.crossings.filter(c => c.roadId === id);
@@ -300,7 +305,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
       const delta = o.cost - c.cost;
       parts.crossings[j] += delta; parts.surcharge[j] += delta * (markup ? markup.bridge : surchargeRate(w.cell.urban[c.i]));
     }
-    return { ...c, s: c.s + s0, i: j, ...(o ? { cost: o.cost } : {}) };
+    return { ...c, s: c.s + s0, i: j, ...(c.targetS !== undefined ? { targetS: c.targetS + s0 } : {}), ...(o ? { cost: o.cost } : {}) };
   });
   const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...windowCrossings,
     ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];

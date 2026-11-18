@@ -1,5 +1,5 @@
 // Local, deterministic study-stage support remedies. No road/water network-wide scans.
-import { ARCH_DECK_DEPTH, archRib, BRIDGE_STYLE_ORDER, bridgeLayout, frameColumns, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
+import { ARCH_DECK_DEPTH, archRib, BRIDGE_STYLE_ORDER, bridgeLayout, frameBeamCost, frameColumns, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
 import { BRIDGE_STYLES, FRAME_PIER } from './data/bridges';
 import type { Violation } from './checks';
 import { STRUCTURE_RULES as R } from './data/prices';
@@ -188,8 +188,9 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   const frameStands = (s: number) => {
     if (frame.clearHalf <= 0) return false;
     const j = Math.max(0, Math.min(r.n - 2, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[j]) / r.ds));
-    const beam = r.grade[j] * (1 - t) + r.grade[j + 1] * t - 1.2 - FRAME_PIER.beamDepth; // (the deck's least depth, as depthCheck)
-    if (!(beam >= obstacle(cellAt(r, s, 1.2, frame.clearHalf)))) return false;
+    // (what lies below asks this height of our grade over a 1.2 m deck, as depthCheck; the crossbeam hangs under the
+    // deck: a deeper deck of the spans beside it is checked with the plan, depthCheck)
+    if (!(r.grade[j] * (1 - t) + r.grade[j + 1] * t - FRAME_PIER.beamDepth >= frameUnder(s))) return false;
     for (const o of [-frame.offset, frame.offset]) {
       const c = cellAt(r, s, 1.2, frame.half), column = { ...c, x: c.x - c.ty * o, y: c.y + c.tx * o };
       // (not memoised: the memo's key does not hold the offset)
@@ -197,6 +198,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     }
     return true;
   };
+  /** what lies under a frame pier's crossbeam, between its columns: the height it asks of our grade */
+  const frameUnder = (s: number) => obstacle(cellAt(r, s, 1.2, frame.clearHalf));
   /** a wall pier stands at s (else, where `blocked` passed it, a frame pier) */
   const wallStands = (s: number) => !(obstacle(cellAt(r, s, 1.2, r.crownWidth * 0.55 / 2)) > -Infinity);
   const coneReachAt = (i: number, into: number) => r.coneReachAt?.(i, into) ?? 0;
@@ -422,6 +425,18 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         if (shortfall > plan.raiseM) { plan.raiseM = shortfall; plan.worstI = i; plan.requiredZ = required; }
       }
     }
+    // a frame pier's crossbeam under the deck of the deeper span beside it clears what runs between its columns
+    for (let k = 1; k + 1 < supports.length; k++) {
+      const s = supports[k];
+      if (plan.arch && s >= plan.arch.s0 - 1e-6 && s <= plan.arch.s1 + 1e-6 || wallStands(s) || blocked(s, true)) continue;
+      const under = frameUnder(s);
+      if (!(under > -Infinity)) continue;
+      const i = Math.max(run.i0, Math.min(run.i1, Math.round(s / r.ds)));
+      const required = under + Math.max(0, Math.max(s - supports[k - 1], supports[k + 1] - s) / 20 - 1.2) + FRAME_PIER.beamDepth;
+      const shortfall = required - r.grade[i];
+      if (shortfall > 0.01) plan.required.set(r.s[i], Math.max(required, plan.required.get(r.s[i]) ?? -Infinity));
+      if (shortfall > plan.raiseM) { plan.raiseM = shortfall; plan.worstI = i; plan.requiredZ = required; }
+    }
     return true;
   };
   /** An arch for the bridge (BRIDGE_STYLES.arch): springings on the ground, the arch 1/1.8–1/2.8 of the
@@ -463,7 +478,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       for (let k = ia + 1; k < ib && clear; k++) if (rib(r.s[k]) < r.ground[k] - 0.01) clear = false;
       if (!clear) { miss('ground'); continue; }
       if (!ribClear(sa, sb, rib)) { miss('blocked'); continue; }
-      if (blocked(sa, true) || blocked(sb, true)) { miss('blocked'); continue; }
+      if (blocked(sa, true, false) || blocked(sb, true, false)) { miss('blocked'); continue; }
       best = { s0: sa, s1: sb, height, rib }; bestA = a; bestEven = even;
     }
     if (best) archMiss = undefined;
@@ -562,7 +577,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     const priced = (plan: Plan) => {
       if (styles?.price && plan.price === undefined)
         plan.price = styles.price(run.i0, run.i1, run.length, plan.layout, plan.piers,
-          plan.style === 'short' ? {} : { style: plan.style, ...(plan.arch ? { arch: { s0: plan.arch.s0, s1: plan.arch.s1, height: plan.arch.height } } : {}) });
+          plan.style === 'short' ? {} : { style: plan.style, ...(plan.arch ? { arch: { s0: plan.arch.s0, s1: plan.arch.s1, height: plan.arch.height } } : {}) })
+          + plan.piers.filter(s => !wallStands(s) && !blocked(s, true)).length * frameBeamCost(r.crownWidth); // (its frame piers' crossbeams)
       return plan.price ?? 0;
     };
     // every style's plans that can stand (an arch whose rib would need lifting does not)

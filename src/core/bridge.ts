@@ -195,7 +195,9 @@ export function frameColumns(crownWidth: number): { offset: number; half: number
   const offset = crownWidth / 2 - 2 * F.columnHalf;
   return { offset, half: F.columnHalf, clearHalf: offset - F.columnHalf };
 }
-/** A frame pier's crossbeam (its columns are priced as the wall pier they replace): concrete and rebar, CZK. */
+/** A frame pier's crossbeam over both its columns, as drawn (its columns are priced as the wall pier they replace):
+ * concrete and rebar, CZK. */
 export function frameBeamCost(crownWidth: number): number {
-  return 2 * frameColumns(crownWidth).clearHalf * F.beamDepth * F.beamThick * (P.pierConcrete + G.rebarPerM3 * P.rebar);
+  const { offset, half } = frameColumns(crownWidth);
+  return 2 * (offset + half) * F.beamDepth * F.beamThick * (P.pierConcrete + G.rebarPerM3 * P.rebar);
 }
