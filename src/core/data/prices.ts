@@ -228,13 +228,15 @@
  * on over its bridge); best, best-* and direct-90 unchanged. Starters: PLAN.md "Mapped bridges and tunnels are crossings".
  * Model 56: where no wall pier between the spans can miss what runs along under the bridge (a street, a stream, a
  * railway in the valley it follows), a frame pier (data/bridges.ts FRAME_PIER: two columns under the deck's edges, a
- * crossbeam over it, billed) instead of a span stretched past it or a bridge Auto could not stand; a wall pier moved
- * aside still comes first. A cut way's taken-up piece is no obstacle to our bridge ends, piers or tunnel entrances
- * either. D11 frozen (M CZK): straight −10.1 (km 17.66: a frame pier where a 60 m span reached past what lies
- * below, bridges −7.9, surcharge −2.2); the others unchanged. Starters (M CZK, project evaluator): d3-0301 −46.9,
- * d3-0302 −17.8, d3-0303 −12.0, d3-0304 −98.7, d3-0305 −10.6, d3-full −146.9, d35 first section −196.8, d35-full
- * −669.4 (1–3 frame piers on a few bridges each; the bridges they let stand change the structure choice and the grade
- * line around them); the road and railway missions unchanged. PLAN.md "The D11 motorway mission". */
+ * crossbeam over it below the deck of the deeper span beside it, billed and weighed in the style choice) instead of a
+ * span stretched past it, a long-span bridge or a bridge Auto could not stand; a wall pier moved aside still comes
+ * first. A cut way's taken-up piece (to its tie-ins) is no obstacle to our bridge ends, piers or tunnel entrances.
+ * D11 frozen (M CZK): straight −9.7 (km 17.66: a frame pier where a 60 m span reached past what lies below, bridges
+ * −7.6, surcharge −2.1); the others unchanged. Starters (M CZK, project evaluator): d3-0301 −46.5, d3-0302 −17.4,
+ * d3-0303 −11.6, d3-0304 −150.2, d3-0305 −18.7, d3-full −199.2, d35 first section −195.2, d35-full −814.6 (its bridges
+ * at km 2.52 and 31.89 short spans on two frame piers each instead of long spans, 20.94 three frame piers in its long
+ * spans: bridges −498, earthworks −129), retired d3 motorway −14.7; the road and railway missions unchanged. PLAN.md
+ * "The D11 motorway mission". */
 export const COST_MODEL_VERSION = 56;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

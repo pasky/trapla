@@ -2360,12 +2360,15 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   - the S3 at B under our earthworks: B is the motorway's continuation (the merge above).
   - a tunnel entrance "on a track" that our crossing had already cut and taken up: the taken-up piece (and its cut
     end) of a cut way is no obstacle to our bridge ends, piers and tunnel entrances (footprint.ts).
-  Now VALID on their own: every sampling from 1 to 4 km (15.1 / 14.0 / 22.3 / 20.7 / 20.3 / 18.8 bn) and the straight
-  line (24.3 bn). A bend every 5 km still has piers on tracks and a pond where neither a wall nor a frame stands (a
+  Now VALID on their own: every sampling from 1 to 4 km (15.1 / 14.0 / 22.3 / 20.6 / 20.3 / 18.9 bn) and the straight
+  line (23.6 bn). A bend every 5 km still has piers on tracks and a pond where neither a wall nor a frame stands (a
   pond as wide as the frame; engine limit, not pursued).
-- **Bills (cost model 56):** D11 frozen straight −10.1 M (one frame pier for a 60 m span); starters −10.6 … −669 M
-  (d35-full; details in prices.ts). Road and railway missions unchanged.
-- **Known:** Auto puts no tunnel where the real line has two. The structure choice weighs a frame pier's crossbeam
-  only in the bill, not when it compares plans (a few M a bridge).
+- **Bills (cost model 56):** D11 frozen straight −9.7 M (one frame pier for a 60 m span); motorway starters −11.6 …
+  −815 M (d35-full: two long-span bridges become short spans on frame piers; details in prices.ts). Road and railway
+  missions unchanged.
+- **Known:** Auto puts no tunnel where the real line has two. A frame pier's crossbeam takes the deck depth of the
+  deeper span beside it plus its own 2 m (a lift where that misses the clearance). A split motorway bills the S3 merge
+  once per direction (each joins its own carriageway). Windowed previews still drop the pier stations outside the
+  window (both kinds, as before).
 - Shots 570–575 (`scripts/d11-motorway-shots.mjs --docs 570`; 575 the frame piers of a line with a bend every 2.5 km).
 
