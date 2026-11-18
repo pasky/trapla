@@ -90,8 +90,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a cut way is judged piece
   by piece (model 42, `way-pieces.ts`): a piece still reaching the road network just ends, a piece cut off is led to
   a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour; other
-  ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts; no working
-  strip beside them, ours is 3 m: Královec km 12.98's toes end 0.2–0.3 m from houses); a rebuilt road's side road crossed by
+  ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts; every way's works keep our 3 m working
+  strip from houses, model 52); a rebuilt road's side road crossed by
   its new line joins it there (an access, model 49);
   merged crossings of different ways
   within 30 m keep one remedy for the group unless that leaves one buried (then it is a crossing of its own,

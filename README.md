@@ -460,6 +460,11 @@ stream at km 2.09 in an open cut: out of reach, the tunnel kept](docs/screenshot
 [D35 km 4.2 dragged back past bend 2: the bend left on the line, "turns 0°"](docs/screenshots/484-d35-zero-turn-bend-before.png),
 [now gone on release](docs/screenshots/485-d35-zero-turn-bend-dropped.png); [a 2° neighbour the curve fit leaves out, gone on
 release too](docs/screenshots/492-d35-left-out-bend-dropped-on-release.png), [one left out that stays: its card](docs/screenshots/493-d35-left-out-bend-card.png).
+Cost model 52 (before | after, `node scripts/render-works-strip-shots.mjs`): [Královec km 12.98: the houses beside road
+II/2253's ramps, 0.2–0.3 m from their toes, bought out with the working strip](docs/screenshots/510-rail-kralovec-km-12-98-ramps-keep-the-strip-before-after.png)
+([one's card](docs/screenshots/511-rail-kralovec-km-12-98-house-card-before-after.png)), [III/3012's corner kept on its old
+road, lifted onto its bridge over us: rebuilt on the old road our road crossed, not 5.7 m off it](docs/screenshots/512-d11-iii3012-kept-lifted-from-above-before-after.png)
+([under our viaduct](docs/screenshots/513-d11-iii3012-kept-lifted-under-our-viaduct-before-after.png)).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses

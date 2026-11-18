@@ -54,7 +54,10 @@ export const BUILDING_RULES = {
    * §3b(2) sets at the usual (market) price — research/07 §1 */
   purchaseMultiplier: 1.5,
   /** PROVISIONAL working strip: a building closer than this to the footprint (slope edge at grade,
-   * deck edge under a bridge) has to go as well, m */
+   * deck edge under a bridge) has to go as well, m. The same for the works of other ways (a crossed road's
+   * regrades and ramps, reroutes, turning areas, roads moved aside). No Czech norm or law sets it: road land
+   * ends at the toe or cut edge (Act 13/1997 §11), temporary takes are set per project (4–6 m in local works'
+   * documents); research/85 */
   clearance: 3,
   /** Under a bridge, a building stays where the deck's underside is more than `underDeckFalsework` m above its
    * ground and `underDeckGap` m above its roof (storeys × NOISE.storeyHeight), unless a pier stands on it with
