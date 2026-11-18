@@ -624,7 +624,7 @@ export class Inspector {
     // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
     const line = CATEGORIES[d.category].mode;
     // (a new road of the project is not there today: the ground where it crosses)
-    const level = c.designed ? 'the ground where they cross' : 'the crossed road’s level today';
+    const level = c.designed ? 'the ground where they cross' : c.mapped === 'bridge' ? 'its bridge today' : c.mapped === 'tunnel' ? 'its road in the tunnel' : 'the crossed road’s level today';
     // (a way cut at our road is not at any height to ours: no level line)
     const cut = c.type === 'reconnection' || c.type === 'diversion';
     const rel = cut ? '' : Math.abs(c.h) < 0.5 ? `our ${line} at ${level}`

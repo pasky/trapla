@@ -19,7 +19,9 @@ const sets = {
 type PackKey = keyof typeof sets;
 export function packFingerprint(): Record<string, string> {
   const meta = JSON.parse(readFileSync(`${packPath}/meta.json`, 'utf8'));
-  const files = ['meta.json', 'overlays.json', meta.heights.file, meta.landcover.file, meta.ground?.file, meta.watercourses?.file].filter(Boolean);
+  // (the mapped bridges and tunnels sidecar, pipeline/build_structures.py, is part of what the bills see)
+  const files = ['meta.json', 'overlays.json', meta.heights.file, meta.landcover.file, meta.ground?.file, meta.watercourses?.file,
+    existsSync(`${packPath}/structures.json`) ? 'structures.json' : undefined].filter(Boolean);
   return Object.fromEntries(files.map(file => [file, createHash('sha256').update(readFileSync(`${packPath}/${file}`)).digest('hex')]));
 }
 export function regressionPackAvailable() { return existsSync(`${packPath}/meta.json`); }

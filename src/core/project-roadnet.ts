@@ -124,7 +124,13 @@ export function planEnds(design: ProjectDesign, route: RouteDesign, step: number
 /** Pack net sizes by object data, so a crossing choice on a designed road (way `size + slot`) can be stored
  * as a choice on that ROAD, whatever its slot later (see crossingOverridesOf / crossingTargetsOf). */
 const netSizes = new Map<string, number>();
-export function registerNet(objectData: string, ways: number): void { netSizes.set(objectData, ways); }
+/** The mapped bridges and tunnels of each pack net (RoadNet.structureIds): ways `from …` after the net's own. A choice on
+ * one is stored with its OSM id (a raw way index ≥ `from` without one is an older save's remnant, numbered from `from`). */
+const netStructures = new Map<string, { from: number; osm: readonly string[] }>();
+export function registerNet(objectData: string, ways: number, structures?: { from: number; osm: readonly string[] }): void {
+  netSizes.set(objectData, ways);
+  if (structures?.osm.length) netStructures.set(objectData, structures); else netStructures.delete(objectData);
+}
 /** Rebuilt stretches in project order: what is left of an old road after stretch q is way
  * `size + designedSlots + q` in every edited network (RoadNet.edited), so a choice on it is stored as a
  * choice on "the old road after that stretch", whatever else is added or removed. */
@@ -134,6 +140,7 @@ type StoredCrossing = NonNullable<Extract<RouteDesign['alignment'], { kind: 'pi'
 /** Project crossing choices → the legacy kernel's per-way overrides (designed roads at their slot). */
 export function crossingOverridesOf(project: ProjectDesign, crossings: readonly StoredCrossing[]): CrossingOverride[] {
   const size = netSizes.get(project.objectData), slots = designedSlots(project).map(r => r.id), rebuilt = rebuiltSlots(project).map(r => r.id);
+  const mapped = netStructures.get(project.objectData), pack = mapped?.from ?? size;
   /** the way of a designed road / of what follows a rebuilt stretch; undefined when that road is gone */
   const wayOf = (ref: { kind: 'route' | 'after'; routeId: string }) => {
     const k = ref.kind === 'route' ? slots.indexOf(ref.routeId) : rebuilt.indexOf(ref.routeId);
@@ -145,8 +152,10 @@ export function crossingOverridesOf(project: ProjectDesign, crossings: readonly 
     if (t.kind === 'route') roadId = wayOf({ kind: 'route', routeId: t.routeId });
     else if (t.kind !== 'legacy-way' || t.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
     else if (t.after !== undefined) roadId = wayOf({ kind: 'after', routeId: t.after });
-    // saved before remnants had stable slots: way `size + q` was what followed the q-th rebuilt stretch
-    else if (size !== undefined && t.roadId >= size) roadId = t.roadId - size < rebuilt.length ? size + slots.length + t.roadId - size : undefined;
+    // a mapped bridge or tunnel, by its OSM id (gone from the pack: dropped)
+    else if (t.structure !== undefined) { const k = mapped?.osm.indexOf(t.structure) ?? -1; roadId = k >= 0 ? mapped!.from + k : undefined; }
+    // saved before remnants had stable slots: way `pack + q` was what followed the q-th rebuilt stretch
+    else if (size !== undefined && pack !== undefined && t.roadId >= pack) roadId = t.roadId - pack < rebuilt.length ? size + slots.length + t.roadId - pack : undefined;
     else roadId = t.roadId;
     // a choice on a road that is gone (or a net not yet known) is dropped, never applied to another way
     if (roadId === undefined) return [];
@@ -162,7 +171,7 @@ export function crossingOverridesOf(project: ProjectDesign, crossings: readonly 
 }
 /** The legacy kernel's per-way overrides → project crossing choices (a designed road's way → that road). */
 export function crossingTargetsOf(project: ProjectDesign, overrides: readonly CrossingOverride[]): StoredCrossing[] {
-  const size = netSizes.get(project.objectData), slots = designedSlots(project), rebuilt = rebuiltSlots(project);
+  const size = netSizes.get(project.objectData), slots = designedSlots(project), rebuilt = rebuiltSlots(project), mapped = netStructures.get(project.objectData);
   const refOf = (way: number): { kind: 'route' | 'after'; routeId: string } | undefined => {
     if (size === undefined || way < size) return undefined;
     const slot = slots[way - size], after = rebuilt[way - size - slots.length];
@@ -173,7 +182,8 @@ export function crossingTargetsOf(project: ProjectDesign, overrides: readonly Cr
     const square = c.square !== undefined ? { square: c.square } : {};
     if (ref?.kind === 'route') return { choice: c.type, target: { kind: 'route' as const, routeId: ref.routeId, s0: 0, s1: 0 }, ...square };
     const toRef = c.to !== undefined && c.to >= 0 ? refOf(c.to) : undefined;
-    return { choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId, ...(ref ? { after: ref.routeId } : {}) },
+    const structure = mapped && c.roadId >= mapped.from && c.roadId < mapped.from + mapped.osm.length ? mapped.osm[c.roadId - mapped.from] : undefined;
+    return { choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId, ...(ref ? { after: ref.routeId } : {}), ...(structure ? { structure } : {}) },
       ...(c.via ? { via: c.via, ...(c.to !== undefined ? { to: c.to, ...(toRef ? { toRef } : {}) } : {}) } : {}), ...square, ...(c.ends ? { ends: c.ends } : {}) };
   });
 }

@@ -184,6 +184,8 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
   // ramps' feet are the old road as it is (crossing-geometry.ts): no works there.
   for (const c of result.crossings) if (!c.designed) {
     const g = c.geometry, road = g?.road;
+    // (a mapped bridge or tunnel kept as it stands: no works of ours)
+    if (c.kept) continue;
     if (g && road && (c.type === 'junction' || c.type === 'overbridge')) {
       let i = 0, j = road.length - 1;
       while (i + 1 < road.length && road[i].surface === 'terrain' && road[i + 1].surface === 'terrain') i++;
@@ -205,8 +207,8 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
  * its `detour` (road-realignment.ts closeRedundantStretch): every road that detour can use lies within `reach`
  * of the closure (the closed stretch's length plus the detour). */
 /** A crossed way our bridge passes over or our tunnel under, left as it is (not moved onto a square line). */
-const unchanged = (c: Result['crossings'][number]) => (c.type === 'bridge' || c.type === 'tunnel') && !c.realignLength
-  && !(c.geometry?.road ?? []).some(q => q.surface !== 'terrain');
+const unchanged = (c: Result['crossings'][number]) => !!c.kept || ((c.type === 'bridge' || c.type === 'tunnel') && !c.realignLength
+  && !(c.geometry?.road ?? []).some(q => q.surface !== 'terrain'));
 /** `r`: how far along the way the change reaches from that point (its ramps, box, cut piece), m; a change of
  * unknown extent reaches everywhere (Infinity). */
 function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number; r: number }[]>; closes: { x: number; y: number; reach: number }[] } {

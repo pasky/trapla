@@ -2,6 +2,7 @@
 import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute, LinkEnd, LinkEndTo, UnderpassWing } from './crossings';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJunctionCost } from './data/urban';
 import type { RoadNet } from './roadnet';
+import { bridgeOnPath } from './mapped-structures';
 import { bridgeModel } from './bridge';
 import { STRUCTURE_RULES } from './data/prices';
 import { cutOffFix, END_AUTO_TEXT } from './terms';
@@ -655,8 +656,17 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     // (a structure's houses are those its works take: measured again; a reroute's come with its line)
     if (c.type !== 'reconnection' && c.type !== 'diversion') { delete c.houses; delete c.houseCost; delete c.homes; }
   }
+  const level = route.wayLevel;
+  /** a crossed road's sample on the ground, as the map draws it (one passing under our bridge or over our tunnel) */
+  const groundPoint = (q: XY & { d?: number }): CrossingPoint => {
+    const ground = heightAt(q.x, q.y);
+    return 'd' in q ? { x: q.x, y: q.y, d: q.d, z: ground, ground, surface: 'terrain' } : { x: q.x, y: q.y, z: ground, ground, surface: 'terrain' };
+  };
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
     const ground = heightAt(q.x, q.y);
+    // (on a mapped bridge: its deck, above the ground; a mapped tunnel's road below it is drawn on the ground)
+    const z = level?.(q.x, q.y);
+    if (z !== undefined && z - ground > 0.3) return 'd' in q ? { x: q.x, y: q.y, d: q.d, z, ground, surface: 'deck' } : { x: q.x, y: q.y, z, ground, surface: 'deck' };
     // All callers supply XY or way samples. Explicit shapes avoid a generic object spread for
     // every terrain point, while retaining the optional station's presence and property order.
     return 'd' in q ? { x: q.x, y: q.y, d: q.d, z: ground, ground, surface: 'terrain' }
@@ -850,7 +860,9 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
    *   map, the player's kept houses and other roads' works only.
    * (`squarePath` also reads the road network and which ways cross us: `crossingWays`.) */
   const ours = { project, margin, between: spatial.between, crownWidth: route.crownWidth, cutOf, squarePath, linkEnv };
-  return { cuts, squares, anchorBuilds, anchorMemo, slopes, pieces, at, project, margin, reads, terrainPoint, diagnose, homesOf,
+  /** the crossed road's level (a mapped bridge's deck, a tunnel's road), the ground elsewhere */
+  const levelAt = level ?? heightAt;
+  return { cuts, squares, anchorBuilds, anchorMemo, slopes, pieces, at, project, margin, reads, terrainPoint, groundPoint, levelAt, diagnose, homesOf,
     rawPaths, rawOf, squaredPaths, survivingSides, anchors, maxLinkWidth, getPath, linkEnv, cutOf,
     squarePath, ours };
 }
@@ -859,7 +871,7 @@ type CrossingTools = ReturnType<typeof crossingTools>;
 type OurRoad = CrossingTools['ours'];
 /** The tools of a build that do not read our road: the crossed ways' lines, the ground, this build's memos
  * and what the stages hand on per crossing. */
-type WayTools = Pick<CrossingTools, 'maxLinkWidth' | 'anchorBuilds' | 'rawPaths' | 'survivingSides' | 'getPath' | 'diagnose' | 'cuts' | 'squares' | 'squaredPaths' | 'terrainPoint'>;
+type WayTools = Pick<CrossingTools, 'maxLinkWidth' | 'anchorBuilds' | 'rawPaths' | 'survivingSides' | 'getPath' | 'diagnose' | 'cuts' | 'squares' | 'squaredPaths' | 'terrainPoint' | 'groundPoint' | 'levelAt'>;
 
 /** Stage 2: each crossing's own geometry on the crossed way's real line: how the way meets our road (angle,
  * same side), its line laid square where asked or weighed, a bridge over us with its deck and ramps, a box
@@ -871,7 +883,7 @@ function crossingStructures(crossings: CrossingResult[], heightAt: (x: number, y
 
 /** One crossing's own geometry. Our road is read through `ours` only; `tools` are the ones that do not read it. */
 function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: number, y: number) => number, sidesOf: Map<string, [boolean, boolean]>, anchorOnly: ReadonlySet<CrossingResult> | undefined, tools: WayTools) {
-  const { maxLinkWidth, anchorBuilds, rawPaths, survivingSides, getPath, diagnose, cuts, squares, squaredPaths, terrainPoint } = tools;
+  const { maxLinkWidth, anchorBuilds, rawPaths, survivingSides, getPath, diagnose, cuts, squares, squaredPaths, terrainPoint, groundPoint, levelAt } = tools;
   const { project, margin, cutOf, squarePath, linkEnv } = ours;
   const anchorKey = anchorOnly?.has(c) ? `${c.roadId}:${c.x},${c.y}:${c.cls}:${c.type}:${c.square ? 1 : 0}:${maxLinkWidth(c)}` : undefined;
   const reuse = anchorKey ? anchorBuilds.get(anchorKey) : undefined;
@@ -924,13 +936,13 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
   const foot = (edge: number, direction: number, z: number, quiet = false) => {
     const endpoint = direction < 0 ? path[0] : path[path.length - 1];
     if (c.type === 'junction' && Math.abs(edge - endpoint.d) < 1e-6 && margin(endpoint, 0) <= 0) return edge;
-    const e = along(path, edge), g0 = heightAt(e.x, e.y);
+    const e = along(path, edge), g0 = levelAt(e.x, e.y);
     // already at the old road's level there (a deck on the ground at the edge of a cutting): no ramp
     if (Math.abs(z - g0) <= 0.05) return edge;
     for (let k = direction < 0 ? path.length - 1 : 0; k >= 0 && k < path.length; k -= direction < 0 ? 1 : -1) {
       const q = path[k];
       if (direction * (q.d - edge) <= 1e-4) continue;
-      const ground = heightAt(q.x, q.y), run = Math.abs(q.d - edge);
+      const ground = levelAt(q.x, q.y), run = Math.abs(q.d - edge);
       if (Math.abs(ground - z) <= run * rampLimit(c.cls, z, g0, ground, run) + 1e-8) return q.d;
     }
     if (quiet) return NaN;
@@ -992,7 +1004,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       // (beyond our earthworks, over the railway it spans too: that railway's clearance, the ground elsewhere)
       if (overRail.length && margin(q, extra) > 1e-3) { clear.push({ d: q.d, z: heightAt(q.x, q.y) }); return; }
       minS = Math.min(minS, p.s); maxS = Math.max(maxS, p.s);
-      clear.push({ d: q.d, z: k === 0 || k === core.length - 1 ? Math.max(p.z + CROSSING_RULES.underDepth, heightAt(q.x, q.y)) : p.z + CROSSING_RULES.underDepth });
+      clear.push({ d: q.d, z: k === 0 || k === core.length - 1 ? Math.max(p.z + CROSSING_RULES.underDepth, levelAt(q.x, q.y)) : p.z + CROSSING_RULES.underDepth });
     });
     clear.push(...overRail);
     ours.between(minS - g.width / 2, maxS + g.width / 2, (x, y, grade) => {
@@ -1002,7 +1014,15 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     });
     // The deck may slope like the road it carries (its class gradient, research/20): on a valley side
     // a level deck would leave one end high above the ground and its ramp far too long.
-    const ground0 = heightAt(along(path, d0).x, along(path, d0).y), ground1 = heightAt(along(path, d1).x, along(path, d1).y);
+    // A mapped bridge (c.mapped) whose deck already clears all of that, its ends at or beyond the edges of our works
+    // (bank-top abutments, as a new one's), is kept as it stands: its deck at its own level from end to end, no ramps,
+    // nothing built or billed. (Not where the player has it laid on a new line.)
+    const existing = isRaised && c.mapped === 'bridge' ? bridgeOnPath(linkEnv.roads, c.roadId, path, levelAt) : undefined;
+    const kept = !!existing && !keep && existing.d0 <= d0 + extra + 1e-6 && existing.d1 >= d1 - extra - 1e-6 && clear.every(q => existing.at(q.d) >= q.z - 1e-6);
+    if (kept) c.kept = true; else delete c.kept;
+    // (rebuilt, a new bridge replaces the whole old one: no piece of it is left standing beside the new deck)
+    if (existing) { d0 = Math.max(path[0].d, kept ? existing.d0 : Math.min(d0, existing.d0)); d1 = Math.min(path[path.length - 1].d, kept ? existing.d1 : Math.max(d1, existing.d1)); }
+    const ground0 = levelAt(along(path, d0).x, along(path, d0).y), ground1 = levelAt(along(path, d1).x, along(path, d1).y);
     let deck = { base: -Infinity, slope: 0 }, deckCost = Infinity;
     // (or as steep as the old road across the cutting: it is not rebuilt gentler than it was)
     const steepest = Math.max(ROAD_CLASSES[c.cls].rampGradient, Math.abs(ground1 - ground0) / Math.max(1, d1 - d0));
@@ -1013,7 +1033,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       const cost = Math.abs(base + slope * d0 - ground0) + Math.abs(base + slope * d1 - ground1) + (k === 0 ? 0 : 1e-6);
       if (cost < deckCost) { deckCost = cost; deck = { base, slope }; }
     }
-    const deckAt = (d: number) => deck.base + deck.slope * d;
+    const deckAt = kept ? existing.at : (d: number) => deck.base + deck.slope * d;
     const edgeZ = (d: number) => isRaised ? deckAt(d) : project(along(path, d)).z;
     // A rebuilt road's side road met where it joined the old road (c.oldJunction): its piece beyond us on that side led
     // only to the old road, now taken up: it ends at our road there, the piece is removed (not drawn, not regraded)
@@ -1049,9 +1069,9 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     road = distances.map(d => {
       const q = terrainPoint(along(path, d));
       if (d < d0 && d > f0) {
-        q.z = edgeZ(d0) + (heightAt(along(path, f0).x, along(path, f0).y) - edgeZ(d0)) * (d0 - d) / (d0 - f0);
+        q.z = edgeZ(d0) + (levelAt(along(path, f0).x, along(path, f0).y) - edgeZ(d0)) * (d0 - d) / (d0 - f0);
       } else if (d > d1 && d < f1) {
-        q.z = edgeZ(d1) + (heightAt(along(path, f1).x, along(path, f1).y) - edgeZ(d1)) * (d - d1) / (f1 - d1);
+        q.z = edgeZ(d1) + (levelAt(along(path, f1).x, along(path, f1).y) - edgeZ(d1)) * (d - d1) / (f1 - d1);
       } else if (d >= d0 && d <= d1) q.z = isRaised ? deckAt(d) : project(q).z;
       if (isRaised && d >= d0 && d <= d1) q.surface = 'deck';
       else if (Math.abs(q.z - q.ground) > 1e-7) { q.surface = 'ramp'; q.support = q.z >= q.ground ? 'embankment' : 'retaining'; }
@@ -1076,7 +1096,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     if (isRaised) {
       g.deck = { start, end, depth: DEPTH };
       c.span = d1 - d0; c.approachLength = heldRailway(c) ? 0 : d0 - f0 + f1 - d1;
-      c.cost = deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
+      c.cost = kept ? 0 : deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
     }
   } else if (c.type === 'reconnection' || c.type === 'diversion') {
     // The severed way is removed wherever it lies inside the footprint plus link corridor,
@@ -1099,7 +1119,13 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     let centre = path.findIndex(q => q.d >= 0), lo = centre, hi = centre;
     while (lo > 0 && margin(path[lo], corridor + STEP) < 0) lo--;
     while (hi + 1 < path.length && margin(path[hi], corridor + STEP) < 0) hi++;
-    road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(terrainPoint);
+    // (drawn on the ground as the map draws it, a mapped bridge's deck too: PLAN.md "Mapped bridges and tunnels")
+    road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(groundPoint);
+  } else if (c.type === 'underpass' && c.kept) {
+    // A mapped tunnel deep enough under us (crossings.ts keepsTunnel): it passes under us as it is, at its own level
+    // underground: nothing built, nothing billed, nothing drawn (the map's own line shows where it runs).
+    road = [];
+    c.cost = 0; delete c.underpassLength;
   } else if (c.type === 'underpass') {
     // The way keeps its own terrain level through a closed box spanning the earthwork
     // footprint toe to toe along the way (skew and bends included); under a low embankment it is
@@ -2405,7 +2431,8 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       else {
         for (let i = start; i <= end; i++) {
           const q = road[i];
-          if (q.z - depth < project(q).z + CLEARANCE - 0.01) report('Deck does not clear the crown by 4.8 m');
+          // (over our works: a deck reaching beyond them, the whole of a mapped bridge it replaces, stands on its own ground)
+          if (margin(q, 0) <= 0 && q.z - depth < project(q).z + CLEARANCE - 0.01) report('Deck does not clear the crown by 4.8 m');
         }
         if (Math.abs(crossingPlanLength(road.slice(start, end + 1)) - (c.span ?? 0)) > 0.01) report('Deck quantity differs from geometry');
       }
@@ -2465,7 +2492,8 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       if (!(c.realignLength! >= 0) || c.realignLength! > crossingPlanLength(g.road) + 1e-6) report('Straightened line quantity differs from geometry');
     }
     if (c.type === 'overbridge') {
-      const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.realignCost ?? 0) + (c.houseCost ?? 0);
+      // (a mapped bridge kept as it stands: nothing of it is billed)
+      const price = c.kept ? 0 : deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.realignCost ?? 0) + (c.houseCost ?? 0);
       if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Overbridge bill differs from measured quantities');
     }
     // (the all-in junction, or a rebuilt road's side road's access / minor crossroads: sideJunctionCost)

@@ -86,7 +86,8 @@ async function main() {
   const presetId = scenario.presetId ?? scenario.id;
   const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
   // crossing choices on designed roads are stored on those roads; the editor maps them like the worker
-  if (pack.overlays.net) registerNet(objectData, pack.overlays.net.ways.length);
+  if (pack.roadNet) registerNet(objectData, pack.roadNet.ways.length + (pack.roadNet.structures?.ways.length ?? 0),
+    pack.roadNet.structures && { from: pack.roadNet.ways.length, osm: pack.roadNet.structures.osm ?? [] });
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
@@ -264,7 +265,7 @@ async function main() {
     select: (roadId) => { if (session.sel?.kind !== 'crossing' || session.sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
     setVia, commit: () => store.commit(), heightAt: (x, y) => pack.terrain.heightAt(x, y),
     setEnd: (roadId, side, end) => setEnd(roadId, side, end),
-    roads: () => pack.overlays.net ? (mappedNet ??= new RoadNet(pack.overlays.net)) : null,
+    roads: () => pack.roadNet ? (mappedNet ??= new RoadNet(pack.roadNet)) : null,
   });
 
   // ---- routes: the line being edited, the motorway's directions, Build, the road list, and what follows

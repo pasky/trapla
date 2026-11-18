@@ -40,7 +40,7 @@ export interface EndpointPair { a: EndpointConstraint; b: EndpointConstraint }
 export type CrossingTarget =
   /** `after`: what is left of an old road after the stretch rebuilt as that route (its way number in the
    * edited network is derived from the route, `roadId` is only the number it had when chosen). */
-  | { kind: 'legacy-way'; objectData: string; roadId: number; after?: RouteId }
+  | { kind: 'legacy-way'; objectData: string; roadId: number; after?: RouteId; /** a mapped bridge or tunnel: its OSM way id */ structure?: string }
   | { kind: 'source'; interval: SourceInterval }
   | { kind: 'route'; routeId: RouteId; s0: number; s1: number };
 export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'

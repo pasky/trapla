@@ -6,6 +6,8 @@ import { STRUCTURE_RULES as R } from './data/prices';
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { cellBounds, clipFootprint, type FootprintCell } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
+import { crossedLevel, mappedKind, structuresNear } from './mapped-structures';
+import { OVERBRIDGE_CLEARANCE } from './data/remedies';
 import { findRuns, KIND, type Run } from './structures';
 import { bridgeEnd, closedEndWall, CONE, coneGround, type BridgeEnd } from './abutment-cone';
 import type { Terrain } from './terrain';
@@ -72,11 +74,35 @@ function cellAt(r: SupportRoute, s: number, along: number, width: number): Footp
 }
 
 export type OwnTrack = (x: number, y: number, i: number) => boolean;
+/** A mapped bridge or tunnel under our deck at its own level (mapped-structures.ts): the deck clears it as a road
+ * (CROSSING_RULES.overHeight above it); one that passes over our road there (with the room a road under a bridge needs)
+ * is not under the deck. Not memoised: it reads our grade. */
+function mappedObstacle(c: FootprintCell, r: SupportRoute, terrain: Terrain, roads?: RoadNet): number {
+  let height = -Infinity;
+  const bounds = cellBounds(c, 14);
+  if (!roads || !structuresNear(roads, terrain, bounds)) return height;
+  const grade = r.grade[Math.max(0, Math.min(r.n - 1, c.i))];
+  roads.nearSegments(bounds, segment => {
+    if (!mappedKind(roads, segment.way)) return;
+    const hit = clipFootprint(segment, c, ROAD_CLASSES[segment.cls].width / (segment.cls === 'motorway' ? 4 : 2));
+    if (!hit) return;
+    for (const d of [hit[0], (hit[0] + hit[1]) / 2, hit[1]]) {
+      const t = Math.max(0, Math.min(1, (d - segment.d) / (segment.length || 1))), x = segment.ax + t * (segment.bx - segment.ax), y = segment.ay + t * (segment.by - segment.ay);
+      const level = crossedLevel(roads, segment.way, x, y, terrain);
+      const kind = roads.structure(segment.way)!.kind;
+      if (kind === 'bridge' ? level - grade >= OVERBRIDGE_CLEARANCE : kind === 'tunnel' && grade - level >= CROSSING_RULES.overHeight) continue;
+      height = Math.max(height, level + (ROAD_CLASSES[segment.cls].noAtGrade ? R.railClearance : CROSSING_RULES.overHeight));
+    }
+  });
+  return height;
+}
 /** Same support envelopes and raster uncertainty as structureFootprints/footprintConflicts.
  * Returns the highest required deck elevation over a protected feature, or -Infinity. */
 function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, relocatable?: ReadonlySet<number>, ownTrack?: OwnTrack, motorway = false): number {
   let height = -Infinity;
   roads?.nearSegments(cellBounds(c, 14), segment => {
+    // (a mapped bridge or tunnel: at its own level, below; mappedObstacle)
+    if (mappedKind(roads, segment.way)) return;
     if (relocatable && !ROAD_CLASSES[segment.cls].separable && !relocatable.has(segment.way)) return;
     const half = ROAD_CLASSES[segment.cls].width / (segment.cls === 'motorway' ? 4 : 2);
     const hit = clipFootprint(segment, c, half);
@@ -139,7 +165,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   // Memo keys stay valid across strict retries: `relocatable` rows are keyed by the strict set.
   // (an empty strict set must not share the keys of a screen without one: those count every road)
   const strictKey = strictWays ? `strict:${[...strictWays].join()}` : 'all';
-  const obstacle = (cell: FootprintCell, relocatable?: ReadonlySet<number>) => {
+  const obstacle = (cell: FootprintCell, relocatable?: ReadonlySet<number>) => Math.max(memoised(cell, relocatable), mappedObstacle(cell, r, terrain, roads));
+  const memoised = (cell: FootprintCell, relocatable?: ReadonlySet<number>) => {
     if (!memo) return obstacleHeight(cell, terrain, roads, relocatable, ownTrack, r.motorway);
     const key = `${cell.s.toFixed(3)}/${cell.tx.toFixed(4)}/${cell.ty.toFixed(4)}/${cell.along.toFixed(3)}/${cell.left}/${cell.right}/${relocatable ? strictKey : ''}`;
     let height = memo.get(key);

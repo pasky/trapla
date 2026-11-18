@@ -85,8 +85,8 @@ export function createRoadLinks(app: RoadLinksContext) {
   let legacyNet: RoadNet | null = null;
   /** a drawn mapped road near this ground point (the pack's road overlay; no road links needed) */
   const mappedRoadNear = (x: number, y: number, px = 8, min = 6) => {
-    if (!app.pack.overlays.net) return false;
-    legacyNet ??= new RoadNet(app.pack.overlays.net);
+    if (!app.pack.roadNet) return false;
+    legacyNet ??= new RoadNet(app.pack.roadNet);
     return legacyNet.nearestWay(x, y, Math.max(min, px * app.view.metresPerPixel)) !== undefined;
   };
   /** a mapped road's own name or number by its index in the pack's network ("road II/325", a street's name), once the

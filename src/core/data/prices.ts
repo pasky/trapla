@@ -210,8 +210,23 @@
  * track closed before); direct-90 −0.8 (km 4.61 and km 6.22 boxes, km 16.08 a 188 m reroute; a reroute through a home
  * on the way makes the regrade retry raise our line there: bridges −15.1, borrow −10.8, cuts +6.9); town-centre and
  * town-controls +32.9 (km 6.28, 11.53 and 16.24 rerouted, 484 / 222 / 582 m); straight unchanged. Starters: PLAN.md
- * "A cut way that serves houses; what each part still reaches". */
-export const COST_MODEL_VERSION = 54;
+ * "A cut way that serves houses; what each part still reaches".
+ * 55: mapped road bridges and tunnels (a pack's structures.json, pipeline/build_structures.py; the crossing network had
+ * left them out: a gap in the crossed road, nothing built or billed) are ways of the network, crossed at their own level
+ * (their deck, between the ground at their ends: mapped-structures.ts). One our road passes under with the depth a new
+ * bridge over us needs (6 m), reaching past our earthworks, is kept (billed 0, "Existing bridge kept"); a tunnel 6 m or
+ * more under us, its portals beyond our works, likewise; otherwise it is engineered and billed like any crossing (a new
+ * bridge replaces the whole old one). Our bridge clears a mapped bridge or tunnel under it at its level (lifts, the grade
+ * retries, a motorway's must-clear). A mapped bridge or tunnel with room is not buried by our earthworks nor held off by a
+ * wall (4.8 m under a bridge's deck), nor in the way of a road moved aside. Roads run on over their bridges (closures,
+ * reroutes, a crossed road's path), never into a road under or over one's span. D11 frozen (M CZK, against model 54):
+ * straight −27.3 (km 6.32 the street, which runs on over its mapped bridge 120 m away, no longer has our line lifted 3 m
+ * for its box: carried over us on ramps, crossings +17.4; our bridge at km 6.41 starts 40 m later, bridges −21.7;
+ * buildings −5.9, culverts −3.3, noise walls +3.4, surcharge −6.9);
+ * demo +49.3 (km 6.07 the local road's 60 m bridge over the planned D11, our road 3 m under its deck: replaced by a 61 m
+ * bridge on ramps, 38.1 + surcharge); direct-80 +0.004, town-centre and town-controls +0.047 (a crossed way's path runs
+ * on over its bridge); best, best-* and direct-90 unchanged. Starters: PLAN.md "Mapped bridges and tunnels are crossings". */
+export const COST_MODEL_VERSION = 55;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
