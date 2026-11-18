@@ -40,6 +40,14 @@ describe('windowed drag preview', () => {
     expect(Math.abs(preview.cost.total / fresh.cost.total - 1)).toBeLessThan(0.2);
   });
 
+  it('a drag on the road between two bends (a bend added) is a window on the full result before it', () => {
+    const full = evaluate(ctx, base);
+    const d: Design = { ...base, pis: [...base.pis.slice(0, 4), { x: 13_500, y: 820, r: null }, ...base.pis.slice(4)] };
+    const preview = evaluate(ctx, d, { preview: true, materialValue: full.quantities.materialValue });
+    expect(preview.timing['window.length']).toBeGreaterThan(0);
+    expect(preview.timing['window.length']).toBeLessThan(0.6 * preview.length);
+  });
+
   it('falls back to the whole-route preview without a full result of the same kind', () => {
     const other: Design = { ...moved(25), speed: 80 };
     const preview = evaluate(ctx, other, { preview: true });

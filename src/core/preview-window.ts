@@ -50,8 +50,13 @@ const fullResults = new WeakMap<Terrain, FullEntry[]>();
 const KEEP = 6;
 
 /** Everything except the plan and the grade inputs must match for a full result to stand in. */
+/** A crossing's choices without how the player shaped its reroute (its bend points, where it leads, its ends): a drag
+ * of a reroute is a window around that crossing on the full result before it (`changedRange`). */
+const shapeless = (list: Design['crossingOverrides']) => (list ?? []).map(({ via: _v, to: _t, ends: _e, ...rest }) => rest);
 function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
-  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.pis.map(p => [p.speed ?? null, p.hairpin ?? null]), d.profileMode, d.structureOverrides ?? [], d.crossingOverrides ?? [],
+  // (the bends' own settings in order, not how many bends there are: a drag on the road between two bends adds one,
+  // and its previews are windows on the full result before it, as a bend drag's; the plan comparison finds the stretch)
+  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.pis.flatMap(p => p.speed != null || p.hairpin ? [[p.speed ?? null, p.hairpin ?? null]] : []), d.profileMode, d.structureOverrides ?? [], shapeless(d.crossingOverrides),
     d.buildingOverrides ?? [], d.wallOverrides ?? [], d.objectData ?? null, opts.endpointElevations ?? null, opts.goals ?? null,
     opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null]);
   // Not keyed: a split direction's joined ranges follow its plan, and its preview prices crossings the
@@ -157,6 +162,15 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
       const before = d.vpis.filter(v => v.s < a), after = d.vpis.filter(v => v.s > b);
       a = before.length ? before[before.length - 1].s : 0; b = after.length ? after[0].s : length;
     }
+  }
+  // A reshaped reroute (the same choices, see `shapeless`): the stretch from its crossing to the one it leads to.
+  const shapes = (list: Design['crossingOverrides']) => new Map((list ?? []).map(o => [o.roadId, JSON.stringify([o.via ?? null, o.to ?? null, o.ends ?? null])]));
+  const now = shapes(d.crossingOverrides), then = shapes(base.design.crossingOverrides);
+  for (const id of new Set([...now.keys(), ...then.keys()])) {
+    if (now.get(id) === then.get(id)) continue;
+    const at = r.crossings.filter(c => c.roadId === id);
+    if (!at.length) return [0, length]; // not crossed in the full result: the whole route
+    for (const c of at) for (const x of [c.s, c.targetS ?? c.s]) { const y = x > planStart ? x + shift : x; a = Math.min(a, y); b = Math.max(b, y); }
   }
   // An edited bend whose plan moved by less than the tolerance (a large radius changed a little): its
   // own curve and its neighbours' are the stretch to re-solve.

@@ -51,7 +51,7 @@ await page.addInitScript(() => {
         const r = m?.type === 'project-preview' ? m.result?.legacy
           : m?.type === 'project-result' ? m.result?.routes[window.trapla?.activeRoute?.()]?.legacy : m?.type === 'result' ? m.result : null;
         const handled = !window.trapla?.handledRequest || window.trapla.handledRequest() === m?.id;
-        if (D.on && r && handled) D.results.push({ id: m.id, t0, t1, preview: m.type === 'project-preview' || !!(m.preview ?? r.preview), worker: r.timing?.total, parts: window.trapla?.handlerTiming?.() });
+        if (D.on && r && handled) D.results.push({ id: m.id, t0, t1, preview: m.type === 'project-preview' || !!(m.preview ?? r.preview), worker: r.timing?.total, timing: r.timing, parts: window.trapla?.handlerTiming?.() });
       };
     }
     get onmessage() { return super.onmessage; }
@@ -264,6 +264,10 @@ const first = Math.min(...posts.values());
 const gaps = [...shownAt, tUp].map((t, i, a) => ({ at: (i ? a[i - 1] : first) - D.start, gap: t - (i ? a[i - 1] : first), full: i < during.length && !during[i].preview }));
 const resultGap = Math.max(0, ...gaps.map((g) => g.gap));
 if (process.env.DRAG_DEBUG) console.log('previews (worker ms, latency ms, handler ms)', JSON.stringify(previews.map((r) => [Math.round(r.worker ?? -1), Math.round(r.t0 - posts.get(r.id)), Math.round(r.t1 - r.t0)])));
+if (process.env.DRAG_DEBUG) { // the preview worker's phases (cumulative ms, median) and counters
+  const keys = [...new Set(previews.flatMap((r) => Object.keys(r.timing ?? {})))];
+  console.log('preview timing (median)', keys.map((k) => `${k} ${q(previews.map((r) => r.timing?.[k]).filter((v) => v !== undefined), 0.5)?.toFixed?.(1)}`).join(' '));
+}
 if (process.env.DRAG_DEBUG) console.log('gaps', JSON.stringify(gaps.filter((g) => g.gap > 60).map((g) => [Math.round(g.at), Math.round(g.gap), g.full])));
 const out = {
   mode, renderer, moves, evalsPosted: posts.size, resultsDuringDrag: during.length, previewResults: previews.length,
