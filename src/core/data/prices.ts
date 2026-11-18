@@ -174,8 +174,21 @@
  * stays Auto's own, the pin says what it would not clear; a suggested height is one whose first solve misses no such
  * crossing. A pin left out holds no support lift. Frozen bills, starters and saved designs unchanged; pinned edits
  * (scripts/edit-locality.ts): Královec pin +5 m at km 4.2 10.49 → 10.69 bn, D11 pin −8 m at km 7.2 3.82 → 3.66 bn,
- * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight"). */
-export const COST_MODEL_VERSION = 51;
+ * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight").
+ * 52: other ways' works keep the working strip (BUILDING_RULES.clearance, 3 m, PROVISIONAL: research/85) from houses as
+ * ours do: a house within it of a crossed road's regrade, ramps or junction approach is bought out, or the slope is held
+ * behind a wall the strip's width from it (no wall squeezed in closer); a reroute's new road, a turning area and a road
+ * moved aside buy out what stands within it (a kept house: a problem, or the reroute keeps clear). Where another road's
+ * crossing lifts or lowers a rebuilt stretch kept on its old road, that piece is built on the old road's line (which that
+ * road crossed), not on the kernel's line up to 12 m off it. D11 frozen (M CZK): straight +11.2 (a house 11.0 beside the
+ * km 6.32 underpass ramp, its wall 1.5 m from it before; a shed by the km 16.58 reroute; noise walls −1.6); demo +105.4
+ * (the km 6.73 junction's approach regrade beside a 223 m² house, 52.3, with a wall; the km 6.89 service road over us
+ * instead of rerouted past two farm buildings, +16.0, and the road moved aside at km 6.88 buys them, 23.1); direct-80
+ * +40.5 (km 6.55 rerouted instead of carried over, five houses instead of two; km 15.29 the track over us, a house;
+ * houses by the km 6.83 and 14.34 underpass ramps, sheds by a road moved aside at km 4.15); direct-90 +13.7 (a garage
+ * block of 14 beside the km 4.10 underpass ramps); best, best-*, town-centre, town-controls unchanged. Starters: see
+ * PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old line". */
+export const COST_MODEL_VERSION = 52;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
