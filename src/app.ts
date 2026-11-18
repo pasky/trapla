@@ -63,11 +63,8 @@ const status = document.getElementById('status')!;
 
 /** Open the picked mission. `loading`: the loading card (main.ts), gone once the map is drawn. */
 export async function startApp({ picked, storage, loading }: { picked: PickedScenario; storage: StorageGuard; loading: Loading }) {
-  // while the loading card is up it says what is happening; afterwards the small status over the map does
-  const setStatus = (s: string) => {
-    if (loading.el.isConnected && s) { loading.step(s); return; }
-    status.textContent = s; status.style.display = s ? '' : 'none';
-  };
+  // the small status over the map (under the loading card while that is up)
+  const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
   const scenario = scenarioParams(picked.scenarioId, picked.presetId);
   performance.mark('trapla:app');
   const pack = await loadPack(packBase(scenario.id));
@@ -124,7 +121,7 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   const { worker, previewWorker } = startEvalWorkers(pack, scenario, ends.a, ends.b,
     { objectData, transportData, pricingData, waterData, terrainData, terrainClass: scenario.terrainClass });
 
-  setStatus('Drawing the terrain…');
+  loading.step('Drawing the terrain…');
   await new Promise(requestAnimationFrame); // the card says so before the main thread is busy building it
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
   performance.mark('trapla:view');
@@ -334,12 +331,13 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }
   projectScore(true);
   editBar.set(projectStore.canUndo(), projectStore.canRedo());
+  // until the first result (or what went wrong with it) replaces it
+  setStatus('Working out the cost…');
   requestEval();
   // the map is drawn: the card goes, the first evaluation runs in its worker meanwhile
   await new Promise(requestAnimationFrame);
   loading.done();
   performance.mark('trapla:map'); // the startup's steps, for scripts/cold-load.mjs
-  if (!session.last) setStatus('Pricing the road…');
 
   // ---- debug / automation API (src/automation.ts) ----
   installAutomation({

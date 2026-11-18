@@ -2,7 +2,7 @@
 // lives, its files' sizes and the mission ends, for the start screen and the loading card. Browser only (the
 // manifest is a Vite virtual module).
 import manifest from 'virtual:trapla-packs';
-import { prefetchPackFile, type PackFileSize } from './pack-fetch';
+import { keepPrefetched, prefetchPackFile, type PackFileSize } from './pack-fetch';
 
 export interface PackInfo {
   id: string; name: string;
@@ -28,6 +28,15 @@ export function prefetchPack(id: string): { url: string; bytes: number }[] {
     prefetchPackFile(url, pack.files[file]);
     return { url, bytes: pack.files[file].bytes };
   });
+}
+
+/** A guess (the start screen: a first visit, a pointer on Start): this pack's download starts and any other
+ *  guess's stops, so at most one pack is fetched ahead. */
+export function speculate(id: string): void {
+  const pack = PACKS[id];
+  if (!pack) return;
+  keepPrefetched(new Set(pack.startup.map((file) => `${packBase(id)}/${file}`)));
+  prefetchPack(id);
 }
 
 /** "5 MB" (one decimal under 10 MB; under 0.1 MB in kB) */

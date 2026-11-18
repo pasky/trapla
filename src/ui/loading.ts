@@ -1,7 +1,7 @@
 // The loading card over the map while a mission opens: what is loading, a bar with the megabytes so far (from
 // the pack's manifest sizes), then what the game is doing; on failure, why and a way to try again.
 import './loading.css';
-import { onPackProgress } from '../pack-fetch';
+import { onPackProgress, packProgress } from '../pack-fetch';
 import { megabytes } from '../packs';
 
 export class Loading {
@@ -31,7 +31,8 @@ export class Loading {
     this.stop?.();
     const total = files.reduce((n, f) => n + f.bytes, 0);
     if (!total) return;
-    const done = new Map<string, number>(), wanted = new Set(files.map(f => f.url));
+    // what came before this card (fetched ahead on the start screen) counts too
+    const done = new Map<string, number>(files.map(f => [f.url, packProgress(f.url)])), wanted = new Set(files.map(f => f.url));
     const show = () => {
       const got = [...done.values()].reduce((n, b) => n + b, 0);
       this.el.classList.remove('busy');

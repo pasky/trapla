@@ -1,7 +1,9 @@
 # Publishing Trapla as a static site
 
 Trapla needs no server of its own: `npm run build` writes a static site to `dist/` that any web server or static
-host can serve, at the root of a domain or under any path. Nothing is published by this repository; choose a host
+host can serve over HTTPS, at the root of a domain or under any path. (Over plain `http://` the browser withholds
+what the game needs, `crypto.subtle` and `crypto.randomUUID`; such a visit gets a notice to use `https://`.
+`localhost` / `127.0.0.1` are fine.) Nothing is published by this repository; choose a host
 below. Before publishing, read [Licences](#licences-what-publishing-the-packs-implies): two data sources need
 permission first.
 
@@ -11,6 +13,7 @@ permission first.
 npm run data -- <id>       # each pack you want on the site (public/scenarios/<id>/, gitignored)
 scripts/release.sh         # build, check dist/, then smoke / playtest / toolbar / start screen on the built site
 scripts/release.sh --serve # build, check, and serve it at http://127.0.0.1:4173/trapla/ to look at
+TRAPLA_WITHOUT=ground,traffic scripts/release.sh   # a build without the two layers whose reuse is not cleared (Licences)
 ```
 
 `scripts/release.sh` serves `dist/` with a plain static server (`scripts/static-serve.mjs`: no Vite, the site under
@@ -27,8 +30,9 @@ What is in `dist/` (2026-11-18, all 11 packs): 176 MB in 154 files, the largest 
 |---|---|
 | `index.html`, `about.html`, `404.html` | the game, *About Trapla and its data*, a plain not-found page |
 | `assets/` | JS and CSS with content hashes in their names; the start screen's code (≈ 23 kB + the 11 kB pack list) loads first, the game (≈ 1.3 MB, 380 kB compressed) and its two evaluation workers while the start screen is up |
-| `scenarios/<id>.<hash>/` | each ready pack (`public/scenarios/<id>/` with a `ready.json`, D11 without), its URL carrying a hash of all its files |
+| `scenarios/<id>.<hash>/` | each ready pack (`public/scenarios/<id>/` with a `ready.json`, D11 without, and every file its `meta.json` names), its URL carrying a hash of all its files; the pipeline's own `manifest.json` stays out |
 | `_headers` | the cache headers for Cloudflare Pages / Netlify (ignored elsewhere) |
+| `THIRD-PARTY-NOTICES.txt` | the licence of the bundled three.js (MIT asks for its notice in every copy), linked from the About page |
 
 How it fits a static host:
 
@@ -76,7 +80,7 @@ the *Start here* mission's map is downloaded while the visitor reads it (only on
 mission is picked) and any mission's from when the pointer reaches its Start button; with a 3 s read, *Start here*
 shows its map ≈ 2.5 s after the click instead of ≈ 3 s (host loaded, numbers noisy). The loading card shows what
 loads and how much of it ("1.3 of 3.9 MB"), then "Drawing the terrain…"; the map is drawn and usable before its first
-price ("Pricing the road…" over the map until then).
+price ("Working out the cost…" over the map until then).
 
 ## Host 1: a VPS with Caddy or nginx, copied with rsync
 
@@ -111,9 +115,11 @@ preview URL. Check the headers once after the first deploy: `curl -sI https://<p
 here* at 3.9 MB, ≈ 5,500 of the D11 at 18 MB). No custom headers: everything gets `max-age=600`, so for up to ten
 minutes after a deploy a visitor's cached page can ask for files of the previous build. The packs are not in the
 repository, so the site is pushed as a branch of its own built locally, e.g. an orphan `gh-pages` branch replaced
-on each deploy (`git -C dist init -b gh-pages && git -C dist add -A && git -C dist commit -m site && git -C dist
-push -f <repo-url> gh-pages`), with Pages set to serve that branch; force-pushing keeps 176 MB of packs out of the
-history. To keep the previous build's files for those ten minutes, copy them into the new `dist/` before pushing.
+on each deploy, from a fresh directory outside `dist/` (Vite keeps a `.git` inside `dist/` across builds):
+`rm -rf /tmp/trapla-site && cp -a dist /tmp/trapla-site && cd /tmp/trapla-site && git init -q -b gh-pages && git add -A
+&& git commit -qm site && git push -f <repo-url> gh-pages`, with Pages set to serve that branch; force-pushing keeps
+176 MB of packs out of the history. To keep the previous build's files for those ten minutes, copy them into the
+fresh directory before committing.
 
 Netlify reads the same `_headers`; it does not let a site set `Content-Encoding`, which Trapla does not need.
 
@@ -141,7 +147,9 @@ ODbL: "© OpenStreetMap contributors" linked to openstreetmap.org/copyright
 and on the About page; (§4.4) the derived database itself is under the ODbL, whatever else is mixed in with it;
 (§4.6) everyone who gets a Produced Work must be offered the derived database (or a file / method that makes the
 same changes) in machine-readable form, free. The About page does this: it says the map files are available under
-the ODbL and links every file of every pack on the site. For the offer to be useful the formats must be documented:
+the ODbL and links each pack's OpenStreetMap-derived files (`meta.json`, `overlays.json`, `vector.bin.gz`,
+`landcover.u8.gz`, `watercourses.json.gz`, the road graph); the heights, ground, protected areas and traffic are
+not offered there. For the offer to be useful the formats must be documented:
 they are (README "Scenario pack format", the pipeline in `pipeline/`); if this repository stays private, publish at
 least the README's format section and `pipeline/` with the site, or say on the About page where to get them. Do not
 put terms on the packs that restrict their OSM part.
@@ -151,13 +159,14 @@ say its published materials may be used or reproduced only with its written cons
 datasets are CC BY 4.0 ("(CC BY 4.0) Česká geologická služba", and say how it was changed). GEOČR50 and the
 engineering-geological zoning were queried from map services, which is not an open licence (research/00 §6 left
 this unsettled). Before the site goes public, ask ČGS in writing whether the derived 25 m ground-class grid may be
-published, and with what credit. Without consent, the ground grid cannot ship: the game would price cuts with the
-norm's 75/20/5 mix only (packs built without `meta.ground`).
+published, and with what credit. Without consent, build with `TRAPLA_WITHOUT=ground`: the packs go out without
+`ground.u8.gz` and with a `meta.json` that has no `ground` (and no ČGS credit), and the game prices cuts with the
+norm's 75/20/5 mix (as for packs built without geology). The bills of such a build differ from the local ones.
 
 **ŘSD (traffic census): ask before publishing.** No licence or reuse statement was found for the CSD 2025 data
 (scitanidopravy.rsd.cz, ŘSD Geoportal). Ask ŘSD for permission to publish the per-pack `traffic.json`; without it,
-leave `traffic.json` out of the packs: rebuilt roads then start with the average traffic of their class (the game
-already copes with a pack that has none).
+build with `TRAPLA_WITHOUT=traffic` (or `ground,traffic`): rebuilt roads then start with the average traffic of
+their class (the game already copes with a pack that has none).
 
 (Source for the licence points: a research pass of 2026-11-18 over the providers' pages; the ČGS and GitHub Pages
 statements were re-read by hand. Not legal advice.)

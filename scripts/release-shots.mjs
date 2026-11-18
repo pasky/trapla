@@ -86,9 +86,9 @@ try {
     const { context, page, errors } = await fresh();
     const cdp = await context.newCDPSession(page);
     await cdp.send('Network.enable');
-    await page.goto(site.url); await pickerReady(page);
+    // a link straight to the mission (no start screen: nothing fetched ahead) on an 8 Mbit/s line
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 40, downloadThroughput: 8e6 / 8, uploadThroughput: 2e6 / 8 });
-    await page.locator('[data-start-here] button').click();
+    await page.goto(`${site.url}?scenario=d3-0302`);
     await page.waitForFunction(() => { const t = document.querySelector('#loading .loading-line')?.textContent ?? ''; const m = t.match(/^([\d.]+) of ([\d.]+) MB/); return m && +m[1] > 0.3 * +m[2]; }, null, { timeout: 60000, polling: 50 });
     const line = await page.locator('#loading').textContent();
     ok(/Loading the map\s*Jílové → Hostěradice.*[\d.]+ of 3\.9 MB/.test(line), `the loading card says what and how much ("${line}")`);
@@ -117,6 +117,20 @@ try {
     ok(await attrib.count() === 1, 'the map credits link to the About page');
     await page.locator('#attrib').screenshot({ path: docs ? 'docs/screenshots/559-map-credits-about-link.png' : '/tmp/trapla-559.png' });
     ok(errors.length === 0, `no errors while loading and playing (${errors.join('; ')})`);
+    await context.close();
+  }
+  // ---- a first visit: the Start here map is fetched while the start screen is read ----
+  {
+    const { context, page, errors } = await fresh();
+    await page.goto(site.url); await pickerReady(page);
+    await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /height\.i16\.gz$/.test(e.name) && e.responseEnd > 0), null, { timeout: 30000 });
+    const clickAt = await page.evaluate(() => performance.now());
+    await page.locator('[data-start-here] button').click();
+    await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 120000 });
+    const heights = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /height\.i16\.gz$/.test(e.name)).map((e) => e.responseEnd));
+    ok(heights.length === 1 && heights[0] < clickAt, `a first visit downloads the Start here map while reading, once (${heights.map(Math.round)} ms, click at ${Math.round(clickAt)})`);
+    await idle(page);
+    ok(errors.length === 0, `…and opens it without errors (${errors.join('; ')})`);
     await context.close();
   }
   if (old) { // the intro before, on the same mission

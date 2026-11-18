@@ -98,21 +98,23 @@ export interface Pack {
 /** a pack file, unpacked if it is gzipped (src/pack-fetch.ts: the start screen may have started it already) */
 const gunzip = (url: string) => packFile(url);
 const json = async <T>(url: string): Promise<T> => JSON.parse(new TextDecoder().decode(await packFile(url))) as T;
-/** an optional file of the pack: null when the pack has none */
-const optional = <T>(url: string): Promise<T | null> => json<T>(url).catch((error) => { if (isMissing(error)) return null; throw error; });
+/** an optional file of the pack: `ABSENT` when the pack has none (a file holding `null` is not "none") */
+const ABSENT = Symbol('absent');
+const optional = <T>(url: string): Promise<T | typeof ABSENT> => json<T>(url).catch((error) => { if (isMissing(error)) return ABSENT; throw error; });
 
 async function sha256(bytes: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function transportSidecar(base: string): Promise<TransportMeta | null> {
-  return optional<TransportMeta>(`${base}/transport-meta.json`);
+async function transportSidecar(base: string): Promise<TransportMeta | null> {
+  const meta = await optional<TransportMeta>(`${base}/transport-meta.json`);
+  return meta === ABSENT ? null : meta;
 }
 
 /** The pack's nature protection areas (`protected.json`, pipeline/build_protected.py): null when it ships none. */
 async function protectedSidecar(base: string): Promise<ProtectedData | null> {
   const data: unknown = await optional(`${base}/protected.json`);
-  if (data === null) return null;
+  if (data === ABSENT) return null;
   if (!validProtectedData(data)) throw new Error('Unsupported protected areas file');
   return data;
 }
@@ -154,7 +156,7 @@ export async function loadPack(base: string): Promise<Pack> {
   let traffic: Promise<TrafficCensus | null> | null = null;
   const loadTraffic = () => traffic ??= (async () => {
     const census: unknown = await optional(`${base}/traffic.json`);
-    if (census === null) return null;
+    if (census === ABSENT) return null;
     if (!validTrafficCensus(census)) throw new Error('Unsupported traffic census');
     return census;
   })().catch((error) => { console.warn('Traffic census unavailable', error); return null; });

@@ -8,6 +8,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 target=${1:?usage: deploy/rsync.sh user@host:/path/ [--prune]}
 [ -f dist/index.html ] || { echo "no dist/: run scripts/release.sh first" >&2; exit 1; }
-rsync -av --checksum dist/assets dist/scenarios "$target"
-rsync -av --checksum --exclude assets --exclude scenarios dist/ "$target"
-if [ "${2:-}" = --prune ]; then rsync -av --checksum --delete dist/ "$target"; fi
+rsync -av --checksum --exclude .git dist/assets dist/scenarios "$target"
+rsync -av --checksum --exclude .git --exclude assets --exclude scenarios dist/ "$target"
+if [ "${2:-}" = --prune ]; then rsync -av --checksum --delete --exclude .git dist/ "$target"; fi

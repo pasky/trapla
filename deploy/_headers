@@ -1,5 +1,5 @@
 # Cloudflare Pages / Netlify response headers (copied to the site's root by `npm run build`; docs/deploy.md).
-# Paths are relative to where the site is deployed. Content-hashed files never change: cache them for a year;
+# Paths are from the root of the site's own domain (a Pages project always serves at its domain's root). Content-hashed files never change: cache them for a year;
 # the pages themselves are always revalidated, so a new deploy is seen at once.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

@@ -1,5 +1,6 @@
-// Before the start screen: a browser without WebGL 2 cannot draw the map, and a phone or a small window cannot fit
-// it. Both are told plainly instead of a broken page; a small screen may go on anyway.
+// Before the start screen: a page opened over plain http:// (not localhost) lacks what the game needs, a browser
+// without WebGL 2 cannot draw the map, and a phone or a small window cannot fit it. All are told plainly instead of
+// a broken page; a small screen may go on anyway.
 import './scenario-picker.css';
 
 const ANYWAY = 'trapla.small-screen-ok';
@@ -15,7 +16,7 @@ export function tooSmall(): boolean {
 }
 
 /** The notice, as the start screen's page. `onAnyway`: a button to go on regardless. */
-export function showDeviceNotice(kind: 'webgl' | 'small', onAnyway?: () => void): HTMLElement {
+export function showDeviceNotice(kind: 'webgl' | 'small' | 'insecure', onAnyway?: () => void): HTMLElement {
   const root = document.createElement('main');
   root.className = 'scenario-picker device-notice';
   root.setAttribute('role', 'alert');
@@ -24,7 +25,13 @@ export function showDeviceNotice(kind: 'webgl' | 'small', onAnyway?: () => void)
   const h = document.createElement('h1');
   const p = document.createElement('p'); p.className = 'scenario-picker-lead';
   const more = document.createElement('p');
-  if (kind === 'webgl') {
+  if (kind === 'insecure') {
+    // the browser keeps what the game needs (crypto.subtle, crypto.randomUUID) to https:// pages and localhost
+    h.textContent = 'Open Trapla over https://';
+    p.textContent = 'This page was opened over plain http://, where the browser does not give the game what it needs.';
+    const secure = location.href.replace(/^http:/, 'https:');
+    more.append('Try ', Object.assign(document.createElement('a'), { href: secure, textContent: secure }), '.');
+  } else if (kind === 'webgl') {
     h.textContent = 'This browser cannot draw the 3D map';
     p.textContent = 'Trapla shows the terrain with WebGL 2, which this browser does not have or has turned off.';
     more.textContent = 'Try a recent Chrome, Firefox, Edge or Safari on a desktop computer. If it still does not work, turn on “Use hardware acceleration” in the browser’s settings.';
@@ -51,6 +58,7 @@ export function showDeviceNotice(kind: 'webgl' | 'small', onAnyway?: () => void)
 /** Resolves once the game may start; never resolves without WebGL 2 (the notice stays). */
 export function deviceCheck(): Promise<void> {
   return new Promise((resolve) => {
+    if (!isSecureContext) { showDeviceNotice('insecure'); return; }
     if (!hasWebGL2()) { showDeviceNotice('webgl'); return; }
     let anyway = false;
     try { anyway = sessionStorage.getItem(ANYWAY) === '1'; } catch { /* private mode */ }

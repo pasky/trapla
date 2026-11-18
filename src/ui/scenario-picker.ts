@@ -1,7 +1,7 @@
 import './scenario-picker.css';
 import { PRESETS, SCENARIOS, type ScenarioParams } from '../core/data/scenario';
 import { hasProjectSave } from '../project-store-contract';
-import { megabytes, packBase, PACKS, prefetchPack } from '../packs';
+import { megabytes, packBase, PACKS, speculate } from '../packs';
 
 export interface ScenarioPickerOptions {
   /** Supplied by the project store: the picker never invents a project storage key. */
@@ -70,18 +70,22 @@ export function kindLine(scenario: ScenarioParams): string {
 }
 const loadSize = (scenario: ScenarioParams) => PACKS[scenario.id] ? megabytes(PACKS[scenario.id].startupBytes) : '';
 
-/** Where the start screen puts each mission: the one offered first, one card per corridor (its sections as
+/** a built site may carry only some packs (docs/deploy.md); in dev every mission is offered, built or not */
+const onThisSite = (scenario: ScenarioParams) => !import.meta.env.PROD || !!PACKS[scenario.id];
+
+/** Where the start screen puts each mission: the one offered first (if its map is on the site), one card per corridor (its sections as
  * choices, the whole route last) or per mission, and the retired missions that have a save. */
 export interface PickerLayout {
   startHere: ScenarioParams | null;
   cards: { group?: string; presets: ScenarioParams[] }[];
   older: ScenarioParams[];
 }
-export function pickerLayout(presets: readonly ScenarioParams[], isSaved: (scenario: ScenarioParams) => boolean): PickerLayout {
+export function pickerLayout(presets: readonly ScenarioParams[], isSaved: (scenario: ScenarioParams) => boolean,
+  onSite: (scenario: ScenarioParams) => boolean = () => true): PickerLayout {
   const layout: PickerLayout = { startHere: null, cards: [], older: [] };
   for (const scenario of presets) {
     if (scenario.retired) { if (isSaved(scenario)) layout.older.push(scenario); continue; }
-    if (scenario.picker?.startHere && !layout.startHere) layout.startHere = scenario;
+    if (scenario.picker?.startHere && !layout.startHere && onSite(scenario)) layout.startHere = scenario;
     const card = scenario.picker?.section ? layout.cards.find(c => c.group !== undefined && c.group === scenario.group) : undefined;
     if (card) card.presets.push(scenario);
     else layout.cards.push({ group: scenario.picker?.section ? scenario.group : undefined, presets: [scenario] });
@@ -116,7 +120,8 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   heading.id = 'scenario-picker-heading';
   content.append(element('p', 'Trapla', 'scenario-picker-brand'), heading,
     element('p', 'Bend it through real Czech hills, bridge the valleys, keep it safe, and make it as cheap as you can.', 'scenario-picker-lead'));
-  if (requested) content.append(element('p', 'That place is not ready. Choose another or build its map.', 'scenario-picker-notice'));
+  if (requested) content.append(element('p', import.meta.env.PROD ? 'That place is not on this site. Choose another.'
+    : 'That place is not ready. Choose another or build its map.', 'scenario-picker-notice'));
   root.append(content);
   document.body.append(root);
   const status = document.getElementById('status');
@@ -135,12 +140,12 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
       root.remove();
       resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null });
     };
-    const layout = pickerLayout(PRESETS, isSaved);
+    const layout = pickerLayout(PRESETS, isSaved, onThisSite);
     // A first visit (no design saved anywhere) most likely starts the mission offered first: its map downloads
     // while the visitor reads (stopped if another one is picked, main.ts).
     const firstVisit = !PRESETS.some(isSaved);
     if (layout.startHere && firstVisit && !requested) {
-      const id = layout.startHere.id, go = () => { void available(id).then((ok) => { if (ok && root.isConnected) prefetchPack(id); }); };
+      const id = layout.startHere.id, go = () => { void available(id).then((ok) => { if (ok && root.isConnected) speculate(id); }); };
       if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 300);
     }
     if (layout.startHere) {
@@ -167,6 +172,7 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
         button.type = 'button';
         button.addEventListener('click', () => open(scenario));
         item.append(element('span', `${scenario.title}`), button);
+        if (!onThisSite(scenario)) { button.disabled = true; item.append(element('span', 'Its map is not on this site.', 'scenario-picker-kind')); }
         list.append(item);
       }
       older.append(element('p', 'Missions no longer offered. Your designs are kept.', 'scenario-picker-kind'), list);
@@ -242,7 +248,7 @@ function missionCard(presets: ScenarioParams[], isSaved: (s: ScenarioParams) => 
   }
   button.addEventListener('click', () => open(chosen));
   // a pointer on Start (or the keyboard on it) is a likely click: the map's download starts a moment earlier
-  const early = () => { if (ready.get(chosen)) prefetchPack(chosen.id); };
+  const early = () => { if (ready.get(chosen)) speculate(chosen.id); };
   button.addEventListener('pointerenter', early);
   button.addEventListener('focus', early);
   for (const scenario of presets) void check(scenario);

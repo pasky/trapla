@@ -18,7 +18,9 @@ ok(existsSync(join(dist, 'index.html')), `${dist}/index.html exists`);
 const all = existsSync(dist) ? walk(dist) : [];
 const rel = (f) => f.slice(dist.length + 1);
 
-for (const page of ['index.html', 'about.html', '404.html', '_headers']) ok(existsSync(join(dist, page)), `${page} is in the site`);
+for (const page of ['index.html', 'about.html', '404.html', '_headers', 'THIRD-PARTY-NOTICES.txt']) ok(existsSync(join(dist, page)), `${page} is in the site`);
+ok(existsSync(join(dist, 'THIRD-PARTY-NOTICES.txt')) && /three\.js[\s\S]*Permission is hereby granted/.test(readFileSync(join(dist, 'THIRD-PARTY-NOTICES.txt'), 'utf8')),
+  'the bundled three.js comes with its licence notice');
 for (const page of ['index.html', 'about.html']) {
   if (!existsSync(join(dist, page))) continue;
   const html = readFileSync(join(dist, page), 'utf8');
@@ -31,12 +33,16 @@ const code = all.filter((f) => /\.(js|css|html)$/.test(f));
 const dev = code.filter((f) => /\/@fs\/|\/@vite\/|\/@id\/|localhost:5173|\/src\/main\.ts|import\.meta\.hot/.test(readFileSync(f, 'utf8')));
 ok(dev.length === 0, `nothing points at the dev server${dev.length ? ` (${dev.map(rel).join(', ')})` : ''}`);
 
-const packs = describePacks('public/scenarios', { hash: true });
+const without = (process.env.TRAPLA_WITHOUT ?? '').split(',').map((w) => w.trim()).filter(Boolean);
+const packs = describePacks('public/scenarios', { hash: true, without });
 ok(Object.keys(packs).length > 0, `${Object.keys(packs).length} ready packs in public/scenarios`);
 for (const pack of Object.values(packs)) {
   const dir = join(dist, pack.dir);
   const bad = Object.entries(pack.files).filter(([name, size]) => !existsSync(join(dir, name)) || statSync(join(dir, name)).size !== size.bytes);
   ok(existsSync(dir) && bad.length === 0, `${pack.id}: in ${pack.dir} with its ${Object.keys(pack.files).length} files (${(pack.totalBytes / 1e6).toFixed(1)} MB, ${(pack.startupBytes / 1e6).toFixed(1)} MB before the first frame)`);
+  const left = without.flatMap((layer) => ({ ground: ['ground.u8.gz'], traffic: ['traffic.json'] })[layer] ?? []).filter((f) => existsSync(join(dir, f)));
+  if (without.length) ok(left.length === 0 && !(without.includes('ground') && JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8')).ground),
+    `${pack.id}: without ${without.join(', ')}${left.length ? ` (still there: ${left.join(', ')})` : ''}`);
 }
 const stale = existsSync(join(dist, 'scenarios')) ? readdirSync(join(dist, 'scenarios')).filter((d) => !Object.values(packs).some((p) => p.dir === `scenarios/${d}`)) : [];
 ok(stale.length === 0, `no pack in dist/scenarios that the build does not list${stale.length ? ` (${stale.join(', ')})` : ''}`);

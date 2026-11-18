@@ -35,6 +35,7 @@ async function boot() {
     await startApp({ picked, storage, loading });
   } catch (e) {
     console.error(e);
+    keepPrefetched(new Set()); // nothing of the map is kept behind the failure
     const message = e instanceof Error ? e.message : String(e);
     if (loading.el.isConnected) loading.fail(/webgl|context/i.test(message) ? 'This browser could not start the 3D map.' : 'Check the connection and try again.');
     else { const s = document.getElementById('status'); if (s) { s.textContent = `Something went wrong: ${message}`; s.style.display = ''; } }
