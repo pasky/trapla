@@ -1,0 +1,13 @@
+#loading { position: absolute; z-index: 5; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(360px, 80%);
+  padding: 16px 20px; border-radius: 10px; background: #fffefa; color: #23332e; box-shadow: 0 4px 18px rgba(0,0,0,.18);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+#loading b { display: block; font-size: 17px; margin: 2px 0 10px; }
+.loading-kicker { color: #61766c; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.loading-track { height: 6px; border-radius: 3px; background: #e1e7e0; overflow: hidden; }
+.loading-track i { display: block; height: 100%; width: 0; background: #315b46; transition: width .2s; }
+#loading.busy .loading-track i { width: 30%; animation: loading-slide 1.2s ease-in-out infinite; }
+@keyframes loading-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { #loading.busy .loading-track i { animation: none; width: 100%; opacity: .4; } }
+.loading-line { margin-top: 8px; color: #50645a; font-variant-numeric: tabular-nums; }
+#loading.failed .loading-track { display: none; }
+#loading button { margin-top: 12px; }

@@ -51,7 +51,8 @@ export function hudEvents(app: HudEventContext): HudEvents {
       app.store.reset(); app.view.resetCamera(); app.profile.fit();
       toast('Back to the starting road.', 'Undo', () => app.store.undo());
     },
-    onIntro: () => app.intro.show(),
+    // the intro says to drag the road: it is selected, as on a first run
+    onIntro: () => { app.intro.show(); app.selectRoad(); },
     onJoinStretch: (id) => app.joinStretch(id),
     onDirection: (which) => {
       const route = app.store.route, corridor = route ? corridorOfRoute(app.projectStore.snapshot.design, route.id) : undefined;

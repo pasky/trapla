@@ -23,7 +23,7 @@ try {
   await game.open('scenario=d11', { intro: true });
   const view = await page.locator('#view').boundingBox();
   const roadAt = async (f) => { const q = await T((f) => window.trapla.roadScreen(window.trapla.result().length * f), f); return { x: view.x + q.sx, y: view.y + q.sy }; };
-  assert.match(await page.locator('#intro').textContent(), /Click the orange road, then drag it to bend it/);
+  assert.match(await page.locator('#intro').textContent(), /Drag the orange road to bend it/);
   assert.equal(await T(() => window.trapla.roadSelected()), true, 'with the intro up our road starts selected');
   await shot(380, 'select-intro');
 

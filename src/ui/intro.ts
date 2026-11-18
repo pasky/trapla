@@ -1,4 +1,4 @@
-// First-run introduction over the map: select the road and drag it, click anything, watch the cost. Bottom left, so the
+// First-run introduction over the map: drag the road (it starts selected), click anything, watch the cost. Bottom left, so the
 // route stays visible. Dismissed with "Got it", Esc or the first edit; remembered; Help shows it again.
 
 const KEY = 'trapla.intro.v2';
@@ -15,9 +15,9 @@ export class Intro {
     this.el.innerHTML = `
       <div class="intro-h">Build the cheapest legal ${line} from <b>A</b> to <b>B</b></div>
       <ol>
-        <li><span class="ico">✥</span><div><b>Click the orange ${line}</b>, then drag it to bend it.</div></li>
-        <li><span class="ico">☝</span><div><b>Click anything</b> — ${line}, bridge, house, crossing — to see its cost and change it.</div></li>
-        <li><span class="ico kc">Kč</span><div>The cost counts once the design is <span class="ok">✓ VALID</span>.</div></li>
+        <li><span class="ico">✥</span><div><b>Drag the orange ${line}</b> to bend it.</div></li>
+        <li><span class="ico">☝</span><div><b>Click anything</b> to see its cost and change it.</div></li>
+        <li><span class="ico kc">Kč</span><div>Only a <span class="ok">✓ VALID</span> design counts.</div></li>
       </ol>
       <div class="btns"><button type="button" class="primary" id="intro-ok">Got it</button></div>`;
     host.appendChild(this.el);

@@ -2,7 +2,8 @@
 # The quality gates of AGENTS.md as one command, with the browser / GPU lock protocol built in.
 #
 #   scripts/gates.sh quick                  while iterating: tsc, vitest, frozen bills, one drag mode
-#   scripts/gates.sh full                   once per merge: everything below
+#   scripts/gates.sh full                   once per merge: everything below (smoke / playtest / toolbar also on
+#                                           the built site, dist/ from the build gate: scripts/release.sh)
 #   scripts/gates.sh full --no-browser      the Node gates only (no Chromium, no lock)
 #   scripts/gates.sh full --only smoke,drag-pin      just these gates
 #   scripts/gates.sh full --skip playtest            all but these
@@ -36,7 +37,7 @@ tsc|node|quick|npx tsc --noEmit
 vitest|alone|quick|npx vitest run
 eval-regression|node|quick|npx tsx scripts/eval-regression.ts
 drag-bend|timed|quick|node scripts/drag-perf.mjs --gpu --check --mode bend
-build|node|full|npm run build
+build|node|full|scripts/release.sh --no-browser
 bench|node|full|npx tsx scripts/bench.ts --check scripts/*.json
 edit-locality|node|full|npx tsx scripts/edit-locality.ts
 straighten|node|full|npx tsx scripts/straighten-audit.ts d3-motorway d11 d11-best d11-town-centre
@@ -51,6 +52,10 @@ pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m un
 smoke|browser|full|PORT=\$((PORT + 10)) node scripts/smoke.mjs
 playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/playtest.mjs
 toolbar|browser|full|PORT=\$((PORT + 30)) node scripts/toolbar-layout.mjs --out $log/toolbar-shots
+smoke-dist|browser|full|DIST=dist PORT=\$((PORT + 40)) node scripts/smoke.mjs
+playtest-dist|browser|full|DIST=dist PORT=\$((PORT + 50)) OUT=$log/playtest-dist-shots node scripts/playtest.mjs
+toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-layout.mjs --out $log/toolbar-dist-shots
+start-screen|browser|full|DIST=dist PORT=\$((PORT + 70)) node scripts/release-shots.mjs --check
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 $(for m in road link; do echo "drag-d11-motorway-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d11 --preset d11-motorway --mode $m"; done)
 EOF
@@ -162,8 +167,10 @@ for name in "${nodes[@]}"; do
 done
 wait
 
-# 3. the untimed browser runs together
-for name in "${browsers[@]}"; do run "$name" browser "${cmds[$name]}" & done
+# 3. the untimed browser runs together: on the dev server, then on the built site (dist/, from the build gate)
+for name in "${browsers[@]}"; do [[ "${cmds[$name]}" == DIST=* ]] || run "$name" browser "${cmds[$name]}" & done
+wait
+for name in "${browsers[@]}"; do [[ "${cmds[$name]}" == DIST=* ]] && run "$name" browser "${cmds[$name]}" & done
 wait
 
 echo

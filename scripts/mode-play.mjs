@@ -41,7 +41,7 @@ try {
   await page.waitForSelector('.scenario-picker-card');
   const cards = await page.locator('.scenario-picker-card :is(h2, h3)').allTextContents();
   console.log('cards', JSON.stringify(cards));
-  assert(cards.includes('Railway: Trutnov → Královec') && !cards.includes('Railway: Trutnov → Polish border'));
+  assert(cards.includes('Trutnov → Královec') && !cards.some((c) => /Polish border, railway/.test(c)));
   await open('scenario=d11&preset=d11-rail-kralovec');
   const start = await seen('mission');
   assert.equal(start.valid, true);
