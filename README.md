@@ -340,7 +340,7 @@ before): the deep cut at km 10.1, [walls inside the slope before](docs/screensho
 [on the cut's top edge now](docs/screenshots/121-noise-cut-km10-after.png); [the house beside a junction
 opening, walled instead of bought out](docs/screenshots/122-noise-gap-house-card.png); [a card with the wall on
 the cut](docs/screenshots/123-noise-wall-on-cut-card.png); demolished buildings under a viaduct, [roof patches
-and floating squares before](docs/screenshots/124-demolished-before.png), [cleared plots now](docs/screenshots/125-demolished-after.png);
+and floating squares before](docs/screenshots/124-demolished-before.png), [cleared plots then](docs/screenshots/125-demolished-after.png) (since 520: bought out, standing magenta);
 [a bought-out house with its ring](docs/screenshots/126-bought-out-after.png); [far away: outlined markers on
 the ground](docs/screenshots/127-demolished-far-markers.png); the ground beside an abutment, [sky-coloured
 slivers before](docs/screenshots/128-seam-abutment-before.png), [closed now](docs/screenshots/129-seam-abutment-after.png).
@@ -462,9 +462,9 @@ release too](docs/screenshots/492-d35-left-out-bend-dropped-on-release.png), [on
 One word and one look for every house taken (`node scripts/buyout-look-shots.mjs`): [D11 km 4.07, the house under the
 bridge end's cone: bought out](docs/screenshots/520-d11-km-4-07-house-under-a-cone-bought-out.png), [noise
 view](docs/screenshots/521-d11-km-4-07-noise-view.png), [photo](docs/screenshots/522-d11-km-4-07-photo.png),
-[plan](docs/screenshots/523-d11-km-4-07-plan.png); [a noise buyout at km 5.1](docs/screenshots/524-d11-noise-buyout.png);
-[the Královec railway's houses under its works](docs/screenshots/525-kralovec-railway-houses-bought-out.png), [far
-away](docs/screenshots/526-kralovec-railway-far.png).
+[kept there, in the photo: its ring gone](docs/screenshots/523-d11-km-4-07-photo-kept.png), [plan](docs/screenshots/524-d11-km-4-07-plan.png);
+[a noise buyout at km 5.1](docs/screenshots/525-d11-noise-buyout.png); [the Královec railway's houses under its
+works](docs/screenshots/526-kralovec-railway-houses-bought-out.png), [far away](docs/screenshots/527-kralovec-railway-far.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses

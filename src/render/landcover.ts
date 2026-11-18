@@ -777,17 +777,11 @@ export class LandCover {
     return { dispose, commit: () => {
       if (settled) return;
       settled = true;
-      const replace: Record<string, { geos: Geo[]; keys?: ReadonlySet<number> }> = { 'buyout-rings': { geos: rings } };
       for (const entry of this.passes) {
-        const r = replace[entry.pass.layer];
-        if (!r) continue;
+        if (!PLOT_LAYERS.includes(entry.pass.layer)) continue;
         const order = PASSES.indexOf(entry.pass);
-        const keep: THREE.Mesh[] = [];
-        for (const mesh of entry.meshes) {
-          if (r.keys && !r.keys.has(mesh.userData.key as number)) { keep.push(mesh); continue; }
-          this.scene.remove(mesh); mesh.geometry.dispose();
-        }
-        entry.meshes = [...keep, ...r.geos.map(g => this.mesh(g, entry.mat, order, this.scene))];
+        for (const mesh of entry.meshes) { this.scene.remove(mesh); mesh.geometry.dispose(); }
+        entry.meshes = rings.map(g => this.mesh(g, entry.mat, order, this.scene));
       }
       // the photo overlay shares those geometries (already disposed above where replaced)
       if (this.net) {
@@ -822,6 +816,26 @@ export class LandCover {
     } };
   }
   private boughtSet: ReadonlySet<number> = new Set();
+  /** The photo view's tiles under `boxes` (local metres, grown by `pad` m) again from the cache, with the overlay
+   * (buyout rings) as it is now; a tile no longer cached is fetched again. The coarse base photo is left. */
+  private repaintPhoto(boxes: readonly BBox[], pad: number) {
+    for (const s of this.slots) {
+      if (s.k < 0) continue;
+      const t = R0 * 2 ** s.k, T = TILE * t, win: Rect = [s.ix, s.iy, this.size, this.size], done = new Set<string>();
+      for (const box of boxes) {
+        const x0 = Math.floor((box[0] - pad) / t), y0 = Math.floor((box[1] - pad) / t);
+        const c = clip([x0, y0, Math.ceil((box[2] + pad) / t) - x0, Math.ceil((box[3] + pad) / t) - y0], win);
+        if (c) for (const [i, j] of tilesIn(c, TILE)) {
+          const key = tileKey(s.k, i, j);
+          if (done.has(key) || !s.have.has(key)) continue;
+          done.add(key);
+          const tex = this.texCache.get(key);
+          if (tex) this.paint(s, [i * TILE, j * TILE, TILE, TILE], { tex, rect: [i * T, j * T, T, T] }); else s.have.delete(key);
+        }
+      }
+      if (done.size) this.finish(s);
+    }
+  }
   /** map areas still to redraw after a plots change (local metres), on the next update */
   private dirty: BBox[] = [];
 
@@ -1020,8 +1034,9 @@ export class LandCover {
   update(fx: number, fy: number, mPerPx: number): boolean {
     if (!this.baseDone) { this.dirty = []; this.drawBase(); this.pump(); return true; }
     if (this.dirty.length) {
-      const boxes = this.dirty; this.dirty = [];
-      this.withState(() => this.repaint(boxes, RING_OFFSET * 2 + 2));
+      const boxes = this.dirty, photo = this.showPhoto; this.dirty = [];
+      this.withState(() => photo ? this.repaintPhoto(boxes, RING_OFFSET * 2 + 2) : this.repaint(boxes, RING_OFFSET * 2 + 2));
+      if (photo) this.schedule();
     }
     this.fx = fx; this.fy = fy;
     const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0, S = this.size;

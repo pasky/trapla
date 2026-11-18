@@ -852,7 +852,7 @@ export class View {
    * builders consume it explicitly rather than reading mutable staging state from View.
    */
   *buildResult(r: Result, crownWidth: number, routeId = LEGACY_ROUTE,
-    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true, mirrored = false): Generator<void, StagedRoute> {
+    sharedContext?: RouteSurfaceContext, batch = false, mirrored = false): Generator<void, StagedRoute> {
     const out: THREE.Object3D[] = [];
     const owned = this.routeGroups.stage(routeId, out);
     let handedOver = false, settled = false;
@@ -1249,26 +1249,6 @@ export class View {
 
     out.push(...this.centreline(r, bad));
 
-    // ---- far away, where a footprint is under a pixel: every house the project takes (magenta diamonds),
-    // outlined so they read on any roof, on the ground at the building. Nearer, the house itself has that
-    // colour and a ring on the map (buildPlots, commitRouteScene).
-    const taken = buildingMarkers ? [...r.demolished, ...r.boughtOut] : [];
-    if (taken.length) {
-      const bp: number[] = [], radius: number[] = [];
-      for (const { j } of taken) {
-        const b = this.pack.overlays.buildings[j];
-        this.local(b[0], b[1], this.drapeHeight(b[0], b[1]), v);
-        bp.push(v.x, v.y, v.z); radius.push(b[2]);
-      }
-      const pg = new THREE.BufferGeometry();
-      pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
-      pg.setAttribute('radius', new THREE.Float32BufferAttribute(radius, 1));
-      const pts = new THREE.Points(pg, this.markerMaterial());
-      pts.name = 'buyouts';
-      pts.renderOrder = 5;
-      pts.onBeforeRender = (renderer) => { (pts.material as THREE.ShaderMaterial).uniforms.vh.value = renderer.getDrawingBufferSize(this.bufferSize).y; };
-      out.push(pts);
-    }
     handedOver = true;
     const commit = () => {
       if (settled) return;
@@ -1426,12 +1406,38 @@ export class View {
     this.contourLabels?.schedule(this.contourStep * 5);
     this.drawMask(this.maskSources, ready?.mask);
     // every house the project takes stands, in its own colour in every view, until it is cleared
+    const taken = globalTaken ?? [...this.routeInputs.values()].flatMap(({ result }) => [...result.demolished, ...result.boughtOut].map(b => b.j));
     const bought = new Map<number, number>();
-    for (const j of globalTaken ?? [...this.routeInputs.values()].flatMap(({ result }) => [...result.demolished, ...result.boughtOut].map(b => b.j))) {
-      const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR);
-    }
+    for (const j of taken) { const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR); }
     this.buildings?.setMarked(bought);
+    this.setTakenMarkers(taken);
     this.dirty = true;
+  }
+
+  private takenMarkers: { key: string; pts: THREE.Points } | null = null;
+  /** Far away, where a footprint is under a pixel: the same houses as magenta diamonds, outlined so they read
+   * on any roof, on the ground at the building (nearer, the house itself has that colour and a ring on the map). */
+  private setTakenMarkers(js: readonly number[]) {
+    const key = [...new Set(js)].sort((a, b) => a - b).join(',');
+    if (this.takenMarkers?.key === key) return;
+    if (this.takenMarkers) { this.world.remove(this.takenMarkers.pts); this.takenMarkers.pts.geometry.dispose(); this.takenMarkers = null; }
+    if (!key) return;
+    const bp: number[] = [], radius: number[] = [], v = new THREE.Vector3();
+    for (const j of key.split(',').map(Number)) {
+      const b = this.pack.overlays.buildings[j];
+      if (!b) continue;
+      this.local(b[0], b[1], this.drapeHeight(b[0], b[1]), v);
+      bp.push(v.x, v.y, v.z); radius.push(b[2]);
+    }
+    const pg = new THREE.BufferGeometry();
+    pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+    pg.setAttribute('radius', new THREE.Float32BufferAttribute(radius, 1));
+    const pts = new THREE.Points(pg, this.markerMaterial());
+    pts.name = 'buyouts';
+    pts.renderOrder = 5;
+    pts.onBeforeRender = (renderer) => { (pts.material as THREE.ShaderMaterial).uniforms.vh.value = renderer.getDrawingBufferSize(this.bufferSize).y; };
+    this.world.add(pts);
+    this.takenMarkers = { key, pts };
   }
 
   private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {

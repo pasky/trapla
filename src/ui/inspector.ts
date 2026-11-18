@@ -666,6 +666,7 @@ export class Inspector {
     const action = d.buildingOverrides?.find((o) => o.j === j)?.action ?? '';
     const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
+    const ring = !removed && !bought && !!this.ctx.onRing?.(j);
     const limit = r.noise.limit, period = r.noise.controlling === 'night' ? 'at night' : 'by day';
     let state: string, why = '';
     // heard by two or more roads: their noise added together decides it (wall, buyout), once for the project
@@ -693,7 +694,7 @@ export class Inspector {
       why = bought.reason === 'manual' ? 'Your choice.' : rec ? `${built === built ? `As built ${(limit + built).toFixed(1)} dB ${period}; b` : 'B'}ehind a ${top} m wall still ${(limit + rec.mitigated).toFixed(1)} dB (limit ${limit}).`
         : `Too loud even behind a ${top} m wall.`;
     }
-    else if (this.ctx.onRing?.(j)) { state = 'Bought out'; why = 'Where the roundabout\'s ring goes; billed with the roundabout.'; }
+    else if (ring) { state = 'Bought out'; why = 'Where the roundabout\'s ring goes; billed with the roundabout.'; }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
     else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
     else if (rec) {
@@ -709,10 +710,10 @@ export class Inspector {
       why = (why ? `${why} ` : '') + (walled.kept ? `You keep it: ${wall} keeps the works clear of it (${czk(walled.wall)}).`
         : `Auto: ${wall} keeps the works clear of it for ${czk(walled.wall)}; buying it out would cost ${czk(walled.demolition)}.`);
     }
-    if (action === 'keep' && !kept?.hit && (together || !rec?.unresolved) && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
+    if (action === 'keep' && !ring && !kept?.hit && (together || !rec?.unresolved) && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
     // What this road does on its own always stands (a house in its way is gone, priced or not); only the
     // noise of the project's other roads may still be missing here, and the card says so.
-    const pending = this.networkPending && !removed && !bought
+    const pending = this.networkPending && !removed && !bought && !ring
       ? '<div class="ctx-state pending">Not checked yet: the noise of the project’s other roads here.</div>' : '';
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
@@ -755,7 +756,8 @@ export class Inspector {
       }
     }
     // In the road's way it is bought out whatever else is chosen: no separate "buy out" next to that
-    const opt: [string, string, string][] = removed && action !== 'buy'
+    // (the ring of a roundabout takes it whatever is chosen here)
+    const opt: [string, string, string][] = ring ? [['', 'Buy out', 'Where the roundabout\'s ring goes: bought out']] : removed && action !== 'buy'
       ? [['', 'Buy out', 'It is in our road\'s way: bought out'], ['keep', 'Keep', 'Never buy it out: our road must miss it']]
       : [['', 'Auto', 'Buy out if in the way, or if no wall helps'], ['buy', 'Buy out', 'Buy it out, plot included'], ['keep', 'Keep', 'Never buy it out']];
     return `${this.head(cap(info.kind), `${info.levels} floor${info.levels === 1 ? '' : 's'}`)}

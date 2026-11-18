@@ -36,6 +36,12 @@ try {
   await shot('d11-km-4-07-house-under-a-cone-bought-out');
   await T(() => window.trapla.setView({ noise: true })); await shot('d11-km-4-07-noise-view');
   await T(() => window.trapla.setView({ noise: false, photo: true })); await shot('d11-km-4-07-photo');
+  // kept in the photo view: the bridge goes on past it, its ring goes off the photo (redrawn from the tiles)
+  await page.locator('#inspector button[data-building="keep"]').click(); await game.idle();
+  assert.ok(!(await T(() => window.trapla.buildingTaken(11400))), 'kept: no longer taken');
+  await shot('d11-km-4-07-photo-kept');
+  await page.locator('#inspector button[data-building=""]').click(); await game.idle();
+  assert.ok(await T(() => window.trapla.buildingTaken(11400)), 'back to Auto: taken again');
   await T(() => window.trapla.setView({ photo: false })); await look(4060, 220, 0, 89, -25); await shot('d11-km-4-07-plan');
   // 2. a noise buyout
   const noise = await T(() => { const r = window.trapla.result(), b = r.boughtOut.find(p => p.reason !== 'manual'); return b ? { j: b.j, s: r.s[b.i] } : null; });

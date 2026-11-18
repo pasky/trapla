@@ -6,7 +6,9 @@ import type { Staged } from './slices';
 import type { View } from './view';
 
 /** Ephemeral renderer adapter, not a saved project/schema. Results are authoritative engine outputs. */
-export interface RenderRoute { id: string; result: Result; crownWidth: number; buildingMarkers?: boolean; mirrored?: boolean }
+export interface RenderRoute { id: string; result: Result; crownWidth: number;
+  /** false: its off-works buyouts are not final yet (not drawn without the project's own list, `build(…, globalTaken)`) */
+  buildingMarkers?: boolean; mirrored?: boolean }
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type Entry = { input: RenderRoute; surfaces: CrossingSurface[]; box: Box; crossings: CrossingRenderer; dependencies: CrossingSurface[][] };
 const overlap = (a: Box, b: Box) => a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
@@ -44,7 +46,7 @@ export class RouteScene {
     try {
       for (const input of inputs) {
         const old = this.entries.get(input.id);
-        const same = old?.input.result === input.result && old.input.crownWidth === input.crownWidth && old.input.buildingMarkers === input.buildingMarkers;
+        const same = old?.input.result === input.result && old.input.crownWidth === input.crownWidth;
         const surfaces = same ? old.surfaces : yield* buildRouteSurfaces(input.result, input.crownWidth, (x, y) => this.view.groundHeight(x, y));
         const crossings = old?.crossings ?? new CrossingRenderer(this.view);
         if (!old) fresh.push(crossings);
@@ -56,13 +58,13 @@ export class RouteScene {
         // Compare both old and new dependency sets: moving a neighbour away must restore the collar.
         entry.dependencies = neighbours.map(other => other.surfaces);
         const old = this.entries.get(entry.input.id);
-        if (old?.input.result === entry.input.result && old.input.crownWidth === entry.input.crownWidth && old.input.buildingMarkers === entry.input.buildingMarkers &&
+        if (old?.input.result === entry.input.result && old.input.crownWidth === entry.input.crownWidth &&
           old.dependencies.length === entry.dependencies.length && old.dependencies.every((r, i) => r === entry.dependencies[i])) continue;
         const surfaces = neighbours.flatMap(other => other.surfaces);
         const context = yield* routeSurfaceContextSliced(entry.surfaces, surfaces,
           (x, y) => this.view.groundHeight(x, y), (x, y) => this.view.drape(x, y),
           neighbours.map(other => other.input.result));
-        stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true, entry.input.buildingMarkers, entry.input.mirrored));
+        stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true, entry.input.mirrored));
         stages.push(yield* entry.crossings.build(entry.input.result, context));
       }
       // the map's buyout rings, for exactly what the houses' 3D state will be: under a road shown or not,
