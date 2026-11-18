@@ -4,7 +4,9 @@
 // scripts/scenarios/<pack>/<preset>.json, and it must also be VALID as the game evaluates it (the project evaluator).
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { loadPack, projectContext } from '../loadpack';
+import { endpointJunctions } from '../../src/scenario';
 import { evaluate, type Design, type EvalContext } from '../../src/core/evaluate';
 import { PART_KEYS } from '../../src/core/cost';
 import { startDesign } from '../../src/state';
@@ -13,12 +15,20 @@ import { scenarioParams } from '../../src/core/data/scenario';
 import { evaluateProject } from '../../src/core/project-evaluate';
 
 const pack = loadPack();
-const { meta, terrain, buildings, roads, junctions, overlays } = pack;
+const { meta, terrain, buildings, roads, overlays } = pack;
 const presetId = process.env.PRESET;
 const scenario = presetId ? scenarioParams(meta.id, presetId) : pack.scenario;
 if (presetId && (scenario.presetId ?? scenario.id) !== presetId) throw new Error(`${presetId}: no such mission on ${meta.id}`);
 if (meta.id === 'd11' && !presetId) throw new Error('Choose a new scenario explicitly with SCENARIO (or a D11 mission with PRESET).');
 if (presetId && scenario.ports) throw new Error('A mission with its own ports: not checked here.');
+// the pack's end connections, or the mission's own (data/scenario.ts `junctions`)
+const junctions = endpointJunctions(meta, scenario);
+// a mission's own end connection names its OSM ways: the pack's transport graph must map them to its way indices
+for (const own of [scenario.junctions?.a, scenario.junctions?.b]) if (own) {
+  const graph = JSON.parse(gunzipSync(readFileSync(`public/scenarios/${meta.id}/transport.json.gz`)).toString()) as { sources: { osmWayId?: string; legacyNetIndex?: number }[] };
+  const index = new Map(graph.sources.map(src => [src.osmWayId, src.legacyNetIndex]));
+  if (JSON.stringify(own.osmWayIds.map(id => index.get(String(id)))) !== JSON.stringify(own.ways)) throw new Error(`${presetId}: its end's OSM ways are not ways ${own.ways} of this pack`);
+}
 const dir = `public/scenarios/${meta.id}`;
 // (the D11 pack predates the build's ready marker and manifest)
 const legacyPack = meta.id === 'd11' && !existsSync(`${dir}/ready.json`);

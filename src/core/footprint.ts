@@ -1,6 +1,6 @@
 // Conflicts beyond centreline intersections. Network segments are queried through their existing
 // spatial grids; raster work visits only cells in the constructed footprint (never the whole map).
-import { bridgeLayout } from './bridge';
+import { bridgeLayout, frameColumns } from './bridge';
 import { bridgeEnd, coneGround } from './abutment-cone';
 import { planRoadRealignment, roadRealignmentCrossingIntervals, severedCrossingIntervals, type RoadSourceInterval, type RoadRealignmentPlan, type PreservedRoadConnection } from './road-realignment';
 import { RoadRemedyLedger } from './road-remedy-ledger';
@@ -115,13 +115,20 @@ function at(r: Pick<FootprintRoute, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty'>,
  * Dimensions are explicit study-stage allowances, not foundation design. */
 export function structureFootprints(r: Pick<FootprintRoute, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'crownWidth' | 'runs'>): FootprintCell[] {
   const out: FootprintCell[] = [], w = r.crownWidth / 2;
-  const add = (s: number, structure: FootprintCell['structure'], along: number, width: number) =>
-    out.push({ ...at(r, s), s, structure, along, left: width, right: width });
+  const add = (s: number, structure: FootprintCell['structure'], along: number, width: number, offset = 0) => {
+    const p = at(r, s);
+    out.push({ ...p, x: p.x - p.ty * offset, y: p.y + p.tx * offset, s, structure, along, left: width, right: width });
+  };
+  const frame = frameColumns(r.crownWidth);
   for (const run of r.runs) {
     if (run.kind === KIND.bridge) {
       add(run.s0, 'abutment', 3, w + 2); add(run.s1, 'abutment', 3, w + 2);
       const spans = Math.max(1, Math.round(run.length / bridgeLayout(run.length).span));
-      if (run.pierStations) for (const s of run.pierStations) add(s, 'pier', 1.2, w * 0.55);
+      // (a frame pier: its two columns under the deck's edges, nothing between them on the ground)
+      if (run.pierStations) for (const s of run.pierStations) {
+        if (run.framePiers?.includes(s)) for (const o of [-frame.offset, frame.offset]) add(s, 'pier', 1.2, frame.half, o);
+        else add(s, 'pier', 1.2, w * 0.55);
+      }
       else for (let k = 1; k < spans; k++) add(run.s0 + run.length * k / spans, 'pier', 1.2, w * 0.55);
     } else { add(run.s0, 'portal', 3, w + 2); add(run.s1, 'portal', 3, w + 2); }
   }
@@ -195,6 +202,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   };
   const roadCovered = new Map<number, [number, number][]>(), tieInCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
   const screened = (way: number) => [...roadCovered.get(way) ?? [], ...tieInCovered.get(way) ?? []];
+  /** the exact pieces of cut ways (reconnections, diversions) that are taken up: nothing of them is left under our bridge
+   * ends, piers or tunnel entrances either (nor of their cut ends, `tieInCovered`: the way is cut back to its tie-in) */
+  const severed = new Map<number, [number, number][]>();
   const fixedConnections: PreservedRoadConnection[] = [];
   /** classes of the roads each route end lies on (index 0 / n − 1) */
   const endClasses = new Map<number, Set<string>>();
@@ -210,6 +220,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     // graze the toe within half a width plus setback beyond the exact removed end. Screening
     // tolerance only; planning and ownership keep the exact interval.
     for (const interval of severedCrossingIntervals(crossings, roads)) {
+      const list = severed.get(interval.way) ?? []; list.push([interval.a, interval.b]); severed.set(interval.way, list);
       const tieIn = ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
       const graze = tieInCovered.get(interval.way) ?? [];
       graze.push([interval.a - tieIn, interval.a], [interval.b, interval.b + tieIn]); tieInCovered.set(interval.way, graze);
@@ -288,7 +299,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const key = `${segment.way}:${structure ?? 'earth'}`;
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
-      for (const [a, b] of subtract(hit, structure ? [] : screened(segment.way)))
+      for (const [a, b] of subtract(hit, structure ? [...severed.get(segment.way) ?? [], ...tieInCovered.get(segment.way) ?? []] : screened(segment.way)))
         group.hits.push({ a, b, i: cell.i, j: cell.i, structure });
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);

@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { CONE, coneCovers, conePavingCost } from '../src/core/abutment-cone';
 import type { BuildingIndex as Buildings } from '../src/core/buildings';
 import type { Terrain } from '../src/core/terrain';
-import { bridgeModel, bridgeVariableCosts } from '../src/core/bridge';
+import { bridgeModel, bridgeVariableCosts, frameBeamCost } from '../src/core/bridge';
 import { CATEGORIES, type CategoryId } from '../src/core/data/categories';
 import { EXCAVATION_BY_CLASS } from '../src/core/data/prices';
 import { routeCategory } from '../src/core/route-section';
@@ -58,6 +58,7 @@ export function bridgeEndProblems(r: Result, category: CategoryId | 'existing', 
     for (const run of r.runs) if (run.kind === KIND.bridge) {
       for (const [, v] of bridgeVariableCosts(model, h, r.ds, run)) expected += v;
       expected += model.abutments + (run.regradeM3 ? (run.regradeM3[0] + run.regradeM3[1]) * EXCAVATION_BY_CLASS.II : 0);
+      expected += (run.framePiers?.length ?? 0) * frameBeamCost(CATEGORIES[category].crownWidth); // (a frame pier's crossbeam)
     }
     for (const c of r.cones ?? []) expected += conePavingCost(c);
     const billed = r.parts.bridges.reduce((a, b) => a + b, 0);

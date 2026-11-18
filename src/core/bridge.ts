@@ -1,6 +1,6 @@
 // SPK-normalized quantity model. See research/16-bridge-cost-model.md for evidence/limitations.
 // All prices exclude land and other-objects surcharge. O(1) per station, O(n) per priced run.
-import { BRIDGE_GEOMETRY as G, BRIDGE_HEIGHT as H, BRIDGE_ITEMS as P, BRIDGE_STYLES as S } from './data/bridges';
+import { BRIDGE_GEOMETRY as G, BRIDGE_HEIGHT as H, BRIDGE_ITEMS as P, BRIDGE_STYLES as S, FRAME_PIER as F } from './data/bridges';
 
 export type BridgeRow = { bridgePerKm: number } & ({ crownWidth: number } | { width: number });
 export interface BridgeLayout { span: number; pierDensity: number }
@@ -187,4 +187,15 @@ export const ARCH_DECK_DEPTH = S.arch.columnSpan / 20 + ARCH_RIB_DEPTH;
 export function archColumns(arch: { s0: number; s1: number }): number[] {
   const k = Math.max(1, Math.ceil((arch.s1 - arch.s0) / S.arch.columnSpan - 1e-9));
   return Array.from({ length: k - 1 }, (_, j) => arch.s0 + (arch.s1 - arch.s0) * (j + 1) / k);
+}
+
+/** A frame pier's two columns across a deck `crownWidth` wide: their centres off our axis (m, ±), each
+ * FRAME_PIER.columnHalf either side; the crossbeam spans `clearHalf` either side of the axis between them. */
+export function frameColumns(crownWidth: number): { offset: number; half: number; clearHalf: number } {
+  const offset = crownWidth / 2 - 2 * F.columnHalf;
+  return { offset, half: F.columnHalf, clearHalf: offset - F.columnHalf };
+}
+/** A frame pier's crossbeam (its columns are priced as the wall pier they replace): concrete and rebar, CZK. */
+export function frameBeamCost(crownWidth: number): number {
+  return 2 * frameColumns(crownWidth).clearHalf * F.beamDepth * F.beamThick * (P.pierConcrete + G.rebarPerM3 * P.rebar);
 }

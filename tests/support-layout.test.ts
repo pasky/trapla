@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bridgeLayout, bridgeModel, bridgeRunCost, supportBridgeLayout } from '../src/core/bridge';
+import { bridgeLayout, bridgeModel, bridgeRunCost, frameColumns, supportBridgeLayout } from '../src/core/bridge';
+import { structureFootprints } from '../src/core/footprint';
 import { costParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { D11_SCENARIO } from '../src/core/data/scenario';
@@ -166,6 +167,22 @@ describe('automatic bridge support remedies', () => {
       expect(result.runs[0].pierStations).toBeDefined();
       expect(result.runs[0].pierStations).not.toContain(155);
     }
+  });
+
+  it('a street along under a high motorway deck: frame piers, their columns either side of it (the low deck: none)', () => {
+    const r = { ...route(101), crownWidth: 27.5 }, roads = new RoadNet({ cls: ['residential'], ways: [[0, 0, 100, 1200, 100]] });
+    (r.kind as Uint8Array).fill(KIND.earth).fill(KIND.bridge, 10, 39);
+    r.runs = [{ kind: KIND.bridge, i0: 10, i1: 38, s0: 95, s1: 385, length: 290 }];
+    const high = remedyBridgeSupports(r, terrain(), roads).runs[0];
+    expect(high.framePiers?.length).toBeGreaterThan(0);
+    expect(high.framePiers).toEqual(high.pierStations);
+    // footprints as drawn and screened: two columns a frame, off the street
+    const cells = structureFootprints({ ...r, runs: [high] }).filter(c => c.structure === 'pier');
+    expect(cells.length).toBe(2 * high.framePiers!.length);
+    const { offset } = frameColumns(r.crownWidth);
+    for (const c of cells) expect(Math.abs(c.y - 100)).toBeCloseTo(offset, 6);
+    (r.grade as Float64Array).fill(104);
+    expect(remedyBridgeSupports(r, terrain(), roads).runs[0].framePiers).toBeUndefined();
   });
 
   it('bounds extension work and retains colliding supports instead of inventing an unlimited clear span', () => {

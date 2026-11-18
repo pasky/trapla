@@ -13,6 +13,9 @@ export interface Run {
   layout?: BridgeLayout;
   /** Absolute route chainages of all internal piers, shared by pricing and rendering. */
   pierStations?: number[];
+  /** Those of them that are frame piers (data/bridges.ts FRAME_PIER: two columns under the deck's edges, a crossbeam
+   * over what runs between them), set by support-layout where no wall pier can stand. */
+  framePiers?: number[];
   /** Bank regraded under the first/last span in front of each abutment, m³ (support-layout). */
   regradeM3?: [number, number];
   /** A tunnel: its tubes and escape provision against one tube (cost.ts tunnelTubeFactor), how much of it is

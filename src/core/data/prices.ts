@@ -225,8 +225,17 @@
  * buildings −5.9, culverts −3.3, noise walls +3.4, surcharge −6.9);
  * demo +49.3 (km 6.07 the local road's 60 m bridge over the planned D11, our road 3 m under its deck: replaced by a 61 m
  * bridge on ramps, 38.1 + surcharge); direct-80 +0.004, town-centre and town-controls +0.047 (a crossed way's path runs
- * on over its bridge); best, best-* and direct-90 unchanged. Starters: PLAN.md "Mapped bridges and tunnels are crossings". */
-export const COST_MODEL_VERSION = 55;
+ * on over its bridge); best, best-* and direct-90 unchanged. Starters: PLAN.md "Mapped bridges and tunnels are crossings".
+ * Model 56: where no wall pier between the spans can miss what runs along under the bridge (a street, a stream, a
+ * railway in the valley it follows), a frame pier (data/bridges.ts FRAME_PIER: two columns under the deck's edges, a
+ * crossbeam over it, billed) instead of a span stretched past it or a bridge Auto could not stand; a wall pier moved
+ * aside still comes first. A cut way's taken-up piece is no obstacle to our bridge ends, piers or tunnel entrances
+ * either. D11 frozen (M CZK): straight −10.1 (km 17.66: a frame pier where a 60 m span reached past what lies
+ * below, bridges −7.9, surcharge −2.2); the others unchanged. Starters (M CZK, project evaluator): d3-0301 −46.9,
+ * d3-0302 −17.8, d3-0303 −12.0, d3-0304 −98.7, d3-0305 −10.6, d3-full −146.9, d35 first section −196.8, d35-full
+ * −669.4 (1–3 frame piers on a few bridges each; the bridges they let stand change the structure choice and the grade
+ * line around them); the road and railway missions unchanged. PLAN.md "The D11 motorway mission". */
+export const COST_MODEL_VERSION = 56;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

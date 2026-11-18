@@ -47,7 +47,7 @@ export type NodePack = ReturnType<typeof loadPack>;
  * ports, else the pack's A and B) and the pack's declared end junctions (none at a preset's own ports). */
 export function evalContext(pack: NodePack, scenario: ScenarioParams = pack.scenario): EvalContext {
   const { terrain, buildings, roads } = pack;
-  return { terrain, scenario, buildings, roads, ...missionEnds(scenario, pack.meta), junctions: scenario.ports ? [] : pack.junctions };
+  return { terrain, scenario, buildings, roads, ...missionEnds(scenario, pack.meta), junctions: scenario.ports ? [] : endpointJunctions(pack.meta, scenario) };
 }
 
 /** The project evaluator's context and the mission's starting project for a preset, with the same data

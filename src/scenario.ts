@@ -6,6 +6,7 @@ import { withStructures, type RoadNetData, type StructureData } from './core/roa
 import type { TransportGraphData, TransportMeta } from './core/project-transport';
 import type { EndpointJunction } from './core/evaluate';
 import type { EndpointJunctionKind } from './core/data/urban';
+import type { ScenarioParams } from './core/data/scenario';
 import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
 import { validTrafficCensus, type TrafficCensus } from './core/traffic-census';
@@ -33,8 +34,11 @@ export function packIdentities(meta: Pick<PackMeta, 'id' | 'nx' | 'ny' | 'cell' 
 }
 
 /** Evaluator form of the declared end connections; empty for packs without them (D11). */
-export function endpointJunctions(meta: Pick<PackMeta, 'A' | 'B'>): EndpointJunction[] {
-  return [meta.A, meta.B].flatMap(e => e.junction ? [{ x: e.xy[0], y: e.xy[1], kind: e.junction.kind, ways: e.junction.ways }] : []);
+export function endpointJunctions(meta: Pick<PackMeta, 'A' | 'B'>, scenario?: Pick<ScenarioParams, 'junctions'>): EndpointJunction[] {
+  return ([[meta.A, scenario?.junctions?.a], [meta.B, scenario?.junctions?.b]] as const).flatMap(([e, own]) => {
+    const j = own ?? e.junction;
+    return j ? [{ x: e.xy[0], y: e.xy[1], kind: j.kind, ways: j.ways }] : [];
+  });
 }
 
 export interface PackMeta {

@@ -1,6 +1,8 @@
 import type { CategoryId, TerrainClass } from './categories';
 import type { PI } from '../horizontal';
 import type { EndConnection } from '../terms';
+import type { EndpointJunctionKind } from './urban';
+export interface EndJunctionDecl { kind: EndpointJunctionKind; osmWayIds: number[]; ways: number[]; about?: string }
 
 // Traffic → minimum category: the highest design-year AADT at which a rural two-lane section still meets the
 // level of service required for a class I road (research/14-category-capacity.md).
@@ -69,6 +71,9 @@ export interface ScenarioParams {
   labels: { a: string; b: string; official: string; brief: string };
   /** What each end meets (an interchange whose ramps are not built here, a road it joins): its card. */
   ends?: { a?: EndConnection; b?: EndConnection };
+  /** The mission's own connection of an end to a retained road, where the pack declares none there (pack meta
+   * A/B.junction): the same form, legacy net way indices (resolved from the OSM ways; a test checks them). */
+  junctions?: { a?: EndJunctionDecl; b?: EndJunctionDecl };
   /** Shown once when the aerial photo is first turned on: what it shows that the map does not. */
   photoNote?: string;
 }
@@ -307,6 +312,11 @@ export const D11_MOTORWAY: ScenarioParams = {
   traffic: 13_000, heavyShare: MOTORWAY_TRAFFIC.heavyShare, maxTravelMin: 12.6,
   labels: { ...D11_SCENARIO.labels, brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border, where the S3 goes on)' },
   ends: { a: { kind: 'joins', with: 'the D11 from Jaroměř' }, b: { kind: 'continues', with: 'the S3 in Poland' } },
+  // B: the S3 carriageways that start there (OSM ways 1171616839 into B, 1171616840 out of it; ref S3, both mapped
+  // motorway) are our motorway's continuation: met at B, not a road our earthworks cover (as the D3 0305/I joins
+  // the open D3). The road mission keeps the pack's plain end.
+  junctions: { b: { kind: 'merge', osmWayIds: [1171616839, 1171616840], ways: [2267, 2268],
+    about: 'The S3 carriageways that start at the border, where OSM ref D11 turns S3' } },
 };
 /** Every playable mission, in picker order. */
 export const PRESETS: ScenarioParams[] = [D11_MOTORWAY, D11_SCENARIO, D11_RAIL_KRALOVEC, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,

@@ -28,6 +28,15 @@ export const BRIDGE_GEOMETRY = {
   bearingsPerWidth: 2 / 9.5,
 } as const;
 
+/** A frame pier (portal pier): where what lies under the deck runs along it (a street, a stream, a railway in the valley
+ * the bridge follows), no wall pier between the spans can miss it, so the pier stands on two columns under the
+ * deck's edges with a crossbeam over what runs between them (a common viaduct support; e.g. the D1 / D8 frame piers
+ * over roads). The columns are `columnHalf` either side of their centre, `columnHalf` in from the deck's edges; the
+ * crossbeam is `beamDepth` deep under the deck and `beamThick` along the road, priced at the pier concrete and its
+ * rebar (BRIDGE_ITEMS, BRIDGE_GEOMETRY.rebarPerM3); its columns as the wall pier they replace (the bridge model's
+ * per-pier allowance). Dimensions PROVISIONAL (study-stage, not structural design). */
+export const FRAME_PIER = { columnHalf: 1, beamDepth: 2, beamThick: 2 } as const;
+
 /** Bridge styles (research/50-bridge-styles.md §2, §5; docs/design-realism-plan.md M3). One per bridge run;
  * Auto takes the cheapest that fits, the player may choose another on the bridge card. */
 export const BRIDGE_STYLES = {

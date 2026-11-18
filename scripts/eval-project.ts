@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { loadPack } from './loadpack';
+import { endpointJunctions } from '../src/scenario';
 import { scenarioParams } from '../src/core/data/scenario';
 import { objectDataKey } from '../src/core/build-controls';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
@@ -21,7 +22,7 @@ export function projectContext(design: Pick<ProjectDesign, 'packId' | 'scenarioI
   type Source = { id: string; kind?: string; legacyNetIndex?: number; xy: number[]; stations: number[] };
   const ctx: ProjectEvalContext = {
     legacy: { terrain: pack.terrain, scenario, a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y }, buildings: pack.buildings, roads: pack.roads,
-      ...(pack.junctions.length ? { junctions: pack.junctions } : {}) },
+      ...(endpointJunctions(meta, scenario).length ? { junctions: endpointJunctions(meta, scenario) } : {}) },
     environment: { objectData, transportData, pricingData: 'p', waterData: meta.watercourses?.sha256 ?? 'raster-water',
       terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
     ...(graph ? {

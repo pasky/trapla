@@ -60,7 +60,7 @@ let design = start, result = run(design), best = score(result), used = 0, round 
 console.log('start', JSON.stringify(show(result)), JSON.stringify(design.pis));
 if (process.env.BILL) { for (const l of describe(result.r)) console.log(l); console.log(`  project total ${Math.round((result.p.cost.total ?? NaN) / 1e6)} M`); }
 if (process.env.CROSSINGS) for (const c of result.r.crossings) console.log(`  ${Math.round(c.s)} ${c.cls} ${c.type} ${Math.round(c.cost / 1e6)} M`);
-if (process.env.RUNS) console.log('runs', result.r.runs.map(u => `${['earth', 'bridge', 'tunnel'][u.kind] ?? u.kind}:${Math.round(u.s0)}-${Math.round(u.s1)}`).join(' '));
+if (process.env.RUNS) console.log('runs', result.r.runs.map(u => `${['earth', 'bridge', 'tunnel'][u.kind] ?? u.kind}:${Math.round(u.s0)}-${Math.round(u.s1)}${process.env.RUNS === 'piers' && u.pierStations ? ` piers ${u.pierStations.map(Math.round).join(',')}${u.framePiers ? ` frames ${u.framePiers.map(Math.round).join(',')}` : ''}` : ''}`).join(' '));
 const budget = opt('budget', 0), original = structuredClone(start);
 while (!result.p.valid && used < budget && design.pis.length) {
   const vs = result.r.violations;

@@ -1,6 +1,6 @@
 // Local, deterministic study-stage support remedies. No road/water network-wide scans.
-import { ARCH_DECK_DEPTH, archRib, BRIDGE_STYLE_ORDER, bridgeLayout, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
-import { BRIDGE_STYLES } from './data/bridges';
+import { ARCH_DECK_DEPTH, archRib, BRIDGE_STYLE_ORDER, bridgeLayout, frameColumns, longLayouts, supportBridgeLayout, type BridgeArch, type BridgeLayout, type BridgeStyle } from './bridge';
+import { BRIDGE_STYLES, FRAME_PIER } from './data/bridges';
 import type { Violation } from './checks';
 import { STRUCTURE_RULES as R } from './data/prices';
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
@@ -179,8 +179,26 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   // (no pier of ours on the higher-ranking road under the deck it carries us on: that deck spans it)
   const onHeld = (s: number) => { if (!held) return false;
     const k = Math.max(0, Math.min(r.n - 2, Math.floor((s - r.s[0]) / r.ds))); return !!held[k] || !!held[k + 1]; };
-  const blocked = (s: number, pier = false) => (pier && (onCone(s) || onHeld(s)))
-    || obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
+  const blocked = (s: number, pier = false, frames = true) => (pier && (onCone(s) || onHeld(s)))
+    || (obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity
+      && !(pier && frames && frameStands(s)));
+  /** No wall pier can stand at s: a frame pier can where its two columns miss what lies below and its crossbeam, under
+   * the deck, clears what runs between them (FRAME_PIER; footprint.ts screens the columns as drawn). */
+  const frame = frameColumns(r.crownWidth);
+  const frameStands = (s: number) => {
+    if (frame.clearHalf <= 0) return false;
+    const j = Math.max(0, Math.min(r.n - 2, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[j]) / r.ds));
+    const beam = r.grade[j] * (1 - t) + r.grade[j + 1] * t - 1.2 - FRAME_PIER.beamDepth; // (the deck's least depth, as depthCheck)
+    if (!(beam >= obstacle(cellAt(r, s, 1.2, frame.clearHalf)))) return false;
+    for (const o of [-frame.offset, frame.offset]) {
+      const c = cellAt(r, s, 1.2, frame.half), column = { ...c, x: c.x - c.ty * o, y: c.y + c.tx * o };
+      // (not memoised: the memo's key does not hold the offset)
+      if (Math.max(obstacleHeight(column, terrain, roads, undefined, ownTrack, r.motorway), mappedObstacle(column, r, terrain, roads)) > -Infinity) return false;
+    }
+    return true;
+  };
+  /** a wall pier stands at s (else, where `blocked` passed it, a frame pier) */
+  const wallStands = (s: number) => !(obstacle(cellAt(r, s, 1.2, r.crownWidth * 0.55 / 2)) > -Infinity);
   const coneReachAt = (i: number, into: number) => r.coneReachAt?.(i, into) ?? 0;
   /** the bridge end at s (`into`: the direction into the bridge), as its cone and wall read it (abutment-cone.ts) */
   const endAt = (s: number, into: number) => bridgeEnd(terrain, r, s, into);
@@ -339,12 +357,17 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     let changed = false;
     for (let k = 0; k < base.length; k++) {
       const s = base[k];
-      if (fixed || !blocked(s, true)) { piers.push(s); continue; }
+      if (fixed || !blocked(s, true, false)) { piers.push(s); continue; }
       changed = true;
       let found = false;
-      for (let shift = 1; shift < reach && !found; shift++) for (const sign of [-1, 1]) {
-        const candidate = s + sign * shift;
-        if (!blocked(candidate, true)) { piers.push(candidate); found = true; break; }
+      // a wall pier moved to the nearest free place, else a frame pier where it stood, else one nearby
+      for (const frames of [false, true]) {
+        if (frames && !blocked(s, true)) { piers.push(s); found = true; break; }
+        for (let shift = 1; shift < reach && !found; shift++) for (const sign of [-1, 1]) {
+          const candidate = s + sign * shift;
+          if (!blocked(candidate, true, frames)) { piers.push(candidate); found = true; break; }
+        }
+        if (found) break;
       }
       if (found || !bounds) continue;
       const lo = (piers.length ? piers[piers.length - 1] : bounds[0]) + MIN_PIER_GAP, hi = (k + 1 < base.length ? base[k + 1] : bounds[1]) - MIN_PIER_GAP;
@@ -596,7 +619,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       depthCheck(run, plan, isManual);
       chosen = plan;
     }
-    if (chosen.changed) { run.pierStations = chosen.piers; run.layout = chosen.layout; }
+    // (a frame pier where no wall pier stands: its stations are then explicit, as drawn and billed)
+    const frames = fixedSupports ? [] : chosen.piers.filter(s => !wallStands(s) && !blocked(s, true));
+    if (chosen.changed || frames.length) { run.pierStations = chosen.piers; run.layout = chosen.layout; }
+    if (frames.length) run.framePiers = frames; else delete run.framePiers;
     if (chosen.style !== 'short') run.style = chosen.style;
     if (chosen.arch) run.arch = { s0: chosen.arch.s0, s1: chosen.arch.s1, height: chosen.arch.height };
     if (asked && chosen.style === asked) run.styleChosen = asked;

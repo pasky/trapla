@@ -30,7 +30,8 @@ import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
-import { ARCH_DECK_DEPTH, ARCH_RIB_DEPTH, archColumns, archRib } from '../core/bridge';
+import { ARCH_DECK_DEPTH, ARCH_RIB_DEPTH, archColumns, archRib, frameColumns } from '../core/bridge';
+import { FRAME_PIER } from '../core/data/bridges';
 import { CATEGORIES } from '../core/data/categories';
 import { natureLayers } from './nature';
 
@@ -1126,10 +1127,13 @@ export class View {
     for (const run of r.runs) {
       yield;
       if (run.kind === KIND.bridge) {
-        const piers = supports.filter(p => p.structure === 'pier' && p.s > run.s0 && p.s < run.s1);
+        // (a frame pier's two columns: footprint cells of their own, under the deck's edges)
+        const all = supports.filter(p => p.structure === 'pier' && p.s > run.s0 && p.s < run.s1);
+        const isFrame = (s: number) => !!run.framePiers?.includes(s);
+        const piers = all.filter(p => !isFrame(p.s)), frameCols = all.filter(p => isFrame(p.s));
         // an arch's deck stands on columns on its rib as well
         const columns = run.arch ? archColumns(run.arch) : [];
-        const spans = bridgeDeckSpans(run.s0,run.s1,[...piers.map(p => p.s), ...columns]);
+        const spans = bridgeDeckSpans(run.s0,run.s1,[...piers.map(p => p.s), ...(run.framePiers ?? []), ...columns]);
         const at = (s: number) => {
           const i = Math.max(0,Math.min(n-2,Math.floor(s/r.ds))), t = Math.max(0,Math.min(1,(s-r.s[i])/(r.s[i+1]-r.s[i])));
           const value = (a: Float64Array) => a[i]+(a[i+1]-a[i])*t;
@@ -1180,6 +1184,15 @@ export class View {
             const [cx, cy] = across(p, (lo + hi) / 2);
             boxAt(cx, cy, p.tx, p.ty, this.terrain.heightAt(cx, cy) - 2, top, p.along, gap || section === CARRIAGEWAY_SECTION ? (hi - lo) / 2 * 0.55 : p.left, shade(concrete, 0.85));
           }
+        }
+        // a frame pier: its two columns up to a crossbeam under the deck, over what runs between them
+        const frame = frameColumns(crownWidth);
+        for (const s of run.framePiers ?? []) {
+          const p = at(s), top = bridgePierTop(spans, s - 0.6, s + 0.6, (s0, s1) => Math.max(at(s0).z, at(s1).z));
+          const len = Math.hypot(p.tx, p.ty) || 1, tx = p.tx / len, ty = p.ty / len;
+          for (const c of frameCols.filter(c => c.s === s))
+            boxAt(c.x, c.y, tx, ty, this.terrain.heightAt(c.x, c.y) - 2, top - FRAME_PIER.beamDepth, c.along, c.left, shade(concrete, 0.85));
+          boxAt(p.x, p.y, tx, ty, top - FRAME_PIER.beamDepth, top, FRAME_PIER.beamThick / 2, frame.offset + frame.half, shade(concrete, 0.8), idx, true);
         }
         // an arch: its rib from the springings (on the ground, as checked) up under the deck, and the columns on it
         if (run.arch) {

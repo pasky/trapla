@@ -8,7 +8,7 @@ import { footprintConflicts, structureFootprints, type FootprintConflict } from 
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
-import { ARCH_DECK_DEPTH, archRib, bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost, longMayPay, type BridgeLayout } from './bridge';
+import { ARCH_DECK_DEPTH, archRib, bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost, frameBeamCost, frameColumns, longMayPay, type BridgeLayout } from './bridge';
 import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -2239,6 +2239,8 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   // each bridge end (and the mass balance), their paving the bridge ---
   const cones: AbutmentCone[] = [];
   const coneFill = new Float64Array(n), conePaving = new Float64Array(n);
+  // (a frame pier's crossbeam, billed with the bridge at its pier: support-layout.ts, data/bridges.ts FRAME_PIER)
+  for (const r of runs) if (r.kind === KIND.bridge) for (const s of r.framePiers ?? []) conePaving[Math.max(0, Math.min(n - 1, Math.round(s / ds)))] += frameBeamCost(b);
   if (!preview) for (const r of runs) if (r.kind === KIND.bridge && !(heldDeck && heldDeck[r.i0] && heldDeck[r.i1])) {
     // (a closed abutment has none; two cones under a short bridge meet: each counts where it is the higher)
     const ends = ([[0, r.i0, 1, r.s0], [1, r.i1, -1, r.s1]] as const).map(([k, i, into, s]) => {
@@ -2467,9 +2469,12 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   let pierPoints: { x: number; y: number }[] | undefined;
   const piers = () => pierPoints ??= runs.filter(u => u.kind === KIND.bridge).flatMap(run => {
     const length = run.s1 - run.s0, spans = Math.max(1, Math.round(length / bridgeLayout(length).span));
-    return (run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans)).map(s => {
+    // (a frame pier: its two columns; a way may run between them)
+    const frame = frameColumns(cat.crownWidth);
+    return (run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans)).flatMap(s => {
       const i = Math.max(0, Math.min(n - 2, Math.floor(s / ds))), t = s / ds - i;
-      return { x: st.x[i] + (st.x[i + 1] - st.x[i]) * t, y: st.y[i] + (st.y[i + 1] - st.y[i]) * t };
+      const x = st.x[i] + (st.x[i + 1] - st.x[i]) * t, y = st.y[i] + (st.y[i + 1] - st.y[i]) * t;
+      return run.framePiers?.includes(s) ? [-frame.offset, frame.offset].map(o => ({ x: x - st.ty[i] * o, y: y + st.tx[i] * o })) : [{ x, y }];
     });
   });
   // Other ways' works keep the working strip from houses as ours does (research/85: a game rule, PROVISIONAL width).
