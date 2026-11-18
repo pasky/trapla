@@ -277,6 +277,10 @@ export interface EvalOptions {
    * height where it leaves and rejoins it. Whatever the kernel still designs and bills on those cells is
    * dropped and credited by project-kept.ts. One entry per station; otherwise ignored. */
   oldRoad?: Uint8Array;
+  /** A rebuilt stretch: moves the point of its line at chainage s (the kernel's own alignment) to where it is
+   * built and drawn (project-kept.ts onOldLine: the old road where the stretch lies on it, also where another
+   * road's crossing lifts or lowers it there). Every station, the traced line and the samples follow it. */
+  line?: (s: number, p: { x: number; y: number; tx: number; ty: number }) => void;
   /** A rebuilt stretch: the ways that joined its old road (the stretch's side roads, as legacy way ids). Where
    * the new line crosses one at its level, Auto keeps its access there: the side road joins the new road in a
    * junction (an access for a track or service road), as it joined the old one, rather than being cut. */
@@ -648,6 +652,13 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const al = win ? { ...fullAlignment, length: win.s1 - win.s0 } : fullAlignment;
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
   const stFull = station(fullAlignment, STEP), st = win ? stationWindow(stFull, win.s0, win.s1) : stFull;
+  // (a rebuilt stretch's line as built: opts.line)
+  const lineAt = (s: number, out?: PointOnAlignment) => { const p = pointAt(fullAlignment, s, out); opts.line?.(s, p); return p; };
+  if (opts.line) for (let i = 0, q = { x: 0, y: 0, tx: 0, ty: 0 }; i < stFull.n; i++) {
+    q.x = stFull.x[i]; q.y = stFull.y[i]; q.tx = stFull.tx[i]; q.ty = stFull.ty[i];
+    opts.line(stFull.s[i], q);
+    stFull.x[i] = q.x; stFull.y[i] = q.y; stFull.tx[i] = q.tx; stFull.ty[i] = q.ty;
+  }
   // the steepest grade by the ground's terrain class per station (less in hairpins), radii by stretch (M4-2)
   const vlim = verticalLimits(st, fullAlignment, gpis, d.speed, d.category, terrain,
     d.maxGradient ?? (cat.maxGradient ? undefined : scenario.maxGradient), win?.s0 ?? 0, stFull);
@@ -698,7 +709,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const settleEnds = blocks && blockEnds(blocks, al.length);
   /** chainage at which a station's clearance applies (NaN: the station itself) */
   const clearanceS = new Float64Array(n).fill(NaN);
-  const atS = (x: number) => { const p = pointAt(fullAlignment, x); return { x: p.x, y: p.y }; };
+  const atS = (x: number) => { const p = lineAt(x); return { x: p.x, y: p.y }; };
   /** Blocks: the station nearest chainage x not `taken` (within 8 stations; −1 if none), to carry a
    * grade-solve clearance placed at x itself (clearanceS). */
   const freeStation = (x: number, taken: (j: number) => boolean) => {
@@ -966,7 +977,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const widen = hairpinWidening(al, d.pis, d.category, st.s); // a hairpin's widened lanes
   // (Auto's deepest open cut: roads and motorways, STRUCTURE_RULES.deepCut)
   const deepCut = cat.mode === 'railway' ? undefined : STRUCTURE_RULES.deepCut;
-  return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, win, al, maxGradient, st, n, ds, deepCut,
+  return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, lineAt, win, al, maxGradient, st, n, ds, deepCut,
     manualStructures, cutMethod, bridgeStyle, heldDeck, choiceDeck, crossingOverrides, ground, groundIds, groundProfiles, groundPackIds,
     groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
     mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
@@ -983,7 +994,7 @@ interface BalanceSamples {
  * surcharge / markups), the profile's cost tables and the mass-balance sampler (`balanceOf`). */
 function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
   const { cat, scenario, costClasses, water, waterGround, blocks, ds, terrain, groundPackIds, groundProfiles, al,
-    roadX, mustBridge, fullAlignment, sideHits, rawRoadX, crossingOverrides, vlim, crossingCost, forceWater,
+    roadX, mustBridge, lineAt, sideHits, rawRoadX, crossingOverrides, vlim, crossingCost, forceWater,
     forceParallelWater, roadG, tunnelWater, deepCut } = setup;
   const mk = cat.markup;
   /** a tunnel's tubes and escape provision for its length (NV 264/2009) */
@@ -1145,7 +1156,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
     const p: PointOnAlignment = { x: 0, y: 0, tx: 1, ty: 0, curvature: 0 };
     for (let k = 0; k < m; k++) {
       S[k] = r0 + (k + 0.5) * w;
-      pointAt(fullAlignment, S[k], p);
+      lineAt(S[k], p);
       X[k] = p.x; Y[k] = p.y; TX[k] = p.tx; TY[k] = p.ty; G[k] = terrain.heightAt(p.x, p.y);
       sides.push(sideHits(p.x, p.y, p.tx, p.ty));
       urban[k] = terrain.cover(p.x, p.y) & BUILTUP_BIT ? 1 : 0;
@@ -2149,7 +2160,7 @@ function floorSolve(targets: ReadonlyMap<number, number>, setup: ReturnType<type
  * earth, width and land cover per station, earthworks (volumes, mass haul, cut classes). */
 function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setup: ReturnType<typeof routeSetup>, lifting: ReturnType<typeof routeLift>, caches: ReturnType<typeof routeCaches>, prices: ReturnType<typeof routePrices>) {
   const { engineering, liftShared, oob } = lifted;
-  const { preview, cat, maxGradient, ds, al, n, lap, cutMethod, heldDeck, fullAlignment, win, manualStructures } = setup;
+  const { preview, cat, maxGradient, ds, al, n, lap, cutMethod, heldDeck, lineAt, win, manualStructures } = setup;
   const { lift } = lifting;
   const { urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre } = caches;
   const { b, usable } = prices;
@@ -2207,7 +2218,7 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   if (!preview) for (const r of runs) if (r.kind === KIND.bridge && !(heldDeck && heldDeck[r.i0] && heldDeck[r.i1])) {
     // (a closed abutment has none; two cones under a short bridge meet: each counts where it is the higher)
     const ends = ([[0, r.i0, 1, r.s0], [1, r.i1, -1, r.s1]] as const).map(([k, i, into, s]) => {
-      const earthCell = i - into, p = pointAt(fullAlignment, s + (win?.s0 ?? 0)), zf = elevations(prof, [s])[0];
+      const earthCell = i - into, p = lineAt(s + (win?.s0 ?? 0)), zf = elevations(prof, [s])[0];
       const at = { s, x: p.x, y: p.y, tx: p.tx * into, ty: p.ty * into, i, earthCell };
       const stands = !r.closedEnds?.[k] && earthCell >= 0 && earthCell < n && kind[earthCell] === KIND.earth && coneStands(setup.terrain, at, zf);
       return { at, zf, stands, half: cat.crownWidth / 2, top: zf - CONE.deckDepth, x: at.x, y: at.y, tx: at.tx, ty: at.ty };
@@ -2852,7 +2863,7 @@ function choiceDeckOf(opts: EvalOptions, mask: Uint8Array): Uint8Array | undefin
 function passSetup(ctx: EvalContext, d: Design, opts: EvalOptions): ReturnType<typeof routeSetup> {
   const pc = opts.passCache;
   if (!pc || opts.preview || opts.window) return routeSetup(ctx, d, opts);
-  const from = [opts.holds, opts.oldRoad, opts.fixedProfile, opts.railTieIn, opts.railRetired, opts.geometrySpeeds];
+  const from = [opts.holds, opts.oldRoad, opts.line, opts.fixedProfile, opts.railTieIn, opts.railRetired, opts.geometrySpeeds];
   const had = pc.setup && pc.setup.ctx === ctx && pc.setup.d === d && pc.setup.from.every((v, k) => v === from[k]) ? pc.setup : undefined;
   const shared = (had ?? (pc.setup = { made: routeSetup(ctx, d, opts), ctx, d, from })).made;
   const clearanceS = shared.clearanceS.slice();

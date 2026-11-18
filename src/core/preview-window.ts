@@ -179,6 +179,10 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const ppis = planPis(ctx.a, ctx.b, d.pis, d.speed, d.category), gpis = geometryPis(d.pis, heightSpeeds(d, opts));
   const al = buildAlignment(ctx.a, ctx.b, ppis, horizontalRules(d.speed, d.category), bendRules(ppis, d.speed, d.category));
   const st = station(al, STEP), L = al.length, n = st.n, ds = st.ds;
+  // (a rebuilt stretch's line as built, as the full result's: EvalOptions.line)
+  if (opts.line) for (let i = 0, q = { x: 0, y: 0, tx: 0, ty: 0 }; i < n; i++) {
+    q.x = st.x[i]; q.y = st.y[i]; q.tx = st.tx[i]; q.ty = st.ty[i]; opts.line(st.s[i], q); st.x[i] = q.x; st.y[i] = q.y; st.tx[i] = q.tx; st.ty[i] = q.ty;
+  }
   const range = changedRange(base, d, st, L, al.curves);
   if (!range) return null;
   const i0 = Math.max(0, Math.floor((range[0] - WINDOW_MARGIN) / ds)), i1 = Math.min(n - 1, Math.ceil((range[1] + WINDOW_MARGIN) / ds));

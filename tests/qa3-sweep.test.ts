@@ -92,6 +92,24 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // (the stretch's ends fade from the old road into its line: 20 k CZK)
     expect(Math.abs(ours.cost.total - mission.cost.total)).toBeLessThan(0.1e6);
   }, 60_000);
+  // …and where our crossing lifts it onto its bridge over us ("Its bridge over us"), the piece rebuilt for it was built on
+  // the kernel's line, 5.7 m off the old road our road crossed: it is built on that old road (project-kept.ts heldOnOldLine).
+  it('a kept stretch lifted by our crossing is rebuilt on the old road our road crossed', async () => {
+    const { crossingTargetsOf } = await import('../src/core/project-roadnet');
+    const design = fixture('d11-iii3012-corner-kept'), side = design.routes[1].id;
+    const at = (r: ProjectResult) => r.routes[design.routes[0].id].legacy!.crossings.find(c => c.crossedRoute?.id === side || c.designed)!;
+    const c0 = at(run(design));
+    const al = design.routes[0].alignment;
+    if (al.kind === 'pi') al.controls.crossings = crossingTargetsOf(design, [{ roadId: c0.roadId!, type: 'overbridge' }]);
+    const r = run(design), c = at(r), held = r.routes[side].legacy!;
+    expect(held.keptCells?.some(Boolean)).toBeFalsy(); // (all of it rebuilt: the ramps reach both ends)
+    let gap = Infinity;
+    for (let k = 1; k < held.n; k++) {
+      const ax = held.x[k - 1], ay = held.y[k - 1], dx = held.x[k] - ax, dy = held.y[k] - ay, t = Math.max(0, Math.min(1, ((c.x - ax) * dx + (c.y - ay) * dy) / (dx * dx + dy * dy)));
+      gap = Math.min(gap, Math.hypot(c.x - ax - t * dx, c.y - ay - t * dy));
+    }
+    expect(gap).toBeLessThan(0.1);
+  }, 60_000);
 });
 
 // D11 straight start, road III/3012 at our km 2.3, its one bend (the old road's own R 104 m corner) dragged

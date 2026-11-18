@@ -7,7 +7,7 @@ import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
 import { ringWorks, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
-import { applyKept, plannedKept, releaseHeld } from './project-kept';
+import { applyKept, heldOnOldLine, plannedKept, releaseHeld } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
 import { CATEGORIES } from './data/categories';
 
@@ -98,14 +98,19 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
   // Where a rebuilt stretch's line stays on its old road, the old road is kept as it is (project-kept.ts).
   // Known before the kernel runs (it depends on the line only), so the kernel builds nothing there.
-  let kept: Uint8Array | undefined, oldPath: { x: number; y: number }[] = [];
+  let kept: Uint8Array | undefined, planned: Uint8Array | undefined, held: EvalOptions['line'], oldPath: { x: number; y: number }[] = [];
   if (route.source && sourceWay !== undefined && ctx.roads) {
     const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
     oldPath = ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db));
-    const planned = plannedKept(a, b, design, [oldPath]), st = planned.st;
-    kept = planned.kept; design.pis = planned.pis;
+    const plan = plannedKept(a, b, design, [oldPath]), st = plan.st;
+    kept = plan.kept; design.pis = plan.pis;
     // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
-    if (options.holds?.length) releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
+    // (and that piece is built on the old road's line, which that road crossed)
+    if (options.holds?.length) {
+      planned = kept.slice();
+      releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
+      held = heldOnOldLine(planned, kept, st.ds, [oldPath]);
+    }
   }
   // A rebuilt stretch's side roads (its branch connections): where the new line crosses one, it joins the new road
   const sideWays = route.source ? project.connections.flatMap(c => {
@@ -116,7 +121,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
-  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(sideWays.length ? { sideWays } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
+  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(held ? { line: held } : {}), ...(sideWays.length ? { sideWays } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
   if (ties.length && roads && !options.preview) {
@@ -127,7 +132,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   let keptWork: ReplacementWork | null = null;
   if (kept) {
     if (kept.length !== result.n) throw new Error('Kept cells do not match the road’s stations');
-    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: [oldPath], heightAt: (x, y) => ctx.terrain.heightAt(x, y) });
+    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: [oldPath], heightAt: (x, y) => ctx.terrain.heightAt(x, y) }, 'road', held ? planned : undefined);
   }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview
