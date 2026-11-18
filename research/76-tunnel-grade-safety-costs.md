@@ -49,8 +49,8 @@ sources opened unless said otherwise.
   - It takes no line steeper than 5 % between two knots wholly in a tunnel, as in model 45.
   - Where its line still has a tunnel over 500 m that is steeper anywhere (at its ends), it searches again with the
     limit on every interval in a tunnel.
-  - It is a rule of the search, not a check on the finished tunnel: the structure choice can still tunnel a long cut on
-    a steep grade (PLAN.md).
+  - The structure choice keeps to it too (cost model 48): where a long Auto tunnel steepens past 5 %, the cut stays open
+    if no deeper than 30 m. Deeper, it stays a tunnel: the Act's exception (PLAN.md).
   - The player's tunnel over 500 m steeper than 5 % is a problem with basis law.
 
 Not reached: the RABT 2006/2016 and RVS 09.02.31 texts (paid), ČSN 73 7507 (paid), and a current jet-fan price.

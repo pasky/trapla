@@ -149,8 +149,11 @@
  * source prices the safety measures, research/76); no tunnel over 500 m steeper than 5 %, also at its ends; a boundary
  * corridor held at its band's edge tries the wide band. D11 frozen unchanged; d35 stage-1 19,938 → 19,617 M, d35 road
  * 9,430 → 6,659, d35-full 34,151 → 33,944, D3 motorway 15,198 → 14,396 (the Sázava bridge's piers in the river again),
- * D3 road 3,882 → 3,904, d3-0302 6,776 → 6,770, d3-0304 10,073 → 10,089, d3-full 36,241 → 36,144. */
-export const COST_MODEL_VERSION = 47;
+ * D3 road 3,882 → 3,904, d3-0302 6,776 → 6,770, d3-0304 10,073 → 10,089, d3-full 36,241 → 36,144.
+ * 48: the structure choice builds no Auto tunnel over 500 m steeper than 5 % where the cut there is at most 30 m deep
+ * (it stays open). Saved designs, starters and D11 frozen unchanged; the QA new road across Královec 760 m at 6.6 % →
+ * 690 m at 4.8 %. */
+export const COST_MODEL_VERSION = 48;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

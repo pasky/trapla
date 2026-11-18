@@ -1097,10 +1097,14 @@ research/73 §7 (D35 again). Shots 410–414.
   of its line in a tunnel. Where the normal band still holds such a line, the wide band's line is taken if it has none.
   Shorter tunnels keep the road's own limit: the Act covers tunnels over 500 m. The model-45 extra passes for the 3 %
   weight are gone.
-  - This is a rule of the search, not a check on the finished road. The structure choice can still turn a long cut
-    9–30 m deep that the search meant to leave open into a tunnel. The QA's new road across the Královec railway gets a
-    760 m tunnel at 6.6 % that way (model 45: 6.1 %). Its card says the tunnel is allowed only where the ground leaves
-    no other way, and it is not a problem.
+  - **The structure choice keeps to it too** (cost model 48). In an Auto tunnel over 500 m, a station where the grade
+    steepens past 5 % stays an open cut wherever the cut is no deeper than Auto digs (30 m). Such a station is usually
+    at an end on a vertical curve the search's straight knots do not see. The portal moves in to where the tunnel is
+    within 5 %. Deeper than 30 m it stays a tunnel, the Act's own exception where nothing else can be built; its card
+    says so.
+    - The QA's new road across the Královec railway had a 760 m tunnel at 6.6 %. It now has 690 m at 4.8 %, its west end
+      an open cut (tests/new-line-crossings.test.ts, tests/tunnels.test.ts).
+    - Every saved design and starter is unchanged; two D11 random previews differ (exact.ts).
 - **A boundary corridor's shared solve is keyed by its boundary.** Two boundaries whose 5 km corridors cover the same
   stretch (a short route, long knots) were handed the first one's heights. No saved design or starter changed
   (exact.ts); tests/regressions.test.ts.
@@ -1146,6 +1150,18 @@ research/73 §7 (D35 again). Shots 410–414.
     - The DP retry kept stretch by stretch where the search prices it lower: direct-90 −761, town-centre −255, straight
       +30, best +6. One edit-locality failure, +20–25 % evaluate time on designs with many lifts.
   - The DP's per-station price misses whole-bridge costs and crossings, so it cannot judge lifted lines.
+  - Third try, judged by the whole bill (2026-11-18, not merged; patch kept outside the repo). After the first pass's
+    lifts, each block of the solve that holds a height the DP line needed was searched again between its ends on that
+    line, with those heights as floors and at the block's material value. The result was engineered and lifted as a pass
+    of its own, and kept where its whole bill (noise included) was lower.
+    - Bills: direct-90 5,321.6 → 4,773.1 M, town-centre 9,241.8 → 9,219.5, the other D11 fixtures unchanged.
+    - best-structures became invalid at +0.5 M: the comparison weighs only the total.
+    - It failed on time: D11 fixtures +45 % (direct-80 +60 %, straight +79 %). Every design with lifts runs a second
+      engineering pass, crossings and noise.
+    - It failed edit-locality (4 cases: straight pin −9 m at km 3.6, direct-90 pin −5 m at km 5.2, d3-full two
+      edits). A far edit changes which pass wins.
+    - Open: a cheaper judge than a second whole pass (e.g. the regrade inside the lift loop, priced by the engineering
+      pass's own quantities), local by construction.
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 

@@ -110,7 +110,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   Open: houses under a cone are not screened (the building screen sees earthworks and piers only); the cones' fill is not in the structure choice's earth balance (it pins blocks at the top fill value and
   over-bridges); no arch inside a viaduct over 3.3 × its arch; the support lifts after the grade search bump the line
   up without regard to cost (direct-90: Auto 422 M dearer than holding its pre-presplit line, all of it from lifts for
-  bridge clearances the search never saw; two fixes tried, neither merged: PLAN.md "Natura 2000 a note …"). Two roads of a project whose
+  bridge clearances the search never saw; three fixes tried, none merged, the last judged by the whole bill: +45 % D11
+  evaluate time and edit-locality failures; PLAN.md "Natura 2000 a note …"). Two roads of a project whose
   earthworks come within the working strip: the later one keeps clear behind a wall (project-ledger.ts, evaluateProject).
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
