@@ -142,7 +142,7 @@ export function reachableSuggestions(violations: readonly GradePinViolation[], p
     }
     if (best === suggested.z) return v;
     return { ...v, fix: `Set it to ${best.toFixed(1)} m, or unpin`,
-      detail: `You asked for ${requested.z.toFixed(2)} m; the road is at ${actualZ.toFixed(2)} m. The nearest Automatic reaches here is ${best.toFixed(1)} m${v.pin.reachable ? ` (slopes alone would allow ${v.pin.reachable.min.toFixed(2)}–${v.pin.reachable.max.toFixed(2)} m, without the room a change of slope needs)` : ''}.`,
+      detail: `You asked for ${requested.z.toFixed(2)} m; the road is at ${actualZ.toFixed(2)} m. Auto can reach at ${requested.z > actualZ ? 'most' : 'least'} ${best.toFixed(1)} m here.`,
       pin: { ...v.pin, suggested: { s: suggested.s, z: best } } };
   });
 }
