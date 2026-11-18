@@ -152,8 +152,19 @@
  * D3 road 3,882 → 3,904, d3-0302 6,776 → 6,770, d3-0304 10,073 → 10,089, d3-full 36,241 → 36,144.
  * 48: the structure choice builds no Auto tunnel over 500 m steeper than 5 % where the cut there is at most 30 m deep
  * (it stays open). Saved designs, starters and D11 frozen unchanged; the QA new road across Královec 760 m at 6.6 % →
- * 690 m at 4.8 %. */
-export const COST_MODEL_VERSION = 48;
+ * 690 m at 4.8 %.
+ * 49: houses under a bridge end's cone (and its 3 m working strip) are bought out; an end on a fill of at most 10 m is
+ * closed by its wall where that costs less than the houses its cone would take; a kept house under a cone counts as
+ * what nothing moves aside. Roads moved aside and closed roads' turning areas buy out the houses they stand on. A
+ * rebuilt road's side road crossed by its new line joins it there (an access). D11 frozen (M CZK): straight −0.2
+ * (a house under the km 4.07 cone +17.8, walls instead of cones at km 5.79, 13.71 and 17.31, a track at km 4.64 rerouted
+ * instead of carried over now that the house it skirted is gone −14.5), demo +17.3 (a farm building the service road
+ * moved aside at km 6.93 ran through), direct-80 +19.0 (two houses under cones on 15 m fills, two sheds under a road
+ * moved aside, a wall), direct-90 +1.4 and town-centre / town-controls +0.7 (walls instead of cones over houses);
+ * best, best-*: unchanged. Starters: Nová Paka 1,185.7 → 1,194.0 (a house under a service road moved aside at km 2.60),
+ * D3 motorway 14,585.7 → 14,586.9, D11 retired railway 24,830 → 24,952 (not valid either way); others unchanged
+ * (PLAN.md "Portals, cones over houses, side roads of a rebuilt road"). */
+export const COST_MODEL_VERSION = 49;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
