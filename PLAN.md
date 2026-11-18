@@ -2108,7 +2108,7 @@ goes back. One undo step ("where a reroute leads"). Dragging the middle of the n
   motorway, railway, pond or river; also straight across the fields where that line is the better one), billed as
   drawn. A road that crosses ours carries it on across (on its bridge, under ours, in a junction): dropped on its part
   beyond our road, its part on this side is joined. The card says "The north part led to the class III road that
-  crosses at km 2.29 (+384 m of new track)" and "North part to the class III road at km 2.29 · your choice
+  crosses at km 2.29 (+420 m of new track)" and "North part to the class III road at km 2.29 · your choice
   [Automatic]". Auto keeps a crossing a player's end is built to carrying traffic (it is not cut or led on itself).
 - **A road that cannot take it** leaves Auto's line on that side (or Auto's closure: a part that reaches other roads
   still just ends) and says why (issue code `end`, with *Automatic* as its fix): the road is across ours, ours cuts it
@@ -2123,13 +2123,12 @@ goes back. One undo step ("where a reroute leads"). Dragging the middle of the n
 - A design with player ends builds its crossings on the whole route in the engineering retries (crossings-kept.ts:
   an end may depend on a crossing anywhere along the chosen road); designs without are unchanged.
 - Played (`node scripts/reroute-end-shots.mjs`, screenshots 500–509): the north part led to the class III road at km
-  2.29 instead, 384 m, 5.39 M against Auto's 217 m to km 2.70 at 5.43 M (Auto's needs a culvert; it never weighs a
-  farther crossing once the nearest carries, PLAN "Crossing remedies"); bent in its middle (+bend point, the south part
+  2.29 instead, 420 m, 5.88 M against Auto's 217 m to km 2.70 at 5.43 M (that road is straightened to cross ours square:
+  the piece joins it where its new line meets the old one, off its ramp); bent in its middle (+bend point, the south part
   still just ends); onto a street wholly south of our road (said, Auto's line stands); *Automatic*; onto the track
   north of us that does not cross ours (+818 m, 13.6 M: it runs beside our earthworks, then up beside the track 1505,
   whose own line leads there: a player's choice, built as asked). `tests/link-end.test.ts` (synthetic cases and the
   D35 case).
 - **Known limits.** For a way crossing ours more than once, the ends belong to the crossing nearest the drop (as a
-  shape belongs to the one nearest its bend points). Auto does not offer the cheaper farther crossing itself (the D35
-  track to the class III road's ramp foot: 3.27 M). A new piece led far away may run beside an existing road that
-  already leads there (509).
+  shape belongs to the one nearest its bend points), not to the one whose end was dragged. A new piece led far away
+  may run beside an existing road that already leads there (509).
