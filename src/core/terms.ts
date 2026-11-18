@@ -48,6 +48,8 @@ export const JARGON: readonly [RegExp, string][] = [
   [/\breceivers?\b|L<sub>Aeq|\bLAeq\b/i, 'noise-model term (say "top floor", "night noise")'],
   [/\bretained\b|\bblocking\b|keep\/wall/i, 'rule-engine term'],
   [/\bdwellings?\b/i, '"dwelling" (say "house")'],
+  // every house the project takes is one thing to the player, wherever it stands
+  [/\bdemolish/i, '"demolished" (say "bought out")'],
   [/#\d/, 'object ID'],
   [/\bstation\b/i, '"station" (say "km")'],
   [/polygon/i, '"polygon" (say "the straights between bends")'],

@@ -243,20 +243,20 @@ try {
   assert(r3.issues.some(i => i.code === 'road-ends-nowhere'), 'a free end is reported');
   assert(r3.issues.filter(i => i.code === 'road-ends-nowhere').every(i => i.blocking === 'invalid' && r3.cost.unpriced.every(u => u.reason !== 'road-ends-nowhere')), 'a road that ends nowhere is priced, not valid');
   assert.equal(r3.valid, false, 'a road that ends nowhere is not valid');
-  // priced or not, houses under our road are gone from the map and say so
+  // priced or not, houses under our road are drawn bought out and say so
   {
     const result = r3, own = result.routes[mission].legacy.demolished.map(b => b.j);
     assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');
-    assert.deepEqual(await page.evaluate(list => list.filter(j => window.trapla.buildingShown(j)), own), [], 'no house stands on our road while the project is not priced');
+    assert.deepEqual(await page.evaluate(list => list.filter(j => !window.trapla.buildingTaken(j)), own), [], 'every house on our road is drawn bought out while the project is not priced');
     if (own.length) {
       await page.evaluate(j => window.trapla.selectBuilding(j), own[0]); await idle();
       const card = await page.locator('#inspector').textContent();
-      assert(/Demolished/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our road says it is demolished (${card})`);
+      assert(/Bought out/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our road says it is bought out (${card})`);
       await page.evaluate(() => window.trapla.select(null));
       await page.evaluate(id => window.trapla.setActiveRoute(id), fresh.id); await idle();
       assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
     }
-    console.log(`unpriced project: ${own.length} houses under our road stay demolished`);
+    console.log(`unpriced project: ${own.length} houses under our road stay bought out`);
   }
   // bend it like our road
   const s3 = await page.evaluate(id => window.trapla.projectResult().routes[id].legacy.length / 2, fresh.id);

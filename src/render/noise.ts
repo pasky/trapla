@@ -14,11 +14,11 @@ import type { NoiseFootprint, NoiseReceiver, WallStretch } from '../core/noise';
 import type { Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import type { RouteExtras } from './extras';
-import { BOUGHT_COLOR, DEMOLISHED_COLOR, type View } from './view';
+import { BOUGHT_COLOR, type View } from './view';
 import { NOISE_RAMP, noiseColor } from '../ui/noise-section';
 
 /** building colours (sRGB) by noise outcome; walls / buyouts / demolitions match their map symbols */
-export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: BOUGHT_COLOR, demolished: DEMOLISHED_COLOR };
+export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: BOUGHT_COLOR };
 /** band colour ramp: [dB relative to the limit, colour, opacity], interpolated per pixel; transparent at the
  * first stop (where the worker's footprint fades out), clamped past the last */
 const RAMP = NOISE_RAMP;
@@ -202,7 +202,7 @@ export class NoiseLayer {
     if (this.on && this.available && r) {
       for (const p of r.noise?.receivers ?? []) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, parseInt(noiseColor(p.mitigated).slice(1), 16)); }
       for (const p of r.boughtOut) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.bought); }
-      for (const p of r.demolished) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.demolished); }
+      for (const p of r.demolished) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.bought); }
     }
     bm.tint(colors, this.on && this.available);
     this.view.requestRender();
@@ -322,7 +322,7 @@ export class NoiseLayer {
     const r = this.r!, f = this.pack.overlays.binfo?.[j];
     const kind = BUILDING_KINDS[f ? f[2] : 0]?.label ?? 'building', levels = buildingLevels(f ? f[1] : 0, f ? f[2] : 0);
     const head = `<b>${kind[0].toUpperCase()}${kind.slice(1)}</b> <span class="tip-sub">${levels} floor${levels > 1 ? 's' : ''}</span>`;
-    if (r.demolished.some((p) => p.j === j)) return `${head} · demolished`;
+    if (r.demolished.some((p) => p.j === j)) return `${head} · bought out`;
     const limit = r.noise?.limit ?? NOISE.limitNightDb, bought = r.boughtOut.find((p) => p.j === j);
     if (bought) return `${head} · bought out${bought.reason === 'manual' ? ' · your choice' : rec
       ? `<div><b class="tip-bad">${fmt(limit + rec.mitigated)} dB</b> on the loudest floor even behind a ${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall (limit ${limit})</div>` : ''}`;

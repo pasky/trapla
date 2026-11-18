@@ -69,7 +69,7 @@ try {
   if (abut !== null) { await shot('seam-abutment', abut + 15, 80, 70, 22); await shot('seam-abutment-across', abut + 3, 80, -70, 22); }
   const wall = await page.evaluate(() => { const r = window.trapla.result(); const w = [...r.walls].sort((a, b) => (b.s1 - b.s0) - (a.s1 - a.s0))[0]; return w ? Math.round((w.i0 + w.i1) / 2) : null; });
   if (wall !== null) await shot('seam-wall', wall, 110, 50, 30);
-  // what the route takes: demolished buildings under a viaduct (cleared plots) and from far away (markers)
+  // what the route takes: buildings under a viaduct, bought out (their colour) and from far away (markers)
   const dem = await page.evaluate(() => { const r = window.trapla.result(); const d = r.demolished.find((p) => r.kind[p.i] === 1) ?? r.demolished[0]; return d ? d.i : null; });
   if (dem !== null) { await shot('demolished-near', dem, 230, 40, 35); await shot('demolished-far', dem, 5000, 40, 70); }
   // a bought-out house (direct-80): its colour, its ring, and far away

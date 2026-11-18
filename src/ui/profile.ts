@@ -622,12 +622,6 @@ export class ProfilePanel {
       }
       g.beginPath(); g.arc(this.X(c.s), this.Y(c.bed) - 4, 4, 0, 2 * Math.PI); g.stroke();
     }
-    // demolished buildings: dark squares on the ground
-    g.fillStyle = '#3d434b';
-    for (const b of r.demolished) {
-      if (b.i < i0 || b.i > i1) continue;
-      g.fillRect(this.X(r.s[b.i]) - 2, this.Y(r.ground[b.i]) - 7, 4, 4);
-    }
     // Kept buildings: green outlined squares; red outline means a footprint conflict.
     for (const b of r.kept) {
       if (b.i < i0 || b.i > i1) continue;
@@ -635,9 +629,9 @@ export class ProfilePanel {
       g.strokeStyle = b.hit ? '#d7301f' : '#467d19'; g.lineWidth = 2;
       g.strokeRect(x - 4, y - 4, 8, 8);
     }
-    // Noise / player buyouts: magenta diamonds, offset above the footprint-demolition squares.
+    // every house the project takes (bought out): magenta diamonds above the ground
     g.fillStyle = '#c43c9b';
-    for (const b of r.boughtOut) {
+    for (const b of [...r.demolished, ...r.boughtOut]) {
       if (b.i < i0 || b.i > i1) continue;
       const x = this.X(r.s[b.i]), y = this.Y(r.ground[b.i]) - 12;
       g.beginPath(); g.moveTo(x, y - 4); g.lineTo(x + 4, y); g.lineTo(x, y + 4); g.lineTo(x - 4, y); g.closePath(); g.fill();
@@ -979,8 +973,8 @@ export class ProfilePanel {
     for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x, this.gradeRule.line)}`);
     for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(ourWords(`${c.waterKind.charAt(0).toUpperCase()}${c.waterKind.slice(1)} ${c.size?.buried ? 'in a buried bridge under our road' : WATER_UNDER[c.structure]}`, this.gradeRule.line));
     let nb = 0;
-    for (const d of r.demolished) if (d.i >= a && d.i <= b) nb++;
-    if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} demolished`);
+    for (const d of [...r.demolished, ...r.boughtOut]) if (d.i >= a && d.i <= b) nb++;
+    if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} bought out`);
     const v = r.violations.find((x) => !x.goal && x.s0 <= r.s[b] + r.ds && x.s1 >= r.s[a] - r.ds);
     const e = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin' || this.under.kind === 'culvert';

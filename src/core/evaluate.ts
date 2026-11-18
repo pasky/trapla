@@ -2329,7 +2329,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
         buildingViolations.push({ kind: 'building', basis: 'game', s0: st.s[p.i], s1: st.s[p.i],
           title: 'Road through a kept building',
           fix: 'Buy it out, or move the road',
-          detail: `Kept: it cannot be demolished. The road's ${cutCover[p.i] ? 'tunnel pit' : 'slopes'} and its ${BUILDING_RULES.clearance} m working strip touch it.`,
+          detail: `Kept: it cannot be bought out. The road's ${cutCover[p.i] ? 'tunnel pit' : 'slopes'} and its ${BUILDING_RULES.clearance} m working strip touch it.`,
           target: { buildings: [j] },
           rule: 'Game rule: a building you keep must stay clear of our road, its slopes and its working strip.' });
         continue;
@@ -2546,7 +2546,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     for (const k of houses.kept) if (kept.has(k.j)) k.hit = true;
     for (const j of found) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'reroute', strip: false }); }
     if (kept.size) houses.buildingViolations.push({ kind: 'building', basis: 'game', s0: c.s0, s1: c.s1, title: 'Road through a kept building',
-      fix: 'Buy it out, or move the road', detail: 'Kept: it cannot be demolished. A road we move aside runs over it.', target: { buildings: [...kept] },
+      fix: 'Buy it out, or move the road', detail: 'Kept: it cannot be bought out. A road we move aside runs over it.', target: { buildings: [...kept] },
       rule: 'Game rule: a building you keep must stay clear of our road, its slopes and its working strip.' });
   }
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));

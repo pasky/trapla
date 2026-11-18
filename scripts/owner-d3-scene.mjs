@@ -176,17 +176,17 @@ try {
   await page.evaluate(() => window.trapla.select(null));
   await page.screenshot({ path: shot(107, 'd3-road-1057-rebuilt') });
 
-  // 6. houses under our motorway: off the map and "Demolished", whatever is priced
+  // 6. houses under our motorway: drawn and said "Bought out", whatever is priced
   const own = motorway.demolished.map(b => b.j);
   assert.deepEqual(own.filter(j => !after.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the result lists our demolitions');
-  assert.deepEqual(await page.evaluate(list => list.filter(j => window.trapla.buildingShown(j)), own), [], 'no house stands on our motorway');
+  assert.deepEqual(await page.evaluate(list => list.filter(j => !window.trapla.buildingTaken(j)), own), [], 'every house on our motorway is drawn bought out');
   if (own.length) {
     await page.evaluate(j => window.trapla.selectBuilding(j), own[0]); await idle();
     const card = await text('#inspector');
-    assert(/Demolished/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our motorway says it is demolished (${card})`);
+    assert(/Bought out/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our motorway says it is bought out (${card})`);
     await page.evaluate(() => window.trapla.select(null));
   }
-  console.log(`${own.length} houses under our motorway stay demolished (project ${after.cost.total === null ? 'not priced' : 'priced'})`);
+  console.log(`${own.length} houses under our motorway stay bought out (project ${after.cost.total === null ? 'not priced' : 'priced'})`);
 
   // 7. a bend of the rebuilt road selected: its traffic is still on the card
   await page.evaluate(id => window.trapla.setActiveRoute(id), rebuilt.id); await idle();

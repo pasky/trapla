@@ -144,10 +144,9 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
 - **First run:** three steps at the top left of the map (drag the road, click anything, the cost counts once
   valid); *Got it*, <kbd>Esc</kbd> or the first click dismiss it; *Help → Show the intro* brings it back.
 - **Colours** are the same on the map, in the profile and in the cards: road orange, bridge blue, tunnel purple,
-  noise wall teal, problems red, kept green. A demolished building's plot is drawn on the ground in its own
-  shape as cleared (pale, hatched, dashed edge); a bought-out house stands magenta in every view with a dashed
-  magenta ring on the ground; where a house is only a few pixels across they are a dark grey square and a
-  magenta diamond with a white outline. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
+  noise wall teal, problems red, kept green. Every house the project takes (under our works, for noise, by your
+  choice, in the way of other works) is *bought out*: it stands magenta in every view with a dashed magenta ring on
+  the ground; where it is only a few pixels across it is a magenta diamond with a white outline; its card says why. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
   pixels wide) and for a road being dragged; closer, the road is drawn as built: asphalt with white Czech
   markings, noise walls as panels between posts, tunnels as a purple dashed trace on the ground, problem
   stretches tinted red. The tangent lines of a bend show only while it is dragged, hovered or selected. The
@@ -156,7 +155,7 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   scenario traffic) **at the height that decides walls and buyouts — the top floor of the tallest house beside
   each 30 m station and side** (1.5 m where there is none), continuously shaded with one dark line on the limit,
   computed in the worker by the same calculator as the bill with the built walls and cut edges. Every house is
-  coloured by **its own** worst level on the same ramp; bought-out houses magenta, demolished ones are gone. The
+  coloured by **its own** worst level on the same ramp; bought-out houses magenta. The
   band and the houses now use the same height, so they agree beside the road (the band is per station, a house
   takes its worst station), and raising a wall visibly cools the band where its shadow reaches the top floors. Hover a house for its level, click it for the cross-section.
 
@@ -347,7 +346,7 @@ before): the deep cut at km 10.1, [walls inside the slope before](docs/screensho
 [on the cut's top edge now](docs/screenshots/121-noise-cut-km10-after.png); [the house beside a junction
 opening, walled instead of bought out](docs/screenshots/122-noise-gap-house-card.png); [a card with the wall on
 the cut](docs/screenshots/123-noise-wall-on-cut-card.png); demolished buildings under a viaduct, [roof patches
-and floating squares before](docs/screenshots/124-demolished-before.png), [cleared plots now](docs/screenshots/125-demolished-after.png);
+and floating squares before](docs/screenshots/124-demolished-before.png), [cleared plots then](docs/screenshots/125-demolished-after.png) (since 520: bought out, standing magenta);
 [a bought-out house with its ring](docs/screenshots/126-bought-out-after.png); [far away: outlined markers on
 the ground](docs/screenshots/127-demolished-far-markers.png); the ground beside an abutment, [sky-coloured
 slivers before](docs/screenshots/128-seam-abutment-before.png), [closed now](docs/screenshots/129-seam-abutment-after.png).
@@ -475,6 +474,12 @@ stream at km 2.09 in an open cut: out of reach, the tunnel kept](docs/screenshot
 [D35 km 4.2 dragged back past bend 2: the bend left on the line, "turns 0°"](docs/screenshots/484-d35-zero-turn-bend-before.png),
 [now gone on release](docs/screenshots/485-d35-zero-turn-bend-dropped.png); [a 2° neighbour the curve fit leaves out, gone on
 release too](docs/screenshots/492-d35-left-out-bend-dropped-on-release.png), [one left out that stays: its card](docs/screenshots/493-d35-left-out-bend-card.png).
+One word and one look for every house taken (`node scripts/buyout-look-shots.mjs`): [D11 km 4.07, the house under the
+bridge end's cone: bought out](docs/screenshots/520-d11-km-4-07-house-under-a-cone-bought-out.png), [noise
+view](docs/screenshots/521-d11-km-4-07-noise-view.png), [photo](docs/screenshots/522-d11-km-4-07-photo.png),
+[kept there, in the photo: its ring gone](docs/screenshots/523-d11-km-4-07-photo-kept.png), [plan](docs/screenshots/524-d11-km-4-07-plan.png);
+[a noise buyout at km 5.1](docs/screenshots/525-d11-noise-buyout.png); [the Královec railway's houses under its
+works](docs/screenshots/526-kralovec-railway-houses-bought-out.png), [far away](docs/screenshots/527-kralovec-railway-far.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses

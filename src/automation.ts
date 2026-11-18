@@ -182,8 +182,10 @@ export function installAutomation(c: AutomationContext): void {
     pick: (clientX: number, clientY: number) => c.view.pick(clientX, clientY),
     project: (x: number, y: number, z: number) => c.view.project(x, y, z),
     /** screen position (px inside the view) of building j's centroid, `up` metres above its ground */
-    /** building j is drawn in 3D (false: removed as demolished, or no mesh) */
-    buildingShown: (j: number) => { const k = c.view.buildingMesh(j); return k >= 0 && !c.view.buildingMeshes?.isHidden(k); },
+    /** building j is drawn in 3D (false: no mesh) */
+    buildingShown: (j: number) => c.view.buildingMesh(j) >= 0,
+    /** building j is drawn as taken by the project (bought out: its standing colour) */
+    buildingTaken: (j: number) => { const k = c.view.buildingMesh(j); return k >= 0 && !!c.view.buildingMeshes?.isMarked(k); },
     buildingScreen: (j: number, up = 2) => {
       const b = c.pack.overlays.buildings[j];
       return b && c.view.project(b[0], b[1], c.pack.terrain.heightAt(b[0], b[1]) + up);

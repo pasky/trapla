@@ -25,8 +25,6 @@ export class Buildings {
   /** per building: chunk, first vertex, vertex count (for tinting) */
   private where: Int32Array;
   private tinted: number[] = [];
-  /** removed buildings (render index → their original vertex positions) */
-  private hidden = new Map<number, Float32Array>();
   /** 50 m grid of building bounding boxes (built on the first find) */
   private grid: Map<number, number[]> | null = null;
 
@@ -217,31 +215,8 @@ export class Buildings {
     for (const c of dirty) (this.chunks[c].mesh.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
 
-  /** Remove buildings from the scene (render mesh indices; others hidden before come back): their
-   * vertices collapse onto one point. The land cover draws their plots as cleared (LandCover.buildPlots). */
-  hide(set: ReadonlySet<number>) {
-    const dirty = new Set<number>();
-    const attr = (c: number) => this.chunks[c].mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    for (const [i, saved] of this.hidden) {
-      if (set.has(i)) continue;
-      const c = this.where[3 * i], v = this.where[3 * i + 1];
-      (attr(c).array as Float32Array).set(saved, 3 * v);
-      this.hidden.delete(i); dirty.add(c);
-    }
-    for (const i of set) {
-      if (this.hidden.has(i) || i < 0 || 3 * i >= this.where.length) continue;
-      const c = this.where[3 * i], v = this.where[3 * i + 1], n = this.where[3 * i + 2];
-      if (c < 0) continue;
-      const arr = attr(c).array as Float32Array;
-      this.hidden.set(i, arr.slice(3 * v, 3 * (v + n)));
-      for (let k = 1; k < n; k++) arr.copyWithin(3 * (v + k), 3 * v, 3 * v + 3);
-      dirty.add(c);
-    }
-    for (const c of dirty) attr(c).needsUpdate = true;
-  }
-
-  /** render building i was removed by hide() */
-  isHidden(i: number) { return this.hidden.has(i); }
+  /** render building i has a standing colour (setMarked: bought out) */
+  isMarked(i: number) { return this.marked.has(i); }
 
   /** show only the chunks near the camera (local x, y of the camera) */
   update(camX: number, camY: number) {
