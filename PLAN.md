@@ -2089,3 +2089,47 @@ not: the windows at km 4.44 and 11.21 pick heights 2 m / 1.5 m lower, the line f
 +232 M, earthworks −205 M). Bounding a window from a pin outside it only at its boundary knots gives the no-pin bill here,
 but the Královec pin −9 m at km 2.7 then bills 11.86 bn instead of 10.58: there the envelope is the true line (at its
 12.5 ‰ limit to km 10.5) and the far window needs it. Kept as it is.
+
+## A reroute led where the player drags its end (owner request, cost model 52, 2026-11-18)
+
+Owner (D35 full, the track cut at km 2.51, "Cut and reroute"): its north part is led to the crossing at km 2.70 by
++217 m of new track, and nothing let the player lead it anywhere else. Now **the end of each new piece of a reroute,
+where it joins its road, has a square handle** (`src/ui/link-edit.ts`, only on the selected crossing, as the bend
+points): dragged onto another mapped road (within 18 px, not the cut way itself, not a motorway or railway; the road
+it would join lights up, nothing is evaluated during the drag) and let go, the piece is led there; let go elsewhere it
+goes back. One undo step ("where a reroute leads"). Dragging the middle of the new road still bends it.
+- **Stored** as the crossing override's `ends` ([-normal, +normal] sides like `via`, each a pack way and the point it
+  was dropped on, or null: Auto's target), in the project save too (`RouteControls.crossings[].ends`, validated, only
+  with "Cut and reroute"); old saves load as before. Leading a side elsewhere drops that side's bend points.
+- **Engine** (`crossing-geometry.ts` `playerEnd`, `crossingReroutes`): the piece joins the chosen way at its point
+  nearest the drop (within 300 m along it, every 2 m) on the ground, clear of our earthworks, on its own side of our
+  road, off any crossing's ramps or deck; it is then built as Auto builds its own (link-route.ts: profile within the
+  class gradient, the justified steepest where the ground needs it, culverts, houses, never on the ground across a
+  motorway, railway, pond or river; also straight across the fields where that line is the better one), billed as
+  drawn. A road that crosses ours carries it on across (on its bridge, under ours, in a junction): dropped on its part
+  beyond our road, its part on this side is joined. The card says "The north part led to the class III road that
+  crosses at km 2.29 (+384 m of new track)" and "North part to the class III road at km 2.29 · your choice
+  [Automatic]". Auto keeps a crossing a player's end is built to carrying traffic (it is not cut or led on itself).
+- **A road that cannot take it** leaves Auto's line on that side (or Auto's closure: a part that reaches other roads
+  still just ends) and says why (issue code `end`, with *Automatic* as its fix): the road is across ours, ours cuts it
+  too, it is the cut way itself, a track or private road cannot take a public road's traffic, a motorway takes no
+  road at the same level, no road on the ground there, or the new piece cannot reach it (steep, a railway, a river …).
+- **A shaped side no longer builds the other side** (fixed on the way, a bill change for designs with shaped
+  reroutes, hence the model version): before, any bend point made both sides required, so bending the north part of
+  the D35 track also built its south part to km 2.70 (+1.6 M) though that part still reaches other roads. Now a side
+  the player shaped or led elsewhere is built as they drew it and the other side is Auto's. A side led on is no longer
+  "closed" on the card, and only billed turning areas are drawn as such. No saved fixture has shaped reroutes: every
+  frozen bill is unchanged (eval-regression recaptured with the version only).
+- A design with player ends builds its crossings on the whole route in the engineering retries (crossings-kept.ts:
+  an end may depend on a crossing anywhere along the chosen road); designs without are unchanged.
+- Played (`node scripts/reroute-end-shots.mjs`, screenshots 500–509): the north part led to the class III road at km
+  2.29 instead, 384 m, 5.39 M against Auto's 217 m to km 2.70 at 5.43 M (Auto's needs a culvert; it never weighs a
+  farther crossing once the nearest carries, PLAN "Crossing remedies"); bent in its middle (+bend point, the south part
+  still just ends); onto a street wholly south of our road (said, Auto's line stands); *Automatic*; onto the track
+  north of us that does not cross ours (+818 m, 13.6 M: it runs beside our earthworks, then up beside the track 1505,
+  whose own line leads there: a player's choice, built as asked). `tests/link-end.test.ts` (synthetic cases and the
+  D35 case).
+- **Known limits.** For a way crossing ours more than once, the ends belong to the crossing nearest the drop (as a
+  shape belongs to the one nearest its bend points). Auto does not offer the cheaper farther crossing itself (the D35
+  track to the class III road's ramp foot: 3.27 M). A new piece led far away may run beside an existing road that
+  already leads there (509).

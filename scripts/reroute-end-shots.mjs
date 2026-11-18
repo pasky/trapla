@@ -29,11 +29,11 @@ const onWay = (way, x, y) => {
 };
 try {
   await game.open('scenario=d35-full'); await idle();
-  // the starter with a bend on the planned line at its km 2.5 (tests/link-end.test.ts), the track cut and rerouted
+  // the starter with a bend on the planned line at its km 2.5 (tests/link-end.test.ts): Auto cuts the track and reroutes it
   await T(() => {
     const d = window.trapla.getDesign();
     d.pis.splice(1, 0, { x: 4551, y: 9449, r: null });
-    d.crossingOverrides = [{ roadId: 1327, type: 'reconnection' }];
+    d.crossingOverrides = []; // (Auto reroutes the track: the first drag makes it the player's)
     window.trapla.setDesign(d);
   });
   await idle();
