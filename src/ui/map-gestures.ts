@@ -5,6 +5,7 @@
 // a click selects it first (the owner's review: random presses while panning bent the road). What a gesture
 // has grabbed is this module's own state.
 import { fitPlacedBend } from '../core/bend-fit';
+import { passBends } from '../core/bend-order';
 import { fitSetRadii } from '../core/fit-radii';
 import { speedNorms } from '../core/data/norms';
 import { nearestLeg } from '../core/horizontal';
@@ -162,10 +163,22 @@ export function createMapGestures(app: MapGestureContext) {
       if (!app.store.read() || !app.roadSelected) return null; app.intro.hide(); return bendByDrag(x, y);
     },
     onPiSelect: (i) => { grabOffset = null; placedByDrag = null; app.select(i === null ? null : { kind: 'bend', i }); },
-    onPiDrag: (i, x, y) => {
-      const o = grabOffset?.i === i ? grabOffset : null, route = app.store.activeRouteId;
+    onPiDrag: (dragged, x, y) => {
+      const o = grabOffset?.i === dragged ? grabOffset : null, route = app.store.activeRouteId;
+      let i = dragged;
       app.store.update((d) => {
         d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0);
+        // dragged along the road past a neighbouring bend: the two swap places in order, so that the line never
+        // turns back on itself (core/bend-order.ts); what this drag holds by the bend's number goes with it
+        const passed = passBends(app.A, app.B, d.pis, i);
+        if (passed.i !== i) {
+          const from = i; i = passed.i;
+          d.pis = [...passed.pis];
+          if (o) o.i = i;
+          if (placedByDrag?.i === from) placedByDrag.i = i;
+          if (dragWanted?.i === from) { const [r] = dragWanted.r.splice(from, 1); dragWanted.r.splice(i, 0, r); dragWanted.i = i; }
+          radiusNotes.move(route, from, i);
+        }
         // radii set by hand that the drag leaves too large are lowered just enough (and back up as room returns)
         // (an old road's own curve is not set by hand: off the old road it is Auto's, core/project-kept.ts)
         if (dragWanted?.i !== i) dragWanted = { i, r: d.pis.map((p, k) => p.mapped ? null : radiusNotes.wanted(route, k, p.r)) };
@@ -174,6 +187,8 @@ export function createMapGestures(app: MapGestureContext) {
         for (let k = Math.max(0, i - 1); k <= Math.min(d.pis.length - 1, i + 1); k++) d.pis[k].r = fit.pis[k].r;
         radiusNotes.record(route, i, fit.lowered);
       }, false);
+      if (i !== dragged) app.select({ kind: 'bend', i });
+      return i;
     },
     onPiDragEnd: () => {
       grabOffset = null; dragWanted = null;
