@@ -163,7 +163,7 @@ export function buildCrossings(kept: KeptCrossings[] | undefined, frame: { s: Ar
     // whose works lie beside our earthworks at a changed station, however far along the road its crossing is.
     const half = stations.reduce((m, i) => Math.max(m, inputs.left[i], inputs.right[i], base!.inputs.left[i], base!.inputs.right[i]), 0);
     const beside = besideChanged(x, y, diff.changed, half + LOCAL_BESIDE);
-    const core = new Set(diff.count ? crossings.filter((c, k) => away[k] <= LOCAL_CORE || c.via !== undefined || anyPoint(before.get(key(c))?.geometry, beside)) : []);
+    const core = new Set(diff.count ? crossings.filter((c, k) => away[k] <= LOCAL_CORE || c.via !== undefined || c.ends !== undefined || anyPoint(before.get(key(c))?.geometry, beside)) : []);
     // With them: the crossings further out (from the change, and along the road from each one built again), and
     // whatever those and they are led to or led from (as the kept finish built them and as this one resolved
     // them), so that none of them misses its neighbours.
@@ -173,6 +173,10 @@ export function buildCrossings(kept: KeptCrossings[] | undefined, frame: { s: Ar
     for (const list of [base.built, resolved]) for (const c of list) {
       const me = at.get(key(c)), t = c.targetS === undefined ? undefined : at.get(`${c.targetRoadId}@${c.targetS}`);
       if (me && t && me !== t) { led.set(me, [...led.get(me) ?? [], t]); led.set(t, [...led.get(t) ?? [], me]); }
+    }
+    // (and the crossings on the roads the player led a reroute's pieces to)
+    for (const me of crossings) for (const e of me.ends ?? []) if (e) for (const t of crossings) if (t !== me && t.roadId === e.way) {
+      led.set(me, [...led.get(me) ?? [], t]); led.set(t, [...led.get(t) ?? [], me]);
     }
     for (const c of subset) for (const t of led.get(c) ?? []) subset.add(t);
     report.core = core.size; report.subset = subset.size; again = core;

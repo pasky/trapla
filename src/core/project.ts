@@ -1,6 +1,6 @@
 // C0 project contract. Persistent data only; no renderer, DOM or mode-default physics.
 import type { BuildingOverride } from './build-controls';
-import type { CrossingChoice, LinkVia } from './crossings';
+import type { CrossingChoice, LinkEnd, LinkVia } from './crossings';
 import type { Violation } from './checks';
 import type { CategoryId, TerrainClass } from './data/categories';
 import type { Design, Result } from './evaluate';
@@ -49,7 +49,9 @@ export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrid
       /** `to` is a designed road of the project, or what follows a rebuilt stretch: that route */
       toRef?: { kind: 'route' | 'after'; routeId: RouteId };
       /** an underpass or a bridge over us straightened (true) or kept on its line (false) by the player */
-      square?: boolean }[];
+      square?: boolean;
+      /** a reroute's new pieces led onto mapped ways of the player's choosing (CrossingOverride.ends) */
+      ends?: [LinkEnd | null, LinkEnd | null] }[];
   };
 export type DesignedVertical =
   | { kind: 'auto'; pins: NonNullable<Design['gradePins']>; /** Dormant legacy manual controls, not grade authority. */ manualVpis?: Design['vpis'] }

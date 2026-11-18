@@ -31,7 +31,13 @@ function routeChange(a: RouteDesign, b: RouteDesign): string | null {
     if (!same(pa.vertical, pb.vertical)) return 'the height';
     const ca = pa.controls, cb = pb.controls;
     if (!same(ca.structureOverrides, cb.structureOverrides)) return 'a bridge or tunnel';
-    if (!same(ca.crossings, cb.crossings)) return 'a crossing';
+    if (!same(ca.crossings, cb.crossings)) {
+      // (only where a reroute's new pieces lead, or only their shape)
+      const without = (list: typeof ca.crossings, key: 'ends' | 'via') => list?.map(c => { const { [key]: _gone, ...rest } = c; return rest; });
+      if (same(without(ca.crossings, 'ends'), without(cb.crossings, 'ends'))) return 'where a reroute leads';
+      if (same(without(ca.crossings, 'via'), without(cb.crossings, 'via'))) return "a reroute's path";
+      return 'a crossing';
+    }
     if (!same(ca.wallOverrides, cb.wallOverrides)) return 'noise walls';
     if (!same(ca.junctionForms, cb.junctionForms)) return 'a junction';
   }

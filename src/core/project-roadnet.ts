@@ -11,7 +11,7 @@ import { buildAlignment, station, type PI } from './horizontal';
 import { horizontalRules } from './data/norms';
 import type { ProjectDesign, RouteDesign } from './project';
 import type { CategoryId } from './data/categories';
-import type { CrossingOverride } from './crossings';
+import type { CrossingOverride, LinkEnd } from './crossings';
 import type { RoadNet } from './roadnet';
 import { lineAsDrawn, plannedKept, type OldPaths } from './project-kept';
 
@@ -152,10 +152,12 @@ export function crossingOverridesOf(project: ProjectDesign, crossings: readonly 
     if (roadId === undefined) return [];
     // (an underpass or a bridge over us straightened, or kept on its line, by the player)
     const square = c.square !== undefined ? { square: c.square } : {};
-    if (t.kind === 'route' || !c.via) return [{ roadId, type: c.choice, ...square }];
+    // (where the player led its new pieces: ways of the pack, still there)
+    const ends = t.kind !== 'route' && c.ends?.some(e => e && (size === undefined || e.way < size)) ? { ends: c.ends.map(e => e && (size === undefined || e.way < size) ? e : null) as [LinkEnd | null, LinkEnd | null] } : {};
+    if (t.kind === 'route' || !c.via) return [{ roadId, type: c.choice, ...square, ...ends }];
     // a shaped reroute keeps the crossing it leads to only while that road is still there
     const to = c.to === undefined ? undefined : c.toRef ? wayOf(c.toRef) : c.to;
-    return [{ roadId, type: c.choice, via: c.via, ...(to !== undefined ? { to } : {}) }];
+    return [{ roadId, type: c.choice, via: c.via, ...(to !== undefined ? { to } : {}), ...ends }];
   });
 }
 /** The legacy kernel's per-way overrides → project crossing choices (a designed road's way → that road). */
@@ -172,7 +174,7 @@ export function crossingTargetsOf(project: ProjectDesign, overrides: readonly Cr
     if (ref?.kind === 'route') return { choice: c.type, target: { kind: 'route' as const, routeId: ref.routeId, s0: 0, s1: 0 }, ...square };
     const toRef = c.to !== undefined && c.to >= 0 ? refOf(c.to) : undefined;
     return { choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId, ...(ref ? { after: ref.routeId } : {}) },
-      ...(c.via ? { via: c.via, ...(c.to !== undefined ? { to: c.to, ...(toRef ? { toRef } : {}) } : {}) } : {}), ...square };
+      ...(c.via ? { via: c.via, ...(c.to !== undefined ? { to: c.to, ...(toRef ? { toRef } : {}) } : {}) } : {}), ...square, ...(c.ends ? { ends: c.ends } : {}) };
   });
 }
 

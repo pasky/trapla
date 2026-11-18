@@ -78,7 +78,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -122,6 +122,20 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     const piece = c.cls === 'track' ? 'track' : 'road';
     return { tag: 'under our bridge', label: `Led under our bridge at km ${km(c.under)} (+${m(c.linkLength)} m of new ${piece})`,
       explain: `The ${what} is cut by our earthworks right beside our bridge; a new piece of ${piece} leads it along the earthworks and under the bridge, joining its two parts again.${link}` };
+  }
+  // A part the player led to a road of their choosing (CrossingOverride.ends), as built
+  const led = c.endTo?.map(e => e?.built ? e : undefined);
+  if (led?.some(Boolean) && (c.type === 'reconnection' || c.type === 'diversion') && !c.moved) {
+    const piece = c.cls === 'track' ? 'track' : 'road';
+    const dest = (e: NonNullable<typeof led[number]>) => e.s !== undefined ? `the ${label(e.cls)} that crosses at km ${km(e.s)}` : `a ${label(e.cls)}`;
+    const parts = led.flatMap((e, k) => e ? [{ k, e }] : []);
+    const sides = c.endTo!.map(e => e?.toward), other = parts.length === 1 ? 1 - parts[0].k : undefined;
+    // (the other part: as Auto has it)
+    const rest = other === undefined ? '' : c.closure?.connected[other] ? `; the ${sides[other] ?? c.closure.sides[other]} part still reaches other roads, so it just ends at our earthworks`
+      : c.targetS !== undefined || c.targetRoadId !== undefined ? `; the other part is led to ${crossesAt}` : '';
+    const head = parts.length === 2 ? `Led to ${dest(parts[0].e)} and ${dest(parts[1].e)}` : `The ${parts[0].e.toward} part led to ${dest(parts[0].e)}`;
+    return { tag: 'rerouted', label: `${head} (+${m(c.linkLength)} m of new ${piece})`,
+      explain: `The ${what} is cut by our road. ${parts.map(({ e }) => `The ${e.toward} part is led to ${dest(e)}`).join('; ')}, as you chose, by a new piece of ${piece}${rest}.${link}` };
   }
   // A cut way whose pieces still reach other roads just ends at our earthworks (way-pieces.ts); a piece cut off is led on.
   if (c.closure && (c.type === 'reconnection' || c.type === 'diversion')) {

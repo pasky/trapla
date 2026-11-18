@@ -3,7 +3,7 @@
 // decision list's events that call them. Moved out of main.ts verbatim; every edit goes through the
 // active-route store (one undo step each).
 import { paintWallOverride, setBuildingOverride } from '../core/build-controls';
-import type { LinkVia } from '../core/crossings';
+import type { LinkEnd, LinkVia } from '../core/crossings';
 import { normalizeVpis, type Design, type Result } from '../core/evaluate';
 import { paintOverride, type StructureChoice, type StructureKind } from '../core/overrides';
 import { cellsInRange } from '../core/range';
@@ -72,6 +72,27 @@ export function createDesignEdits(app: DesignEditContext) {
     if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
     if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
+  /** where one side's new piece of a reroute leads (null: Auto's target again); leading it elsewhere drops that
+   * side's bend points (they were laid towards the old target) and makes the crossing a reroute */
+  const setEnd = (roadId: number, side: 0 | 1 | null, end: LinkEnd | null, commit = true) => app.store.update((d) => {
+    const list = d.crossingOverrides ??= [];
+    let o = list.find((x) => x.roadId === roadId);
+    if (!o) { if (!end) return; list.push(o = { roadId, type: 'reconnection' }); }
+    if (end && side !== null) {
+      o.type = 'reconnection';
+      const ends: [LinkEnd | null, LinkEnd | null] = o.ends ? [o.ends[0], o.ends[1]] : [null, null];
+      ends[side] = { way: end.way, x: Math.round(end.x * 10) / 10, y: Math.round(end.y * 10) / 10 };
+      o.ends = ends;
+      if (o.via?.[side].length) {
+        const via: LinkVia = [o.via[0], o.via[1]]; via[side] = [];
+        if (via[0].length || via[1].length) o.via = via; else { delete o.via; delete o.to; }
+      }
+    } else if (side === null || !o.ends) delete o.ends;
+    else {
+      const ends: [LinkEnd | null, LinkEnd | null] = [o.ends[0], o.ends[1]]; ends[side] = null;
+      if (ends[0] || ends[1]) o.ends = ends; else delete o.ends;
+    }
+  }, commit);
   const inspectorEvents: InspectorEvents = {
     close: () => app.deselect(),
     select: (t) => app.select(t, true),
@@ -81,10 +102,12 @@ export function createDesignEdits(app: DesignEditContext) {
     crossing: (roadId, type) => app.store.update((d) => {
       // a reroute keeps the player's shape while it stays a reroute
       const kept = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.via) : undefined;
+      const ended = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.ends)?.ends : undefined;
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}) });
+      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}), ...(ended ? { ends: ended } : {}) });
     }),
     crossingPathAuto: (roadId) => setVia(roadId, null, true),
+    crossingEndAuto: (roadId) => setEnd(roadId, null, null),
     crossingSquare: (roadId, type, square) => app.store.update((d) => {
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
       d.crossingOverrides.push({ roadId, type, square });
@@ -121,5 +144,5 @@ export function createDesignEdits(app: DesignEditContext) {
     select: (t) => app.select(t.kind === 'stretch' && app.last ? { ...t } : t, true),
     forget: (roadId) => app.store.update((d) => { d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId); }),
   };
-  return { setStructure, setWall, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, inspectorEvents, decisionEvents };
+  return { setStructure, setWall, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, setEnd, inspectorEvents, decisionEvents };
 }

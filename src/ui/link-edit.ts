@@ -3,9 +3,14 @@
 // crossing override's `via` (persisted, undoable); the engine rebuilds and checks the link. While a
 // drag runs, a light line through the bend points follows the mouse at once (no evaluation needed);
 // the built road catches up when the drag pauses.
+// The end of each new piece, where it joins its road, has a handle of its own: dragged onto another mapped road it
+// leads the piece there (the crossing override's `ends`, set on release; the road it would join is lit up while the
+// drag runs, nothing is evaluated before the release).
 import './link-edit.css';
 import type { Design, Result } from '../core/evaluate';
-import { crossingVia, MAX_LINK_VIA, type LinkVia } from '../core/crossings';
+import { crossingVia, MAX_LINK_VIA, type LinkEnd, type LinkVia } from '../core/crossings';
+import { ROAD_CLASSES } from '../core/data/urban';
+import type { RoadNet } from '../core/roadnet';
 import type { CrossingHit } from '../render/crossing-pick';
 import { insertViaPoint, shapeable, simplifyLink } from './link-shape';
 import type { MapGrab, View } from '../render/view';
@@ -24,7 +29,15 @@ export interface LinkEditHost {
   setVia(roadId: number, via: LinkVia | null, commit: boolean, to?: number): void;
   commit(): void;
   heightAt(x: number, y: number): number;
+  /** lead side `side`'s new piece onto this road (one undo step) */
+  setEnd(roadId: number, side: 0 | 1, end: LinkEnd): void;
+  /** the mapped roads (the pack's network), or null without one */
+  roads(): RoadNet | null;
 }
+/** A drag of a piece's end snaps onto a mapped road this many screen pixels away (at least END_SNAP_MIN m). */
+const END_SNAP_PX = 18, END_SNAP_MIN = 6;
+/** How much of the road it would join is lit up either side of the snap point, m. */
+const END_LIT = 150;
 
 export class LinkEditor {
   private handles: HTMLElement[] = [];
@@ -34,6 +47,12 @@ export class LinkEditor {
   /** the clicked bend point (its Remove button shows) */
   private picked: { roadId: number; side: 0 | 1; i: number } | null = null;
   private dragging: { roadId: number; side: 0 | 1; i: number } | null = null;
+  /** the ends of the selected reroute's new pieces (one handle per side that has one) */
+  private endHandles: HTMLElement[] = [];
+  /** a drag of an end: the side, where the pointer is and the road it would join */
+  private ending: { roadId: number; side: 0 | 1; at: XY; snap: (LinkEnd & { path: XY[] }) | null } | null = null;
+  private snapLine: SVGPolylineElement;
+  private endLine: SVGPolylineElement;
 
   constructor(private view: View, private overlay: HTMLElement, private host: LinkEditHost) {
     this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -42,7 +61,17 @@ export class LinkEditor {
       const l = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
       this.svg.appendChild(l); return l;
     });
+    this.snapLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline'); this.snapLine.classList.add('end-snap');
+    this.endLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    this.svg.appendChild(this.snapLine); this.svg.appendChild(this.endLine);
     overlay.appendChild(this.svg);
+    for (const side of [0, 1] as const) {
+      const h = document.createElement('div');
+      h.className = 'via via-end'; h.dataset.side = String(side); h.style.display = 'none';
+      h.title = 'End of the new road: drag it onto another road to lead it there';
+      h.addEventListener('pointerdown', (e) => this.startEnd(e, side, h));
+      overlay.appendChild(h); this.endHandles.push(h);
+    }
     this.remove = document.createElement('button');
     this.remove.type = 'button'; this.remove.className = 'via-remove'; this.remove.textContent = 'Remove bend point';
     this.remove.style.display = 'none';
@@ -110,8 +139,19 @@ export class LinkEditor {
     this.refresh();
   }
 
+  /** the selected reroute's pieces whose end can be dragged elsewhere (not one led under our bridge) */
+  private endPaths() {
+    const c = this.crossing();
+    if (!c || c.under !== undefined || c.roadId === undefined || !shapeable(this.host.result(), this.host.design(), c.roadId)) return [undefined, undefined];
+    return [0, 1].map(k => { const p = c.geometry?.links?.[k]; return p && p.length >= 2 ? p : undefined; });
+  }
   /** after a selection, design or result change */
   refresh() {
+    const ends = this.endPaths(), piece = this.crossing()?.cls === 'track' ? 'track' : 'road';
+    this.endHandles.forEach((h, k) => {
+      h.style.display = ends[k] ? '' : 'none';
+      h.title = `End of the new ${piece}: drag it onto another road to lead it there`;
+    });
     const c = this.crossing(), roadId = c?.roadId;
     const via = roadId !== undefined ? this.via(roadId) : [[], []];
     if (this.picked && (this.picked.roadId !== roadId || !via[this.picked.side][this.picked.i])) this.picked = null;
@@ -155,6 +195,53 @@ export class LinkEditor {
     h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up); h.addEventListener('lostpointercapture', up);
   }
 
+  /** the mapped road a dropped end would join: the nearest within reach of the pointer (not the cut way itself, nor
+   * a motorway or a railway), the point of it nearest the pointer, and a stretch of it either side to light up */
+  private snapAt(p: XY, roadId: number): (LinkEnd & { path: XY[] }) | null {
+    const net = this.host.roads();
+    if (!net) return null;
+    const reach = Math.max(END_SNAP_MIN, END_SNAP_PX * this.view.metresPerPixel);
+    let best: { way: number; x: number; y: number; d: number } | null = null;
+    net.nearSegments([p.x - reach, p.y - reach, p.x + reach, p.y + reach], (q) => {
+      if (q.way === roadId || ROAD_CLASSES[q.cls]?.noAtGrade) return;
+      const dx = q.bx - q.ax, dy = q.by - q.ay, t = Math.max(0, Math.min(1, ((p.x - q.ax) * dx + (p.y - q.ay) * dy) / (dx * dx + dy * dy || 1)));
+      const x = q.ax + t * dx, y = q.ay + t * dy, d = Math.hypot(p.x - x, p.y - y);
+      if (d <= reach && (!best || d < best.d)) best = { way: q.way, x, y, d };
+    });
+    const b = best as { way: number; x: number; y: number; d: number } | null;
+    return b ? { way: b.way, x: b.x, y: b.y, path: net.crossingPath(b.way, b.x, b.y, END_LIT) } : null;
+  }
+  private startEnd(e: PointerEvent, side: 0 | 1, h: HTMLElement) {
+    const roadId = this.crossing()?.roadId;
+    if (roadId === undefined || e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+    h.setPointerCapture(id);
+    let moved = false, done = false;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      const p = this.view.pick(ev.clientX, ev.clientY);
+      if (!p) return;
+      if (!moved) { moved = true; h.classList.add('drag'); this.svg.classList.add('ending'); }
+      this.ending = { roadId, side, at: p, snap: this.snapAt(p, roadId) };
+      h.classList.toggle('snap', !!this.ending.snap);
+      this.place();
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== id || done) return;
+      done = true;
+      for (const [type, fn] of [['pointermove', move], ['pointerup', up], ['pointercancel', up], ['lostpointercapture', up]] as const) h.removeEventListener(type, fn);
+      h.classList.remove('drag', 'snap'); this.svg.classList.remove('ending');
+      const snap = ev.type === 'pointerup' ? this.ending?.snap : null;
+      this.ending = null;
+      // (dropped on a road: it leads there; anywhere else it goes back)
+      if (moved && snap) this.host.setEnd(roadId, side, { way: snap.way, x: snap.x, y: snap.y });
+      this.refresh();
+    };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up); h.addEventListener('lostpointercapture', up);
+  }
+
   /** position the handles, the Remove button and the shape line (after every render) */
   private place() {
     const c = this.crossing(), roadId = c?.roadId;
@@ -172,6 +259,22 @@ export class LinkEditor {
       }
     }
     if (!this.picked) this.remove.style.display = 'none';
+    const ends = this.endPaths();
+    this.endHandles.forEach((h, k) => {
+      const path = ends[k];
+      if (!path) return;
+      // (while dragged: under the pointer, or on the road it snaps to)
+      const e = this.ending?.side === k ? this.ending.snap ?? this.ending.at : path[path.length - 1], s = at(e);
+      h.style.visibility = s.vis ? '' : 'hidden';
+      h.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
+    });
+    const line = (l: SVGPolylineElement, pts: XY[]) => {
+      const p = pts.map(at);
+      l.setAttribute('points', p.length > 1 && p.every(q => q.vis) ? p.map(q => `${q.sx.toFixed(1)},${q.sy.toFixed(1)}`).join(' ') : '');
+    };
+    const drag = this.ending, from = drag ? ends[drag.side]?.[0] : undefined;
+    line(this.snapLine, drag?.snap?.path ?? []);
+    line(this.endLine, drag && from ? [from, drag.snap ?? drag.at] : []);
     // The shape line: until the built road matches the shape (during a drag, and until the result is in).
     const built = JSON.stringify(c?.via ?? null) === JSON.stringify(roadId !== undefined ? crossingVia(roadId, this.host.design().crossingOverrides ?? []) ?? null : null);
     this.line.forEach((l, side) => {
