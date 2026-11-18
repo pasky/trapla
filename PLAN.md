@@ -2211,10 +2211,11 @@ only access to a hamlet of about eight buildings east of our road, closed with n
   now carries the hamlet's service road through our embankment in a box (24.6 M, a house under its ramps bought out);
   the player's "Cut it" cannot lead it to a crossing (a railway on the ground between it and every crossing), so it is
   closed: "Cut · no new road needed · The service road is cut by our road. The east part still reaches road I/16, the
-  west part a class III road; each just ends at our earthworks. Its traffic goes round over other roads, more than
-  1.5 km further. No new road can lead it to a crossing from here."
+  west part a class III road; each just ends at our earthworks. Its traffic has no way round over other roads within
+  1.5 km. No new road can lead it to a crossing from here."
 - **Changed closures** (Auto, every installed pack's starters and the five saved D11 designs): 90 → 56; 34 tracks or
-  service roads that served buildings now keep their way across (17 reroutes, 8 bridges over us, 9 boxes). Bills: D11
+  service roads that served buildings now keep their way across (17 reroutes, 8 bridges over us, 9 boxes), and 3 stay
+  closed as the last resort (direct-90 km 9.80, D35 stage 1 km 7.52, D35 full km 7.51: nothing that keeps them across can be built). Bills: D11
   starter unchanged, Královec railway +14.1 M, best +33.5, demo +19.4, direct-80 +58.0, direct-90 −0.8, town-centre
   +32.9, D3 0301 +11.8, 0302 +8.4, 0303 +28.2, 0304 +65.1, 0305 +12.9, D35 stage 1 unchanged, Nová Paka +43.6, D35 full
   +198.5 (km 22.08 a farm building's track carried over the motorway, 153 M), D3 full +105.3. All VALID as before (the
@@ -2232,7 +2233,10 @@ only access to a hamlet of about eight buildings east of our road, closed with n
   that just ends; dragged onto a road, the part is led there by a new road (`CrossingOverride.ends` as before; the other
   part still just ends, or is closed as the last resort above). Played: `node scripts/cut-card-shots.mjs`, screenshots
   530–535 (the hamlet's part led to road I/16, +299 m, 10.3 M).
-- **Known issues.** How far round a track's traffic goes is not measured beyond 1.5 km ("more than 1.5 km further").
+- **Fixed on the way:** a cut inside one mapped segment (both cut ends on it) was never measured round (way-pieces.ts:
+  a public road there could not be closed); no saved bill moved. A motorway or railway beside a house is no way in to it.
+- **Known issues.** How far round a track's traffic goes is not measured beyond 1.5 km ("no way round over other roads
+  within 1.5 km"). Auto's last resort means nothing it tried (structures, the nearest crossings to lead to) can be built.
   The buildings a part serves are those along its stretch up to the first public road; a farm beyond a second track
   junction is not looked for. direct-90 now runs the regrade retry once more (a reroute through a home on the way to
   its km 4.61 box: +≈ 300 ms of its full evaluation).

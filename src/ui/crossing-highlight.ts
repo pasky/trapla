@@ -8,8 +8,8 @@ import type { Result } from '../core/evaluate';
 import type { View } from '../render/view';
 
 type XY = { x: number; y: number; z?: number };
-/** The end bar across a part's end, screen px either side of its line. */
-const BAR = 9;
+/** The end bar across a part's end, screen px either side of its line (longer than its end handle, ui/link-edit.ts). */
+const BAR = 15;
 
 export class CrossingHighlight {
   private svg: SVGSVGElement;

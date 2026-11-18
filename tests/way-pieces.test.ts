@@ -35,3 +35,10 @@ describe('a cut way\'s pieces', () => {
     expect(pieceAccess({ net, severed, serves: s => s.some(([a, b]) => near(a, b)) }, 0, ends).serves).toEqual([false, true]);
   });
 });
+describe('a cut inside one mapped segment', () => {
+  it('is measured round as any other', () => {
+    // (the service road a single segment across our road)
+    const one = new RoadNet({ cls: ['service', 'tertiary', 'unclassified'], ways: [[0, 0, -100, 0, 100], [1, 0, 100, 300, 100], [1, 0, -100, 300, -100], [2, 300, -100, 300, 0, 300, 100]] });
+    expect(pieceAccess({ net: one, severed, round: 2000 }, 0, ends).round).toBeCloseTo(980, 6);
+  });
+});

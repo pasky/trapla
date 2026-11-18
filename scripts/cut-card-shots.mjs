@@ -36,7 +36,7 @@ try {
   const cut = await crossing(), text = await card();
   console.log('cut', JSON.stringify(cut)); console.log('card', text);
   assert.equal(cut.type, 'reconnection'); assert.equal(cut.far, true); assert.deepEqual(cut.issues, []);
-  assert.match(text, /Cut · no new road needed/); assert.match(text, /still reaches/); assert.match(text, /goes round/);
+  assert.match(text, /Cut · no new road needed/); assert.match(text, /still reaches/); assert.match(text, /way round/);
   assert.doesNotMatch(text, /level today|Cut and reroute/);
   assert.equal(await page.locator('#inspector button.on', { hasText: 'Cut it' }).count(), 1);
   const lit = await T(() => [...document.querySelectorAll('svg.crossing-works path.piece')].filter(p => p.getAttribute('d')).length);

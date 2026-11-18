@@ -201,7 +201,7 @@ export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): Pie
   const s0 = startOf(ends[0]), s1 = startOf(ends[1]);
   const a = s0 >= 0 ? search(s0, ends[0]) : undefined, b = s1 >= 0 ? search(s1, ends[1]) : undefined;
   const connected: [boolean, boolean] = [!!a?.reached, !!b?.reached];
-  const back = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 && s0 !== s1 ? search(s0, ends[0], s1, ctx.round) : undefined;
+  const back = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 ? search(s0, ends[0], s1, ctx.round) : undefined;
   return { connected, round: back?.round ?? Infinity, stubs: [a?.stub, b?.stub],
     ...(a?.reach || b?.reach ? { reach: [a?.reach, b?.reach] as [PieceReach | undefined, PieceReach | undefined] } : {}),
     ...(ctx.serves ? { serves: [!!a?.tree && ctx.serves(a.tree), !!b?.tree && ctx.serves(b.tree)] as [boolean, boolean] } : {}),

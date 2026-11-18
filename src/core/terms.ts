@@ -119,8 +119,8 @@ const reachOf = (c: OutcomeOf, k: number, name?: RoadNamer) => roadWords(c.closu
 const detourOf = (c: OutcomeOf, name?: RoadNamer) => {
   const cl = c.closure!;
   // (Auto's last resort: a road serving houses would be kept across our road, but nothing that does so can be built)
-  const why = !c.farClosure ? '' : c.requestedType === 'reconnection' ? ' No new road can lead it to a crossing from here.' : ' Nothing that keeps it across our road can be built here.';
-  if (cl.extra === undefined) return ` Its traffic goes round over other roads, more than ${distance(PIECE_SEARCH)} further.${why}`;
+  const why = !c.farClosure ? '' : c.requestedType === 'reconnection' ? ' No new road can lead it to a crossing from here.' : ' Auto found no way to keep it across our road that can be built.';
+  if (cl.extra === undefined) return ` Its traffic has no way round over other roads within ${distance(PIECE_SEARCH)}.${why}`;
   return ` Its traffic goes round ${distance(Math.max(0, cl.extra))} further${cl.via ? `, via ${roadWords(cl.via, name)}` : ''}.${why}`;
 };
 function ownOutcome(c: OutcomeOf, name?: RoadNamer): OutcomeText {
@@ -284,7 +284,7 @@ export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overb
   ['junction', 'Junction', 'The crossed road meets ours at the same level in a junction, at least 1.5 km from the next junction (Automatic offers this to class I–III roads only; motorways never).'],
   ['bridge', 'Our bridge over it', 'Our road crosses over the crossed road on a bridge; it needs enough height above it.'],
   ['overbridge', 'Its bridge over us', 'The crossed road is raised onto a new bridge over our road, with earth ramps on both sides (a motorway only over a cutting at least 6 m deep).'],
-  ['reconnection', 'Cut it', `The crossed road is cut at our road. A part that still reaches other roads just ends at our earthworks (unless it serves houses and their traffic would go round more than ${CLOSURE_ROUND} m further); a part cut off is led along the outside of our earthworks to the nearest place where it can cross.`],
+  ['reconnection', 'Cut it', `The crossed road is cut at our road. Where both parts still reach other roads and its traffic goes round at most ${CLOSURE_ROUND} m further (a track serving no houses: however far), each just ends at our earthworks; otherwise a new piece of road leads a part along the outside of our earthworks to the nearest place where it can cross.`],
   ['underpass', 'Underpass', `The crossed track or local road passes through our embankment in a concrete box (5 × 4.5 m inside for tracks, 8 × 4.5 m for local roads). It needs 5.5 / 5.65 m of embankment above the road; where there is less, the road is lowered into a cutting, by up to ${LOWERING_RULES.maxDepth} m.`],
 ];
 

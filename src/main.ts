@@ -180,7 +180,8 @@ async function main() {
     onRing: (j) => !!session.projectFull?.works.items.some(w => w.removes?.includes(j)),
     // (the road links hold the names: loaded the first time a card asks, then the card is drawn again)
     roadName: (way) => {
-      if (!links.graph && !namesAsked) { namesAsked = true; void ensureTransport().then(() => inspector.render(true)); }
+      // (not over a field being typed into: render() waits for it; a failed load is tried again by the next card)
+      if (!links.graph && !namesAsked) { namesAsked = true; void ensureTransport().then(() => { if (links.graph) inspector.render(); else namesAsked = false; }); }
       return links.wayName(way);
     },
   });

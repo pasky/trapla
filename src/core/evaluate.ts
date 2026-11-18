@@ -2489,7 +2489,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     const [x, y, r] = bld!.items[j];
     let hit = false;
     ctx.roads?.nearSegments([x - r - apart, y - r - apart, x + r + apart, y + r + apart], (g) => {
-      if (hit || g.cls === 'track' || g.cls === 'service') return;
+      // (a motorway or a railway is no way in)
+      if (hit || g.cls === 'track' || g.cls === 'service' || ROAD_CLASSES[g.cls]?.noAtGrade) return;
       const dx = g.bx - g.ax, dy = g.by - g.ay, t = Math.max(0, Math.min(1, ((x - g.ax) * dx + (y - g.ay) * dy) / (dx * dx + dy * dy || 1)));
       if (bld!.facadeDistanceSq(j, g.ax + t * dx, g.ay + t * dy) < apart * apart) hit = true;
     });

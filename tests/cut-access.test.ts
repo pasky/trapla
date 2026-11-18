@@ -31,7 +31,7 @@ describe.skipIf(!existsSync(`${D11}/meta.json`))('a cut service road that serves
     expect(c.closure?.reach?.map(p => p?.cls)).toEqual(['primary', 'tertiary']);
     const o = crossingOutcome(c, 'road', (way) => way === c.closure!.reach![0]!.way ? 'road I/16' : undefined);
     expect(o.label).toBe('Cut · no new road needed');
-    expect(o.explain).toBe('The service road is cut by our road. The east part still reaches road I/16, the west part a class III road; each just ends at our earthworks. Its traffic goes round over other roads, more than 1.5 km further. No new road can lead it to a crossing from here.');
+    expect(o.explain).toBe('The service road is cut by our road. The east part still reaches road I/16, the west part a class III road; each just ends at our earthworks. Its traffic has no way round over other roads within 1.5 km. No new road can lead it to a crossing from here.');
   }, 60_000);
   it('a part\'s end led onto road I/16 is built there, the other part still just ends', () => {
     const { c } = at({ ...structuredClone(design), crossingOverrides: [{ roadId: SERVICE, type: 'reconnection', ends: [{ way: 2243, x: 11780, y: 18122 }, null] }] });

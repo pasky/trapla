@@ -2012,14 +2012,16 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // where nothing that keeps it across our road can be built (a closure always can: both its parts still reach
     // the road network); also the player's plain "Cut it" whose reroute cannot be built.
     const lastResort = () => {
-      if (!MINOR_WAYS.has(c.cls) || c.via || c.under !== undefined || crossings.some(y => leadsTo(y, c)) || endsOn(c)) return undefined;
+      if (!MINOR_WAYS.has(c.cls) || c.under !== undefined || crossings.some(y => leadsTo(y, c)) || endsOn(c)) return undefined;
       const shut = clone(c); shut.type = c.cls === 'track' ? 'diversion' : 'reconnection'; shut.farClosure = true;
       delete shut.targetS; delete shut.targetRoadId; delete shut.span; delete shut.approachLength; delete shut.underpassLength; delete shut.linkLength;
+      // (a closure leads to no crossing: "no crossing to reroute it to" is not its problem)
+      if (shut.issues) { shut.issues = shut.issues.filter(v => v.crossing.code !== 'reach'); if (!shut.issues.length) delete shut.issues; }
       build([shut]);
       // (a part the player led elsewhere is built: the closure is of the other)
       return shut.closure && (!Math.round(shut.linkLength ?? 0) || !!c.ends) && feasible(shut) ? shut : undefined;
     };
-    if (c.requestedType === 'reconnection' && (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && !feasible(c)) {
+    if (c.requestedType === 'reconnection' && !c.moved && !feasible(c)) {
       const shut = lastResort();
       if (shut) { for (const key of FIELDS) delete c[key]; Object.assign(c, shut); changed = true; }
       return;
