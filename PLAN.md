@@ -1076,6 +1076,65 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
   tunnels of steep roads can still exceed 5 % where the structure choice turns a deep cut into a tunnel on a steep
   grade (QA new road across Královec: 6.1 %; said on the card, not a problem).
 
+### Natura 2000 a note; tunnels within the law's 5 % (cost model 46, 2026-11-18)
+
+Research: research/75 "Natura 2000 sites: a note", research/76 (no price for a steep tunnel's safety measures),
+research/73 §7 (D35 again). Shots 410–41x.
+- **A Natura 2000 site (EVL) takes works, with a note.** Act 114/1992 §§45h–i ask for a Natura assessment. A project
+  with a significant impact may still go ahead for an overriding public interest, with compensation, and real motorways
+  cross such sites (the real D3 bridges the Sázava over EVL Dolní Sázava). Our works there get a note on the stretch
+  card ("…need a Natura assessment"), as in a bird area: no problem and no cost, since neither the assessment nor the
+  compensation has a source. Reserves, monuments, national parks outside villages and CHKO zones I–II stay no-works
+  areas. The QA's new lines across Královec (through EVL Krkonoše) are tested with the pack's areas again.
+- **No 3 % preference in tunnels.** The search weight (1 M CZK per metre per 0.1 % over 3 %) was made up and is gone.
+  No source prices the extra safety measures NV 264/2009 asks for above 3 %: Hessen Mobil 2006 §3.2.1 says they "können
+  die Kosten … deutlich erhöhen", with no figure (research/76). The note on the card of a tunnel over 500 m steeper than
+  3 % stays.
+- **No tunnel over 500 m steeper than 5 %, to its ends** (NV 264/2009 annex 2.2). Auto's search already took no line
+  steeper than 5 % between two knots wholly in a tunnel. A line could still steepen to 5.9 % in the intervals holding a
+  portal (the D35 road starter's 1.9 km tunnel). Where the tunnel mode's line has a tunnel over 500 m (deeper than a
+  portal at the cost samples) steeper anywhere, the search now runs again with the limit on every interval with any
+  of its line in a tunnel. Where the normal band still holds such a line, the wide band's line is taken if it has none.
+  Shorter tunnels keep the road's own limit: the Act covers tunnels over 500 m. The model-45 extra passes for the 3 %
+  weight are gone.
+- **A boundary's corridor held by its band.** The 5 km corridor that fixes a block boundary's heights searches only
+  15 m round the ground. Where its heights at the boundary lie at that band's edge, the wide band's line is taken if it
+  is cheaper. On d3-full the corridor pinned km 11.67 16 m low, which put an 800 m tunnel in at km 9.67 (+1.66 bn
+  against holding the bridge line). Only d3-full changed (exact.ts).
+- **Faster where a protected area lies under the road** (bit-exact, exact.ts): a coarse pass whose height range and
+  grade steps cannot meet the area's clearance is solved only if it is needed as the fallback.
+  - Interleaved medians, model 44 (no areas) / model 45 / model 46: d35 stage-1 111 / 332 / 289 ms, d35 road
+    141 / 243 / 282 ms, d35-full 615 / 1,042 / 835 ms.
+  - The rest of the gap to model 44 comes from the harder line, not from the tunnel passes. A 3 km mined tunnel under a
+    no-works area takes the wide band in its windows, a DP retry for lifts, a strict retry and two more engineering
+    passes. Without the protected areas (`PROTECTED=0`), model 46 times as model 44 (115 / 112–119 ms on stage 1).
+  - The D35 road is slower than model 45: its long tunnel is solved again under the strict limit.
+- **D35 against the real layout** (research/73 §7):
+  - Auto builds a 2,919 m tunnel at km 4.15–7.07, at most 3.8 % steep, out of the protected forest: 19,627 M.
+  - The real-portal line (3,948 m at 1.9 %) bills 20,689 M (+5.4 %).
+  - The real designers' gentle grade is unpriced here: the 3–5 % safety measures and road users' grade costs are not
+    modelled.
+- **Bills** (model 45 → 46): D11 frozen fixtures and the Královec railway unchanged.
+  - D35: stage-1 19,949 → 19,627 M; road 9,438 → 6,667 (a 2.0 km tunnel at 4.7 % instead of 3.2 km at 3.0 %); d35-full
+    34,169 → 33,963.
+  - D3: motorway 15,198 → 14,396 (the Sázava viaduct's piers in the Natura 2000 river again); road 3,868 → 3,904 (a
+    near-tie: a 50 m bridge at km 1.40 goes); d3-0302 6,772 → 6,765; d3-0304 10,083 → 10,099; d3-full 36,260 → 36,156.
+  - The rest unchanged, all VALID.
+- **Not fixed: direct-90's grade-search miss** (AGENTS.md open items). The suspected cause, rock faces priced on flat
+  ground in the search, is not it: the search's flat-section rock face is within 4 % of the billed one on both lines.
+  - The 422 M (model 45) between Auto's line and holding the pre-presplit line comes from the support lifts after the
+    search (`finishLift`).
+  - The structures then need heights the search never saw: a road under the bridge at km 5.26 (+10 m), km 6.84
+    (+5.4 m), a wall at km 7.07. `liftAutoProfile` meets them with a smooth bump that ignores cost, raising km 5.3–8.2
+    by 10–14 m: +0.7 bn on the old line, +1.09 bn on the new one. Before the lifts the two lines are a near-tie by the
+    search's prices (2,725.1 / 2,725.0 M).
+  - Two fixes were tried, neither merged:
+    - DP first, bumps only where it fails: direct-90 −733 M, town-centre −255, but straight +47, best +24, D3
+      motorway +390, direct-90 +51 % evaluate time.
+    - The DP retry kept stretch by stretch where the search prices it lower: direct-90 −761, town-centre −255, straight
+      +30, best +6. One edit-locality failure, +20–25 % evaluate time on designs with many lifts.
+  - The DP's per-station price misses whole-bridge costs and crossings, so it cannot judge lifted lines.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout

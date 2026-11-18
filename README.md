@@ -497,8 +497,9 @@ redesign rather than presented as a normal local road. The 1.2 m decks and abutm
 representations, not structural designs for long spans.
 
 **Protected nature** (cost model 45, research/75): nature reserves, monuments, Natura 2000 sites and national park
-zones are drawn as green borders; Auto keeps its works out of them (over on a bridge with no supports inside, under
-in a mined tunnel), and tunnels stay within 3 %.
+zones are drawn as green borders; Auto keeps its works out of reserves, monuments, national parks and CHKO zones I–II
+(over on a bridge with no supports inside, under in a mined tunnel). Works in a Natura 2000 site get a note (they need
+a Natura assessment; cost model 46), and no tunnel over 500 m is steeper than 5 %.
 
 | D35: Auto's 3.2 km tunnel under Pod skálou, out of its forest | The player's earthworks in the monument: a problem under the Act |
 |---|---|

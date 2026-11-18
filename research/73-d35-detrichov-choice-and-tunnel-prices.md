@@ -178,3 +178,31 @@ Recommendations #1 and #2 implemented (research/75; #3, #4 and running costs not
 Auto now chooses the layout the real designers chose: a long tunnel at a gentle grade, exiting below the protected
 escarpment, and a short valley crossing. What remains between Auto and the real line is the summit height on the
 west approach (ours ≈ 546 m at km 4.0 against the real 514 m portal) and the price per tube-metre (§4).
+
+## 7. After the tunnel grade rule became the law's 5 % (cost model 46, 2026-11-18)
+
+Cost model 46 changes three things (research/76):
+- No 3 % preference: the search weight of 1 M CZK/m per 0.1 % over 3 % is removed, since no source prices the safety
+  measures.
+- A Natura 2000 site takes works, with a note.
+- No tunnel over 500 m steeper than 5 %, now also at its ends.
+
+The same comparison (`scripts/_d35real.ts`, stage-1 motorway; the By-hand lines carry the small local problems of §2):
+
+| Line | Tunnel | Bridges | Bill | vs Auto |
+|---|---|---|---:|---:|
+| Auto, model 45 (3 % preference) | km 3.87–7.08, 3,209 m, ≤ 2.9 % | 780 m | 19,949 M | — |
+| **Auto, model 46** | **km 4.15–7.07, 2,919 m, ≤ 3.8 % (mean 3.3 %), out of the protected forest** | 780 m | **19,627 M** | — |
+| Real portal heights (514 → 439 m), tunnel painted 3.30–7.25 | 3,948 m, 1.9 % | 500 m | 20,689 M | +5.4 % |
+| Portal out of the forest, 3.0 % in the tunnel | 3.48–7.24 | 410 m | 21,078 M | +7.4 % |
+| Portal out of the forest, 3.9 % in the tunnel | 3.60–7.24 | 410 m | 21,050 M | +7.3 % |
+
+**How the real layout ranks.**
+- Auto still chooses the real kind of layout: a long mined tunnel under Pod skálou that exits below the protected forest
+  (east portal km 7.07 in both).
+- Without the 3 % preference its west portal is higher and 280 m further east (559 m at km 4.15, real 514 m at km 3.3),
+  so the tunnel is 1 km shorter than the real one and steeper (3.8 %, needing a risk analysis).
+- The real-portal line is 5.4 % dearer by our prices. Its tunnel costs 2.9 bn more before surcharge (11,380 against
+  8,451 M), which outweighs its cheaper approaches (earthworks 1,297 against 2,768 M).
+- The real designers chose a gentle grade. Our model has no price for that choice: the 3–5 % safety measures are
+  unpriced (research/76), and road users' fuel and time on grades are not modelled (§5 #7).

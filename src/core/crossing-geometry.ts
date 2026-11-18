@@ -270,8 +270,8 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     rule: `Engine limit: a reroute is at most ${(4 * MAX_REACH / 1000).toFixed(0)} km long` };
   if (message === LINK_NATURE) return { title: `Your path for the new ${what} runs through a protected nature area`,
     fix: 'Drag its bend points so that it stays clear of the area, or choose "Automatic path" on the crossing card',
-    detail: `Nature reserves, nature monuments and Natura 2000 sites take no new roads.`, basis: 'law',
-    rule: 'Act 114/1992 §§29, 34–36, 45c: no building in nature reserves and monuments, no damage to Natura 2000 sites' };
+    detail: `Nature reserves, nature monuments, national parks and the inner zones of protected landscape areas take no new roads.`, basis: 'law',
+    rule: 'Act 114/1992 §§16, 26, 29, 34–36: no building in nature reserves and monuments, national parks outside their villages and zones I–II of protected landscape areas' };
   if (message === LINK_CROSSES_MOTORWAY || message.startsWith(LINK_BLOCKED)) {
     const thing = message === LINK_CROSSES_MOTORWAY ? 'a motorway' : `a ${message.slice(LINK_BLOCKED.length)}`;
     return { title: `Your path for the new ${what} runs across ${thing}`,

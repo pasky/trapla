@@ -108,8 +108,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   cover what nothing moves aside the end is a wall (fill ≤ 10 m, billed: cost model 42, PLAN.md "Bridge ends: one
   rule"; `scripts/bridge-ends-audit.ts` is a gate) or Auto's bridge goes on; a minor way under a cone is moved aside.
   Open: houses under a cone are not screened (the building screen sees earthworks and piers only); the cones' fill is not in the structure choice's earth balance (it pins blocks at the top fill value and
-  over-bridges); no arch inside a viaduct over 3.3 × its arch; the grade search can take a dearer line
-  when a price tips it (direct-90 with presplit: 391 M dearer than holding its old line). Two roads of a project whose
+  over-bridges); no arch inside a viaduct over 3.3 × its arch; the support lifts after the grade search bump the line
+  up without regard to cost (direct-90: Auto 422 M dearer than holding its pre-presplit line, all of it from lifts for
+  bridge clearances the search never saw; two fixes tried, neither merged: PLAN.md "Natura 2000 a note …"). Two roads of a project whose
   earthworks come within the working strip: the later one keeps clear behind a wall (project-ledger.ts, evaluateProject).
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
@@ -120,9 +121,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   style or method chosen on Auto's structure leaves it Auto's (`StructureOverride.auto`); painting a structure
   as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
   later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 45, research/75): no
-  works of ours in reserves, monuments, Natura 2000 sites, national parks, CHKO zones I–II (protection zones: a note);
-  Auto bridges over them (no supports inside) or mines under them; tunnels kept to 3 %, never above 5 %. The real D35
-  layout is now Auto's (3.2 km tunnel under Pod skálou, research/73 §6). Not taken: T-8.0 tube width, rock cover,
+  works of ours in reserves, monuments, national parks, CHKO zones I–II (protection zones and Natura 2000 sites: a note,
+  cost model 46); Auto bridges over them (no supports inside) or mines under them; no tunnel over 500 m steeper than 5 %
+  to its ends, 3–5 % a note (no price for the safety measures, research/76). The real D35 layout is Auto's kind (a 2.9 km
+  tunnel under Pod skálou at ≤ 3.8 %; the real-portal line +5.4 %, research/73 §7). Not taken: T-8.0 tube width, rock cover,
   running costs (research/73 §5, /74). The Nová Paka
   starter follows the mapped bypass. Since cost model 37, most side roads no longer break its small drags: dead ends
   are cut back to their junction, and the separation retry runs on every category. One street still does, where its
