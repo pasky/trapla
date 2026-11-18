@@ -2232,10 +2232,9 @@ only access to a hamlet of about eight buildings east of our road, closed with n
   service roads that served buildings now keep their way across (17 reroutes, 7 bridges over us, 9 boxes), one is
   closed with its farm bought out (D35 full km 22.08), and 3 stay
   closed as the last resort (direct-90 km 9.80, D35 stage 1 km 7.52, D35 full km 7.51: nothing that keeps them across can be built). Bills: D11
-  starter unchanged, Královec railway +14.1 M, best +33.5, demo +19.4, direct-80 +58.0, direct-90 −0.8, town-centre
+  starter unchanged, Královec railway +18.2 M (10.742 → 10.760 bn: the track at km 12.05 carried over us, 16.1 M), best +33.5, demo +19.4, direct-80 +58.0, direct-90 −0.8, town-centre
   +32.9, D3 0301 +11.8, 0302 +8.4, 0303 +28.2, 0304 +65.1, 0305 +12.9, D35 stage 1 unchanged, Nová Paka +43.6, D35 full
-  +109.3 (km 22.08 the farm bought out), D3 full +105.3. All VALID as before (the
-  Královec starter was not VALID before either).
+  +109.3 (km 22.08 the farm bought out), D3 full +105.3. All VALID as before.
 - **Words.** The choice is "Cut it" (it cuts the way; a part is led on only where it needs to be). A cut with nothing new
   built is "Cut · no new road needed", its body names what each part still reaches (the way's own name or number from
   the road links, e.g. "road I/16", else its class: "a class III road") and how far round its traffic goes and along
