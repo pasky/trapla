@@ -1339,8 +1339,9 @@ our road crossed nothing there. Across the packs 1,700 such ways (bridges over s
   (`RoadNet.joinsAt`: no junction with a road under a span); their hits are never merged with roads on the ground. A
   choice on one is saved with its OSM id (`target.structure`); an older save's raw remnant id keeps its meaning. The
   sidecar is used only with the transport graph it was built from.
-- **Bills.** D11 frozen: see COST_MODEL_VERSION 55 in prices.ts. Starters (M CZK): D11 8,798.2 → 8,751.2; Nová Paka
-  1,194.0 → 1,231.8; D3 full 36,185.2 → 36,170.8; D3 0305 9,454.2 → 9,441.4; the rest unchanged; validity unchanged.
+- **Bills.** D11 frozen: see COST_MODEL_VERSION 55 in prices.ts. Starters against model 54 (M CZK): D11 8,798.2 →
+  8,771.0; Nová Paka 1,237.6 → 1,274.8; D3 full 36,290.4 → 36,279.9; D3 0305 9,467.1 → 9,458.1; the rest unchanged;
+  validity unchanged.
 - **Open:**
   - The grade search does not aim for a mapped bridge's clearance (keeping it is not in its objective): Nová Paka's two
     bridges are rebuilt where lowering the line 3 m might have been cheaper.
