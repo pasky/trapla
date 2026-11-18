@@ -451,6 +451,9 @@ tunnel portal](docs/screenshots/450-d3-0304-portal-lines-before-after.png), [D11
 bought out](docs/screenshots/451-d11-house-under-cone-before-after.png), [a road moved aside through a farm building: bought
 out](docs/screenshots/452-d11-demo-road-moved-aside-through-building-before-after.png), [road III/3012 rebuilt 23 m east: the
 field track that joined it joins the new line](docs/screenshots/453-d11-iii3012-track-joins-rebuilt-road-before-after.png).
+Cost model 50 (before | after, `node scripts/render-kept-corner-shots.mjs`): [III/3012's corner dragged 22 m but kept on
+the old road: our bridge over it as without it, the curve's grips on the road](docs/screenshots/490-d11-iii3012-corner-kept-our-bridge-as-without-it-before-after.png),
+[the track's access to the rebuilt III/3012 ends at its carriageway, no stub between walls](docs/screenshots/491-d11-iii3012-track-access-no-stub-before-after.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses

@@ -1213,6 +1213,28 @@ Sweep-3 P2s (docs/playtest-findings.md), shots 450–453 (`scripts/render-cones-
   - Above 10 m, a house under a cone is bought out. Lengthening the bridge instead is not weighed.
   - The structure choice still does not see cones' houses.
 
+### A rebuilt stretch kept on its old road; a side road's stub (cost model 50, 2026-11-18)
+
+P2 re-check findings (docs/playtest-findings.md "P2 fixes re-check — main 5331cc1"), shots 490–491
+(`scripts/render-kept-corner-shots.mjs`, before | after).
+- **A kept stretch is the old road to other roads (P1 #2).** Where a rebuilt stretch's line stays within KEPT_TOLERANCE
+  of its old road, the old road is kept, drawn there and not billed (project-kept.ts). The other roads' networks still
+  drew the kernel's line, up to 12 m off it. D11 III/3012's corner dragged 22 m (all of it kept, 0 CZK) moved our
+  crossing onto a line neither drawn nor built: our bridge km 2.185–2.424 shrank to 2.205–2.365, −143 M.
+  - The network line is now the stretch as drawn (`planLine(…, asDrawn)`, `lineAsDrawn`, the same snap as
+    `layOnGround`): our bridge is back to 2.185–2.424, 8,787.0 M, as without the rebuilt road (tests/qa3-sweep.test.ts).
+  - Every rebuilt stretch now gets its old line in the project (`oldLineOf`), not only those keeping an old curve.
+  - The bend's curve grips sit on the drawn road where it is kept (ui/curve-edit.ts). Its marker stays at the bend's
+    corner point, as on any bend.
+  - Open: where a crossing lifts or lowers the kept road (`releaseHeld`), it is rebuilt there on the kernel's line,
+    while the owner crossed the old road (≤ 12 m apart).
+- **A side road's stub to the old road (P2).** The track joining III/3012 dragged 23 m keeps its access. Its piece
+  towards the old junction is taken up (`oldJunction`). That side ran on from our road's centre across our cut slope
+  to the edge of our earthworks: a 4 m stub at our grade between two small retaining walls (the white shards). It now
+  ends at our carriageway's edge (crossing-geometry.ts). Display only: the access is a lump sum.
+- **Bills.** Frozen fixtures unchanged (none has a rebuilt stretch). A project's bill changes where a rebuilt stretch
+  is kept within 12 m of its old road and crossed by another road.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
