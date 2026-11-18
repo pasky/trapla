@@ -164,11 +164,16 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
     }
   }
   // A reshaped reroute (the same choices, see `shapeless`): the stretch from its crossing to the one it leads to.
-  // (one led to another crossing or road, `to` / `ends`: the whole route, its new target may lie anywhere)
+  // (one led to another crossing or road, `to` / `ends`: the whole route, its new target may lie anywhere; a reroute
+  // shaped for the first time records the crossing it already leads to, `to`: no new target)
   const shapes = (list: Design['crossingOverrides'], what: 'via' | 'to' | 'ends') => new Map((list ?? []).map(o => [o.roadId, JSON.stringify(o[what] ?? null)]));
+  const ledTo = (id: number) => { const c = r.crossings.find(x => x.roadId === id && x.targetRoadId !== undefined); return c ? JSON.stringify(c.targetRoadId) : 'null'; };
   for (const what of ['to', 'ends'] as const) {
     const now = shapes(d.crossingOverrides, what), then = shapes(base.design.crossingOverrides, what);
-    for (const id of new Set([...now.keys(), ...then.keys()])) if (now.get(id) !== then.get(id)) return [0, length];
+    for (const id of new Set([...now.keys(), ...then.keys()])) {
+      const a = now.get(id) ?? 'null', b = then.get(id) ?? 'null';
+      if (a !== b && !(what === 'to' && (a === 'null' ? ledTo(id) : a) === (b === 'null' ? ledTo(id) : b))) return [0, length];
+    }
   }
   const now = shapes(d.crossingOverrides, 'via'), then = shapes(base.design.crossingOverrides, 'via');
   for (const id of new Set([...now.keys(), ...then.keys()])) {
