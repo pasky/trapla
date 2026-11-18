@@ -1105,6 +1105,8 @@ research/73 §7 (D35 again). Shots 410–414.
     - The QA's new road across the Královec railway had a 760 m tunnel at 6.6 %. It now has 690 m at 4.8 %, its west end
       an open cut (tests/new-line-crossings.test.ts, tests/tunnels.test.ts).
     - Every saved design and starter is unchanged; two D11 random previews differ (exact.ts).
+    - Outcome audit (against model 47): validity unchanged, flags 63 → 62. random-15 −731 M, random-16 −64,
+      random-18 −65: their steep tunnel ends are open cuts now.
 - **A boundary corridor's shared solve is keyed by its boundary.** Two boundaries whose 5 km corridors cover the same
   stretch (a short route, long knots) were handed the first one's heights. No saved design or starter changed
   (exact.ts); tests/regressions.test.ts.
