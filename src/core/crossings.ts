@@ -511,11 +511,12 @@ export interface CrossingRoute {
   streams?: (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: number; y: number; crossing: import('./watercourses').WaterCrossing })[];
   /** Urban share per station (≥ 0.5: urban SPK price rows for side-road regrades). */
   urban?: ArrayLike<number>;
-  /** What blocks a new road of this half-width from a to b on the ground (a player's reroute shape). */
+  /** What blocks a new road of this half-width from a to b on the ground (a player's reroute shape; a kept house
+   * within its working strip). */
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => LinkObstacle | null;
-  /** Houses still standing under a new road from a to b, and what buying one out costs. */
+  /** Houses still standing under a new road from a to b or within the working strip beside it (BUILDING_RULES.clearance). */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
-  /** Houses on a paved disk (a turning area) still standing: those bought out with it, and whether one is kept. */
+  /** Houses on a paved disk (a turning area) or within its working strip still standing: those bought out with it, and whether one is kept. */
   housesOnDisk?: (x: number, y: number, radius: number) => { take: number[]; kept: boolean };
   /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
   beside?: import('./crossing-works').WorksContext['beside'];

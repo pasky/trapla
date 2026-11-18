@@ -1,6 +1,6 @@
 // Bounded study geometry on real OSM polylines. Quantities are measured from these same paths.
 import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute, UnderpassWing } from './crossings';
-import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJunctionCost } from './data/urban';
+import { ACCESS, BUILDING_RULES, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJunctionCost } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { STRUCTURE_RULES } from './data/prices';
@@ -259,7 +259,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     return { title: `No buildable reroute for the ${what}`,
       fix,
       detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
-      rule: `Game rule: a new road is no steeper than its class allows (ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
+      rule: `Game rule: a new road is no steeper than its class allows (ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way or within ${BUILDING_RULES.clearance} m of its works and never runs on the ground across motorways, railways, ponds or rivers` };
   }
   if (message === SHAPED_LINK.river) return { title: `Your path for the new ${what} crosses a river`,
     fix: 'Drag its bend points so that it stays on this side of the river, or choose "Automatic path" on the crossing card',
@@ -287,7 +287,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   if (message === TURN_ON_KEPT) return { title: `The turning area at the closed ${what}'s end lies on a house you keep`,
     fix: 'Let the house go, or choose "Our bridge over it", an underpass or "Its bridge over us"', basis: 'game',
     detail: `The ${what} is closed at our road and its cut end gets a turning area; the house stands on it.`,
-    rule: 'Game rule: a closed public road ends in a turning area; houses on it are bought out, one you keep may not be' };
+    rule: `Game rule: a closed public road ends in a turning area; houses on it or within ${BUILDING_RULES.clearance} m of it are bought out, one you keep may not be` };
   if (message === LINK_TOO_STEEP) return { title: `Your path for the new ${what} is too steep in places`,
     fix: 'Drag its bend points so that it runs more along the slope, or choose "Automatic path" on the crossing card',
     detail: `Even with earthworks up to ${LINK_MAX_SUPPORT} m deep it would be steeper than a ${what} may be.`, basis: 'game',
@@ -310,8 +310,8 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     if (message === WORKS_COVER_RAILWAY || message === WORKS_COVER_HOUSE) return {
       title: `The ${ramps} run${junction ? 's' : ''} over ${message === WORKS_COVER_RAILWAY ? 'a railway' : 'a house you keep'}`,
       fix: `${others.charAt(0).toUpperCase()}${others.slice(1)}${message === WORKS_COVER_HOUSE ? ', or let the house go' : ''}`, basis: 'game',
-      detail: `Where the ${what} is ${raised}, its earth slopes would cover ${message === WORKS_COVER_RAILWAY ? 'a railway beside it' : 'a house you keep'}, and a retaining wall cannot stand between them.`,
-      rule: `Game rule: earthworks of a crossing may not cover a railway or a house you keep; a retaining wall up to ${RETAINING_RULES.maxHeight} m high keeps them clear, other houses under them are bought out` };
+      detail: `Where the ${what} is ${raised}, its earth slopes would cover ${message === WORKS_COVER_RAILWAY ? 'a railway beside it' : `a house you keep, or come within ${BUILDING_RULES.clearance} m of it`}, and a retaining wall cannot stand between them.`,
+      rule: `Game rule: earthworks of a crossing may not cover a railway, nor come within ${BUILDING_RULES.clearance} m (the working strip) of a house you keep; a retaining wall up to ${RETAINING_RULES.maxHeight} m high keeps them clear, other houses there are bought out` };
     return { title: message === WORKS_TIE_TOO_LONG ? `A road joining the ${ramps} cannot be raised or lowered to meet it`
       : `The ${ramps} run${junction ? 's' : ''} over another road`,
       fix: `${others.charAt(0).toUpperCase()}${others.slice(1)}`, basis: 'game',
@@ -1500,7 +1500,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
         // longer piece)
         ends.forEach((q, k) => {
           const stub = access.stubs?.[k];
-          if (!access.connected[k] && stub && stub.length <= STUB_LENGTH && !(route.houses?.(q, stub.far, g.width / 2 + STUB_HOUSE)?.length)) nothing[sideOf(q)] = true;
+          if (!access.connected[k] && stub && stub.length <= STUB_LENGTH && !(route.houses?.(q, stub.far, g.width / 2 + STUB_HOUSE - BUILDING_RULES.clearance)?.length)) nothing[sideOf(q)] = true;
         });
         const extra = access.round - Math.abs(g.removed![1] - g.removed![0]);
         const closable = !MINOR_WAYS.has(c.cls) ? connected[0] && connected[1] && extra <= CLOSURE_ROUND : true;

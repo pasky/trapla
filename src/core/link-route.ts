@@ -42,7 +42,7 @@ export interface LinkEnv {
   obstacle?: (a: XY, b: XY, half: number) => LinkObstacle | null;
   /** Is there a mapped railway under a road of this half-width from a to b (a bridge over us spans it too)? */
   railway?: (a: XY, b: XY, half: number) => boolean;
-  /** Houses (still standing) under a new road of this half-width from a to b, and their price. */
+  /** Houses (still standing) under a new road of this half-width from a to b or within its working strip, and their price. */
   houses?: (a: XY, b: XY, half: number) => number[];
   houseCost?: (j: number) => number;
   /** Streams (watercourse lines) the chord a→b crosses. */

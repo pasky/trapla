@@ -1,6 +1,7 @@
 // Invariant screen: does any crossed way's drawn earthworks (ramps to a bridge over us, junction approaches,
-// side-road regrades, reroutes) stand on a house that is kept, on a mapped railway, on one of our bridge's
-// piers or up into our deck — with no billed remedy? Also the turning areas at cut roads' ends against kept houses. What is screened is what the renderer draws
+// side-road regrades, reroutes) stand on a house left standing or within its working strip (BUILDING_RULES.clearance,
+// as our road's), on a mapped railway, on one of our bridge's piers or up into our deck — with no billed remedy?
+// Also the turning areas at cut roads' ends and roads moved aside against houses, with the strip. What is screened is what the renderer draws
 // (render/crossing-surface.ts crossingSurfaces: the 1:1.5 slopes, cut short by priced walls).
 // npx tsx scripts/works-clash-audit.ts [--all] [design.json …]   (--all: every pack's starters and saved designs)
 import { existsSync, readFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ import { CATEGORIES } from '../src/core/data/categories';
 import { KIND } from '../src/core/structures';
 import { bridgeLayout } from '../src/core/bridge';
 import { protectedRasterCells } from '../src/core/protected-raster';
+import { BUILDING_RULES } from '../src/core/data/urban';
 import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../src/render/crossing-surface';
 
 export interface WorksClash { path: string; i: number; s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck' | 'ours'; x: number; y: number; j?: number }
@@ -23,7 +25,7 @@ const DRAPED = 0.3;
 export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings'>, crownWidth: number): WorksClash[] {
   const natural = (x: number, y: number) => ctx.terrain.heightAt(x, y), base = crossingBaseHeight(r, crownWidth, natural);
   const gone = new Set<number>([...r.demolished.map(d => d.j), ...r.boughtOut.map(d => d.j)]);
-  const out: WorksClash[] = [], seen = new Set<string>();
+  const out: WorksClash[] = [], seen = new Set<string>(), strip = BUILDING_RULES.clearance;
   // our own body (its own checks own what lies under it): lateral reach per station
   /** Where (x, y) lies in our own earth body: in its formation, or on a cut / fill slope (else null). */
   const bodyAt = (x: number, y: number, inset = 0): 'formation' | 'cut' | 'fill' | null => {
@@ -58,8 +60,8 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
   const surfaces = crossingSurfaces(r.crossings, natural, base);
   // the paved turning disks at the ends of closed public roads: no house left standing on one
   if (ctx.buildings) for (const t of turnaroundSurfaces(surfaces, natural)) {
-    const c = t.crossing, bld = ctx.buildings, inside = (x: number, y: number) => Math.hypot(x - t.center.x, y - t.center.y) < t.radius;
-    bld.near(t.center.x, t.center.y, t.radius + 5, j => {
+    const c = t.crossing, bld = ctx.buildings, inside = (x: number, y: number) => Math.hypot(x - t.center.x, y - t.center.y) < t.radius + strip;
+    bld.near(t.center.x, t.center.y, t.radius + strip + 5, j => {
       const key = `${c.s}:${c.roadId}:turn:${j}`;
       if (!gone.has(j) && !seen.has(key) && bld.anyPoint(j, 1, inside)) {
         seen.add(key); out.push({ path: 'turn', i: 0, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
@@ -74,18 +76,18 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 1; })());
     const check = (p: { x: number; y: number }, q: { x: number; y: number }, half: number, path: string) => {
       const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
-      bld.near(x, y, len / 2 + half + 5, j => {
+      bld.near(x, y, len / 2 + half + strip + 5, j => {
         const key = `${f.s0}:${f.roadId}:moved:${j}`;
-        if (!gone.has(j) && !seen.has(key) && bld.hits(j, x, y, tx, ty, len / 2, half)) {
+        if (!gone.has(j) && !seen.has(key) && bld.hits(j, x, y, tx, ty, len / 2, half + strip)) {
           seen.add(key); out.push({ path, i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
         }
       });
     };
     for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++) if (!onOld(path[k - 1]) || !onOld(path[k])) check(path[k - 1], path[k], g.width / 2, 'moved');
     const R = g.turnaroundRadius ?? 0;
-    if (R > 0) for (const p of g.turnarounds ?? []) bld.near(p.x, p.y, R + 5, j => {
+    if (R > 0) for (const p of g.turnarounds ?? []) bld.near(p.x, p.y, R + strip + 5, j => {
       const key = `${f.s0}:${f.roadId}:moved:${j}`;
-      if (!gone.has(j) && !seen.has(key) && bld.facadeDistanceSq(j, p.x, p.y) < R * R) {
+      if (!gone.has(j) && !seen.has(key) && bld.facadeDistanceSq(j, p.x, p.y) < (R + strip) ** 2) {
         seen.add(key); out.push({ path: 'turn', i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
       }
     });
@@ -103,7 +105,9 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       const a = sec[i], b = sec[i + 1];
       at = i;
       const raised = (q: typeof a) => Math.abs(q.edge[0].z - natural(q.edge[0].x, q.edge[0].y)) > DRAPED || Math.abs(q.edge[1].z - natural(q.edge[1].x, q.edge[1].y)) > DRAPED;
-      if (!raised(a) && !raised(b)) continue;
+      // (a new road's pavement on the ground keeps the working strip from houses too: only it is screened there)
+      const level = !raised(a) && !raised(b);
+      if (level && (!surface.link || surface.keptEnd)) continue;
       const dx = b.p.x - a.p.x, dy = b.p.y - a.p.y, len = Math.hypot(dx, dy);
       if (len < 1e-6) continue;
       const tx = dx / len, ty = dy / len, x = (a.p.x + b.p.x) / 2, y = (a.p.y + b.p.y) / 2;
@@ -112,12 +116,18 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       const reach = (q: typeof a, k: 0 | 1) => Math.hypot(q.toe[k].x - q.p.x, q.toe[k].y - q.p.y);
       const left = Math.min(reach(a, 1), reach(b, 1)), right = Math.min(reach(a, 0), reach(b, 0));
       const half = Math.max(left, right);
-      if (ctx.buildings) ctx.buildings.near(x, y, len / 2 + half + 5, j => {
+      // (the strip beyond a side's toe where that side has earthworks, or the new road's edge: the old road's edge
+      // beside a house is as it was)
+      const edgeOf = (q: typeof a, k: 0 | 1) => Math.hypot(q.edge[k].x - q.p.x, q.edge[k].y - q.p.y);
+      const sloped = (k: 0 | 1) => Math.max(reach(a, k) - edgeOf(a, k), reach(b, k) - edgeOf(b, k)) > DRAPED * 1.5;
+      const houseL = left + (surface.link || sloped(1) ? strip : 0), houseR = right + (surface.link || sloped(0) ? strip : 0);
+      if (ctx.buildings) ctx.buildings.near(x, y, len / 2 + half + strip + 5, j => {
         if (gone.has(j)) return;
         // (rectangle centred between the sections, off-centre by the side difference)
-        const shift = (left - right) / 2, cx = x - ty * shift, cy = y + tx * shift;
-        if (ctx.buildings!.hits(j, cx, cy, tx, ty, len / 2, (left + right) / 2) && !ours((ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j])) add('house', (ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j], j);
+        const shift = (houseL - houseR) / 2, cx = x - ty * shift, cy = y + tx * shift;
+        if (ctx.buildings!.hits(j, cx, cy, tx, ty, len / 2, (houseL + houseR) / 2) && !ours((ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j])) add('house', (ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j], j);
       });
+      if (level) continue;
       // (a quarter metre's tolerance: the walls stand at the raster cell's edge)
       protectedRasterCells(ctx.terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: left - 0.25, right: right - 0.25 }, f => {
         if (f.feature === 'railway' && !ours(f.x, f.y)) add('railway', f.x, f.y);

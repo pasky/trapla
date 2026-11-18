@@ -4,7 +4,7 @@
 // steeper than its class allows (its "tie"); a road merely beside the slope is kept clear by a
 // retaining wall. Where neither fits, the treatment is infeasible and Auto must choose another.
 import type { CrossingPoint } from './crossings';
-import { ROAD_CLASSES } from './data/urban';
+import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
 import { retainingAssembly, RETAINING_RULES, SIDE_ROAD_FLAT as FLAT, SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
 import type { RoadNet, RoadSegment } from './roadnet';
 
@@ -51,9 +51,9 @@ export interface WorksContext {
   urban: 0 | 1;
   /** Side-road regrades already accepted for other crossings in this build (shared and extended). */
   claimed?: XY[][];
-  /** Houses (standing; 'kept': the player keeps it) and mapped railways within `reach` of the line through
-   * (x, y) along (tx, ty) on one side (sign +1: left), `along` either way: each with its nearest offset from
-   * that line, m. */
+  /** Houses (standing; 'kept': the player keeps it) within `reach` and the working strip (BUILDING_RULES.clearance)
+   * beyond, and mapped railways within `reach`, of the line through (x, y) along (tx, ty) on one side (sign +1:
+   * left), `along` either way: each with its nearest offset from that line, m. */
   beside?: (x: number, y: number, tx: number, ty: number, along: number, sign: number, reach: number) => BesideHit[];
   /** What of our own road's body lies at q: its formation, a cut or a fill slope (null: outside it). */
   body?: (q: XY) => 'formation' | 'cut' | 'fill' | null;
@@ -233,9 +233,11 @@ function besideObstacles(works: CrossingWorks, road: readonly CrossingPoint[], w
       for (const hit of hits) {
         if (hit.what === 'house' && houses.has(hit.j!)) continue;
         if (hit.what !== 'ours' && ctx.ours(hit, 0)) continue; // (our own road's footprint check owns what lies in it)
-        const edge = hit.lateral;
-        let offset = edge - RETAINING_RULES.clearance;
-        if (offset < half + RETAINING_RULES.minimumOffset) offset = edge - RETAINING_RULES.constrainedClearance;
+        // (a house keeps the working strip from the wall as from our road's (retaining.ts wallBuildings: strictly clear
+        // of it): no wall squeezed in closer)
+        const edge = hit.lateral, house = hit.what === 'house' || hit.what === 'kept';
+        let offset = edge - (house ? BUILDING_RULES.clearance + 0.05 : RETAINING_RULES.clearance);
+        if (offset < half + RETAINING_RULES.minimumOffset) offset = house ? -Infinity : edge - RETAINING_RULES.constrainedClearance;
         if (offset >= half && Math.max(wallHeight(road, j, side, offset, half, ctx.heightAt), wallHeight(road, j + 1, side, offset, half, ctx.heightAt)) <= RETAINING_RULES.maxHeight) {
           wallAt(works, j, side, offset); continue;
         }

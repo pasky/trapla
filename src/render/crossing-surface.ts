@@ -46,7 +46,9 @@ export interface SurfaceSection {
 }
 export interface CrossingSurface { crossing: CrossingResult; path: CrossingPoint[]; sections: SurfaceSection[]; link: boolean; retainingSupport: boolean; deck?: { start: number; end: number };
   /** A side road regraded to meet the crossing (its own class and width), not the crossed road. */
-  tie?: { cls: string; width: number } }
+  tie?: { cls: string; width: number };
+  /** A closed way's kept end, on its old road (not new pavement). */
+  keptEnd?: true }
 export function crossingSurfaces(crossings: CrossingResult[], height: (x: number, y: number) => number,
   formation = height, retainingSupport = false): CrossingSurface[] {
   const out: CrossingSurface[] = [];
@@ -54,14 +56,14 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
     const g = crossing.geometry;
     if (!g || crossing.shared) continue; // drawn once, by the direction that builds it
     const base = crossing.type === 'junction' ? formation : height;
-    const paths: [CrossingPoint[], boolean, { cls: string; width: number } | undefined][] = [
+    const paths: [CrossingPoint[], boolean, { cls: string; width: number } | undefined, true?][] = [
       // a designed road of the project draws its own body (on its deck over us, under our bridge)
       ...(g.road && !crossing.designed ? [[g.road, false, undefined] as [CrossingPoint[], boolean, undefined]] : []),
       ...(g.links ?? []).map(p => [p, true, undefined] as [CrossingPoint[], boolean, undefined]),
       // (a closed way's kept ends, on its old road: where its turning areas are drawn from)
-      ...(g.keptEnds ?? []).map(p => [p, true, undefined] as [CrossingPoint[], boolean, undefined]),
+      ...(g.keptEnds ?? []).map(p => [p, true, undefined, true] as [CrossingPoint[], boolean, undefined, true]),
       ...(g.ties ?? []).map(t => [t.path, false, { cls: t.cls, width: ROAD_CLASSES[t.cls]?.width ?? g.width }] as [CrossingPoint[], boolean, { cls: string; width: number }])];
-    for (const [source, link, tie] of paths) {
+    for (const [source, link, tie, keptEnd] of paths) {
       if (source.length < 2) continue;
       const width = tie?.width ?? g.width;
       // Centreline refinement alone misses transverse terrain ridges. A bounded fine ground mesh
@@ -130,7 +132,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
         const outer = toe.map((q, k) => point((k ? 1 : -1) * (Math.hypot(q.x - p.x, q.y - p.y) + GROUND_COLLAR))) as SurfaceSection['outer'];
         return { p, nx, ny, edge, toe, outer, ...(wallTop ? { wallTop } : {}) };
       });
-      out.push({ crossing, path, sections, link, deck, retainingSupport, ...(tie ? { tie } : {}) });
+      out.push({ crossing, path, sections, link, deck, retainingSupport, ...(tie ? { tie } : {}), ...(keptEnd ? { keptEnd } : {}) });
     }
   }
   return out;

@@ -2417,6 +2417,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
   // other roads' works it is kept clear of).
   const clearOf = opts.keepClear?.length ? capsuleTest(opts.keepClear) : undefined;
+  // Other ways' works keep the working strip from houses as ours does (research/85: a game rule, PROVISIONAL width).
+  const strip = BUILDING_RULES.clearance;
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);
     if (!(len > 0)) return null;
@@ -2426,29 +2428,31 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     protectedRasterCells(terrain, piece, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
     if (!hit && terrain.protectedAreas) natureCells(terrain, piece, false, c => { if (c.level === 'ban') hit = 'nature'; });
     if (!hit && clearOf?.(p, q, half)) hit = 'works';
-    // a house you keep is never demolished for a reroute
-    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
+    // a house you keep is never demolished for a reroute (nor within its working strip)
+    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half + strip)) hit = 'building'; });
     return hit;
   };
-  /** Houses on a paved turning disk: bought out with it (a kept one: a problem). */
+  /** Houses on a paved turning disk or within its working strip: bought out with it (a kept one: a problem). */
   const housesOnDisk = (x: number, y: number, radius: number) => {
-    const take: number[] = []; let kept = false;
-    if (bld) bld.near(x, y, radius + 5, (j) => {
-      if (gone[j] || take.includes(j) || bld.facadeDistanceSq(j, x, y) >= radius * radius) return;
+    const take: number[] = []; let kept = false, reach = radius + strip;
+    if (bld) bld.near(x, y, reach + 5, (j) => {
+      if (gone[j] || take.includes(j) || bld.facadeDistanceSq(j, x, y) >= reach * reach) return;
       if (keptIds.has(j)) kept = true; else take.push(j);
     });
     return { take, kept };
   };
-  /** Houses still standing under a new road (a reroute): bought out and demolished with it. */
+  /** Houses still standing under a new road (a reroute) or within its working strip: bought out and demolished with it. */
   const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const out: number[] = [];
     if (!bld) return out;
     const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
-    bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
+    bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half + strip)) out.push(j); });
     return out;
   };
-  /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
-  const beside = (x: number, y: number, tx: number, ty: number, along: number, sign: number, reach: number) => {
+  /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts): railways
+   * within `reach`, houses within it and the working strip beyond. */
+  const beside = (x: number, y: number, tx: number, ty: number, along: number, sign: number, slopes: number) => {
+    let reach = slopes;
     const out: BesideHit[] = [];
     const lateralOf = (px: number, py: number) => sign * (-(px - x) * ty + (py - y) * tx), r = along + reach + terrain.cell;
     if (railwayNear(terrain, x - r, y - r, x + r, y + r)) protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along, left: sign > 0 ? reach : 0, right: sign > 0 ? 0 : reach }, f => {
@@ -2457,6 +2461,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
       const lateral = lateralOf(f.x, f.y) - terrain.cell / 2;
       if (lateral + terrain.cell >= 0 && lateral <= reach) out.push({ what: 'railway', x: f.x, y: f.y, lateral: Math.max(0, lateral) });
     });
+    reach = slopes + strip;
     const cx = x - ty * sign * reach / 2, cy = y + tx * sign * reach / 2;
     if (bld) bld.near(cx, cy, along + reach / 2 + 5, j => {
       if (gone[j] || !bld.hits(j, cx, cy, tx, ty, along, reach / 2)) return;
@@ -2527,8 +2532,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     const g = c.geometry, found = new Set<number>(), kept = new Set<number>();
     const under = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
       const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0;
-      bld.near((p.x + q.x) / 2, (p.y + q.y) / 2, len / 2 + half + 5, (j) => {
-        if (!gone[j] && bld.hits(j, (p.x + q.x) / 2, (p.y + q.y) / 2, tx, ty, len / 2, half)) (keptIds.has(j) ? kept : found).add(j);
+      bld.near((p.x + q.x) / 2, (p.y + q.y) / 2, len / 2 + half + strip + 5, (j) => {
+        if (!gone[j] && bld.hits(j, (p.x + q.x) / 2, (p.y + q.y) / 2, tx, ty, len / 2, half + strip)) (keptIds.has(j) ? kept : found).add(j);
       });
     };
     // (not where it stays on its old line: the houses beside that are as they were)
@@ -2542,7 +2547,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++)
       if (!onOld(path[k - 1]) || !onOld(path[k])) under(path[k - 1], path[k], g.width / 2);
     const R = g.turnaroundRadius ?? 0;
-    if (R > 0) for (const p of g.turnarounds ?? []) { const d = housesOnDisk(p.x, p.y, R); for (const j of d.take) found.add(j); if (d.kept) bld.near(p.x, p.y, R + 5, j => { if (keptIds.has(j) && bld.facadeDistanceSq(j, p.x, p.y) < R * R) kept.add(j); }); }
+    if (R > 0) for (const p of g.turnarounds ?? []) { const d = housesOnDisk(p.x, p.y, R); for (const j of d.take) found.add(j); if (d.kept) bld.near(p.x, p.y, R + strip + 5, j => { if (keptIds.has(j) && bld.facadeDistanceSq(j, p.x, p.y) < (R + strip) ** 2) kept.add(j); }); }
     for (const k of houses.kept) if (kept.has(k.j)) k.hit = true;
     for (const j of found) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'reroute', strip: false }); }
     if (kept.size) houses.buildingViolations.push({ kind: 'building', basis: 'game', s0: c.s0, s1: c.s1, title: 'Road through a kept building',
