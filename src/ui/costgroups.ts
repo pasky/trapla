@@ -26,8 +26,8 @@ export const COST_GROUPS: CostGroup[] = [
   { id: 'surcharge', label: 'Other objects', short: 'other', color: '#b3bcc8', keys: ['surcharge'], of: (c) => c.surcharge },
   { id: 'land', label: 'Land', short: 'land', color: '#8fbf5a', keys: ['land'], of: (c) => c.landDetail.land },
   { id: 'forest', label: 'Forest', short: 'forest', color: '#3f8f4f', keys: ['forest'], of: (c) => c.landDetail.forest },
-  { id: 'buildings', label: 'Demolished buildings', short: 'demolished', color: '#4a4f57', keys: ['buildings'], of: (c) => c.landDetail.buildings },
-  { id: 'noiseBuyouts', label: 'Bought-out buildings', short: 'bought out', color: '#c43c9b', keys: ['noiseBuyouts'], of: (c) => c.landDetail.noiseBuyouts },
+  // every house the project takes, under our works or off them (two bill parts: the land of one under our works is in Land)
+  { id: 'buildings', label: 'Bought-out buildings', short: 'bought out', color: '#c43c9b', keys: ['buildings', 'noiseBuyouts'], of: (c) => c.landDetail.buildings + c.landDetail.noiseBuyouts },
 ];
 
 /** a railway's bill lines in its own words: its base is track and systems, its markups a price book's */

@@ -6,7 +6,7 @@
 //     house with its cross-section, the fix is a button, the noise view;
 //  C. a power user: bridge over a valley from the map, keep a house and remove its wall, walls on a
 //     stretch, a crossed road, a pinned height by dragging the profile's line, undo / redo, Start over.
-// Ends with the reference design: the overview and demolished buildings close up.
+// Ends with the reference design: the overview and the buildings under it (bought out) close up.
 // node scripts/playtest.mjs [--docs] [--size=1280x800]   (every step into /tmp/trapla-playtest; --docs writes
 // the gallery subset to docs/screenshots/60…)
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -306,9 +306,10 @@ try {
   await shot('overview');
   const dem = await T(() => { const r = window.trapla.result(), b = r.demolished[0]; window.trapla.lookAt(r.x[b.i], r.y[b.i], 450, 30, 50); return r.demolished.length; });
   await idle(500);
-  const shown = await T(() => { const r = window.trapla.result(); return { gone: r.demolished.filter((b) => !window.trapla.buildingShown(b.j)).length, kept: r.noise.receivers.slice(0, 20).filter((p) => window.trapla.buildingShown(p.j)).length }; });
-  ok(dem > 0 && shown.gone === dem && shown.kept > 0, `all ${dem} demolished buildings are removed from the 3D map (${shown.gone}); others stay`);
-  await shot('demolished');
+  const shown = await T(() => { const r = window.trapla.result(); return { taken: r.demolished.filter((b) => window.trapla.buildingTaken(b.j)).length,
+    others: r.noise.receivers.filter((p) => p.status !== 'bought').slice(0, 20).filter((p) => window.trapla.buildingShown(p.j) && !window.trapla.buildingTaken(p.j)).length }; });
+  ok(dem > 0 && shown.taken === dem && shown.others > 0, `all ${dem} buildings under our works are drawn bought out (${shown.taken}); others stay as they are`);
+  await shot('bought-out');
 
   ok(errors.length === 0, `no browser errors ${errors.join(' | ')}`);
 } finally { await game.close(); }

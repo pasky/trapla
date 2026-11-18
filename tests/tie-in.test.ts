@@ -142,7 +142,7 @@ describe('a roundabout where the player chooses it', () => {
     const project = evaluateProject(f.ctx, f.snapshot), side = project.routes.side.legacy!;
     expect(side.footprintConflicts.filter(c => c.action === 'junction').map(c => c.cost)).toEqual([ENDPOINT_JUNCTIONS.roundabout.cost, ENDPOINT_JUNCTIONS['tie-in-minor'].cost]);
     const ring = project.works.items.find(w => w.owner.id === 'side' && /^Roundabout's ring/.test(w.label ?? ''))!;
-    expect(ring.label).toMatch(/1 building removed/);
+    expect(ring.label).toMatch(/1 building bought out/);
     expect(ring.cost).toBeGreaterThan(new BuildingIndex([[292, 866, 4]]).cost[0]);
     // (the removed house is also within our road's noise reach: the ring takes it, so nobody decides its noise again)
     expect(project.cost.unpriced).toEqual([]);

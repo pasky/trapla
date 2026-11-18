@@ -145,7 +145,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const rings: ReplacementWork[] = options.preview ? [] : ties.filter(t => t.junction.kind === 'roundabout').map(t => {
     const i = t.end === 'a' ? 0 : result.n - 1, w = ringWorks(t.x, t.y, ROAD_CLASSES[t.cls]?.width ?? 6.5, result.cell.urban[i], ctx.buildings, gone);
     return { kind: 'junction' as const, s: result.s[i], x: t.x, y: t.y, length: 0, cost: w.cost, ...(w.removed.length ? { removes: [...w.removed] } : {}),
-      label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} removed` : ''}` };
+      label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} bought out` : ''}` };
   });
   return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
     ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(keptWork ? { keptWork } : {}) };

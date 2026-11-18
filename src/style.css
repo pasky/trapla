@@ -109,7 +109,6 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: 2px; margin-right: 4px; }
 #legend i.wall { background: #18b0b0; height: 5px; box-shadow: 0 0 0 1px #0b3a3a; }
 #legend i.diamond { background: #c43c9b; width: 7px; height: 7px; border-radius: 0; transform: rotate(45deg); margin-left: 2px; }
-#legend i.plot { width: 10px; height: 8px; border-radius: 0; vertical-align: -1px; background: repeating-linear-gradient(135deg, #5c6068 0 1px, #d6cebe 1px 3px); outline: 1px dashed #3d434b; outline-offset: -1px; }
 #noise-legend { position: absolute; left: 12px; bottom: 54px; max-width: min(640px, calc(100% - 24px)); background: rgba(255,255,255,0.92); border-radius: 6px; padding: 5px 9px; font-size: 11px; line-height: 1.6; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
 #noise-legend span { margin-right: 10px; white-space: nowrap; }
 #noise-legend i { display: inline-block; width: 14px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
@@ -349,7 +348,6 @@ button.primary:hover:not(:disabled) { background: #1a5fd0 !important; }
 .sw.xing { width: 9px; height: 6px; border: 1.2px solid #222; background: #fff; border-radius: 0; }
 .sw.xing.paid { background: #e0a800; } .sw.xing.yours { border: 2.5px solid #b45800; background: #e0a800; } .sw.xing.bad { background: #d33; }
 .sw.culvert { width: 9px; height: 9px; border: 2px solid #167d9a; border-radius: 50%; background: none; }
-.sw.demo { width: 5px; height: 5px; background: #3d434b; border-radius: 0; }
 .sw.buy { width: 7px; height: 7px; background: #c43c9b; transform: rotate(45deg); border-radius: 0; }
 .sw.keep { width: 8px; height: 8px; border: 2px solid #467d19; background: none; border-radius: 0; }
 

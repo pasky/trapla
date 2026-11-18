@@ -52,9 +52,9 @@ try {
   text = await card(); console.log('CARD 3.63', text.slice(0, 700));
   assert.match(text, /3 buildings stand in its way/);
   await shot('d3-motorway-track-reroute-sheds');
-  // …the three hatched plots where the sheds stood, beside the new track zigzagging up the bank
+  // …the three sheds drawn bought out, beside the new track zigzagging up the bank
   await T(() => window.trapla.select(null)); await T(() => window.trapla.lookAt(3840, 12170, 120, 150, 55)); await game.idle(); await game.still();
-  assert.ok(await T(() => [12776, 8935, 8911].every(j => window.trapla.result().demolished.some(d => d.j === j) && !window.trapla.buildingShown(j))), 'the sheds are demolished and not drawn');
+  assert.ok(await T(() => [12776, 8935, 8911].every(j => window.trapla.result().demolished.some(d => d.j === j) && window.trapla.buildingTaken(j))), 'the sheds are drawn bought out');
   await shot('d3-motorway-track-reroute-sheds-cleared');
   // D11 direct-80 km 6.83: a street reroute takes three homes: nothing else is buildable at Auto's grade
   await game.open('scenario=d11'); await park();

@@ -176,6 +176,7 @@ async function main() {
       const routes = projectStore.snapshot.design.routes;
       return { receiver, name: (id) => { const r = routes.find(q => q.id === id); return !r || r.role === 'mission' ? 'our road' : r.name; } };
     },
+    onRing: (j) => !!session.projectFull?.works.items.some(w => w.removes?.includes(j)),
   });
   // ---- road links: the transport graph, loaded on first need (ui/road-links.ts) ----
   const links = createRoadLinks({ session, store, projectStore, pack, view, transportData, worker, previewWorker, select: next => select(next) });

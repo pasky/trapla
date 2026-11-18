@@ -81,9 +81,8 @@ const CAMERA_PROBES: [number, number][] = [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].f
   return [[Math.cos(a) * CAMERA_PROBE / 2, Math.sin(a) * CAMERA_PROBE / 2], [Math.cos(a) * CAMERA_PROBE, Math.sin(a) * CAMERA_PROBE]];
 })];
 const LEGACY_ROUTE = 'legacy';
-/** what the route takes: a bought-out house (its colour in every view, the noise view's too) and a
- * demolished one's far-zoom marker */
-export const BOUGHT_COLOR = 0xc43c9b, DEMOLISHED_COLOR = 0x3d434b;
+/** what the project takes: a bought-out house (its colour in every view, the noise view's too) */
+export const BOUGHT_COLOR = 0xc43c9b;
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
 export type EndSign = 'interchange' | 'roundabout' | 'joins' | 'continues';
 /** small symbols for an end's marker: an interchange (two roads crossing with loop ramps), a roundabout
@@ -496,10 +495,9 @@ export class View {
   get photoWithNetwork() { return !!this.landcover?.photoWithNetwork; }
   /** the transport graph arrived (loaded lazily after startup): the photo's known-network overlay can use it */
   setTransport(graph: TransportGraphData | null) { this.landcover?.setNetwork(graph); }
-  /** Stage the map's cleared plots (demolished) and rings (bought out) for engine building indices. */
-  *buildPlots(demolished: readonly number[], bought: readonly number[]): Generator<void, Staged> {
-    const render = (js: readonly number[]) => new Set(js.map(j => this.buildingMesh(j)).filter(k => k >= 0));
-    if (this.landcover) return yield* this.landcover.buildPlots(render(demolished), render(bought));
+  /** Stage the map's rings around the houses the project takes (bought out), engine building indices. */
+  *buildPlots(taken: readonly number[]): Generator<void, Staged> {
+    if (this.landcover) return yield* this.landcover.buildPlots(new Set(taken.map(j => this.buildingMesh(j)).filter(k => k >= 0)));
     return { commit() {}, dispose() {} };
   }
   *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
@@ -854,7 +852,7 @@ export class View {
    * builders consume it explicitly rather than reading mutable staging state from View.
    */
   *buildResult(r: Result, crownWidth: number, routeId = LEGACY_ROUTE,
-    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true, mirrored = false): Generator<void, StagedRoute> {
+    sharedContext?: RouteSurfaceContext, batch = false, mirrored = false): Generator<void, StagedRoute> {
     const out: THREE.Object3D[] = [];
     const owned = this.routeGroups.stage(routeId, out);
     let handedOver = false, settled = false;
@@ -1251,26 +1249,6 @@ export class View {
 
     out.push(...this.centreline(r, bad));
 
-    // ---- far away, where a footprint is under a pixel: demolitions (dark squares) / buyouts (magenta
-    // diamonds), outlined so they read on any roof, on the ground at the building. Nearer, the map shows the
-    // cleared plot and the bought house its colour (buildPlots, commitRouteScene).
-    for (const [buildings, buyout] of [[buildingMarkers ? r.demolished : [], false], [buildingMarkers ? r.boughtOut : [], true]] as const) {
-      if (!buildings.length) continue;
-      const bp: number[] = [], radius: number[] = [];
-      for (const { j } of buildings) {
-        const b = this.pack.overlays.buildings[j];
-        this.local(b[0], b[1], this.drapeHeight(b[0], b[1]), v);
-        bp.push(v.x, v.y, v.z); radius.push(b[2]);
-      }
-      const pg = new THREE.BufferGeometry();
-      pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
-      pg.setAttribute('radius', new THREE.Float32BufferAttribute(radius, 1));
-      const pts = new THREE.Points(pg, this.markerMaterial(buyout));
-      pts.name = buyout ? 'noise-buyouts' : 'footprint-demolitions';
-      pts.renderOrder = 5;
-      pts.onBeforeRender = (renderer) => { (pts.material as THREE.ShaderMaterial).uniforms.vh.value = renderer.getDrawingBufferSize(this.bufferSize).y; };
-      out.push(pts);
-    }
     handedOver = true;
     const commit = () => {
       if (settled) return;
@@ -1289,12 +1267,11 @@ export class View {
   }
 
   private bufferSize = new THREE.Vector2();
-  private markerMats: Partial<Record<'square' | 'diamond', THREE.ShaderMaterial>> = {};
+  private markerMats: { diamond?: THREE.ShaderMaterial } = {};
   /** far-zoom building markers: shown only where the footprint is a few pixels across (too small to read) */
-  private markerMaterial(diamond: boolean): THREE.ShaderMaterial {
-    const k = diamond ? 'diamond' : 'square';
-    return this.markerMats[k] ??= new THREE.ShaderMaterial({
-      uniforms: { color: { value: new THREE.Color(diamond ? BOUGHT_COLOR : DEMOLISHED_COLOR) }, size: { value: diamond ? 11 : 9 }, vh: { value: 1 } },
+  private markerMaterial(): THREE.ShaderMaterial {
+    return this.markerMats.diamond ??= new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(BOUGHT_COLOR) }, size: { value: 11 }, vh: { value: 1 } },
       vertexShader: `attribute float radius; uniform float size; uniform float vh;
         void main() {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -1305,7 +1282,7 @@ export class View {
       fragmentShader: `uniform vec3 color; uniform float size;
         void main() {
           vec2 p = gl_PointCoord - 0.5;
-          float d = ${diamond ? 'abs(p.x) + abs(p.y)' : 'max(abs(p.x), abs(p.y))'};
+          float d = abs(p.x) + abs(p.y);
           if (d > 0.5) discard;
           gl_FragColor = vec4(d > 0.5 - 1.6 / size ? vec3(1.0) : color, 1.0);
           #include <colorspace_fragment>
@@ -1416,7 +1393,7 @@ export class View {
   }
 
   /** Complete a staged scene swap once, after all route and crossing groups commit synchronously. */
-  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[], globalBought?: readonly number[], prepared?: PreparedScene) {
+  commitRouteScene(ids: ReadonlySet<string>, globalTaken?: readonly number[], prepared?: PreparedScene) {
     this.routeGroups.retain(ids);
     for (const id of this.routeInputs.keys()) if (!ids.has(id)) this.routeInputs.delete(id);
     this.maskSources = [...this.routeInputs.values()];
@@ -1428,17 +1405,39 @@ export class View {
       (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y)).replacementHeight;
     this.contourLabels?.schedule(this.contourStep * 5);
     this.drawMask(this.maskSources, ready?.mask);
-    const demolished = new Set<number>();
-    const indices = globalDemolished ?? [...this.routeInputs.values()].flatMap(({ result }) => result.demolished.map(b => b.j));
-    for (const j of indices) { const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh); }
-    this.buildings?.hide(demolished);
-    // bought-out houses stand until they are cleared: their own colour in every view
+    // every house the project takes stands, in its own colour in every view, until it is cleared
+    const taken = globalTaken ?? [...this.routeInputs.values()].flatMap(({ result }) => [...result.demolished, ...result.boughtOut].map(b => b.j));
     const bought = new Map<number, number>();
-    for (const j of globalBought ?? [...this.routeInputs.values()].flatMap(({ result }) => result.boughtOut.map(b => b.j))) {
-      const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR);
-    }
+    for (const j of taken) { const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR); }
     this.buildings?.setMarked(bought);
+    this.setTakenMarkers(taken);
     this.dirty = true;
+  }
+
+  private takenMarkers: { key: string; pts: THREE.Points } | null = null;
+  /** Far away, where a footprint is under a pixel: the same houses as magenta diamonds, outlined so they read
+   * on any roof, on the ground at the building (nearer, the house itself has that colour and a ring on the map). */
+  private setTakenMarkers(js: readonly number[]) {
+    const key = [...new Set(js)].sort((a, b) => a - b).join(',');
+    if (this.takenMarkers?.key === key) return;
+    if (this.takenMarkers) { this.world.remove(this.takenMarkers.pts); this.takenMarkers.pts.geometry.dispose(); this.takenMarkers = null; }
+    if (!key) return;
+    const bp: number[] = [], radius: number[] = [], v = new THREE.Vector3();
+    for (const j of key.split(',').map(Number)) {
+      const b = this.pack.overlays.buildings[j];
+      if (!b) continue;
+      this.local(b[0], b[1], this.drapeHeight(b[0], b[1]), v);
+      bp.push(v.x, v.y, v.z); radius.push(b[2]);
+    }
+    const pg = new THREE.BufferGeometry();
+    pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
+    pg.setAttribute('radius', new THREE.Float32BufferAttribute(radius, 1));
+    const pts = new THREE.Points(pg, this.markerMaterial());
+    pts.name = 'buyouts';
+    pts.renderOrder = 5;
+    pts.onBeforeRender = (renderer) => { (pts.material as THREE.ShaderMaterial).uniforms.vh.value = renderer.getDrawingBufferSize(this.bufferSize).y; };
+    this.world.add(pts);
+    this.takenMarkers = { key, pts };
   }
 
   private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {
