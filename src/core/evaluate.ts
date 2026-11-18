@@ -123,7 +123,9 @@ export interface Result {
   vcurves: { s: number; z: number; len: number; r: number; type: string }[];
   grades: number[];
   /** per bend; `unit` is shared by the arcs of one (compound) curve, −1 for a bend without an arc (left out, collinear, U-turn) */
-  curves: { index: number; x: number; y: number; r: number; rEff: number; delta: number; auto: boolean; sStart: number; sEnd: number; t: number; unit: number }[];
+  curves: { index: number; x: number; y: number; r: number; rEff: number; delta: number; auto: boolean; sStart: number; sEnd: number; t: number; unit: number;
+    /** left out by the curve fit (no room for an S-curve next to its neighbour): the road runs `offset` m beside it */
+    ignored?: boolean; offset?: number }[];
   violations: Violation[];
   geomViolations: number;
   cost: CostBreakdown;
@@ -2780,7 +2782,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     geology: { ids: groundIds, profiles: groundProfiles },
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, ...(sec.faceL ? { faceL: sec.faceL, faceR: sec.faceR } : {}), oob, runs, ...(cones.length ? { cones } : {}),
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
-    curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
+    curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit, ...(c.ignored ? { ignored: true, offset: c.offset } : {}) })),
     ...(roadX.some(c => c.members?.length) ? { mergedWays: roadX.flatMap(c => (c.members ?? []).map(m => m.way)) } : {}),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
     retainingWalls, walledOff: retention.walledBuildings.flatMap(b => {

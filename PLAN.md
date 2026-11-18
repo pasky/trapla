@@ -2065,3 +2065,23 @@ reuse the stations), 5 cm slack; only pins on the route count; of several pins l
 results report a pin in route chainage; a bend that sets its stretch's speed is never dropped; a cut-stream fix that is
 deep enough already says "Make it a tunnel here", and no "Bridge it" button is offered in a cutting.
 Left: a pin and a stream in conflict could be met by a trough carrying the stream over our cut (a new structure).
+
+## A bend the curve fit leaves out; a pin at Auto's own height (second-round re-check P2s, no model version, 2026-11-18)
+
+**A neighbour the fit leaves out goes on release** (D35 km 4.2 dragged 50 px back: old bend 2's corner turns 2.2°, so
+the < 0.5° rule kept it, but no S-curve fits between it and the dragged bend 137 m before it: the fit leaves it out,
+4.9 m off the line between its neighbours, and the card said "turns 0° · no curve (straight)" with radius and speed
+choices, its number over bend 2's). On release (`dropStraightBends` with the road's speed and category) a neighbour of the
+dragged bend that the fit leaves out (`CurveInfo.ignored`) goes too, if its radius is Auto's and it sets no speed (not a
+hairpin, not an old road's corner); the dragged bend itself stays. The road already skips it, so the line is the same
+(tests/bend-order.test.ts: the same alignment, element by element). A bend left out otherwise (the dragged one, a loaded
+design) says so on its card: "Bend 3 · turns 2° · no room for its curve. It turns against the next bend where no S-curve
+fits, so the road runs straight 4.9 m beside it. Move them further apart, or delete it.", no radius or speed choices.
+
+**The Královec pin set to the suggested 438.3 m bills 10.72 bn, +25 M over no pin, with the track at the pin at the
+same 437.9 m: legitimate, a near-tie of the block search.** A pin bounds every knot of every window by its slopes' reach
+(autoprofile.ts `solveIn`), also a window 9 km away whose free start lies outside that reach though its boundary does
+not: the windows at km 4.44 and 11.21 pick heights 2 m / 1.5 m lower, the line from km 6.6 on moves up to 1.5 m (bridges
++232 M, earthworks −205 M). Bounding a window from a pin outside it only at its boundary knots gives the no-pin bill here,
+but the Královec pin −9 m at km 2.7 then bills 11.86 bn instead of 10.58: there the envelope is the true line (at its
+12.5 ‰ limit to km 10.5) and the far window needs it. Kept as it is.

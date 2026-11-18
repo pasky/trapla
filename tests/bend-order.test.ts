@@ -74,3 +74,29 @@ it('a bend a drag leaves on the line goes on release', () => {
   expect(dropStraightBends(a, b, pis.map((p, k) => k === 2 ? { ...p, hairpin: true } : p), [1, 2, 3]).dropped).toEqual([]);
   expect(dropStraightBends(a, b, d.pis, [0, 1, 2, 3]).dropped).toEqual([]);
 });
+
+// QA second-round re-check (screenshot 479): the same drag in the editor's perspective ends at (5228, 4541.8), a little
+// off that line: bend 2's corner then turns 2.2°, but the curve fit leaves it out (it turns against the dragged bend
+// where no S-curve fits, 4.9 m off the line between its neighbours) and the card said "turns 0° · no curve
+// (straight)" with radius and speed choices. On release it goes too, and the line is the same; the dragged bend
+// stays, and so does a neighbour whose radius or speed the player set.
+it('a neighbour the curve fit leaves out after a drag goes on release', () => {
+  const d = JSON.parse(readFileSync('scripts/scenarios/d35/d35-stage1-motorway.json', 'utf8')).design;
+  const a = { x: 2393.8, y: 3212 }, b = { x: 18222.3, y: 2459.4 };
+  const pis: PI[] = [d.pis[0], { x: 5228, y: 4541.8, r: null }, ...d.pis.slice(1)];
+  const build = (ps: readonly PI[]) => buildAlignment(a, b, [...ps], horizontalRules(d.speed, d.category), bendRules([...ps], d.speed, d.category));
+  const before = build(pis), left = before.curves[2];
+  expect(left).toMatchObject({ index: 2, ignored: true });
+  expect(left.offset).toBeCloseTo(4.9, 1);
+  const fit = { speed: d.speed, category: d.category, dragged: 1 };
+  expect(dropStraightBends(a, b, pis, [0, 1, 2]).dropped).toEqual([]); // not straight: 2.2°
+  const out = dropStraightBends(a, b, pis, [0, 1, 2], fit);
+  expect(out.dropped).toEqual([2]);
+  const after = build(out.pis);
+  expect(after.length).toBeCloseTo(before.length, 6);
+  expect(after.curves.map(c => [c.x, c.y, c.rEff, c.sStart])).toEqual(before.curves.filter(c => c.index !== 2).map(c => [c.x, c.y, c.rEff, c.sStart]));
+  // the dragged bend, a radius or a speed set by the player stay
+  expect(dropStraightBends(a, b, pis, [0, 1, 2], { ...fit, dragged: 2 }).dropped).toEqual([]);
+  expect(dropStraightBends(a, b, pis.map((p, k) => k === 2 ? { ...p, r: 2000 } : p), [0, 1, 2], fit).dropped).toEqual([]);
+  expect(dropStraightBends(a, b, pis.map((p, k) => k === 2 ? { ...p, speed: 100 } : p), [0, 1, 2], fit).dropped).toEqual([]);
+});

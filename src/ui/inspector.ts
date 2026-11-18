@@ -508,8 +508,21 @@ export class Inspector {
     // "Widest" is an action, not a state: finding the largest radius that fits is a geometry search
     // (tens of ms), done only when it is clicked
     const active = auto ? 'auto' : null;
-    const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
-    const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
+    // (a bend the curve fit leaves out has no turn of its own on the road: its corner's, said with why it has no curve)
+    const leftOut = !!cv?.ignored && !pi.hairpin;
+    const end = (k: number) => k < 0 ? { x: r.x[0], y: r.y[0] } : k >= d.pis.length ? { x: r.x[r.x.length - 1], y: r.y[r.y.length - 1] } : d.pis[k];
+    const corner = (p: { x: number; y: number }, q: { x: number; y: number }, n: { x: number; y: number }) =>
+      Math.abs(Math.atan2((q.x - p.x) * (n.y - q.y) - (q.y - p.y) * (n.x - q.x), (q.x - p.x) * (n.x - q.x) + (q.y - p.y) * (n.y - q.y)));
+    const delta = leftOut ? corner(end(i - 1), pi, end(i + 1)) : cv?.delta ?? 0;
+    const turn = cv ? `turns ${((delta * 180) / Math.PI).toFixed(0)}°` : '';
+    const status = leftOut ? 'no room for its curve' : cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
+    if (leftOut) {
+      const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
+      return `${this.head(`Bend ${bendNo(i)}`, turn)}
+      <div class="ctx-state"><b>${status}</b><div class="why">It turns against the next bend where no S-curve fits, so the ${line} runs straight ${(cv?.offset ?? 0).toFixed(1)} m beside it. Move them further apart, or delete it.</div></div>
+      ${this.issues(vio)}
+      <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height pin here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button></div>`;
+    }
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
       <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : keptNote && auto ? keptNote : auto ? 'Tightest the rules allow.' : pi.mapped ? `The ${this.oldLine}’s own curve, kept as it is.` : lowered ? `Your radius, lowered from ${m0(lowered.from)} to ${m0(lowered.to)} to fit between its neighbours.` : 'Your radius.'}</div>${hairpinNote}</div>

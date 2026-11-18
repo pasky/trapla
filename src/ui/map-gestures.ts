@@ -202,10 +202,11 @@ export function createMapGestures(app: MapGestureContext) {
         const fitted = fitPlacedBend(ends.a.position, ends.b.position, d.pis, placed.i, d.category, d.speed);
         if (fitted) app.store.update(draft => { draft.pis = fitted; }, false);
       }
-      // a bend the drag left on the line (it, or a neighbour it passed) is no bend: it goes (core/bend-order.ts)
+      // a bend the drag left on the line (it, or a neighbour it passed) is no bend, nor a neighbour the road now
+      // skips for want of room for its curve: it goes (core/bend-order.ts)
       const now = app.store.read();
       if (i !== null && now) {
-        const straight = dropStraightBends(app.A, app.B, now.pis, [i - 1, i, i + 1]);
+        const straight = dropStraightBends(app.A, app.B, now.pis, [i - 1, i, i + 1], { speed: now.speed, category: now.category, dragged: i });
         if (straight.dropped.length) {
           const route = app.store.activeRouteId;
           app.store.update(draft => { draft.pis = straight.pis.map(p => ({ ...p })); }, false);
