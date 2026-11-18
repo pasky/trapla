@@ -2059,4 +2059,9 @@ its number over bend 2's; D11 a drag along the straight: "turns 0° · R 1,350 m
 turn less than half a degree (the card's whole degrees would say 0°; game rule, no norm) go, hairpins and an old
 road's own corners excepted, with their radius notes; the line is the same (D35: 19.06 bn either way). A drag along a
 straight road then leaves it as it was. Live drags unchanged (screenshots 484, 485; tests/bend-order.test.ts).
+Review: the clearances are judged on the finished (rounded) line at each crossing's own chainage (a snapshot: retries
+reuse the stations), 5 cm slack; only pins on the route count; of several pins left out, each is tried back on its own
+(the nearest is not always the one in the way); a fixed-profile solve (one direction of a motorway) and stitched
+results report a pin in route chainage; a bend that sets its stretch's speed is never dropped; a cut-stream fix that is
+deep enough already says "Make it a tunnel here", and no "Bridge it" button is offered in a cutting.
 Left: a pin and a stream in conflict could be met by a trough carrying the stream over our cut (a new structure).
