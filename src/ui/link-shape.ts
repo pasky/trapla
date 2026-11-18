@@ -28,7 +28,7 @@ export function insertViaPoint(path: readonly XY[], via: readonly XY[], p: XY): 
 }
 
 /** A way crossed more than once shares one crossing choice: its reroutes are shaped only once the
- * player has chosen "Cut and reroute" for all of them. */
+ * player has chosen "Cut it" for all of them. */
 export function shapeable(r: Result | null, d: Design, roadId: number): boolean {
   const count = r?.crossings.filter(c => c.roadId === roadId).length ?? 0;
   return count <= 1 || (d.crossingOverrides ?? []).some(o => o.roadId === roadId && o.type === 'reconnection');

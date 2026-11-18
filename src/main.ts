@@ -179,7 +179,14 @@ async function main() {
       return { receiver, name: (id) => { const r = routes.find(q => q.id === id); return !r || r.role === 'mission' ? 'our road' : r.name; } };
     },
     onRing: (j) => !!session.projectFull?.works.items.some(w => w.removes?.includes(j)),
+    // (the road links hold the names: loaded the first time a card asks, then the card is drawn again)
+    roadName: (way) => {
+      // (not over a field being typed into: render() waits for it; a failed load is tried again by the next card)
+      if (!links.graph && !namesAsked) { namesAsked = true; void ensureTransport().then(() => { if (links.graph) inspector.render(); else namesAsked = false; }); }
+      return links.wayName(way);
+    },
   });
+  let namesAsked = false;
   // ---- road links: the transport graph, loaded on first need (ui/road-links.ts) ----
   const links = createRoadLinks({ session, store, projectStore, pack, view, transportData, worker, previewWorker, select: next => select(next) });
   const { ensure: ensureTransport, claimedSources, mappedRoadNear, legacyRoadAt } = links;
@@ -251,7 +258,7 @@ async function main() {
   });
 
   works = new CrossingHighlight(view, document.getElementById('overlay')!, {
-    selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull,
+    selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull, heightAt: (x, y) => pack.terrain.heightAt(x, y),
   });
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
     selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull, design: () => store.design,

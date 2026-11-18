@@ -8,7 +8,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   trackEndViolations, verticalViolations, VIOLATION_KINDS } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, culvertCard, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, culvertCard, cutOffFix, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
@@ -35,6 +35,21 @@ describe('player-facing text', () => {
     }
     expect(crossingOutcome({ type: 'diversion', cls: 'track', linkLength: 412, targetS: 2310 }).label)
       .toBe('Rerouted to the nearest crossing at km 2.31 (+412 m of new track)');
+    // a way cut where no new road is needed: what each part still reaches and how far round its traffic goes (research/86)
+    const reach = (cls: string, way: number) => ({ path: [{ x: 0, y: 0 }, { x: 0, y: 50 }], way, cls });
+    const closure = { connected: [true, true] as [boolean, boolean], sides: ['north', 'south'] as [string, string], reach: [reach('tertiary', 7), reach('secondary', 9)] as [ReturnType<typeof reach>, ReturnType<typeof reach>] };
+    const names = (way: number) => way === 9 ? 'road II/325' : undefined;
+    const closed = crossingOutcome({ type: 'reconnection', cls: 'service', closure: { ...closure, extra: 1900, via: { way: 9, cls: 'secondary' } } }, 'road', names);
+    expect(closed.label).toBe('Cut · no new road needed');
+    expect(closed.explain).toBe('The service road is cut by our road. The north part still reaches a class III road, the south part road II/325; each just ends at our earthworks. Its traffic goes round 1.9 km further, via road II/325.');
+    for (const c of [{ closure }, { closure, farClosure: true as const }, { closure, farClosure: true as const, requestedType: 'reconnection' as const },
+      { closure: { ...closure, connected: [true, false] as [boolean, boolean], nothing: [false, true] as [boolean, boolean] } },
+      { closure: { ...closure, connected: [false, true] as [boolean, boolean] }, linkLength: 240, targetS: 1200 }])
+      for (const cls of ['track', 'service', 'tertiary']) { const o = crossingOutcome({ type: 'reconnection', cls, ...c }, 'road', names); for (const text of [o.label, o.explain]) check(`closure ${cls}`, text); }
+    // closed with what it served bought out, cheaper than keeping its way across
+    const bought = crossingOutcome({ type: 'diversion', cls: 'track', closure: { ...closure, extra: 2600 }, houses: [1, 2], homes: 0, houseCost: 31e6, buyout: { instead: { type: 'overbridge', cost: 153e6 } } });
+    expect([bought.label, bought.explain.split('. ').at(-1)]).toEqual(['Cut · 2 buildings bought out', 'Cheaper to buy out than to keep its access: 2 buildings, 31 M CZK; its bridge over us would cost 153 M CZK.']);
+    for (const type of ['underpass', 'overbridge', 'bridge', 'reconnection', 'diversion', 'buyout']) check('cut-off fix', cutOffFix(type, 25e6));
     for (const action of ['relocation', 'retaining-wall', 'culvert', 'channel-relocation', 'blocked'] as const)
       for (const feature of ['road', 'railway', 'water', 'stream', 'nature'] as const) {
         const o = footprintOutcome({ feature, action, cls: 'service', length: 50, affectedLength: 20 });

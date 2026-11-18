@@ -48,6 +48,7 @@ Other commands:
 | `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp) and picking a reroute; screenshots 110–116 |
 | `node scripts/link-shape-shots.mjs` | shaping a reroute with the mouse; screenshots 117–119 |
 | `node scripts/reroute-end-shots.mjs` | leading a reroute to another road by dragging its end (D35 km 2.51); screenshots 500–509 |
+| `node scripts/cut-card-shots.mjs` | a cut service road to a hamlet (D11 km 17.67): Auto's box, the player's cut, its parts on the map, one led on; screenshots 530–537 |
 | `node scripts/lowered-underpass-shots.mjs` | player pass over lowered underpasses and engineered reroutes (real clicks, card text checked); screenshots 150–156 |
 | `node scripts/camera-check.mjs [--shots dir]` | the map camera with real mouse input (low views, Voletiny zoom, pans off the map, *Whole route*, overprinted labels); screenshots 157–159 |
 | `npx tsx scripts/crossing-footprint-audit.ts [--straight] [--random N] [designs…]` | rough independent screen: crossing earthworks still lying over other mapped roads |
@@ -365,6 +366,13 @@ km 2.51): [Auto leads its north part to the track under our bridge at km 2.70](d
 [onto a street across our road: said, Auto's line stands](docs/screenshots/506-reroute-end-across.png),
 [*Lead it where Auto does*](docs/screenshots/507-reroute-end-automatic.png), [onto a track that does not cross ours](docs/screenshots/508-reroute-end-snap-track.png),
 [built there](docs/screenshots/509-reroute-end-track.png).
+A cut way that serves houses (`node scripts/cut-card-shots.mjs`, D11 km 17.67, the service road to a hamlet):
+[Auto keeps it across our road in a box](docs/screenshots/530-cut-hamlet-auto.png),
+[the player's "Cut it": closed, what each part still reaches and how far round, each part lit to its road](docs/screenshots/531-cut-hamlet-closed.png),
+[further out](docs/screenshots/532-cut-hamlet-parts.png), [the ends beside our road](docs/screenshots/533-cut-hamlet-ends.png),
+[a part's end dragged onto road I/16](docs/screenshots/534-cut-hamlet-end-drag.png), [led there](docs/screenshots/535-cut-hamlet-end-led.png);
+D35 full km 22.08: [a farm's track, its buildings bought out rather than carried over the motorway](docs/screenshots/536-cut-farm-bought-out.png),
+[a farm building's card](docs/screenshots/537-cut-farm-building.png).
 Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-underpass-shots.mjs`; retaken on
 cost model 31, where the start line lowers other roads than it did):
 [the straight start line opens valid](docs/screenshots/150-straight-start-valid.png),

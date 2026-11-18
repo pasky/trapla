@@ -177,7 +177,25 @@ export interface CrossingResult {
    * road), and, where both do, how much further its traffic goes round over the network, m (way-pieces.ts). */
   closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number;
     /** a side whose piece is cut off but is only a short stub serving nothing: left as it is */
-    nothing?: [boolean, boolean] };
+    nothing?: [boolean, boolean];
+    /** per side whose piece still reaches the network: the way there from its cut end, and the class of the road it meets */
+    reach?: [{ path: { x: number; y: number }[]; way: number; cls: string } | undefined, { path: { x: number; y: number }[]; way: number; cls: string } | undefined];
+    /** a track's or service road's side whose piece serves buildings (closed only as a public road is) */
+    serves?: [boolean, boolean];
+    /** the way round (with `extra`): the public road it runs along furthest */
+    via?: { way: number; cls: string } };
+  /** Closed though a part of it serving buildings goes round further than CLOSURE_ROUND: nothing that keeps it across
+   * our road can be built (Auto's last resort, crossing-geometry.ts). */
+  farClosure?: true;
+  /** The buildings a track or service road cut here serves whose traffic would go round further than CLOSURE_ROUND if
+   * it were closed (what keeping its way across is for). */
+  accessFor?: number[];
+  /** Closed with those buildings bought out (`accessFor`, in `houses`): cheaper than keeping its way across, which
+   * would have been `instead` (Auto's choice, crossing-geometry.ts). */
+  buyout?: { instead?: { type: CrossingResult['type']; cost: number } };
+  /** The player's "Cut it" closed though buildings it serves then go round further than CLOSURE_ROUND: what Auto would
+   * build instead (its problem's fix), and how many of those buildings are homes. */
+  cutOff?: { type: CrossingResult['type']; cost: number; homes: number; buyout?: true };
   /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
   houses?: number[];
   houseCost?: number;
@@ -375,7 +393,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.ends; delete c.endTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.closure;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.ends; delete c.endTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.closure; delete c.farClosure; delete c.accessFor; delete c.buyout; delete c.cutOff;
     delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.under; delete c.overRailway; delete c.kept;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);
@@ -405,7 +423,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     // row.junction is an Auto candidate heuristic, not a ban on manually connecting local roads.
     if (choice === 'junction' && gradeSeparated)
       issue(c, 'ours', gradeSeparated === 'railway' ? 'Our railway cannot cross a road at the same level' : 'Our motorway cannot have a level junction',
-        'Choose "Our bridge over it", "Its bridge over us", an underpass or "Cut and reroute"');
+        'Choose "Our bridge over it", "Its bridge over us", an underpass or "Cut it"');
     else if ((choice === 'junction' || choice === 'reconnection') && row.noAtGrade)
       issue(c, 'class', `A ${row.label} cannot meet our road at the same level`, 'Choose "Our bridge over it" with enough height, or "Its bridge over us" over a cutting at least 6 m deep');
     if (choice === 'bridge') {
@@ -438,7 +456,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       c.kept = true;
     } else if (choice === 'underpass') {
       const box = underpassPrice(c, footprint[c.i], urban[c.i]);
-      if (!box) issue(c, 'underpass', `A ${row.label} cannot pass through a small underpass`, 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"');
+      if (!box) issue(c, 'underpass', `A ${row.label} cannot pass through a small underpass`, 'Choose "Our bridge over it", "Its bridge over us" or "Cut it"');
       else {
         Object.assign(c, priced(box));
         // (lower than the box needs, the way is lowered into a cut, by at most LOWERING_RULES.maxDepth)
@@ -585,6 +603,12 @@ export interface CrossingRoute {
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => LinkObstacle | null;
   /** Houses still standing under a new road from a to b or within the working strip beside it (BUILDING_RULES.clearance). */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
+  /** The buildings people go to (a house, flats, a farm or a works, a civic building; no shed or garage) still standing
+   * (kept ones too) within `reach` of the stretch a–b, and (`apart`) not within that of a public road (what a cut way's
+   * piece serves). */
+  served?: (a: { x: number; y: number }, b: { x: number; y: number }, reach: number, apart?: number) => readonly number[];
+  /** A house the player keeps (never bought out for a crossing). */
+  keptHouse?: (j: number) => boolean;
   /** Houses on a paved disk (a turning area) or within its working strip still standing: those bought out with it, and whether one is kept. */
   housesOnDisk?: (x: number, y: number, radius: number) => { take: number[]; kept: boolean };
   /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts). */
