@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { evaluateProject } from '../src/core/project-evaluate';
 import type { ProjectDesign } from '../src/core/project';
 import type { Result } from '../src/core/evaluate';
+import type { GradePinViolation } from '../src/core/grade-pins';
+import { railwayDesign, replaceRailwayFromDesign } from '../src/core/project-railway';
 
 const D11 = 'public/scenarios/d11';
 const fixture = (name: string) => JSON.parse(readFileSync(`tests/fixtures/qa-final/${name}.json`, 'utf8')) as ProjectDesign;
@@ -29,5 +31,21 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const track = r.crossings.find(c => c.roadId === 3637)!;
     if (track.type === 'diversion') expect(track.closure?.connected).toEqual([true, true]);
     else expect(['bridge', 'underpass']).toContain(track.type);
+  }, 120_000);
+
+  // QA sweep 3 second re-check: the profile drag 8 px up at km 2.03 pinned 441.9 m, out of reach of the climb from
+  // A. The line stays Auto's own (no far problems), and the height the card suggests is one Auto then meets: the
+  // slopes' bound it used to suggest (440.44 m) failed the search again.
+  it('leaves an unreachable pin out and suggests a height Auto meets', () => {
+    const base = fixture('rail-kralovec'), rail = base.routes.find(r => r.kind === 'railway')!;
+    const pinned = (z: number) => replaceRailwayFromDesign(base, rail.id, { ...railwayDesign(base, rail), gradePins: [{ s: 2030, z }] });
+    const r0 = run(base).routes['route:railway'].legacy!, out = run(pinned(441.9)).routes['route:railway'].legacy!;
+    expect(out.cost.total).toBe(r0.cost.total);
+    const v = out.violations.find(v => 'pin' in v) as GradePinViolation;
+    expect(out.violations).toEqual([v]);
+    expect(v.pin.suggested!.z).toBeLessThan(440.44);
+    expect(v.fix).toBe(`Set it to ${v.pin.suggested!.z.toFixed(1)} m, or unpin`);
+    const set = run(pinned(v.pin.suggested!.z)).routes['route:railway'].legacy!;
+    expect(set.violations.filter(x => 'pin' in x)).toEqual([]);
   }, 120_000);
 });

@@ -134,6 +134,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   are cut back to their junction, and the separation retry runs on every category. One street still does, where its
   junction lies at our slope's toe. What mostly breaks them is the hand-set radii at the norm's limit (S-bends 4–6,
   bend 9; PLAN.md, model 37).
+- A pin Auto cannot reach is left out and said at the pin (the line stays Auto's own, engineered as such); a drag
+  past the next bend swaps the two in order (`core/bend-order.ts`; PLAN.md "A drag past the next bend; an
+  unreachable pin").
 - Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
   in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
   boundary at km 11.21 sees that in its window; PLAN.md "Design realism").

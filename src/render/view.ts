@@ -47,7 +47,8 @@ export interface ViewEvents {
    * 'wait': not yet, the press is held and asked again on the next move or `resumeRoadDrag()`) */
   onRoadDrag?: (x: number, y: number) => number | null | 'wait';
   onPiDragStart?: (i: number) => void;
-  onPiDrag?: (i: number, x: number, y: number) => void;
+  /** may return the bend's new number (dragged past a neighbour, the bends are reordered) */
+  onPiDrag?: (i: number, x: number, y: number) => number | void;
   onPiDragEnd?: (i: number) => void;
   onPiSelect?: (i: number | null) => void;
   onPiDelete?: (i: number) => void;
@@ -1924,7 +1925,8 @@ export class View {
         const m = this.piMarkers[i];
         if (m) { m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y); }
         this.dirty = true;
-        this.ev.onPiDrag?.(i, p.x, p.y);
+        const k = this.ev.onPiDrag?.(i, p.x, p.y);
+        if (typeof k === 'number' && k !== i) this.dragging = i = k;
       };
       this.resumeRoadDrag = () => { if (waiting) move({ pointerId: id, clientX: at.x, clientY: at.y }); };
       const stop = () => {
@@ -1958,7 +1960,7 @@ export class View {
       if (!el) return;
       e.preventDefault();
       e.stopPropagation();
-      const i = Number(el.dataset.i);
+      let i = Number(el.dataset.i);
       if (e.button === 2) { this.ev.onPiDelete?.(i); return; }
       this.ev.onPiSelect?.(i);
       this.dragging = i;
@@ -1972,7 +1974,8 @@ export class View {
         const m = this.piMarkers[i];
         m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y);
         this.dirty = true;
-        this.ev.onPiDrag?.(i, p.x, p.y);
+        const k = this.ev.onPiDrag?.(i, p.x, p.y);
+        if (typeof k === 'number' && k !== i) this.dragging = i = k;
       };
       const up = () => {
         el.removeEventListener('pointermove', move);

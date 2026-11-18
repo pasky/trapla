@@ -1965,3 +1965,32 @@ everywhere), a problem names them, the card offers *Move pin to km …* (along t
 the next, `MIN_VPI_GAP`). On Auto no message names a point: a too steep stretch says where and how much longer it
 must be; an overlap would be an engine limit at a km (never shown: the gate). Railways say "track". "Rounding" and
 "height point" are JARGON. Auto's pins are drawn (screenshot 403); Auto's height points are not, by design.
+
+## A drag past the next bend; an unreachable pin (sweep 3 second re-check P2s, no model version, 2026-11-18)
+
+**A drag along the road past the next bend** (D35, a drag at km 12 along the motorway put the new bend beyond
+bend 7: "turns back almost on itself (178°)"). Bends are corners in order from A to B; `core/bend-order.ts`
+`passBends`: where the dragged bend lies ahead of a neighbour along that neighbour's other leg (a turn of more
+than a right angle there) and swapping the two turns the line less, they swap places in that order, live and
+reversible (dragged back, they swap back); a hairpin neighbour is left alone. Every road kind; the view follows
+the bend's new number, the drag's offset, placed bend (fitted on release), wanted radii and radius notes go
+with it. The repro: VALID, 20.57 bn (screenshot 430; tests/bend-order.test.ts).
+
+**An unreachable height pin** (Královec railway, a pin 441.9 m at km 2.03, 4 m over the climb from A at its
+12.5 ‰ limit: 10.69 → 12.06 bn, six problems at km 6.3–9.1). Not the climb carrying the lift: `autoProfile`
+returned the straight grade from A to B for a pin outside the slopes' reach (and when the pinned search failed),
+and evaluate then skipped the clearance retries and every support lift, as for a line with no legal solution.
+Now Auto leaves out the pins it cannot meet (the others kept), says so at the pin ("Auto cannot reach it, so
+the track stays where it was") and engineers its own line (`AutoProfileResult.lineOk`, `usableLine`): the repro
+bills 10.69 bn with only the pin's problem (screenshot 431; a QA case in `scripts/edit-locality.ts`). Frozen
+bills unchanged.
+The card's suggested height is one Auto meets (`reachableSuggestions`, core/grade-pins.ts): the slopes' bound
+(440.44 m here) is only necessary, as the search's 0.5 m grid takes ≤ 3 m per 254 m knot (11.8 ‰, not 12.5 ‰) and
+changes of slope need room; so the bound is tried with the route's first solve (the memo re-solves only the
+windows around the pin), then halved towards the line's height now on the editor's 0.1 m step, ≤ 6 solves, settled
+evaluations only: "Set it to 439.5 m", which then holds (tests/rail-drag-locality.test.ts). A failed search's
+suggestion (the height now) is found the same way. A retry no longer trades a line meeting the pins for one
+leaving one out.
+Left: a reachable pin's envelope also narrows the boundary windows that do not
+contain it (the pin −9 m at km 2.7 moves km 12.7, EXPECTED in edit-locality): physics there (a line at its limit),
+and leaving those windows unpruned made that pin's line 1.3 bn dearer, so it stays.

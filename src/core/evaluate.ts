@@ -2,7 +2,8 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
+import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable, usableLine } from './autoprofile';
+import { reachableSuggestions } from './grade-pins';
 import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
@@ -1361,6 +1362,10 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       ...(blocks && opts.passCache ? { memo: opts.passCache.profile } : {}),
     };
     autoOptions = apOpt;
+    // the first solve's options as they are now (the retries below replace and narrow its bands): a pin's
+    // suggested height is checked against the solve the player's edit will run first
+    const firstOpt = d.gradePins?.length && !preview ? { ...apOpt, minH: apOpt.minH.slice(), maxH: apOpt.maxH.slice(),
+      eitherH: { above: apOpt.eitherH.above.slice(), below: apOpt.eitherH.below.slice() } } : null;
     // Auto between the ends of a given grade line (one direction of a separate motorway stretch): the
     // search runs on those stations only and its line is spliced into the given one.
     const fp = opts.fixedProfile;
@@ -1443,7 +1448,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         : { ...apOpt, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
       // A clearance refinement must not replace an already pin-compliant solution by its straight
       // fallback. Keep the useful grade and report its clearance shortfall instead.
-      if (d.gradePins?.length && !retry.feasible) break;
+      // (nor a line that meets the pins by one that leaves one out)
+      if (d.gradePins?.length && (!usableLine(retry) || (retry.pinViolations?.length ?? 0) > (ap.pinViolations?.length ?? 0))) break;
       ap = retry;
     }
     vpis = ap.vpis;
@@ -1457,8 +1463,10 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         materialAt[i] = blockValues[j];
       }
     }
-    profileFeasible = ap.feasible;
+    profileFeasible = usableLine(ap);
     pinViolations = ap.pinViolations ?? [];
+    // a pin Auto cannot meet: the height it does reach instead, found by the same solve (core/grade-pins.ts)
+    if (firstOpt && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, pins => solveAuto({ ...firstOpt, pins }));
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
@@ -2053,7 +2061,7 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
       const retry = floorSolve(retried, setup, solved, prices, caches)!;
       // kept only if it meets a stretch the lifts could not (a target it cannot reach either, e.g. next
       // to a fixed end, would only trade the line for one that pays its clearance penalty)
-      if (retry.feasible) {
+      if (usableLine(retry) && (retry.pinViolations?.length ?? 0) <= solved.pinViolations.length) {
         const again = liftAll(retry.vpis);
         if (fresh.some(c => !again.failed.includes(c))) { baseLine = retry.vpis; ({ out, failed } = again); }
       }

@@ -34,8 +34,9 @@ const SUITES: Record<string, { scenario: string; designs: string[]; n?: number; 
   ...Object.fromEntries(['d3-0301', 'd3-0302', 'd3-0303', 'd3-0304', 'd3-0305'].map(id => [id, { scenario: id, designs: [`scripts/scenarios/${id}/${id}-motorway.json`] }])),
 };
 /** `valid`: the repro must also leave a valid design (its problems were Auto's own, not far ones) */
-type Edit = { kind: 'bend' | 'insert' | 'pin'; at: number; amount: number; bend?: number; qa?: string; xy?: { x: number; y: number }; valid?: boolean };
-/** QA's repros: chainage (m), metres sideways (insert: a new bend; at the start view 10 px ≈ 230 m on D11) */
+type Edit = { kind: 'bend' | 'insert' | 'pin'; at: number; amount: number; bend?: number; qa?: string; xy?: { x: number; y: number }; z?: number; valid?: boolean };
+/** QA's repros: chainage (m), metres sideways (insert: a new bend; at the start view 10 px ≈ 230 m on D11) or up (pin;
+ * `z`: the pinned height itself) */
 const QA: Record<string, Edit[]> = {
   straight: [
     { kind: 'pin', at: 9000, amount: 15, qa: 're-test 6: 15 m pin at km 9' }, { kind: 'pin', at: 9000, amount: -15, qa: 're-test 6: 15 m pin at km 9 (down)' },
@@ -47,7 +48,9 @@ const QA: Record<string, Edit[]> = {
   ],
   'scripts/scenarios/d3-full/d3-full-motorway.json': [24500, 29500, 18900, 40000, 50500].map(at => ({ kind: 'insert' as const, at, amount: 300, qa: `re-test 4: drag at km ${at / 1000}` })),
   // the bend the QA's 50 px drag put in (tests/fixtures/qa-final/rail-kralovec-drag.json)
-  'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6', valid: true }],
+  'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6', valid: true },
+    // the profile drag 8 px up at km 2.03: out of reach of the climb from A (said at the pin, nothing else changes)
+    { kind: 'pin', at: 2030, amount: 4.02, z: 441.9, qa: 'sweep 3 re-check: unreachable pin at km 2.03' }],
 };
 
 /** Edits whose far change is physics, not the solve's reach (each with why; still a FAIL if the far change grows
@@ -134,7 +137,7 @@ for (const file of suite.designs) {
     const d = structuredClone(d0);
     let label: string;
     if (e.kind === 'pin') {
-      d.gradePins = [...(d.gradePins ?? []), { s: Math.round(e.at), z: at(r0, r0.grade, e.at) + e.amount }];
+      d.gradePins = [...(d.gradePins ?? []), { s: Math.round(e.at), z: e.z ?? at(r0, r0.grade, e.at) + e.amount }];
       label = `pin ${e.amount > 0 ? '+' : ''}${e.amount.toFixed(0)} m at km ${(e.at / 1000).toFixed(1)}`;
 
     } else if (e.kind === 'bend') {

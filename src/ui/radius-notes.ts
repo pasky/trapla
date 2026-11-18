@@ -14,6 +14,13 @@ export const radiusNotes = {
   wanted(route: string | null, i: number, r: number | null): number | null {
     return this.get(route, i, r)?.from ?? r;
   },
+  /** bend `from` is now bend `to` (dragged past its neighbours, core/bend-order.ts): the notes go with the bends */
+  move(route: string | null, from: number, to: number) {
+    const m = notes.get(route ?? ''); if (!m || from === to) return;
+    const moved = new Map<number, { from: number; to: number }>();
+    for (const [k, n] of m) moved.set(k === from ? to : from < to && k > from && k <= to ? k - 1 : to < from && k >= to && k < from ? k + 1 : k, n);
+    notes.set(route ?? '', moved);
+  },
   /** a drag of bend `dragged`: its and its neighbours' notes are now `lowered` */
   record(route: string | null, dragged: number, lowered: readonly LoweredRadius[]) {
     let m = notes.get(route ?? '');
