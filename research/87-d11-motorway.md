@@ -47,7 +47,7 @@ Poland".
 - **Category:** D 27.5 at 110 km/h. Neither D 26.0 nor D 21.5 has an SPK 2026 row in our tables; D 27.5 is our only
   motorway row (as for D35, whose real section is D 26.0). 110 km/h is the design speed of all of 1109 but its first
   ≈ 1 km (to MÚK Střítež), and is one of our motorway speeds (130 / 120 / 110). The picker card says so: "Built
-  27.5 m wide, our usual motorway; the planned road is 21.5 m wide and contracted for 11.7 bn CZK."
+  27.5 m wide, our usual motorway; most of the planned road is 21.5 m wide. Contracted for 11.7 bn CZK."
 - **Ends:** the pack's A and B. A lies on the mapped D11 21.0 km before the border (≈ the 21.175 km of 1109 from
   the 1108 boundary north of Střítež), B where OSM's ref changes D11 → S3 at the border (PLAN.md "First playable
   prototype"). A "joins the D11 from Jaroměř" (section 1108, being built), B "goes on as the S3 in Poland". The
@@ -63,7 +63,12 @@ Poland".
 - **The class I road mission stays** beside it in the Trutnov card, as the simpler job ("a two-lane road where the
   D11 motorway is planned"); its bills and saves are unchanged.
 
-## 3. Our bill of the official line against the contract
+## 3. Our bill of the starter against the contract
+
+The starter is a game route sampled from the mapped line, not the official design: its straight legs between bends
+1.5 km apart run up to 215 m off the mapped line (≈ 6.5 km of it more than 100 m off), it has neither the real
+tunnels nor the three interchanges, and its bill includes land and buildings. The contract is context for the
+player, not a like-for-like target.
 
 Cost model 55, D 27.5/110, Auto grade (scripts/scenarios/d11/d11-motorway.json, `SCENARIO=d11 PRESET=d11-motorway
 scripts/scenarios/check.ts`): **14.09 bn CZK**, 20.36 km, 692 M/km, 11.1 min.
@@ -76,7 +81,7 @@ scripts/scenarios/check.ts`): **14.09 bn CZK**, 20.36 km, 692 M/km, 11.1 min.
 | Tunnels | none (cuts, deepest at km 4.6–5.3 and 12.9–13.9) | 2, twin tubes, 1,116 + 984 m of tube |
 | Price | 14.09 bn (SPK/OTSKP 2026 price level) | 11.71 bn contract (2024), 13.07 bn estimate |
 
-Ours is **+20 %** on the contract and **+8 %** on ŘSD's own estimate. Where the difference comes from, as far as
+Ours is **+20 %** on the contract (as context, see above) and **+8 %** on ŘSD's own estimate. Where the difference comes from, as far as
 it can be told without the real bills of quantities: the width (our formation is 6 m wider over 20 km: road base
 2.93 bn and other objects 3.17 bn scale with it), the price level (2026 vs a 2024 award that came in 10 % under the
 estimate) and 56 buildings bought out under the line (539 M; our bends are sampled from the mapped line, not its

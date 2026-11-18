@@ -11,8 +11,6 @@ import { startDesign } from '../../src/state';
 import { ENDPOINT_JUNCTIONS } from '../../src/core/data/urban';
 import { scenarioParams } from '../../src/core/data/scenario';
 import { evaluateProject } from '../../src/core/project-evaluate';
-import { replaceCorridorFromDesign } from '../../src/core/project-motorway';
-import { replaceRouteFromLegacy } from '../../src/core/project-legacy';
 
 const pack = loadPack();
 const { meta, terrain, buildings, roads, junctions, overlays } = pack;
@@ -82,10 +80,11 @@ for (const name of [...(presetId ? [presetId] : ['default', 'reference']), ...(p
   let valid = r.violations.length === 0 && Math.abs(sum - r.cost.total) < .01, project: { valid: boolean; cost: number | null; issues: string[] } | undefined;
   if (presetId && name !== 'straight') {
     if (fixture.preset !== presetId) throw new Error('Fixture belongs to another mission.');
-    const { ctx: pctx, initial } = projectContext(pack, scenario), start = initial();
-    const design = scenario.mode === 'motorway' ? replaceCorridorFromDesign(start, start.corridors[0].id, d)
-      : replaceRouteFromLegacy(start, start.routes.find(route => route.role === 'mission')!.id, d);
-    const p = evaluateProject(pctx, { epoch: 'check', revision: 1, design });
+    // the fixture is the mission's own starter, and the game's opening project is evaluated as it opens
+    const { ctx: pctx, initial, initialRoad } = projectContext(pack, scenario), road = initialRoad();
+    if (JSON.stringify([road.category, road.speed, road.pis]) !== JSON.stringify([d.category, d.speed, d.pis]))
+      throw new Error(`${presetId}: the fixture is not the mission's starter (scenario.initial)`);
+    const p = evaluateProject(pctx, { epoch: 'check', revision: 1, design: initial() });
     project = { valid: p.valid, cost: p.cost.total, issues: p.issues.map(i => i.violation?.title ?? i.code) };
     valid &&= p.valid;
   }

@@ -2335,12 +2335,14 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
 - **Starter = reference:** bends every ≈ 1.5 km of the mapped line (`scripts/motorway-starter.ts d11-motorway
   --mapped=1.5`: evaluates a motorway preset through the project evaluator as the game does, with an optional bounded
   validity-first bend search), Auto grade, VALID as sampled: 14.09 bn, 20.36 km, 11.1 min, 11 bridges / 2.2 km, no
-  tunnel, 56 buildings bought out. +20 % on the contract, +8 % on ŘSD's 13.07 bn estimate (width, price year,
+  tunnel, 56 buildings bought out. A game route, not the official design (up to 215 m off the mapped line between
+  bends, no interchanges, land included): +20 % on the contract, +8 % on ŘSD's 13.07 bn estimate (width, price year,
   buildings; research/87 §3).
 - **Gate:** `scripts/scenarios/check.ts` checks a pack's other missions with `PRESET=<id>` (fixture
   `scripts/scenarios/<pack>/<preset>.json`, VALID through both the road evaluator and the project evaluator);
   `scripts/gates.sh full` runs `scenario-d11-motorway`. Works-clash: 0 clashes (its starter is in `starterClashes`
-  through PRESETS); outcome audit: no flags; bench: VALID, parts sum.
+  through PRESETS); outcome audit and bench (they evaluate the fixture with the pack's class I road traffic: 13.97 bn,
+  the noise of 9,000 a day): no flags, VALID, parts sum.
 - **Drags** on this mission (not a gate; the gates drag the D11 road): bend, pin, vpi within budget; a road drag's
   median preview ≈ 65–68 ms (budget 60) on a host at load ≈ 5, where the D35 first section, of the same kind, measured
   63 ms and D3 0304 46 ms in the same minutes. Not investigated further.
