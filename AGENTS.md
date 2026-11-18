@@ -122,7 +122,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   as it stands still re-solves the grade around it (D11 direct-90's viaduct: +462 M), as before. Cable-stayed
   later. A long mined tube costs less per metre (cost model 36, research/64). Protected nature areas (cost model 45, research/75): no
   works of ours in reserves, monuments, national parks, CHKO zones I–II (protection zones and Natura 2000 sites: a note,
-  cost model 46); Auto bridges over them (no supports inside) or mines under them; no tunnel over 500 m steeper than 5 %
+  cost model 47); Auto bridges over them (no supports inside) or mines under them; no tunnel over 500 m steeper than 5 %
   to its ends, 3–5 % a note (no price for the safety measures, research/76). The real D35 layout is Auto's kind (a 2.9 km
   tunnel under Pod skálou at ≤ 3.8 %; the real-portal line +5.4 %, research/73 §7). Not taken: T-8.0 tube width, rock cover,
   running costs (research/73 §5, /74). The Nová Paka

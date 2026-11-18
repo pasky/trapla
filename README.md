@@ -499,7 +499,7 @@ representations, not structural designs for long spans.
 **Protected nature** (cost model 45, research/75): nature reserves, monuments, Natura 2000 sites and national park
 zones are drawn as green borders; Auto keeps its works out of reserves, monuments, national parks and CHKO zones I–II
 (over on a bridge with no supports inside, under in a mined tunnel). Works in a Natura 2000 site get a note (they need
-a Natura assessment; cost model 46), and no tunnel over 500 m is steeper than 5 %.
+a Natura assessment; cost model 47), and no tunnel over 500 m is steeper than 5 %.
 
 | D35: Auto's 3.2 km tunnel under Pod skálou, out of its forest | The player's earthworks in the monument: a problem under the Act |
 |---|---|
@@ -508,7 +508,13 @@ a Natura assessment; cost model 46), and no tunnel over 500 m is steeper than 5 
 [The tunnel's east end beyond the protected forest](docs/screenshots/341-protected-d35-tunnel-portal-beyond-forest.png),
 [a tunnel the player made 3.9 % steep: the card's note](docs/screenshots/343-protected-d35-steep-tunnel-note.png),
 [the D35 road's tunnel end in the monument's protection zone: a note](docs/screenshots/344-protected-d35-road-tunnel-zone-note.png),
-[D3: the Sázava viaduct's piers out of the Natura 2000 river](docs/screenshots/345-protected-d3-sazava-bridge-piers-clear.png).
+[D3: the Sázava viaduct's piers out of the Natura 2000 river](docs/screenshots/345-protected-d3-sazava-bridge-piers-clear.png)
+(model 45). Cost model 47:
+[the D3 Sázava viaduct's piers in the Natura 2000 river with the note](docs/screenshots/410-natura-d3-sazava-viaduct-piers-in-river-note.png),
+[D35 stage 1: a 2.9 km tunnel at 3.8 %, the note on its card](docs/screenshots/411-tunnel-d35-stage1-2-9-km-3-8-pct-note.png),
+[its east end beyond the protected forest](docs/screenshots/412-tunnel-d35-stage1-east-portal-beyond-forest.png),
+[the D35 road's 2 km tunnel at 4.7 %, within the law's 5 %](docs/screenshots/413-tunnel-d35-road-2-0-km-4-7-pct-within-law.png),
+[d3-full: no tunnel at km 9.7, the Sázava bridge line](docs/screenshots/414-d3-full-km-10-no-tunnel-sazava-bridge-line.png).
 Reproduce with `node scripts/realism-shots.mjs` (SCENARIO, PRESET).
 
 ## Contributing notes

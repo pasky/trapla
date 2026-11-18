@@ -1076,10 +1076,10 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
   tunnels of steep roads can still exceed 5 % where the structure choice turns a deep cut into a tunnel on a steep
   grade (QA new road across Královec: 6.1 %; said on the card, not a problem).
 
-### Natura 2000 a note; tunnels within the law's 5 % (cost model 46, 2026-11-18)
+### Natura 2000 a note; tunnels within the law's 5 % (cost model 47, 2026-11-18)
 
 Research: research/75 "Natura 2000 sites: a note", research/76 (no price for a steep tunnel's safety measures),
-research/73 §7 (D35 again). Shots 410–41x.
+research/73 §7 (D35 again). Shots 410–414.
 - **A Natura 2000 site (EVL) takes works, with a note.** Act 114/1992 §§45h–i ask for a Natura assessment. A project
   with a significant impact may still go ahead for an overriding public interest, with compensation, and real motorways
   cross such sites (the real D3 bridges the Sázava over EVL Dolní Sázava). Our works there get a note on the stretch
@@ -1103,23 +1103,27 @@ research/73 §7 (D35 again). Shots 410–41x.
   against holding the bridge line). Only d3-full changed (exact.ts).
 - **Faster where a protected area lies under the road** (bit-exact, exact.ts): a coarse pass whose height range and
   grade steps cannot meet the area's clearance is solved only if it is needed as the fallback.
-  - Interleaved medians, model 44 (no areas) / model 45 / model 46: d35 stage-1 111 / 332 / 289 ms, d35 road
+  - Interleaved medians, model 44 (no areas) / model 45 / this change: d35 stage-1 111 / 332 / 289 ms, d35 road
     141 / 243 / 282 ms, d35-full 615 / 1,042 / 835 ms.
   - The rest of the gap to model 44 comes from the harder line, not from the tunnel passes. A 3 km mined tunnel under a
     no-works area takes the wide band in its windows, a DP retry for lifts, a strict retry and two more engineering
-    passes. Without the protected areas (`PROTECTED=0`), model 46 times as model 44 (115 / 112–119 ms on stage 1).
+    passes. Without the protected areas (`PROTECTED=0`), this change times as model 44 (115 / 112–119 ms on stage 1).
   - The D35 road is slower than model 45: its long tunnel is solved again under the strict limit.
 - **D35 against the real layout** (research/73 §7):
-  - Auto builds a 2,919 m tunnel at km 4.15–7.07, at most 3.8 % steep, out of the protected forest: 19,627 M.
-  - The real-portal line (3,948 m at 1.9 %) bills 20,689 M (+5.4 %).
+  - Auto builds a 2,919 m tunnel at km 4.15–7.07, at most 3.8 % steep, out of the protected forest: 19,617 M.
+  - The real-portal line (3,948 m at 1.9 %) bills 20,679 M (+5.4 %; +3.7 % with the 3 % weight).
   - The real designers' gentle grade is unpriced here: the 3–5 % safety measures and road users' grade costs are not
     modelled.
-- **Bills** (model 45 → 46): D11 frozen fixtures and the Královec railway unchanged.
-  - D35: stage-1 19,949 → 19,627 M; road 9,438 → 6,667 (a 2.0 km tunnel at 4.7 % instead of 3.2 km at 3.0 %); d35-full
-    34,169 → 33,963.
-  - D3: motorway 15,198 → 14,396 (the Sázava viaduct's piers in the Natura 2000 river again); road 3,868 → 3,904 (a
-    near-tie: a 50 m bridge at km 1.40 goes); d3-0302 6,772 → 6,765; d3-0304 10,083 → 10,099; d3-full 36,260 → 36,156.
+- **Bills** (model 46 → 47, `evaluate()` of the starters): D11 frozen fixtures and the Královec railway unchanged.
+  - D35: stage-1 19,938 → 19,617 M; road 9,430 → 6,659 (a 2.0 km tunnel at 4.7 % instead of 3.2 km at 3.0 %); d35-full
+    34,151 → 33,944.
+  - D3: motorway 15,198 → 14,396 (the Sázava viaduct's piers in the Natura 2000 river again); road 3,882 → 3,904 (a
+    near-tie: a 50 m bridge at km 1.40 goes); d3-0302 6,776 → 6,770; d3-0304 10,073 → 10,089; d3-full 36,241 → 36,144.
   - The rest unchanged, all VALID.
+  - Outcome audit (24 random D11 lines, against model 46): VALID 14 → 15 (random-9: a span too low at km 6.30 gone),
+    flags 63 → 63, 11 lines −431 … +386 M. random-13 now takes a 500 m tunnel at km 4.52 that the 3 % weight kept off:
+    +393 M against holding its old line. Most of that is bought fill (+230 M route-wide): the earth balance of the
+    whole route that the search's blocks do not see, the near-tie the weight hid.
 - **Not fixed: direct-90's grade-search miss** (AGENTS.md open items). The suspected cause, rock faces priced on flat
   ground in the search, is not it: the search's flat-section rock face is within 4 % of the billed one on both lines.
   - The 422 M (model 45) between Auto's line and holding the pre-presplit line comes from the support lifts after the

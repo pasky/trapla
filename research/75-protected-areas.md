@@ -31,7 +31,7 @@ converted to the pack's local metres and filled even-odd on the 5 m grid (cell c
 | NPP | §35(2): "Změny či poškozování národních přírodních památek … je zakázáno" | no works |
 | PP | §36(2): "Změna nebo poškozování přírodní památky … jsou zakázány" | no works |
 | Protection zone (OP) | §37(1): "ochranné pásmo, ve kterém lze vymezit činnosti a zásahy, které jsou vázány na předchozí souhlas orgánu ochrany přírody"; undeclared, it is the land within 50 m of the area | **a note**: "needs the nature authority's consent" (owner's decision, 2026-11-17); no violation, no cost |
-| EVL | §45c(2): "jsou chráněny před poškozováním a ničením … K zásahům, které by mohly vést k takovým nežádoucím důsledkům, si musí ten, kdo tyto zásahy zamýšlí, předem opatřit souhlas orgánu ochrany přírody"; §§45h–45i: Natura assessment, variants, overriding public interest | **a note** (cost model 46): "needs a Natura assessment"; no problem, no cost. Model 45 banned works here; not so in law: §45i lets a project with a significant impact go ahead for an overriding public interest with compensation, and real motorways cross such sites (the D3 Sázava bridge over EVL Dolní Sázava) |
+| EVL | §45c(2): "jsou chráněny před poškozováním a ničením … K zásahům, které by mohly vést k takovým nežádoucím důsledkům, si musí ten, kdo tyto zásahy zamýšlí, předem opatřit souhlas orgánu ochrany přírody"; §§45h–45i: Natura assessment, variants, overriding public interest | **a note** (cost model 47): "needs a Natura assessment"; no problem, no cost. Model 45 banned works here; not so in law: §45i lets a project with a significant impact go ahead for an overriding public interest with compensation, and real motorways cross such sites (the D3 Sázava bridge over EVL Dolní Sázava) |
 | PO | §45e(2): activities needing consent are set per bird area by government order; §§45h–45i assessment | a note only (no general ban) |
 | NP | §16(2): "Na území národních parků mimo zastavěná území obcí … je zakázáno … b) povolovat nebo provádět stavby" | no works outside built-up areas (the land-cover built-up flag stands in for "zastavěné území") |
 | CHKO | §26(1): "Na celém území chráněných krajinných oblastí je zakázáno … f) stavět nové dálnice"; (2) zone I: "a) povolovat nebo provádět nové stavby"; (3) zones I–II: "… provádět terénní úpravy značného rozsahu" | zones I–II: no works; zones III–IV: no works for motorways, a note for other roads (§44 consent) |
@@ -80,13 +80,13 @@ width and the rock-cover factor (research/73 §5, too weak), running costs (rese
   tests load the pack without areas); Auto's tunnel of a steep road may still exceed 5 % where its structure choice
   tunnels a deep cut on a steep grade (said on the card).
 
-## Natura 2000 sites: a note (cost model 46, 2026-11-18)
+## Natura 2000 sites: a note (cost model 47, 2026-11-18)
 
 Owner's decision (2026-11-17): a Natura 2000 site (EVL) is no longer a no-works area. §§45h–45i ask for a Natura
 assessment; works with a significant impact are allowed for an overriding public interest with compensation. Works of
 ours there now get a note on the stretch card ("…need a Natura assessment"), like a bird area, with no problem and no
 cost. Neither the assessment nor any compensation is priced (no source).
 - **D3 motorway.** The Sázava viaduct (km 4.21–5.03) stands with piers in the river again: 15,198 → 14,396 M against model
-  45 (cost model 46 numbers, PLAN.md).
+  46 (PLAN.md).
 - **QA tests.** The QA's new lines across Královec run through EVL Krkonoše. Their crossing tests load the pack with
   its areas again (no `PROTECTED=0`).

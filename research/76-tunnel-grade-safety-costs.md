@@ -40,7 +40,7 @@ sources opened unless said otherwise.
   300 m section) this comes to ≈ 0.5–1 % of the tunnel's price from 3 % to 5 %.
 - **A climbing lane or a wider bore** could be the big item, but it depends on traffic and has no published price.
 
-## What the game does (cost model 46)
+## What the game does (cost model 47)
 
 - **No cost.** A tunnel over 500 m steeper than 3 % gets a note on its card ("needs extra safety measures after a
   risk study"), as before.

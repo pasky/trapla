@@ -179,9 +179,9 @@ Auto now chooses the layout the real designers chose: a long tunnel at a gentle 
 escarpment, and a short valley crossing. What remains between Auto and the real line is the summit height on the
 west approach (ours ≈ 546 m at km 4.0 against the real 514 m portal) and the price per tube-metre (§4).
 
-## 7. After the tunnel grade rule became the law's 5 % (cost model 46, 2026-11-18)
+## 7. After the tunnel grade rule became the law's 5 % (cost model 47, 2026-11-18)
 
-Cost model 46 changes three things (research/76):
+Cost model 47 changes three things (research/76):
 - No 3 % preference: the search weight of 1 M CZK/m per 0.1 % over 3 % is removed, since no source prices the safety
   measures.
 - A Natura 2000 site takes works, with a note.
@@ -191,11 +191,11 @@ The same comparison (`scripts/_d35real.ts`, stage-1 motorway; the By-hand lines 
 
 | Line | Tunnel | Bridges | Bill | vs Auto |
 |---|---|---|---:|---:|
-| Auto, model 45 (3 % preference) | km 3.87–7.08, 3,209 m, ≤ 2.9 % | 780 m | 19,949 M | — |
-| **Auto, model 46** | **km 4.15–7.07, 2,919 m, ≤ 3.8 % (mean 3.3 %), out of the protected forest** | 780 m | **19,627 M** | — |
-| Real portal heights (514 → 439 m), tunnel painted 3.30–7.25 | 3,948 m, 1.9 % | 500 m | 20,689 M | +5.4 % |
-| Portal out of the forest, 3.0 % in the tunnel | 3.48–7.24 | 410 m | 21,078 M | +7.4 % |
-| Portal out of the forest, 3.9 % in the tunnel | 3.60–7.24 | 410 m | 21,050 M | +7.3 % |
+| Auto, model 46 (3 % preference) | km 3.87–7.08, 3,209 m, ≤ 2.9 % | 780 m | 19,938 M | — |
+| **Auto, model 47** | **km 4.15–7.07, 2,919 m, ≤ 3.8 % (mean 3.3 %), out of the protected forest** | 780 m | **19,617 M** | — |
+| Real portal heights (514 → 439 m), tunnel painted 3.30–7.25 | 3,948 m, 1.9 % | 500 m | 20,679 M | +5.4 % (model 46: 20,670 M, +3.7 %) |
+| Portal out of the forest, 3.0 % in the tunnel | 3.48–7.24 | 410 m | 21,068 M | +7.4 % |
+| Portal out of the forest, 3.9 % in the tunnel | 3.60–7.24 | 410 m | 21,040 M | +7.3 % |
 
 **How the real layout ranks.**
 - Auto still chooses the real kind of layout: a long mined tunnel under Pod skálou that exits below the protected forest
