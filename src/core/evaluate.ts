@@ -2364,16 +2364,18 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   })) : [];
   if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
   // a rebuilt stretch's side roads: the crossing of each nearest to where it joined the old road keeps its access
-  const sideAccess = new Set<CrossingResult>();
+  const sideAccess = new Map<CrossingResult, { x: number; y: number }>();
   for (const w of opts.sideWays ?? []) {
     let near: CrossingResult | undefined;
     for (const c of crossings) if (c.roadId === w.way && (!near || Math.hypot(c.x - w.x, c.y - w.y) < Math.hypot(near.x - w.x, near.y - w.y))) near = c;
-    if (near) sideAccess.add(near);
+    if (near) sideAccess.set(near, { x: w.x, y: w.y });
   }
   const resolve = () => resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
     ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor,
     sideAccess.size ? (c: CrossingResult) => sideAccess.has(c) ? sideJunctionCost(c.cls, cat.minor) : undefined : undefined);
   let crossingIssues = resolve();
+  // (met at its old access: its piece beyond us towards the old road is taken up)
+  for (const c of crossings) { const at = sideAccess.get(c); if (at && c.type === 'junction') c.oldJunction = at; else delete c.oldJunction; }
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
   // other roads' works it is kept clear of).
   const clearOf = opts.keepClear?.length ? capsuleTest(opts.keepClear) : undefined;

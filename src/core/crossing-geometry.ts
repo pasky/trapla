@@ -955,11 +955,20 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
     }
     const deckAt = (d: number) => deck.base + deck.slope * d;
     const edgeZ = (d: number) => isRaised ? deckAt(d) : project(along(path, d)).z;
-    const f0 = foot(d0, -1, edgeZ(d0)), f1 = foot(d1, 1, edgeZ(d1));
+    // A rebuilt road's side road met where it joined the old road (c.oldJunction): its piece beyond us on that side led
+    // only to the old road, now taken up: it ends at our road there, the piece is removed (not drawn, not regraded)
+    let stub = 0;
+    if (c.type === 'junction' && c.oldJunction) {
+      let near = path[0];
+      for (const q of path) if (Math.hypot(q.x - c.oldJunction.x, q.y - c.oldJunction.y) < Math.hypot(near.x - c.oldJunction.x, near.y - c.oldJunction.y)) near = q;
+      stub = near.d < d0 ? -1 : near.d > d1 ? 1 : 0;
+      if (stub) g.removed = stub < 0 ? [near.d, d0] : [d1, near.d]; else delete g.removed;
+    }
+    const f0 = stub < 0 ? d0 : foot(d0, -1, edgeZ(d0)), f1 = stub > 0 ? d1 : foot(d1, 1, edgeZ(d1));
     // A crossing whose ramps would run on for hundreds of metres is not a sensible bridge over us.
     if (isRaised && Math.max(d0 - f0, f1 - d1) > MAX_RAMP_LENGTH) diagnose(g, RAMP_TOO_LONG);
     // Short terrain tails make the actual joins visible; tails are maintenance, not new approaches.
-    const a = Math.max(path[0].d, Math.min(f0, keep?.p0 ?? Infinity) - STEP), b = Math.min(path[path.length - 1].d, Math.max(f1, keep?.p1 ?? -Infinity) + STEP);
+    const a = stub < 0 ? d0 : Math.max(path[0].d, Math.min(f0, keep?.p0 ?? Infinity) - STEP), b = stub > 0 ? d1 : Math.min(path[path.length - 1].d, Math.max(f1, keep?.p1 ?? -Infinity) + STEP);
     const distances = [...new Set([a, f0, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, f1, b])].sort((p, q) => p - q);
     road = distances.map(d => {
       const q = terrainPoint(along(path, d));

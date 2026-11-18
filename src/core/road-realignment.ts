@@ -96,7 +96,7 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
   // An underpass keeps the way at its own level through the box: its stretch is built, not removed.
   // (a way straightened to cross square, or moved beside our earthworks, also gives up its old stretch)
   let old: WayPoint[] = [];
-  if (g.removed && (c.squared !== undefined || c.moved)) {
+  if (g.removed && (c.squared !== undefined || c.moved || (c.type === 'junction' && c.oldJunction))) {
     const raw = roads.connectedCrossingPath(c.roadId, c.x, c.y, CROSSING_RULES.linkHardReach, MAX_POINTS);
     if (raw.length >= 2) old = slice(raw, Math.max(raw[0].d, g.removed[0]), Math.min(raw[raw.length - 1].d, g.removed[1]));
   }

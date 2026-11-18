@@ -149,6 +149,9 @@ export interface CrossingResult {
   under?: number;
   /** Its bridge over us also spans the mapped railway it crossed at the same level beside us (crossing-geometry.ts). */
   overRailway?: true;
+  /** A rebuilt road's side road met at its old access (EvalOptions.sideWays): where it joined the old road. Its piece
+   * beyond our road on that side led only there: it is taken up, not regraded (crossing-geometry.ts). */
+  oldJunction?: { x: number; y: number };
   /** A cut way's pieces that still reach the road network over other ways and just end here ([right, left] of our
    * road), and, where both do, how much further its traffic goes round over the network, m (way-pieces.ts). */
   closure?: { connected: [boolean, boolean]; /** compass point of each side */ sides: [string, string]; extra?: number;

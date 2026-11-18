@@ -557,6 +557,19 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
   // A rebuilt stretch's old road is gone from the map as soon as its new line is engineered against the
   // network without it, priced or not: every road is checked against the network as the player edited it.
   for (const route of design.routes) if (route.source && replacements.has(route.id)) result.acceptedReplacements.push(...route.source.intervals.map(i => ({ ...i })));
+  // A side road met at its old access gives up its piece beyond the new road, towards the old one (crossings.ts
+  // oldJunction): gone from the map with it.
+  const roads = ctx.legacy.roads;
+  if (roads && ctx.sourceWays) for (const route of design.routes) if (route.source && replacements.has(route.id)) for (const c of legacyOf.get(route.id)?.crossings ?? []) {
+    const removed = c.geometry?.removed, path = c.geometry?.road;
+    if (c.type !== 'junction' || !c.oldJunction || !removed || !path?.length || c.roadId === undefined) continue;
+    const sourceId = [...ctx.sourceWays].find(([, way]) => way === c.roadId)?.[0];
+    if (!sourceId) continue;
+    // (from where its kept part ends at our road to where it joined the old road)
+    const end = removed[0] >= 0 ? path[path.length - 1] : path[0];
+    const a = roads.wayStation(c.roadId, end.x, end.y), b = roads.wayStation(c.roadId, c.oldJunction.x, c.oldJunction.y);
+    if (Math.abs(b - a) > 0.5) result.acceptedReplacements.push({ transportData: design.transportData!, sourceId, s0: Math.min(a, b), s1: Math.max(a, b) });
+  }
 }
 
 /** Stage 3: the junctions where a side road meets another designed road (built and billed by the side road),
