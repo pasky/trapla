@@ -115,7 +115,7 @@ Its tooltip shrinks to 3 lines and stays inside the profile.
 ### 2.6 Visual language
 
 - Same colours everywhere: road orange, bridge blue, tunnel purple, wall teal, violation red,
-  demolished dark grey square, bought out magenta, kept green.
+  bought out magenta (every house the project takes, wherever it stands), kept green.
 - Noise is one ramp (pale → yellow at the limit → red) used by the band, the building colours and the
   inspector's diagram.
 - Map legend: short, one line.
@@ -126,7 +126,7 @@ Its tooltip shrinks to 3 lines and stays inside the profile.
   tallest dwelling nearby; 1 floor where there are none) — the height the decisions use. Raising a wall
   visibly cools the band where it shadows those floors.
 - **Buildings** are coloured by their **own** worst level after walls/cuts on the same ramp; bought out
-  magenta; demolished removed.
+  magenta (also those under our works).
 - **Building inspector** shows a **cross-section**: the road and its noise source, the wall or cut edge,
   the house with each floor labelled with its level (before → after), the sightline over the wall and
   its shadow. Changing the wall height re-draws it.
