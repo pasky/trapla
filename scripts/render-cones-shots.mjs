@@ -32,7 +32,7 @@ try {
   // 2. D11 straight start, km 4.07: the house beside the bridge end under its cone
   await game.open('scenario=d11'); await park();
   const cone = await T(() => window.trapla.result().demolished.find(d => d.j === 11400) ?? null);
-  check(cone?.cone, 'the house under the km 4.07 cone is demolished');
+  check(cone?.cone, 'the house under the km 4.07 cone is bought out');
   await T(() => window.trapla.selectBuilding(11400)); await game.idle();
   const card = await page.locator('#hud').innerText();
   console.log('CARD house 11400', card.slice(0, 300));

@@ -268,8 +268,8 @@ export function createResultDisplay(app: ResultDisplayContext) {
     heavy = runSliced((function* () {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
       try {
-        geometry = yield* app.routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex),
-          result.buildings.filter(b => b.action === 'buy').map(b => b.buildingIndex));
+        geometry = yield* app.routeScene.build(inputs, [...result.buildings.filter(b => b.action !== 'retain').map(b => b.buildingIndex),
+          ...result.works.items.flatMap(w => w.removes ?? [])]);
         const graph = app.links.graph;
         // A project with rebuilt mapped roads (e.g. after undo/reload) whose graph is not parsed yet.
         if (!graph && result.acceptedRenderReplacements.length) void app.ensureTransport().then(() => { if (app.links.graph) requestEval(false); });

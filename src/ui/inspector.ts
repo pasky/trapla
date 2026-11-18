@@ -150,6 +150,8 @@ export class Inspector {
     /** a house heard by two or more roads and decided once for the project: its project receiver and the
      * roads' names (null: decided by one road alone, or the project is not priced) */
     together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
+    /** the house stands where a roundabout's ring goes (bought out with it) */
+    onRing?: (j: number) => boolean;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
     el.addEventListener('click', (e) => this.click(e));
@@ -670,10 +672,10 @@ export class Inspector {
     const tog = removed ? null : this.ctx.together?.(j), together = tog ? togetherHouseText(tog.receiver, tog.name, czk) : null;
     if (together) ({ state, why } = together);
     else if (removed) {
-      state = `Demolished · ${czk(removed.cost)}`;
+      state = `Bought out · ${czk(removed.cost)}`;
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
-      why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is demolished, km ${km(r.s[removed.i])}, and goes with it.`
+      why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is bought out, km ${km(r.s[removed.i])}, and goes with it.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
         : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
@@ -691,6 +693,7 @@ export class Inspector {
       why = bought.reason === 'manual' ? 'Your choice.' : rec ? `${built === built ? `As built ${(limit + built).toFixed(1)} dB ${period}; b` : 'B'}ehind a ${top} m wall still ${(limit + rec.mitigated).toFixed(1)} dB (limit ${limit}).`
         : `Too loud even behind a ${top} m wall.`;
     }
+    else if (this.ctx.onRing?.(j)) { state = 'Bought out'; why = 'Where the roundabout\'s ring goes; billed with the roundabout.'; }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
     else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
     else if (rec) {
@@ -698,13 +701,13 @@ export class Inspector {
       why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
     } else if (r.besideOldRoad?.includes(j)) { state = 'Stays'; why = `The ${this.oldLine} is kept as it is here: nothing changes for this house.`; }
     else state = 'Stays · far from the road';
-    // kept clear of our works by a retaining wall instead of demolished (Auto's price comparison, or the player keeps it)
+    // kept clear of our works by a retaining wall instead of bought out (Auto's price comparison, or the player keeps it)
     const walled = !removed && !bought ? r.walledOff?.find((p) => p.j === j) : undefined;
     if (walled) {
       if (!rec && !together) state = 'Stays · a wall keeps our works clear';
       const wall = `a ${walled.height.toFixed(1)} m retaining wall along our road, km ${kmr(walled.s0, walled.s1)},`;
       why = (why ? `${why} ` : '') + (walled.kept ? `You keep it: ${wall} keeps the works clear of it (${czk(walled.wall)}).`
-        : `Auto: ${wall} keeps the works clear of it for ${czk(walled.wall)}; demolishing it would cost ${czk(walled.demolition)}.`);
+        : `Auto: ${wall} keeps the works clear of it for ${czk(walled.wall)}; buying it out would cost ${czk(walled.demolition)}.`);
     }
     if (action === 'keep' && !kept?.hit && (together || !rec?.unresolved) && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
     // What this road does on its own always stands (a house in its way is gone, priced or not); only the
@@ -751,10 +754,10 @@ export class Inspector {
         state = `Stays · behind Auto's ${rec.wall > 0 ? `${rec.wall} m ` : ''}wall beside your choice`;
       }
     }
-    // In the road's way it is demolished whatever else is chosen: no separate "buy out" next to that
+    // In the road's way it is bought out whatever else is chosen: no separate "buy out" next to that
     const opt: [string, string, string][] = removed && action !== 'buy'
-      ? [['', 'Demolish', 'It is in our road\'s way: bought and demolished'], ['keep', 'Keep', 'Never demolish it: our road must miss it']]
-      : [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
+      ? [['', 'Buy out', 'It is in our road\'s way: bought out'], ['keep', 'Keep', 'Never buy it out: our road must miss it']]
+      : [['', 'Auto', 'Buy out if in the way, or if no wall helps'], ['buy', 'Buy out', 'Buy it out, plot included'], ['keep', 'Keep', 'Never buy it out']];
     return `${this.head(cap(info.kind), `${info.levels} floor${info.levels === 1 ? '' : 's'}`)}
       <div class="ctx-state"><b>${state}</b>${why ? `<div class="why">${why}</div>` : ''}</div>${pending}
       ${this.issues(vio)}
