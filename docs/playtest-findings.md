@@ -11,6 +11,23 @@ the next bend; an unreachable pin"), played with real mouse in SwiftShader 1440�
 470–477 (`docs/screenshots/47x-qa-p2-*.png`), the rest under `/tmp/trapla-qa-p2/`. Bills on main: D35 first section
 19.65 bn (was 19.22 at 1258a07), Královec starter 10.69 bn, D11 straight 8.79 bn, D3 0304 10.09 bn, all VALID.
 
+### Second-round re-check — main fcb6306 (cost model 51; one 10 min chunk + the Node repro)
+
+The five items below, re-played with the same steps (PLAN.md "A rebuilt stretch kept on its old road", "A pin that
+leaves a crossing; bends left straight"). Screenshots 478–479, the rest under `/tmp/trapla-qa-p2/c3/`.
+
+| item | verdict | evidence |
+|---|---|---|
+| P1 #1 Královec pin at 439.5 m | **FIXED** | 8 px up: "out of reach: too steep", 10.69 bn. Height 439.5 + Set: "Pinned height out of reach: a stream", the detail "there our railway would run through the stream at km 2.09: too high to pass under it in a tunnel, too low to bridge it. Auto leaves the pin out", **10.69 bn**, Auto's line and tunnel kept (from km 2.0, over the stream), no other problem. The button "Set it to 438.3 m": pin met (track 437.9 m), **VALID 10.72 bn** (+25 M against no pin although the track at the pin is the same 437.9 m; not chased) (478). |
+| P1 #2 III/3012 corner kept on the old road | **FIXED** | `qa3/kept-corner.ts`: with the rebuilt road 8,787.0 M, bridge km 2.185–2.424, crossing at (7658, 5483) = mission only. UI drag (same camera and 25 px): corner PI moves the same 22 m, card "up to 0 m from the old road … kept as it is", 0 CZK, our road **8.787 bn**, bridge 2185–2424; the curve grips sit on the drawn road (the corner marker stays at the PI, by design). |
+| P2 pin fix as a button | **FIXED** | "Set it to 438.3 m" is a button on the pin's card (and in the problem list); one click sets and meets it. |
+| P2 0° bend after a drag | **D11 FIXED, D35 still open** | D11 km 9, 40 px along: no bend left, 8.787 bn unchanged (was +264 M). D11 km 5, −60 px: a real 1° bend (R 1,350 m, 18 m of curve), fine. **D35 km 4.2, 50 px back** (Whole route, camera 13.8 km): still "Bend 3 · turns 0° · no curve (straight) · Tightest the rules allow" with Tightest / Widest and design speed, its number on top of bend 2's (479). Its corner turns 2.2° (PIs (5228, 4542), (5365, 4524), (7639, 4312)), so the < 0.5° rule does not drop it; the hover says why it is straight: "left out · it turns against its neighbour where no S-curve fits, and is only 4.9 m off the straight line between its neighbours: the road skips it". The card should say the same (or the release drop it like a straight one). VALID 18.88 bn, the same bill as at 5331cc1. |
+| P2 white shards at the track's access | **FIXED** | `d11-iii3012-dragged-23m.json`, same close-up: the access ends at our carriageway's edge, no shards; III/3012 10.4 M VALID, track:junction. |
+
+Nothing new and broken next to them. Other drags re-played: D35 km 12 +40 px (VALID 20.32 bn, bends 7 / 8 at km 12.61 /
+12.81; was 19.13 bn not valid by S-bend spacing at 5331cc1, the bend lands a little differently) and km 8.2 +50 px (19.40 bn,
+unchanged).
+
 | # | item | verdict | evidence |
 |---|---|---|---|
 | 1 | D35 drag along the road past the next bend | **FIXED** | Whole route (camera 13.8 km), click km 12 (the cut), drag 40 px right: the new bend passes bend 7 and swaps with it (bends at km 12.60 / 12.78), no U-turn; the only problem is "Bends 7 and 8 are too close for an S-bend · move them at least 393 m further apart", 19.13 bn (470). Other along-the-road drags VALID: D35 km 8.2 +50 px (19.40 bn), km 4.2 −50 px (18.88 bn, −778 M), km 13.8 +80 px (19.74 bn); D11 km 9 +40 px (9.05 bn), km 5 −60 px (8.48 bn). P2 below: a dragged bend can land on a straight and turn 0°. |
