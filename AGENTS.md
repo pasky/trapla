@@ -126,6 +126,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   and run the script on a pack built without it) are crossings at their own level: one with room over / under our road is
   kept (billed 0), else engineered (cost model 55, PLAN.md "Mapped bridges and tunnels are crossings";
   `scripts/mapped-structures-audit.ts`). Railway tunnels are still in the railway raster.
+- A bridge over what runs along under it (a street, a stream, a railway in its valley) stands on frame piers where no
+  wall pier moved aside can (two columns under the deck's edges, a billed crossbeam; cost model 56, PLAN.md "The D11
+  motorway mission"); a road drag (a bend added) and a reroute drag preview in a window, not the whole route.
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
   hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /

@@ -52,7 +52,7 @@ cost, since only interchanges and twin tunnel tubes are motorway-specific; the h
 becomes meaningful once it is.
 *(2026-11-18)* Done: the D11 motorway is a mission of its own, "Motorway D11: Trutnov → Polish border" (D 27.5/110,
 13,000 vehicles a day, ŘSD's 2040 forecast), first in the Trutnov card; the class I road stays beside it as the
-simpler job. Its starter on the official line bills 14.09 bn against the real 11.71 bn contract (research/87, section
+simpler job. Its starter on the official line bills 14.03 bn against the real 11.71 bn contract (research/87, section
 "The D11 motorway mission" below).
 
 **The official line uses tunnels, v1 need not.** Proposal: include tunnels only as the simplest possible
@@ -2322,32 +2322,50 @@ only access to a hamlet of about eight buildings east of our road, closed with n
   junction is not looked for. direct-90 now runs the regrade retry once more (a reroute through a home on the way to
   its km 4.61 box: +≈ 300 ms of its full evaluation).
 
-## The D11 motorway mission (owner request, no cost model change, 2026-11-18)
+## The D11 motorway mission; frame piers; road and reroute drags windowed (owner request, cost model 56, 2026-11-18)
 
 Owner: "no Trutnov D11 but just 1st class road". The real project (research/87) is D11 stavba 1109, 21.175 km,
 D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges, contract CZK 11.71 bn ex VAT (2024).
 - **Mission** `D11_MOTORWAY` (preset `d11-motorway`, `src/core/data/scenario.ts`) on the d11 pack: D 27.5 (our only
-  motorway row; the card says the planned road is 21.5 m wide and its contract price) at 110 km/h, the pack's A and B
-  ("Joins the D11 from Jaroměř", "Goes on as the S3 in Poland"), 13,000 vehicles a day (ŘSD's 2040 forecast, above
+  motorway row; the planned road is 21.5 m wide) at 110 km/h, the pack's A and B ("Joins the D11 from Jaroměř", "Goes
+  on as the S3 in Poland": a merge onto the two S3 carriageways that start there, the mission's own `junctions`), 13,000 vehicles a day (ŘSD's 2040 forecast, above
   the two-lane class I limit of 11,650), heavy share the motorway mix, time target 12.6 min (mapped line + 10 % at
-  110). The class I road mission stays in the same Trutnov card (second, "The simpler job: a two-lane road where the
-  D11 motorway is planned"); its bills and saves are unchanged. The railway stays third.
+  110). The start screen's Trutnov card has two choices, "Motorway D11" (first: the real project) and "Class I road"
+  (the earlier mission, bills and saves unchanged); the railway keeps its own card.
 - **Starter = reference:** bends every ≈ 1.5 km of the mapped line (`scripts/motorway-starter.ts d11-motorway
   --mapped=1.5`: evaluates a motorway preset through the project evaluator as the game does, with an optional bounded
-  validity-first bend search), Auto grade, VALID as sampled: 14.09 bn, 20.36 km, 11.1 min, 11 bridges / 2.2 km, no
+  validity-first bend search), Auto grade, VALID as sampled: 14.03 bn, 20.36 km, 11.1 min, 11 bridges / 2.2 km, no
   tunnel, 56 buildings bought out. A game route, not the official design (up to 215 m off the mapped line between
-  bends, no interchanges, land included): +20 % on the contract, +8 % on ŘSD's 13.07 bn estimate (width, price year,
+  bends, no interchanges, land included): +20 % on the contract, +7 % on ŘSD's 13.07 bn estimate (width, price year,
   buildings; research/87 §3).
 - **Gate:** `scripts/scenarios/check.ts` checks a pack's other missions with `PRESET=<id>` (fixture
   `scripts/scenarios/<pack>/<preset>.json`, VALID through both the road evaluator and the project evaluator);
   `scripts/gates.sh full` runs `scenario-d11-motorway`. Works-clash: 0 clashes (its starter is in `starterClashes`
   through PRESETS); outcome audit and bench (they evaluate the fixture with the pack's class I road traffic: 13.97 bn,
   the noise of 9,000 a day): no flags, VALID, parts sum.
-- **Drags** on this mission (not a gate; the gates drag the D11 road): bend, pin, vpi within budget; a road drag's
-  median preview ≈ 65–68 ms (budget 60) on a host at load ≈ 5, where the D35 first section, of the same kind, measured
-  63 ms and D3 0304 46 ms in the same minutes. Not investigated further.
-- **Known:** coarser samplings of the official line (a bend every 2–3 km) are not valid on their own (bridge piers
-  on streets in Poříčí and Bernartice, streams and the mapped finished D11 at the border under our earthworks);
-  the straight line has 20+ such problems. Auto puts no tunnel where the real line has two.
-- Shots 570–574 (`scripts/d11-motorway-shots.mjs --docs 570`).
+- **Drags live (gates `drag-d11-motorway-road`, `-link`).** A road drag (a bend added between two) and a reroute drag
+  (its shape changed) ran whole-route previews on every move: the preview lineage was keyed by the number of bends and
+  by the reroute shapes, so the full result before the drag was never a window's base (median 65–75 ms on this
+  mission, the D35 first section 62–69 ms on main since at least bd42ffe). The lineage now keys the bends' own
+  settings and a crossing's choices; the window covers the plan change or the reshaped crossing to the one it leads
+  to (`core/preview-window.ts`). Medians: D11 motorway road 70 → 26 ms, reroute 75 → 15; D35 first section road 62 →
+  18, reroute → 13; the D11 road gate unchanged (26 / 12). Full results are unchanged (previews only).
+- **Coarse lines (the owner: Auto must be valid on its own).** Bends every 2, 2.5, 3 km of the official line were
+  not valid. Causes and fixes:
+  - piers on streets, in streams and on the railway a viaduct follows (Poříčí, Bernartice, the valley at km 8.4–9.2):
+    no wall pier between the spans can miss what runs along under the deck. **Frame piers** (support-layout.ts,
+    data/bridges.ts `FRAME_PIER`): two columns under the deck's edges and a crossbeam over what runs between them,
+    where the deck is high enough over it; a wall pier moved aside still comes first. Checked, drawn and billed as
+    such (footprint.ts columns; the crossbeam's concrete at OTSKP 334325 + rebar, PROVISIONAL dimensions; view.ts).
+  - the S3 at B under our earthworks: B is the motorway's continuation (the merge above).
+  - a tunnel entrance "on a track" that our crossing had already cut and taken up: the taken-up piece (and its cut
+    end) of a cut way is no obstacle to our bridge ends, piers and tunnel entrances (footprint.ts).
+  Now VALID on their own: every sampling from 1 to 4 km (15.1 / 14.0 / 22.3 / 20.7 / 20.3 / 18.8 bn) and the straight
+  line (24.3 bn). A bend every 5 km still has piers on tracks and a pond where neither a wall nor a frame stands (a
+  pond as wide as the frame; engine limit, not pursued).
+- **Bills (cost model 56):** D11 frozen straight −10.1 M (one frame pier for a 60 m span); starters −10.6 … −669 M
+  (d35-full; details in prices.ts). Road and railway missions unchanged.
+- **Known:** Auto puts no tunnel where the real line has two. The structure choice weighs a frame pier's crossbeam
+  only in the bill, not when it compares plans (a few M a bridge).
+- Shots 570–575 (`scripts/d11-motorway-shots.mjs --docs 570`; 575 the frame piers of a line with a bend every 2.5 km).
 
