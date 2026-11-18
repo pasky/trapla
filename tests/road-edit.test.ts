@@ -237,6 +237,25 @@ describe('rebuilding a mapped road', () => {
     expect(lowered[50]).toBe(0); expect(lowered[50 + Math.ceil((3 / 0.06 + HELD_APPROACH) / 10) + 1]).toBe(1);
   });
 
+  it('is rebuilt there on the old road\'s line the other road crossed, without a jump where it meets a piece kept', async () => {
+    const { heldOnOldLine, releaseHeld, TIE_LENGTH } = await import('../src/core/project-kept');
+    // the kernel's line 8 m north of the old road, all of it on the old road (kept) but its first 100 m (built anew)
+    const s = Float64Array.from({ length: 101 }, (_, i) => i * 10), old = [[{ x: -10, y: 0 }, { x: 1010, y: 0 }]];
+    const planned = Uint8Array.from(s, v => v >= 100 ? 1 : 0), kept = planned.slice();
+    releaseHeld(kept, s, () => 100, [{ s: 700, min: 105.5, max: 106.5, bridge: [680, 720] }], 0.06, 0.5);
+    expect(kept[70]).toBe(0); expect(kept[30]).toBe(1);
+    const line = heldOnOldLine(planned, kept, 10, old)!;
+    const at = (x: number) => { const p = { x, y: 8, tx: 1, ty: 0 }; line(x, p); return p; };
+    // on the old road where it is lifted, and where it is kept on either side of that: no step between them
+    for (const x of [300, 450, 455, 700, 950]) expect(at(x).y).toBeCloseTo(0, 9);
+    // fading into its own line only beside the part built anew
+    const fade = [100, 120, 140].map(x => at(x).y);
+    expect(fade[0]).toBeLessThan(8); expect(fade[1]).toBeLessThan(fade[0]); expect(fade[2]).toBeLessThan(fade[1]); expect(at(100 + TIE_LENGTH).y).toBe(0);
+    expect(at(50).y).toBe(8);
+    // nothing lifted: the kernel's own line
+    expect(heldOnOldLine(planned, planned, 10, old)).toBeUndefined();
+  });
+
   it('never puts a bend far off the old road where close bends are merged (a jog between almost parallel legs)', () => {
     // east, a 30 m jog to the north within 60 m, east again; the outer legs are almost parallel and
     // would meet 1.5 km away

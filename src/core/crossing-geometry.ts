@@ -155,6 +155,7 @@ export const LINK_CROSSES_MOTORWAY = 'Shaped link crosses a motorway at grade';
 /** + 'railway' | 'water' | 'building' */
 export const LINK_BLOCKED = 'Shaped link runs through a ';
 export const LINK_NATURE = 'Shaped link runs through a protected nature area';
+export const LINK_PIER = 'Shaped link buries a pier of our bridge';
 
 /** The height of an engineered line (link-route.ts profileLink) at distance d along it. */
 function linkHeight(points: readonly CrossingPoint[], d: number): number {
@@ -205,6 +206,7 @@ const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
   river: 'Shaped link crosses a river', far: LINK_TOO_FAR, works: 'Shaped link runs into another road of the project', nature: LINK_NATURE,
+  pier: LINK_PIER,
 };
 const linkMessage = (problem: LinkProblem, _shaped: true) => SHAPED_LINK[problem];
 
@@ -222,6 +224,14 @@ function squareIssue(c: CrossingResult, messages: readonly string[], lowered: nu
       ...(low ? { actual: lowered, required: LOWERING_RULES.maxDepth } : {}) } };
 }
 
+/** The homes a reroute buys out that the crossing it is led to does not take anyway (that crossing's works beside
+ * them, e.g. a junction's approach): what Auto's last resort (expropriation only where nothing else will do,
+ * research/60) weighs. */
+export function ownHomes(c: CrossingResult, crossings: readonly CrossingResult[], dwelling: (j: number) => boolean): number[] {
+  if (!c.homes || !c.houses) return [];
+  const t = c.targetS === undefined ? undefined : crossings.find(o => o.s === c.targetS && o.roadId === c.targetRoadId);
+  return c.houses.filter(j => dwelling(j) && !t?.houses?.includes(j));
+}
 /** Plain-language violation text for a geometry diagnostic (the diagnostic string stays internal). */
 function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue, 'title' | 'fix' | 'detail' | 'basis' | 'rule'> {
   const what = ROAD_CLASSES[c.cls]?.label ?? 'road', choice = c.requestedType ? 'your crossing choice' : 'this crossing';
@@ -244,7 +254,8 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       steep: `the ground beside our road is too steep for a ${what} (at most ${Math.round(row.rampGradient * 100)} %, ${Math.round(row.rampSteepest * 100)} % where the ground leaves no choice, with earthworks up to ${LINK_MAX_SUPPORT} m deep) and no gentler line was found within ${LINK_CORRIDOR} m of our road`,
       footprint: 'there is no room for it beside our earthworks', motorway: 'it would have to cross a motorway on the ground',
       railway: 'it would have to cross a railway on the ground', water: 'it would have to run through a pond or river',
-      river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
+      river: 'it would have to cross a river too big for a culvert', building: `it would have to run through a house you keep, or within ${BUILDING_RULES.clearance} m of it`, far: 'it would be too long',
+      pier: 'its earthworks would bury a pier of our bridge',
       works: 'another road you build is in the way', nature: 'it would have to run through a protected nature area',
       none: 'no crossing within reach carries traffic over or under our road',
     } as Record<string, string>)[problem] ?? problem);
@@ -273,6 +284,10 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Drag its bend points closer to our road, or choose "Automatic path" on the crossing card',
     detail: `A new piece of ${what} may run at most about ${(4 * MAX_REACH / 1000).toFixed(0)} km.`, basis: 'engine',
     rule: `Engine limit: a reroute is at most ${(4 * MAX_REACH / 1000).toFixed(0)} km long` };
+  if (message === LINK_PIER) return { title: `Your path for the new ${what} runs onto a pier of our bridge`,
+    fix: 'Drag its bend points clear of our bridge\'s piers, or choose "Automatic path" on the crossing card',
+    detail: `The new ${what} or its earth slopes would bury a pier.`, basis: 'game',
+    rule: 'Game rule: a new road and its earthworks keep off our bridge\'s piers' };
   if (message === LINK_NATURE) return { title: `Your path for the new ${what} runs through a protected nature area`,
     fix: 'Drag its bend points so that it stays clear of the area, or choose "Automatic path" on the crossing card',
     detail: `Nature reserves, nature monuments, national parks and the inner zones of protected landscape areas take no new roads.`, basis: 'law',
@@ -1773,9 +1788,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     return copy;
   };
   /** a reroute that buys out a home: Auto's last resort (expropriation only where nothing else will do,
-   * research/60); not one another crossing's works take anyway (a junction's approach beside it) */
-  const takesHome = (x: CrossingResult) => !!x.homes && !!x.houses?.some(j => route.dwelling?.(j)
-    && !crossings.some(o => o.houses?.includes(j) && !(o.s === x.s && o.roadId === x.roadId)));
+   * research/60); not one the crossing it is led to takes anyway (ownHomes) */
+  const takesHome = (x: CrossingResult) => ownHomes(x, crossings, j => !!route.dwelling?.(j)).length > 0;
   // (a way the player asked to straighten that is built on its own line instead still carries traffic)
   const feasible = (c: CrossingResult) => !c.issues?.some(v => v.crossing.code !== 'square') && !c.geometry?.diagnostics?.length;
   const baseline = crossings.map(c => ({ state: { ...c }, feasible: feasible(c) }));

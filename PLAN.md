@@ -1245,35 +1245,39 @@ The two "Open:" items of the sections above, shots 510–513 (`scripts/render-wo
   - a crossed road's regrade, its ramps or junction approach, a side road regraded to meet them (crossing-works.ts): a
     house within the slopes or the strip beyond their toe is held off by a wall standing the strip's width from it, or
     bought out where no wall fits there (no wall squeezed in closer, as for our road, retaining.ts); a house the player
-    keeps is a problem (Auto takes another treatment). A side without slopes (the old road's edge) adds no strip: the
-    house beside it was there before;
+    keeps is a problem (Auto takes another treatment). A side without earthworks (the old road's edge on the ground) adds
+    no strip: the house beside it was there before;
   - a reroute's new road, its slopes, the turning area at a closed road's end and a road moved aside (its new pieces and
-    turning areas): what stands within the strip is bought out with it; a kept house blocks a reroute's line.
+    turning areas): what stands within the strip is bought out with it; a kept house blocks a reroute's line. Each piece
+    is screened as a capsule (round at its ends), so a bend's outer corner counts.
   - The width: no Czech norm or law gives one (research/85: road land ends at the toe or cut edge, Act 13/1997 §11; a
     temporary take is set per project, 4–6 m in local works' documents). 3 m stays PROVISIONAL, one value for all works.
-  - `scripts/works-clash-audit.ts` screens with the strip: on the starters and saved designs main's code has 44 houses
-    within it, now none. Left: the 12 known `ours` toes, and on direct-80 one of our piers at km 6.60 under the slope of
-    the street at km 6.55, now rerouted on a 7 m fill beside our bridge instead of carried over (a reroute's slopes are
-    not screened against our piers: open).
-  - A reroute led to a crossing whose own works take a home anyway takes no home (`takesHome`): a random D11 line had
-    its street at km 5.87 led to another crossing through a 3,176 m² factory (300 M) rather than to the junction
-    whose approach buys those two houses anyway.
+  - `scripts/works-clash-audit.ts` screens with the strip (a side has works where its slope reaches out or its edge is
+    off the ground, a wall included; a new road's pieces round at their ends): on the starters and saved designs main's
+    code has 44 houses within it, now none. Left: the 12 known `ours` toes.
+  - A reroute's earthworks keep off our bridge's piers (a new obstacle of `linkObstacle`): direct-80's street at km 6.55
+    had been rerouted on a 7 m fill over a pier at km 6.60 once its bridge over us bought houses; it is carried over us.
+  - A reroute led to a crossing whose works take a home anyway takes no home more (`ownHomes`: Auto's last resort, and
+    the grade retry for reroutes through homes, which now counts each home once). A random D11 line had its street at km
+    5.87 led through a 3,176 m² factory (300 M) rather than to the junction whose approach buys those two homes anyway.
   - Card: "Under the earth slopes of the road raised or lowered to cross ours at km …, or within 3 m of them."
 - **A lifted kept road on its old line.** Where another road's crossing lifts or lowers a stretch kept on its old road
   (`releaseHeld`), the piece rebuilt for it was built on the kernel's line, up to 12 m off the old road our road
-  crossed. It is now built on the old road's line as drawn (`heldOnOldLine`, `EvalOptions.line`: the kernel's stations,
-  traced line and samples follow it), the kept cells beside it stay on the old road. III/3012's corner kept, "Its bridge
-  over us" chosen: 5.74 m → 0.00 m from our crossing point; that road 135.3 → 137.9 M (tests/qa3-sweep.test.ts).
-- **Bills.** D11 frozen (M CZK): straight +11.2, demo +105.4, direct-80 +40.5, direct-90 +13.7 (each explained at
+  crossed. Now the kernel builds that stretch on its line as drawn (`heldOnOldLine`, `EvalOptions.line`: its stations,
+  traced line, samples and cone ends follow it; its kept cells too, so nothing jumps where a rebuilt piece meets a kept
+  one), and the old height `releaseHeld` reads is the drawn line's. III/3012's corner kept, "Its bridge over us" chosen:
+  5.74 m → 0.00 m from our crossing point; that road 135.3 → 137.9 M (tests/qa3-sweep.test.ts). A stretch nothing lifts
+  is built as before.
+- **Bills.** D11 frozen (M CZK): straight +11.3, demo +53.9, direct-80 +46.8, direct-90 +13.7 (each explained at
   COST_MODEL_VERSION 52); best*, town-centre, town-controls unchanged. Validity unchanged everywhere. Starters: D11
   8,787.0 → 8,798.2; Královec railway 10,690.3 → 10,742.0 (km 12.98: three houses 53 M, the ramp's walls 109 → 82 m);
-  D3 full 36,143.5 → 36,178.4; D3 0302 +0.3; D3 0304 10,089.0 → 10,024.5 (below); D11 retired railway −2.3 (not
-  valid either way); the rest unchanged.
+  D3 full 36,143.5 → 36,185.2; D3 road 3,904.2 → 3,914.2; D3 0302 −0.2; D3 0304 10,089.0 → 10,024.5 (below); D11
+  retired railway −2.3 (not valid either way); the rest unchanged.
 - **Open:**
   - D3 0304 km 9.14 (and the whole D3 km 33.04): the tertiary road is now rerouted 2.8 km through 3 homes and 6 other
     buildings (261 M), Auto's last resort, where its overbridge, which could not get back down, used to send the grade
-    over it (our bridge, 64 M dearer, nothing demolished). A home-taking reroute does not ask the separation retry for
-    room, and the retry would not count it as resolved.
+    over it (our bridge, 64 M dearer, nothing demolished). A reroute through homes does not ask the separation retry
+    for room.
   - The strip's width is not differentiated by the size of the works (a track's regrade and a motorway's embankment
     keep the same 3 m); no source tells them apart (research/85).
 

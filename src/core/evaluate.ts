@@ -20,7 +20,7 @@ import {
 } from './cost';
 import { heldRailway, RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
 import { WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG, type BesideHit } from './crossing-works';
-import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, ownHomes, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
 import { buildCrossings, type KeptCrossings } from './crossings-kept';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
@@ -457,13 +457,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // player's choice is no fixed point of the grade solve.
   if (!opts.preview && !opts.window && d.profileMode === 'auto') {
     type Need = { s: number; z: number; roadId: number; asked: boolean };
+    const dwelling = (j: number) => !!ctx.buildings?.dwelling[j];
     const needs: Need[] = result.crossings.flatMap(c => {
       if (c.roadId === undefined || result.kind[c.i] !== KIND.earth && !c.requestedType) return [];
       // (our bridge over it: also where its spans need our road higher, support-layout's span check)
       const deckShort = c.requestedType === 'bridge' && result.violations.some(v => v.kind === 'structure' && v.title.startsWith(SPAN_TOO_LOW)
         && Math.abs(v.s0 - c.s) <= STRUCTURE_RULES.minBridgeLength);
       const asked = (c.requestedType === 'underpass' || c.requestedType === 'bridge') && (!!c.issues?.length || deckShort);
-      const home = !c.requestedType && !!c.homes && (c.type === 'reconnection' || c.type === 'diversion');
+      const home = !c.requestedType && (c.type === 'reconnection' || c.type === 'diversion') && ownHomes(c, result.crossings, dwelling).length > 0;
       if (!asked && !home) return [];
       const g = ctx.terrain.heightAt(c.x, c.y), box = c.requestedType === 'bridge' ? undefined : underpassPrice(c, 0, 0);
       if (c.requestedType !== 'bridge' && !box) return [];
@@ -474,7 +475,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     });
     if (needs.length) {
       const at = needs.map(q => q.s), near = (c: CrossingResult) => needs.some(q => q.roadId === c.roadId && Math.abs(q.s - c.s) < 1);
-      const homes = (r: Result) => r.crossings.reduce((k, c) => k + (at.some(s => Math.abs(c.s - s) <= REGION) ? c.homes ?? 0 : 0), 0);
+      // (homes taken, each once: a reroute led to a junction whose approach takes the same ones takes none more)
+      const homes = (r: Result) => new Set(r.crossings.flatMap(c => c.homes && at.some(s => Math.abs(c.s - s) <= REGION) ? (c.houses ?? []).filter(dwelling) : [])).size;
       // the price of the treatments in question: of the reroutes through homes before, of the player's box or bridge after
       // (our bridge over a road: the bridge's own price, its run in our bill)
       const deck = (r: Result, c: CrossingResult) => { const run = r.runs.find(u => u.kind === KIND.bridge && u.i0 <= c.i && c.i <= u.i1);
@@ -651,7 +653,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const win = opts.window;
   const al = win ? { ...fullAlignment, length: win.s1 - win.s0 } : fullAlignment;
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
-  const stFull = station(fullAlignment, STEP), st = win ? stationWindow(stFull, win.s0, win.s1) : stFull;
+  const stFull = station(fullAlignment, STEP);
   // (a rebuilt stretch's line as built: opts.line)
   const lineAt = (s: number, out?: PointOnAlignment) => { const p = pointAt(fullAlignment, s, out); opts.line?.(s, p); return p; };
   if (opts.line) for (let i = 0, q = { x: 0, y: 0, tx: 0, ty: 0 }; i < stFull.n; i++) {
@@ -659,6 +661,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
     opts.line(stFull.s[i], q);
     stFull.x[i] = q.x; stFull.y[i] = q.y; stFull.tx[i] = q.tx; stFull.ty[i] = q.ty;
   }
+  const st = win ? stationWindow(stFull, win.s0, win.s1) : stFull;
   // the steepest grade by the ground's terrain class per station (less in hairpins), radii by stretch (M4-2)
   const vlim = verticalLimits(st, fullAlignment, gpis, d.speed, d.category, terrain,
     d.maxGradient ?? (cat.maxGradient ? undefined : scenario.maxGradient), win?.s0 ?? 0, stFull);
@@ -2428,8 +2431,22 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
   // other roads' works it is kept clear of).
   const clearOf = opts.keepClear?.length ? capsuleTest(opts.keepClear) : undefined;
+  /** Our bridges' piers (as drawn: at their stations, else evenly spaced), worked out once when a reroute asks. */
+  let pierPoints: { x: number; y: number }[] | undefined;
+  const piers = () => pierPoints ??= runs.filter(u => u.kind === KIND.bridge).flatMap(run => {
+    const length = run.s1 - run.s0, spans = Math.max(1, Math.round(length / bridgeLayout(length).span));
+    return (run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans)).map(s => {
+      const i = Math.max(0, Math.min(n - 2, Math.floor(s / ds))), t = s / ds - i;
+      return { x: st.x[i] + (st.x[i + 1] - st.x[i]) * t, y: st.y[i] + (st.y[i + 1] - st.y[i]) * t };
+    });
+  });
   // Other ways' works keep the working strip from houses as ours does (research/85: a game rule, PROVISIONAL width).
   const strip = BUILDING_RULES.clearance;
+  /** Is house j within `reach` of the piece from p to q (a capsule: its ends round, so a bend's outer corner counts)? */
+  const near = (j: number, p: { x: number; y: number }, q: { x: number; y: number }, reach: number) => {
+    const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0;
+    return bld!.hits(j, (p.x + q.x) / 2, (p.y + q.y) / 2, tx, ty, len / 2, reach) || bld!.facadeDistanceSq(j, p.x, p.y) < reach * reach || bld!.facadeDistanceSq(j, q.x, q.y) < reach * reach;
+  };
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);
     if (!(len > 0)) return null;
@@ -2439,8 +2456,14 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     protectedRasterCells(terrain, piece, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
     if (!hit && terrain.protectedAreas) natureCells(terrain, piece, false, c => { if (c.level === 'ban') hit = 'nature'; });
     if (!hit && clearOf?.(p, q, half)) hit = 'works';
+    // (nor bury one of our bridge's piers)
+    if (!hit) for (const o of piers()) {
+      if (Math.abs(o.x - x) > len / 2 + half || Math.abs(o.y - y) > len / 2 + half) continue;
+      const u = (o.x - x) * tx + (o.y - y) * ty, v = -(o.x - x) * ty + (o.y - y) * tx;
+      if (Math.abs(u) <= len / 2 && Math.abs(v) <= half) { hit = 'pier'; break; }
+    }
     // a house you keep is never demolished for a reroute (nor within its working strip)
-    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half + strip)) hit = 'building'; });
+    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!hit && keptIds.has(j) && near(j, p, q, half + strip)) hit = 'building'; });
     return hit;
   };
   /** Houses on a paved turning disk or within its working strip: bought out with it (a kept one: a problem). */
@@ -2456,8 +2479,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const out: number[] = [];
     if (!bld) return out;
-    const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
-    bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half + strip)) out.push(j); });
+    const len = Math.hypot(q.x - p.x, q.y - p.y), x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+    bld.near(x, y, len / 2 + half + strip + 5, (j) => { if (!gone[j] && !keptIds.has(j) && near(j, p, q, half + strip)) out.push(j); });
     return out;
   };
   /** Houses and mapped railways beside a crossed road's raised or lowered stretch (crossing-works.ts): railways
@@ -2542,9 +2565,9 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   for (const c of footprintCheck.conflicts) if (c.feature === 'road' && c.action === 'relocation' && c.geometry && bld) {
     const g = c.geometry, found = new Set<number>(), kept = new Set<number>();
     const under = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
-      const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0;
+      const len = Math.hypot(q.x - p.x, q.y - p.y);
       bld.near((p.x + q.x) / 2, (p.y + q.y) / 2, len / 2 + half + strip + 5, (j) => {
-        if (!gone[j] && bld.hits(j, (p.x + q.x) / 2, (p.y + q.y) / 2, tx, ty, len / 2, half + strip)) (keptIds.has(j) ? kept : found).add(j);
+        if (!gone[j] && near(j, p, q, half + strip)) (keptIds.has(j) ? kept : found).add(j);
       });
     };
     // (not where it stays on its old line: the houses beside that are as they were)

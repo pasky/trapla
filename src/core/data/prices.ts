@@ -177,17 +177,18 @@
  * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight").
  * 52: other ways' works keep the working strip (BUILDING_RULES.clearance, 3 m, PROVISIONAL: research/85) from houses as
  * ours do: a house within it of a crossed road's regrade, ramps or junction approach is bought out, or the slope is held
- * behind a wall the strip's width from it (no wall squeezed in closer); a reroute's new road, a turning area and a road
- * moved aside buy out what stands within it (a kept house: a problem, or the reroute keeps clear). Where another road's
- * crossing lifts or lowers a rebuilt stretch kept on its old road, that piece is built on the old road's line (which that
- * road crossed), not on the kernel's line up to 12 m off it. D11 frozen (M CZK): straight +11.2 (a house 11.0 beside the
- * km 6.32 underpass ramp, its wall 1.5 m from it before; a shed by the km 16.58 reroute; noise walls −1.6); demo +105.4
- * (the km 6.73 junction's approach regrade beside a 223 m² house, 52.3, with a wall; the km 6.89 service road over us
- * instead of rerouted past two farm buildings, +16.0, and the road moved aside at km 6.88 buys them, 23.1); direct-80
- * +40.5 (km 6.55 rerouted instead of carried over, five houses instead of two; km 15.29 the track over us, a house;
- * houses by the km 6.83 and 14.34 underpass ramps, sheds by a road moved aside at km 4.15); direct-90 +13.7 (a garage
- * block of 14 beside the km 4.10 underpass ramps); best, best-*, town-centre, town-controls unchanged. Starters: see
- * PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old line". */
+ * behind a wall the strip's width from it (no wall squeezed in closer); a reroute's new road (its pieces round at their
+ * ends), a turning area and a road moved aside buy out what stands within it (a kept house: a problem, or the reroute
+ * keeps clear). A reroute's earthworks keep off our bridge's piers. A reroute led to a crossing whose works take a home
+ * anyway takes none more (Auto's last resort, and the retry for reroutes through homes, count each home once). Where
+ * another road's crossing lifts or lowers a rebuilt stretch kept on its old road, the stretch is built on the old road's
+ * line (which that road crossed), not on the kernel's line up to 12 m off it. D11 frozen (M CZK): straight +11.3 (a house
+ * 11.0 beside the km 6.32 underpass ramp, its wall 1.5 m from it before; a shed by the km 16.58 reroute; noise walls
+ * −1.6); demo +53.9 (the km 6.73 junction's approach regrade beside a 223 m² house, 52.3, with a wall); direct-80 +46.8
+ * (km 6.55 carried over us with a third house; km 15.29 the track's reroute round a home by the road moved aside at km
+ * 15.94, +15.0; houses and sheds by the km 6.83 and 14.34 underpass ramps and a road moved aside at km 4.15); direct-90
+ * +13.7 (a garage block of 14 beside the km 4.10 underpass ramps); best, best-*, town-centre, town-controls unchanged.
+ * Starters: see PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old line". */
 export const COST_MODEL_VERSION = 52;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

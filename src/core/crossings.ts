@@ -527,4 +527,4 @@ export interface CrossingRoute {
   dwelling?: (j: number) => boolean;
 }
 
-export { buildCrossingGeometry, crossingCache, crossingPlanLength, auditCrossingGeometry, underpassFits, type CrossingCache } from './crossing-geometry';
+export { buildCrossingGeometry, ownHomes, crossingCache, crossingPlanLength, auditCrossingGeometry, underpassFits, type CrossingCache } from './crossing-geometry';

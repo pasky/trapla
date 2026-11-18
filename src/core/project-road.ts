@@ -7,7 +7,7 @@ import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
 import { ringWorks, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
-import { applyKept, heldOnOldLine, plannedKept, releaseHeld } from './project-kept';
+import { applyKept, heldOnOldLine, lineAsDrawn, plannedKept, releaseHeld } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
 import { CATEGORIES } from './data/categories';
 
@@ -98,7 +98,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
   // Where a rebuilt stretch's line stays on its old road, the old road is kept as it is (project-kept.ts).
   // Known before the kernel runs (it depends on the line only), so the kernel builds nothing there.
-  let kept: Uint8Array | undefined, planned: Uint8Array | undefined, held: EvalOptions['line'], oldPath: { x: number; y: number }[] = [];
+  let kept: Uint8Array | undefined, held: EvalOptions['line'], oldPath: { x: number; y: number }[] = [];
   if (route.source && sourceWay !== undefined && ctx.roads) {
     const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
     oldPath = ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db));
@@ -106,9 +106,10 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     kept = plan.kept; design.pis = plan.pis;
     // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
     // (and that piece is built on the old road's line, which that road crossed)
+    // (its old height read where it is drawn)
     if (options.holds?.length) {
-      planned = kept.slice();
-      releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
+      const planned = kept.slice(), drawn = lineAsDrawn(st, planned, st.ds, [oldPath]) ?? st;
+      releaseHeld(kept, st.s, i => ctx.terrain.heightAt(drawn.x[i], drawn.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
       held = heldOnOldLine(planned, kept, st.ds, [oldPath]);
     }
   }
@@ -132,7 +133,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   let keptWork: ReplacementWork | null = null;
   if (kept) {
     if (kept.length !== result.n) throw new Error('Kept cells do not match the road’s stations');
-    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: [oldPath], heightAt: (x, y) => ctx.terrain.heightAt(x, y) }, 'road', held ? planned : undefined);
+    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: [oldPath], heightAt: (x, y) => ctx.terrain.heightAt(x, y) }, 'road', !!held);
   }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview

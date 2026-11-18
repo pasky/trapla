@@ -78,7 +78,7 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
       bld.near(x, y, len / 2 + half + strip + 5, j => {
         const key = `${f.s0}:${f.roadId}:moved:${j}`;
-        if (!gone.has(j) && !seen.has(key) && bld.hits(j, x, y, tx, ty, len / 2, half + strip)) {
+        if (!gone.has(j) && !seen.has(key) && (bld.hits(j, x, y, tx, ty, len / 2, half + strip) || [p, q].some(e => bld.facadeDistanceSq(j, e.x, e.y) < (half + strip) ** 2))) {
           seen.add(key); out.push({ path, i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
         }
       });
@@ -116,16 +116,20 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       const reach = (q: typeof a, k: 0 | 1) => Math.hypot(q.toe[k].x - q.p.x, q.toe[k].y - q.p.y);
       const left = Math.min(reach(a, 1), reach(b, 1)), right = Math.min(reach(a, 0), reach(b, 0));
       const half = Math.max(left, right);
-      // (the strip beyond a side's toe where that side has earthworks, or the new road's edge: the old road's edge
-      // beside a house is as it was)
+      // (the strip beyond a side's toe where that side has earthworks, a slope or a wall at its edge, or the new road's
+      // edge: the old road's edge beside a house is as it was)
       const edgeOf = (q: typeof a, k: 0 | 1) => Math.hypot(q.edge[k].x - q.p.x, q.edge[k].y - q.p.y);
-      const sloped = (k: 0 | 1) => Math.max(reach(a, k) - edgeOf(a, k), reach(b, k) - edgeOf(b, k)) > DRAPED * 1.5;
-      const houseL = left + (surface.link || sloped(1) ? strip : 0), houseR = right + (surface.link || sloped(0) ? strip : 0);
+      const off = (q: typeof a, k: 0 | 1) => Math.abs(q.edge[k].z - natural(q.edge[k].x, q.edge[k].y)) > DRAPED;
+      const sloped = (k: 0 | 1) => Math.max(reach(a, k) - edgeOf(a, k), reach(b, k) - edgeOf(b, k)) > DRAPED * 1.5 || off(a, k) || off(b, k);
+      const anew = surface.link && !surface.keptEnd;
+      const houseL = left + (anew || sloped(1) ? strip : 0), houseR = right + (anew || sloped(0) ? strip : 0);
       if (ctx.buildings) ctx.buildings.near(x, y, len / 2 + half + strip + 5, j => {
         if (gone.has(j)) return;
         // (rectangle centred between the sections, off-centre by the side difference)
         const shift = (houseL - houseR) / 2, cx = x - ty * shift, cy = y + tx * shift;
-        if (ctx.buildings!.hits(j, cx, cy, tx, ty, len / 2, (houseL + houseR) / 2) && !ours((ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j])) add('house', (ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j], j);
+        // (a new road's pavement: round its points too, so a bend's outer corner counts)
+        const round = anew && [a, b].some(q => ctx.buildings!.facadeDistanceSq(j, q.p.x, q.p.y) < (Math.max(edgeOf(q, 0), edgeOf(q, 1)) + strip) ** 2);
+        if ((round || ctx.buildings!.hits(j, cx, cy, tx, ty, len / 2, (houseL + houseR) / 2)) && !ours((ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j])) add('house', (ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j], j);
       });
       if (level) continue;
       // (a quarter metre's tolerance: the walls stand at the raster cell's edge)

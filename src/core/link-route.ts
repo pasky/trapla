@@ -12,8 +12,9 @@ import type { RoadNet } from './roadnet';
 
 type XY = { x: number; y: number };
 /** Engine problem codes (crossing-geometry.ts gives them player words). */
-/** what a reroute may not run through on the ground ('nature': an area that takes no works, research/75) */
-export type LinkObstacle = 'railway' | 'water' | 'building' | 'works' | 'nature';
+/** what a reroute may not run through on the ground ('nature': an area that takes no works, research/75; 'pier': one of
+ * our bridge's piers) */
+export type LinkObstacle = 'railway' | 'water' | 'building' | 'works' | 'nature' | 'pier';
 export type LinkProblem = 'steep' | 'footprint' | 'motorway' | LinkObstacle | 'river' | 'far';
 /** A house in the way of a new road is bought out and demolished like one under our own road. */
 /** Profile sampling along the line, m; obstacles are queried per piece of at most PIECE m. */

@@ -104,29 +104,29 @@ export function lineAsDrawn(st: { n: number; s: ArrayLike<number>; x: ArrayLike<
 /** Where another road's crossing lifts or lowers a kept stretch (releaseHeld: `planned` kept, `kept` not), the piece is
  * rebuilt on its old line as it is drawn (lineAsDrawn with `planned`), not on the kernel's line up to KEPT_TOLERANCE off
  * it: that is the line the other road crossed (project-roadnet.ts planLine), so the crossing, the drawing and the bill
- * agree. The move of the kernel's line there (EvalOptions.line); undefined: nothing released. */
+ * agree. The kernel then builds the whole stretch on that line (its kept cells too: no jump where a piece rebuilt meets
+ * one kept). The move of the kernel's line (EvalOptions.line); undefined: nothing released. */
 export function heldOnOldLine(planned: ArrayLike<number>, kept: ArrayLike<number>, ds: number, old: OldPaths) {
   const n = kept.length;
   if (!old.some(p => p.length > 1) || !Array.prototype.some.call(planned, (v: number, i: number) => v && !kept[i])) return undefined;
   const far = farFromNew(planned, ds);
   return (s: number, p: { x: number; y: number; tx: number; ty: number }) => {
     const i = Math.max(0, Math.min(n - 1, Math.round(s / ds)));
-    if (!planned[i] || kept[i]) return;
+    if (!planned[i]) return;
     const w = Math.max(0, 1 - far[i] / TIE_LENGTH), q = nearestPoint(old, p.x, p.y), sign = q.ux * p.tx + q.uy * p.ty < 0 ? -1 : 1;
     const tx = (1 - w) * sign * q.ux + w * p.tx, ty = (1 - w) * sign * q.uy + w * p.ty, l = Math.hypot(tx, ty) || 1;
     p.x = q.x + w * (p.x - q.x); p.y = q.y + w * (p.y - q.y); p.tx = tx / l; p.ty = ty / l;
   };
 }
-/** `planned`: the cells kept before another road's crossing took some back (releaseHeld), whose line they are drawn on
- * (heldOnOldLine): the kept cells beside them stay on the old line. */
-function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRoad, planned: ArrayLike<number> = kept) {
-  const far = farFromNew(kept, r.ds), farLine = planned === kept ? far : farFromNew(planned, r.ds);
-  if (old && old.paths.some(p => p.length > 1)) {
+/** `onLine`: the kernel built the stretch on its line as drawn already (heldOnOldLine): only its heights are laid. */
+function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRoad, onLine = false) {
+  const far = farFromNew(kept, r.ds);
+  if (old && old.paths.some(p => p.length > 1) && !onLine) {
     const x = r.x.slice(), y = r.y.slice(), tx = r.tx.slice(), ty = r.ty.slice(), ground = r.ground.slice();
     let moved = false;
     for (let i = 0; i < r.n; i++) {
       if (!kept[i]) continue;
-      const p = onOld(old.paths, r.x[i], r.y[i], farLine[i]);
+      const p = onOld(old.paths, r.x[i], r.y[i], far[i]);
       x[i] = p.x; y[i] = p.y;
       if (x[i] !== r.x[i] || y[i] !== r.y[i]) { moved = true; ground[i] = old.heightAt(x[i], y[i]); }
     }
@@ -200,7 +200,7 @@ export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' |
  * a note (`inherited`), houses there are untouched, nothing is billed there (the bill and its per-cell
  * parts cover the new parts only) and the road is drawn on the ground there (`crownHalf`: half its paved
  * width, m). Returns the line that says so in the road's works (no amount; null: nothing kept). */
-export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?: OldRoad, line: OurLine = 'road', planned?: ArrayLike<number>): ReplacementWork | null {
+export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?: OldRoad, line: OurLine = 'road', onLine = false): ReplacementWork | null {
   let cells = 0, first = -1;
   for (let i = 0; i < r.n; i++) if (kept[i]) { cells++; if (first < 0) first = i; }
   if (!cells) return null;
@@ -234,7 +234,7 @@ export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?:
   }
   // noise walls that would stand wholly along a kept part are not built
   r.walls = r.walls.filter(w => { for (let i = w.i0; i <= w.i1; i++) if (!kept[i]) return true; return false; });
-  if (crownHalf !== undefined) layOnGround(r, kept, crownHalf, old, planned);
+  if (crownHalf !== undefined) layOnGround(r, kept, crownHalf, old, onLine);
   // Nothing is built there, so nothing is billed: the road's bill is what it builds anew. (The kernel
   // designs and prices the whole line; its own arrays are not changed.)
   const parts = {} as CostParts;
