@@ -1203,7 +1203,7 @@ Sweep-3 P2s (docs/playtest-findings.md), shots 450–453 (`scripts/render-cones-
   ramp bodies, slopes included and the deck excluded, no house is touched.
   - The nearest are 0.2–0.3 m from a slope's toe (a 1.2 m side-road regrade, a 3.8 m ramp fill). Others are 0.9–1.5 m
     from the retaining walls, which stand at `RETAINING_RULES.clearance` from them.
-  - Since cost model 52 other ways' works keep the same strip: those three houses are bought out (PLAN.md "Other ways'
+  - Since cost model 53 other ways' works keep the same strip: those three houses are bought out (PLAN.md "Other ways'
     works keep the working strip; a lifted kept road on its old line").
 - **Bills.** D11 frozen (M CZK):
   - straight −0.2: a house under the km 4.07 cone +17.8, three walls instead of cones, and a track rerouted instead of
@@ -1227,7 +1227,7 @@ P2 re-check findings (docs/playtest-findings.md "P2 fixes re-check — main 5331
   - Every rebuilt stretch now gets its old line in the project (`oldLineOf`), not only those keeping an old curve.
   - The bend's curve grips sit on the drawn road where it is kept (ui/curve-edit.ts). Its marker stays at the bend's
     corner point, as on any bend.
-  - Since cost model 52 where a crossing lifts or lowers the kept road (`releaseHeld`), that piece is rebuilt on the old
+  - Since cost model 53 where a crossing lifts or lowers the kept road (`releaseHeld`), that piece is rebuilt on the old
     road's line, which the owner crossed (PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old
     line").
 - **A side road's stub to the old road (P2).** The track joining III/3012 dragged 23 m keeps its access. Its piece
@@ -1237,7 +1237,7 @@ P2 re-check findings (docs/playtest-findings.md "P2 fixes re-check — main 5331
 - **Bills.** Frozen fixtures unchanged (none has a rebuilt stretch). A project's bill changes where a rebuilt stretch
   is kept within 12 m of its old road and crossed by another road.
 
-### Other ways' works keep the working strip; a lifted kept road on its old line (cost model 52, 2026-11-18)
+### Other ways' works keep the working strip; a lifted kept road on its old line (cost model 53, 2026-11-18)
 
 The two "Open:" items of the sections above, shots 510–513 (`scripts/render-works-strip-shots.mjs`, before | after).
 - **The working strip round other ways' works.** Our road's earthworks keep a 3 m working strip from houses
@@ -1269,7 +1269,7 @@ The two "Open:" items of the sections above, shots 510–513 (`scripts/render-wo
   5.74 m → 0.00 m from our crossing point; that road 135.3 → 137.9 M (tests/qa3-sweep.test.ts). A stretch nothing lifts
   is built as before.
 - **Bills.** D11 frozen (M CZK): straight +11.3, demo +53.9, direct-80 +46.8, direct-90 +13.7 (each explained at
-  COST_MODEL_VERSION 52); best*, town-centre, town-controls unchanged. Validity unchanged everywhere. Starters: D11
+  COST_MODEL_VERSION 53); best*, town-centre, town-controls unchanged. Validity unchanged everywhere. Starters: D11
   8,787.0 → 8,798.2; Královec railway 10,690.3 → 10,742.0 (km 12.98: three houses 53 M, the ramp's walls 109 → 82 m);
   D3 full 36,143.5 → 36,185.2; D3 road 3,904.2 → 3,914.2; D3 0302 −0.2; D3 0304 10,089.0 → 10,115.5; D11 retired
   railway −2.3 (not valid either way); the rest unchanged.
@@ -2143,3 +2143,46 @@ not: the windows at km 4.44 and 11.21 pick heights 2 m / 1.5 m lower, the line f
 +232 M, earthworks −205 M). Bounding a window from a pin outside it only at its boundary knots gives the no-pin bill here,
 but the Královec pin −9 m at km 2.7 then bills 11.86 bn instead of 10.58: there the envelope is the true line (at its
 12.5 ‰ limit to km 10.5) and the far window needs it. Kept as it is.
+
+## A reroute led where the player drags its end (owner request, cost model 52, 2026-11-18)
+
+Owner (D35 full, the track cut at km 2.51, "Cut and reroute"): its north part is led to the crossing at km 2.70 by
++217 m of new track, and nothing let the player lead it anywhere else. Now **the end of each new piece of a reroute,
+where it joins its road, has a square handle** (`src/ui/link-edit.ts`, only on the selected crossing, as the bend
+points): dragged onto another mapped road (within 18 px, not the cut way itself, not a motorway or railway; the road
+it would join lights up, nothing is evaluated during the drag) and let go, the piece is led there; let go elsewhere it
+goes back. One undo step ("where a reroute leads"). Dragging the middle of the new road still bends it.
+- **Stored** as the crossing override's `ends` ([-normal, +normal] sides like `via`, each a pack way and the point it
+  was dropped on, or null: Auto's target), in the project save too (`RouteControls.crossings[].ends`, validated, only
+  with "Cut and reroute"); old saves load as before. Leading a side elsewhere drops that side's bend points.
+- **Engine** (`crossing-geometry.ts` `playerEnd`, `crossingReroutes`): the piece joins the chosen way at its point
+  nearest the drop (within 300 m along it, every 2 m) on the ground, clear of our earthworks, on its own side of our
+  road, off any crossing's ramps or deck; it is then built as Auto builds its own (link-route.ts: profile within the
+  class gradient, the justified steepest where the ground needs it, culverts, houses, never on the ground across a
+  motorway, railway, pond or river; also straight across the fields where that line is the better one), billed as
+  drawn. A road that crosses ours carries it on across (on its bridge, under ours, in a junction): dropped on its part
+  beyond our road, its part on this side is joined. The card says "The north part led to the class III road that
+  crosses at km 2.29 (+420 m of new track)" and "North part to the class III road at km 2.29 · your choice
+  [Lead it where Auto does]". Auto keeps a crossing a player's end is built to carrying traffic (it is not cut or led on itself).
+- **A road that cannot take it** leaves Auto's line on that side (or Auto's closure: a part that reaches other roads
+  still just ends) and says why (issue code `end`, with *Lead it where Auto does* as its fix): the road is across ours, ours cuts it
+  too, it is the cut way itself, a track or private road cannot take a public road's traffic, a motorway takes no
+  road at the same level, no road on the ground there, or the new piece cannot reach it (steep, a railway, a river …).
+- **A shaped side no longer builds the other side** (fixed on the way, a bill change for designs with shaped
+  reroutes, hence the model version): before, any bend point made both sides required, so bending the north part of
+  the D35 track also built its south part to km 2.70 (+1.6 M) though that part still reaches other roads. Now a side
+  the player shaped or led elsewhere is built as they drew it and the other side is Auto's. A side led on is no longer
+  "closed" on the card, and only billed turning areas are drawn as such. No saved fixture has shaped reroutes: every
+  frozen bill is unchanged (eval-regression recaptured with the version only).
+- A design with player ends builds its crossings on the whole route in the engineering retries (crossings-kept.ts:
+  an end may depend on a crossing anywhere along the chosen road); designs without are unchanged.
+- Played (`node scripts/reroute-end-shots.mjs`, screenshots 500–509): the north part led to the class III road at km
+  2.29 instead, 420 m, 5.88 M against Auto's 217 m to km 2.70 at 5.43 M (that road is straightened to cross ours square:
+  the piece joins it where its new line meets the old one, off its ramp); bent in its middle (+bend point, the south part
+  still just ends); onto a street wholly south of our road (said, Auto's line stands); *Lead it where Auto does*; onto the track
+  north of us that does not cross ours (+818 m, 13.6 M: it runs beside our earthworks, then up beside the track 1505,
+  whose own line leads there: a player's choice, built as asked). `tests/link-end.test.ts` (synthetic cases and the
+  D35 case).
+- **Known limits.** For a way crossing ours more than once, the ends belong to the crossing nearest the drop (as a
+  shape belongs to the one nearest its bend points), not to the one whose end was dragged. A new piece led far away
+  may run beside an existing road that already leads there (509).

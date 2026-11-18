@@ -39,6 +39,9 @@ function controls(v: unknown): boolean {
     // a shaped reroute: two lists of bend points (one per side of our road)
     if (c.via !== undefined && (c.choice !== 'reconnection' || !list(c.via) || c.via.length !== 2 || !c.via.every(side => list(side)
       && side.length <= MAX_LINK_VIA && side.every(p => object(p) && number(p.x) && number(p.y) && Math.abs(p.x) <= MAX_LINK_COORD && Math.abs(p.y) <= MAX_LINK_COORD)))) return false;
+    // where the player led its new pieces: one end (or null) per side, on a pack way
+    if (c.ends !== undefined && (c.choice !== 'reconnection' || !list(c.ends) || c.ends.length !== 2 || !c.ends.every(e => e === null
+      || (object(e) && integer(e.way) && (e.way as number) >= 0 && number(e.x) && number(e.y) && Math.abs(e.x as number) <= MAX_LINK_COORD && Math.abs(e.y as number) <= MAX_LINK_COORD)))) return false;
     if (c.to !== undefined && (c.via === undefined || !Number.isSafeInteger(c.to) || (c.to as number) < -2)) return false;
     // straightened or kept on its line: an underpass or a bridge over us only
     if (c.square !== undefined && (typeof c.square !== 'boolean' || (c.choice !== 'underpass' && c.choice !== 'overbridge'))) return false;

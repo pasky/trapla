@@ -176,7 +176,9 @@ export function buildCrossings(kept: KeptCrossings[] | undefined, frame: { s: Ar
     }
     for (const c of subset) for (const t of led.get(c) ?? []) subset.add(t);
     report.core = core.size; report.subset = subset.size; again = core;
-    report.path = base.rolledBack ? 'rollback' : subset.size > LOCAL_MAX_SHARE * crossings.length ? 'share' : 'local';
+    // (a reroute the player led to a road of their choosing may depend on a crossing anywhere along that road: the
+    // whole route is built again)
+    report.path = base.rolledBack ? 'rollback' : subset.size > LOCAL_MAX_SHARE * crossings.length || crossings.some(c => c.ends) ? 'share' : 'local';
     if (report.path === 'local' && core.size) {
       build(crossings.filter(c => subset.has(c)));
       if (rolledBack()) report.path = 'rollback';

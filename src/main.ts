@@ -7,6 +7,7 @@ import { RouteScene } from './render/route-scene';
 import type { SourceHit } from './render/source-pick';
 import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
+import { RoadNet } from './core/roadnet';
 import { BuildRoadTool } from './ui/build-road';
 import { registeredBuildKinds } from './ui/route-kinds';
 import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
@@ -164,7 +165,7 @@ async function main() {
 
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   /** shaping reroutes on the map (constructed once the store hooks exist) */
-  let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined;
+  let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined, mappedNet: RoadNet | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
@@ -222,7 +223,7 @@ async function main() {
   const showNoLinks = () => { deselect(); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
 
   // ---- edits (ui/design-edits.ts) ----
-  const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, inspectorEvents, decisionEvents } = createDesignEdits({
+  const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, setEnd, inspectorEvents, decisionEvents } = createDesignEdits({
     store, profile, get last() { return session.last; }, select: (next, fly) => select(next, fly), deselect: () => deselect(),
   });
   inspector.ev = inspectorEvents;
@@ -255,6 +256,8 @@ async function main() {
     selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull, design: () => store.design,
     select: (roadId) => { if (session.sel?.kind !== 'crossing' || session.sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
     setVia, commit: () => store.commit(), heightAt: (x, y) => pack.terrain.heightAt(x, y),
+    setEnd: (roadId, side, end) => setEnd(roadId, side, end),
+    roads: () => pack.overlays.net ? (mappedNet ??= new RoadNet(pack.overlays.net)) : null,
   });
 
   // ---- routes: the line being edited, the motorway's directions, Build, the road list, and what follows

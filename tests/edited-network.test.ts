@@ -283,7 +283,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const A = { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1] }, B = { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1] };
     const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: 'd11', packId: pack.meta.id, objectData, transportData: fingerprint });
     // (since cost model 39 Auto's line runs ≈ 12 m higher here, over the track on a bridge; two pins at model 38's
-    // heights keep the setting of these cases: our road 2 m over the track, which it reroutes; since model 52 that
+    // heights keep the setting of these cases: our road 2 m over the track, which it reroutes; since model 53 that
     // reroute passes within the working strip of the house at km 4.07, which the player buys out to keep it so)
     const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}), gradePins: [{ s: 4100, z: 441.1 }, { s: 4300, z: 432 }],
       buildingOverrides: [{ j: 11400, action: 'buy' }] }, lc);
@@ -347,7 +347,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const A = { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1] }, B = { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1] };
     const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: 'd11', packId: pack.meta.id, objectData, transportData: fingerprint });
     // (since cost model 39 Auto's line runs ≈ 12 m higher here, over the track on a bridge; two pins at model 38's
-    // heights keep the setting of these cases: our road 2 m over the track, which it reroutes; since model 52 that
+    // heights keep the setting of these cases: our road 2 m over the track, which it reroutes; since model 53 that
     // reroute passes within the working strip of the house at km 4.07, which the player buys out to keep it so)
     const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}), gradePins: [{ s: 4100, z: 441.1 }, { s: 4300, z: 432 }],
       buildingOverrides: [{ j: 11400, action: 'buy' }] }, lc);

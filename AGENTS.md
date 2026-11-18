@@ -91,7 +91,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   by piece (model 42, `way-pieces.ts`): a piece still reaching the road network just ends, a piece cut off is led to
   a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour; other
   ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts; every way's works keep our 3 m working
-  strip from houses, model 52); a rebuilt road's side road crossed by
+  strip from houses, model 53); a rebuilt road's side road crossed by
   its new line joins it there (an access, model 49);
   merged crossings of different ways
   within 30 m keep one remedy for the group unless that leaves one buried (then it is a crossing of its own,
@@ -134,6 +134,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   are cut back to their junction, and the separation retry runs on every category. One street still does, where its
   junction lies at our slope's toe. What mostly breaks them is the hand-set radii at the norm's limit (S-bends 4–6,
   bend 9; PLAN.md, model 37).
+- A reroute's new piece can be led to another road by dragging its end (the square handle where it joins its road;
+  `CrossingOverride.ends`, cost model 52, PLAN.md "A reroute led where the player drags its end"): built like Auto's
+  own, a road that cannot take it leaves Auto's line and says why; a shaped side no longer builds the other side.
 - A pin Auto cannot reach is left out and said at the pin (the line stays Auto's own, engineered as such), also one
   met only by leaving a crossing it must clear (a stream in an open cut; model 51); its suggested height is a button; a
   drag past the next bend swaps the two in order, and a bend a drag leaves on the line goes on release

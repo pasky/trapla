@@ -7,6 +7,20 @@ const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.s
 const lineWord = (r: RouteDesign) => r.kind === 'railway' ? 'railway' : r.kind === 'motorway' ? 'motorway' : 'road';
 const nameOf = (r: RouteDesign) => r.role === 'mission' ? `our ${lineWord(r)}` : r.name;
 
+type Crossings = Extract<RouteDesign['alignment'], { kind: 'pi' }>['controls']['crossings'];
+/** A change of the crossing choices: only where a reroute's new pieces lead, only their path, or another. */
+function crossingChange(a: Crossings, b: Crossings): string {
+  const without = (list: Crossings, key: 'ends' | 'via') => list?.map(c => { const { [key]: _gone, ...rest } = c; return rest; });
+  if (same(without(a, 'ends'), without(b, 'ends'))) return 'where a reroute leads';
+  // (an automatic reroute led elsewhere for the first time: its choice to reroute comes with it)
+  const key = (c: NonNullable<Crossings>[number]) => JSON.stringify(c.target), had = new Set((a ?? []).map(key));
+  const fresh = (b ?? []).filter(c => !had.has(key(c)));
+  if (fresh.length === 1 && fresh[0].choice === 'reconnection' && fresh[0].ends && !fresh[0].via
+    && same(a ?? [], (b ?? []).filter(c => c !== fresh[0]))) return 'where a reroute leads';
+  if (same(without(a, 'via'), without(b, 'via'))) return "a reroute's path";
+  return 'a crossing';
+}
+
 /** One route's change, or null when nothing of it changed. */
 function routeChange(a: RouteDesign, b: RouteDesign): string | null {
   // (a route's revision counts edits and undos alike: not a change of its own)
@@ -31,7 +45,7 @@ function routeChange(a: RouteDesign, b: RouteDesign): string | null {
     if (!same(pa.vertical, pb.vertical)) return 'the height';
     const ca = pa.controls, cb = pb.controls;
     if (!same(ca.structureOverrides, cb.structureOverrides)) return 'a bridge or tunnel';
-    if (!same(ca.crossings, cb.crossings)) return 'a crossing';
+    if (!same(ca.crossings, cb.crossings)) return crossingChange(ca.crossings, cb.crossings);
     if (!same(ca.wallOverrides, cb.wallOverrides)) return 'noise walls';
     if (!same(ca.junctionForms, cb.junctionForms)) return 'a junction';
   }
@@ -61,7 +75,16 @@ export function historyLabel(before: ProjectDesign, after: ProjectDesign): strin
   if (!same(before.buildingOverrides, after.buildingOverrides)) return 'a building';
   const changed = after.routes.flatMap(r => { const q = before.routes.find(p => p.id === r.id)!; const c = routeChange(q, r); return c ? [{ r, c }] : []; });
   const corridors = (d: ProjectDesign) => d.corridors.map(c => ({ ...c, revision: 0 }));
-  if (!same(corridors(before), corridors(after)) && changed.length !== 1) return 'the motorway';
+  if (!same(corridors(before), corridors(after)) && changed.length !== 1) {
+    // (a paired motorway's crossing choices are its common line's)
+    const ka = before.corridors.map(c => c.mode === 'paired' && c.spine.kind === 'pi' ? c.spine.controls.crossings : undefined);
+    const kb = after.corridors.map(c => c.mode === 'paired' && c.spine.kind === 'pi' ? c.spine.controls.crossings : undefined);
+    const strip = (d: ProjectDesign) => d.corridors.map(c => c.mode === 'paired' && c.spine.kind === 'pi'
+      ? { ...c, revision: 0, spine: { ...c.spine, controls: { ...c.spine.controls, crossings: undefined } } } : { ...c, revision: 0 });
+    const k = ka.findIndex((x, i) => !same(x, kb[i]));
+    if (k >= 0 && same(strip(before), strip(after)) && ka.filter((x, i) => !same(x, kb[i])).length === 1) return crossingChange(ka[k], kb[k]);
+    return 'the motorway';
+  }
   if (!changed.length) return same(before.connections, after.connections) ? 'an edit' : 'a connection';
   // a paired motorway's two directions change together: one change
   const kinds = new Set(changed.map(x => x.c));

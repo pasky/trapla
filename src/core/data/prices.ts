@@ -175,7 +175,11 @@
  * crossing. A pin left out holds no support lift. Frozen bills, starters and saved designs unchanged; pinned edits
  * (scripts/edit-locality.ts): Královec pin +5 m at km 4.2 10.49 → 10.69 bn, D11 pin −8 m at km 7.2 3.82 → 3.66 bn,
  * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight").
- * 52: other ways' works keep the working strip (BUILDING_RULES.clearance, 3 m, PROVISIONAL: research/85) from houses as
+ * 52: a reroute's side the player shaped no longer makes the other side be built too (it keeps Auto's closure: a part
+ * that still reaches other roads just ends); new player option: a reroute's piece led to a road of the player's
+ * choosing (`CrossingOverride.ends`). Only designs with shaped reroutes change (D35 full km 2.51 bent: −1.6 M); frozen
+ * bills, starters and saved designs unchanged (PLAN.md "A reroute led where the player drags its end").
+ * 53: other ways' works keep the working strip (BUILDING_RULES.clearance, 3 m, PROVISIONAL: research/85) from houses as
  * ours do: a house within it of a crossed road's regrade, ramps or junction approach is bought out, or the slope is held
  * behind a wall the strip's width from it (no wall squeezed in closer); a reroute's new road (its pieces round at their
  * ends), a turning area and a road moved aside buy out what stands within it (a kept house: a problem, or the reroute
@@ -190,7 +194,7 @@
  * 15.94, +15.0; houses and sheds by the km 6.83 and 14.34 underpass ramps and a road moved aside at km 4.15); direct-90
  * +13.7 (a garage block of 14 beside the km 4.10 underpass ramps); best, best-*, town-centre, town-controls unchanged.
  * Starters: see PLAN.md "Other ways' works keep the working strip; a lifted kept road on its old line". */
-export const COST_MODEL_VERSION = 52;
+export const COST_MODEL_VERSION = 53;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

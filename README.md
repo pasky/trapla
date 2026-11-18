@@ -47,6 +47,7 @@ Other commands:
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
 | `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp) and picking a reroute; screenshots 110–116 |
 | `node scripts/link-shape-shots.mjs` | shaping a reroute with the mouse; screenshots 117–119 |
+| `node scripts/reroute-end-shots.mjs` | leading a reroute to another road by dragging its end (D35 km 2.51); screenshots 500–509 |
 | `node scripts/lowered-underpass-shots.mjs` | player pass over lowered underpasses and engineered reroutes (real clicks, card text checked); screenshots 150–156 |
 | `node scripts/camera-check.mjs [--shots dir]` | the map camera with real mouse input (low views, Voletiny zoom, pans off the map, *Whole route*, overprinted labels); screenshots 157–159 |
 | `npx tsx scripts/crossing-footprint-audit.ts [--straight] [--random N] [designs…]` | rough independent screen: crossing earthworks still lying over other mapped roads |
@@ -71,6 +72,11 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   under the mouse and follows it, like bending our road. Drag a bend point to move it, click it for *Remove
   bend point*; *Automatic path* in the crossing's card takes the shape back. The game checks it (off our
   earthworks, not too steep, not across a motorway, railway, water or house) and prices it as drawn.
+- **Lead a reroute elsewhere:** the end of each new road, where it joins its road, has a square handle: drag it onto
+  another road (one that crosses ours on a bridge, under it or in a junction, or one on that side that does not
+  cross ours at all; the road it would join lights up) and let go. The game builds and prices the new road there
+  like its own; a road it cannot take (across our road, cut by ours too, out of reach) is said on the card, with
+  *Lead it where Auto does* to take it back.
 - **Bend the road:** click the orange road to select it (its numbered bends show), then drag it — a new bend
   appears under the mouse and follows it (the cursor turns into a hand over the selected road; over one not
   selected it says *click to select*). <kbd>Esc</kbd> or a click on open ground lets go of it. A first-time player
@@ -350,6 +356,15 @@ Shaping a reroute by dragging it (`node scripts/link-shape-shots.mjs`):
 [the rebuilt road with its bend points and "Automatic path"](docs/screenshots/118-link-shape-built.png),
 [a bend point dragged onto our road: the problem, with the way back](docs/screenshots/119-link-shape-rejected.png)
 (retaken on cost model 31: the demo's service road at km 6.89).
+Leading a reroute to another road by dragging its end (`node scripts/reroute-end-shots.mjs`, D35 full, the track cut at
+km 2.51): [Auto leads its north part to the track under our bridge at km 2.70](docs/screenshots/500-reroute-end-auto.png),
+[its end dragged over a field (nothing to join)](docs/screenshots/501-reroute-end-drag-field.png),
+[over the class III road that crosses at km 2.29 (lit up)](docs/screenshots/502-reroute-end-snap.png),
+[let go: built there, "your choice" and *Lead it where Auto does* on the card](docs/screenshots/503-reroute-end-led.png),
+[undone](docs/screenshots/504-reroute-end-undo.png), [redone and bent in its middle](docs/screenshots/505-reroute-end-bent.png),
+[onto a street across our road: said, Auto's line stands](docs/screenshots/506-reroute-end-across.png),
+[*Lead it where Auto does*](docs/screenshots/507-reroute-end-automatic.png), [onto a track that does not cross ours](docs/screenshots/508-reroute-end-snap-track.png),
+[built there](docs/screenshots/509-reroute-end-track.png).
 Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-underpass-shots.mjs`; retaken on
 cost model 31, where the start line lowers other roads than it did):
 [the straight start line opens valid](docs/screenshots/150-straight-start-valid.png),
@@ -459,7 +474,7 @@ stream at km 2.09 in an open cut: out of reach, the tunnel kept](docs/screenshot
 [D35 km 4.2 dragged back past bend 2: the bend left on the line, "turns 0°"](docs/screenshots/484-d35-zero-turn-bend-before.png),
 [now gone on release](docs/screenshots/485-d35-zero-turn-bend-dropped.png); [a 2° neighbour the curve fit leaves out, gone on
 release too](docs/screenshots/492-d35-left-out-bend-dropped-on-release.png), [one left out that stays: its card](docs/screenshots/493-d35-left-out-bend-card.png).
-Cost model 52 (before | after, `node scripts/render-works-strip-shots.mjs`): [Královec km 12.98: the houses beside road
+Cost model 53 (before | after, `node scripts/render-works-strip-shots.mjs`): [Královec km 12.98: the houses beside road
 II/2253's ramps, 0.2–0.3 m from their toes, bought out with the working strip](docs/screenshots/510-rail-kralovec-km-12-98-ramps-keep-the-strip-before-after.png)
 ([one's card](docs/screenshots/511-rail-kralovec-km-12-98-house-card-before-after.png)), [III/3012's corner kept on its old
 road, lifted onto its bridge over us: rebuilt on the old road our road crossed, not 5.7 m off it](docs/screenshots/512-d11-iii3012-kept-lifted-from-above-before-after.png)
