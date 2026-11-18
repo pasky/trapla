@@ -26,7 +26,7 @@ function gzipRawSize(path, size) {
  *  traffic census come later, on first need */
 export function startupFiles(meta, files) {
   const wanted = ['meta.json', meta.heights?.file, meta.landcover?.file, 'overlays.json', meta.vector?.file, meta.ground?.file,
-    meta.watercourses?.file, 'protected.json', meta.transport ? null : 'transport-meta.json'];
+    meta.watercourses?.file, 'protected.json', 'structures.json', meta.transport ? null : 'transport-meta.json'];
   return wanted.filter((f) => f && files[f]);
 }
 

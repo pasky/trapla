@@ -91,7 +91,11 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
   along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a cut way is judged piece
   by piece (model 42, `way-pieces.ts`): a piece still reaching the road network just ends, a piece cut off is led to
-  a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour; other
+  a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour, and so
+  is a track or service road serving buildings (model 54, research/86; else Auto keeps it across, a closure only where
+  nothing else can be built: `farClosure`; or its buildings bought out where cheaper, homes only where every way
+  across takes as many: `buyout`; the player's cut over the limit is a problem: `cutOff`); the card names what each part still reaches and how far round, the map lights
+  each part to that road (`closure.reach`), and a part's end can be dragged onto a road as a reroute's (model 52); other
   ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts; every way's works keep our 3 m working
   strip from houses, model 53); a rebuilt road's side road crossed by
   its new line joins it there (an access, model 49);
@@ -118,6 +122,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   bridge clearances the search never saw; three fixes tried, none merged, the last judged by the whole bill: +45 % D11
   evaluate time and edit-locality failures; PLAN.md "Natura 2000 a note …"). Two roads of a project whose
   earthworks come within the working strip: the later one keeps clear behind a wall (project-ledger.ts, evaluateProject).
+- Mapped road bridges and tunnels (each pack's `structures.json`, `pipeline/build_structures.py`; copy it with the pack,
+  and run the script on a pack built without it) are crossings at their own level: one with room over / under our road is
+  kept (billed 0), else engineered (cost model 55, PLAN.md "Mapped bridges and tunnels are crossings";
+  `scripts/mapped-structures-audit.ts`). Railway tunnels are still in the railway raster.
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
   hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /

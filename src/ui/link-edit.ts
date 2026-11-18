@@ -143,14 +143,21 @@ export class LinkEditor {
   private endPaths() {
     const c = this.crossing();
     if (!c || c.under !== undefined || c.roadId === undefined || !shapeable(this.host.result(), this.host.design(), c.roadId)) return [undefined, undefined];
-    return [0, 1].map(k => { const p = c.geometry?.links?.[k]; return p && p.length >= 2 ? p : undefined; });
+    return [0, 1].map(k => {
+      const p = c.geometry?.links?.[k];
+      if (p && p.length >= 2) return p;
+      // (a part that just ends at our earthworks: its end, where a new piece would start, led on from there)
+      const end = c.closure?.connected[k] ? c.closure.reach?.[k]?.path[0] : undefined;
+      return end ? [end, end] : undefined;
+    });
   }
   /** after a selection, design or result change */
   refresh() {
-    const ends = this.endPaths(), piece = this.crossing()?.cls === 'track' ? 'track' : 'road';
+    const ends = this.endPaths(), cut = this.crossing(), piece = cut?.cls === 'track' ? 'track' : 'road';
     this.endHandles.forEach((h, k) => {
       h.style.display = ends[k] ? '' : 'none';
-      h.title = `End of the new ${piece}: drag it onto another road to lead it there`;
+      h.title = cut?.closure?.connected[k] && !cut.geometry?.links?.[k]?.length ? `Where this part of the ${piece === 'track' ? 'track' : ROAD_CLASSES[cut.cls]?.label ?? 'road'} now ends: drag it onto another road to lead it there by a new ${piece}`
+        : `End of the new ${piece}: drag it onto another road to lead it there`;
     });
     const c = this.crossing(), roadId = c?.roadId;
     const via = roadId !== undefined ? this.via(roadId) : [[], []];

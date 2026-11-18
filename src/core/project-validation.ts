@@ -47,7 +47,7 @@ function controls(v: unknown): boolean {
     if (c.square !== undefined && (typeof c.square !== 'boolean' || (c.choice !== 'underpass' && c.choice !== 'overbridge'))) return false;
     const t = c.target;
     if (c.toRef !== undefined && (c.to === undefined || !object(c.toRef) || !['route', 'after'].includes(c.toRef.kind as string) || !text(c.toRef.routeId))) return false;
-    return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId) && (t.after === undefined || text(t.after))
+    return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId) && (t.after === undefined || text(t.after)) && (t.structure === undefined || text(t.structure))
       : t.kind === 'source' ? interval(t.interval)
       : t.kind === 'route' && text(t.routeId) && number(t.s0) && t.s0 >= 0 && number(t.s1) && t.s1 >= t.s0;
   }))) return false;

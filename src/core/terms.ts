@@ -20,8 +20,9 @@ import type { FootprintConflict } from './footprint';
 import type { RoadRealignmentPlan } from './road-realignment';
 import type { ProjectReceiver } from './project';
 import * as dm from './detmath';
-import { ROAD_CLASSES } from './data/urban';
+import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { LOWERING_RULES, underpassAssembly } from './data/remedies';
+import { CLOSURE_ROUND, PIECE_SEARCH } from './way-pieces';
 
 /** Internal terms that never appear in player-facing text, with the reason shown when a test fails. */
 export const JARGON: readonly [RegExp, string][] = [
@@ -80,22 +81,37 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo' | 'ends' | 'farClosure' | 'requestedType' | 'houseCost' | 'buyout'
+  | 'mapped' | 'kept'> & { h?: number };
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
   : text.replace(/\bour road\b/g, `our ${line}`).replace(/\bOur road\b/g, `Our ${line}`).replace(/\bthe new road\b/g, `the new ${line}`);
 /** What a rebuilt stretch replaces, in the player's words: "old road", "old track". */
 export const oldLineWords = (line: OurLine = 'road') => line === 'railway' ? 'old track' : 'old road';
-export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, line: OurLine = 'road'): OutcomeText {
+/** What keeps a cut way across our road, in a few words ("an underpass"; `buyout`: buying out what it serves). */
+export const remedyWords = (type: string) => ({ underpass: 'an underpass', overbridge: 'its bridge over us', bridge: 'our bridge over it',
+  junction: 'a junction', reconnection: 'a new road to a crossing', diversion: 'a new track to a crossing', buyout: 'buy out what it serves' } as Record<string, string>)[type] ?? 'keep it across our road';
+/** The fix of the player's cut that leaves houses going round further: what Auto builds there instead. */
+export const cutOffFix = (remedy: string, cost: number) => `Choose "Automatic": ${remedyWords(remedy)}, ${Math.round(cost / 1e6).toLocaleString('en-US')} M CZK`;
+/** A mapped road's name where the game knows one (`way`: its index in the pack's network): "road II/325", "Husova". */
+export type RoadNamer = (way: number) => string | undefined;
+export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, line: OurLine = 'road', name?: RoadNamer): OutcomeText {
   const words = (o: OutcomeText) => ({ ...o, label: ourWords(o.label, line), explain: ourWords(o.explain, line) });
   if (c.shared) {
-    const o = ownOutcome({ ...c, targetS: undefined });
+    const o = ownOutcome({ ...c, targetS: undefined }, name);
     return words({ ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
       explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` });
   }
-  return words(ownOutcome(c));
+  return words(ownOutcome(c, name));
 }
+/** "a house", "2 buildings", "a house and 2 other buildings" */
+function buildingsWords(homes: number, others: number): string {
+  const house = homes === 1 ? 'a house' : homes ? `${homes} houses` : '';
+  const rest = !others ? '' : homes ? (others === 1 ? 'another building' : `${others} other buildings`) : (others === 1 ? 'a building' : `${others} buildings`);
+  return [house, rest].filter(Boolean).join(' and ');
+}
+const money = (v: number) => `${Math.round(v / 1e6).toLocaleString('en-US')} M CZK`;
 /** "A house stands", "2 buildings stand", "3 houses and 3 other buildings stand" (homes, sheds / garages / barns …) */
 function standing(homes: number, others: number): string {
   const house = homes === 1 ? 'a house' : homes ? `${homes} houses` : '';
@@ -103,7 +119,24 @@ function standing(homes: number, others: number): string {
   const parts = [house, rest].filter(Boolean).join(' and ');
   return `${parts.charAt(0).toUpperCase()}${parts.slice(1)} ${homes + others === 1 ? 'stands' : 'stand'}`;
 }
-function ownOutcome(c: OutcomeOf): OutcomeText {
+/** "road II/325" / "a class III road": the road a cut way's piece still reaches, or the way round runs along. */
+const roadWords = (r: { way: number; cls: string } | undefined, name?: RoadNamer) => {
+  if (!r) return 'other roads';
+  const what = label(r.cls);
+  return name?.(r.way) ?? `${/^[aeiou]/i.test(what) ? 'an' : 'a'} ${what}`;
+};
+const distance = (v: number) => v < 1000 ? `${Math.max(10, Math.round(v / 10) * 10)} m` : `${(v / 1000).toFixed(1)} km`;
+/** What a cut way's piece (side k) still reaches, in words. */
+const reachOf = (c: OutcomeOf, k: number, name?: RoadNamer) => roadWords(c.closure?.reach?.[k], name);
+/** How far round a closed way's traffic goes (both its parts still reach other roads). */
+const detourOf = (c: OutcomeOf, name?: RoadNamer) => {
+  const cl = c.closure!;
+  // (Auto's last resort: a road serving houses would be kept across our road, but nothing that does so can be built)
+  const why = !c.farClosure ? '' : c.requestedType === 'reconnection' ? ' No new road can lead it to a crossing from here.' : ' Auto found no way to keep it across our road that can be built.';
+  if (cl.extra === undefined) return ` Its traffic has no way round over other roads within ${distance(PIECE_SEARCH)}.${why}`;
+  return ` Its traffic goes round ${distance(Math.max(0, cl.extra))} further${cl.via ? `, via ${roadWords(cl.via, name)}` : ''}.${why}`;
+};
+function ownOutcome(c: OutcomeOf, name?: RoadNamer): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
   // what else its raised or lowered stretch takes (crossing-works.ts)
   const works = [c.tieLength ? ` Roads joining it there are raised or lowered to meet it (${m(c.tieLength)} m).` : '',
@@ -129,30 +162,44 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const led = c.endTo?.map(e => e?.built ? e : undefined);
   if (led?.some(Boolean) && (c.type === 'reconnection' || c.type === 'diversion') && !c.moved) {
     const piece = c.cls === 'track' ? 'track' : 'road';
-    const dest = (e: NonNullable<typeof led[number]>) => e.s !== undefined ? `the ${label(e.cls)} that crosses at km ${km(e.s)}` : `a ${label(e.cls)}`;
+    const dest = (e: NonNullable<typeof led[number]>, k: number) => {
+      const own = c.ends?.[k] ? name?.(c.ends[k]!.way) : undefined;
+      return own ? (e.s !== undefined ? `${own}, which crosses at km ${km(e.s)}` : own) : e.s !== undefined ? `the ${label(e.cls)} that crosses at km ${km(e.s)}` : `a ${label(e.cls)}`;
+    };
     const parts = led.flatMap((e, k) => e ? [{ k, e }] : []);
     const sides = c.endTo!.map(e => e?.toward), other = parts.length === 1 ? 1 - parts[0].k : undefined;
     // (the other part: as Auto has it)
-    const rest = other === undefined ? '' : c.closure?.connected[other] ? `; the ${sides[other] ?? c.closure.sides[other]} part still reaches other roads, so it just ends at our earthworks`
+    const rest = other === undefined ? '' : c.closure?.connected[other] ? `; the ${sides[other] ?? c.closure.sides[other]} part still reaches ${reachOf(c, other, name)}, so it just ends at our earthworks`
       : c.closure?.nothing?.[other] ? '; the other part is a short stub that serves nothing (no house, no other road) and is left as it is'
       : c.targetS !== undefined || c.targetRoadId !== undefined ? `; the other part is led to ${crossesAt}` : '';
-    const head = parts.length === 2 ? `Led to ${dest(parts[0].e)} and ${dest(parts[1].e)}` : `The ${parts[0].e.toward} part led to ${dest(parts[0].e)}`;
+    const head = parts.length === 2 ? `Led to ${dest(parts[0].e, parts[0].k)} and ${dest(parts[1].e, parts[1].k)}` : `The ${parts[0].e.toward} part led to ${dest(parts[0].e, parts[0].k)}`;
     return { tag: 'rerouted', label: `${head} (+${m(c.linkLength)} m of new ${piece})`,
-      explain: `The ${what} is cut by our road. ${parts.map(({ e }) => `The ${e.toward} part is led to ${dest(e)}`).join('; ')}, as you chose, by a new piece of ${piece}${rest}.${link}` };
+      explain: `The ${what} is cut by our road. ${parts.map(({ e, k }) => `The ${e.toward} part is led to ${dest(e, k)}`).join('; ')}, as you chose, by a new piece of ${piece}${rest}.${link}` };
   }
   // A cut way whose pieces still reach other roads just ends at our earthworks (way-pieces.ts); a piece cut off is led on.
   if (c.closure && (c.type === 'reconnection' || c.type === 'diversion')) {
-    const [right, left] = c.closure.connected, both = right && left, round = c.closure.extra !== undefined ? `${km(c.closure.extra)} km further round` : '';
+    const [right, left] = c.closure.connected, both = right && left;
     const ends = ROAD_CLASSES[c.cls]?.label === 'track' || c.cls === 'service' ? 'just ends at our earthworks' : 'ends at our earthworks in a turning area';
-    if (!right && !left && !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: 'Closed here',
+    const sides = c.closure.sides, cut = 'Cut · no new road needed';
+    if (!right && !left && !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: cut,
       explain: `The ${what} is cut by our road. What is left of it on either side is a short stub that serves nothing (no house, no other road): it is left as it is.${link}` };
-    if (both || !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: `Closed here${round ? ` (${round})` : ''}`,
-      explain: `The ${what} is cut by our road. ${both ? `Both parts still reach other roads, so each ${ends}${round ? `; its traffic goes round, ${round}` : ''}`
-        : `The ${right ? c.closure.sides[0] : c.closure.sides[1]} part still reaches other roads, so it ${ends}; ${c.closure.nothing?.[right ? 1 : 0]
-          ? 'the other is a short stub that serves nothing (no house, no other road) and is left as it is' : 'nothing is left of the other beyond our earthworks'}`}.${link}` };
-    const kept = right ? c.closure.sides[0] : c.closure.sides[1], led = right ? c.closure.sides[1] : c.closure.sides[0];
+    // (closed with the buildings it served bought out, cheaper than keeping its way across)
+    if (both && c.buyout) {
+      const n = c.houses?.length ?? 0, homes = c.homes ?? 0, them = buildingsWords(homes, n - homes), instead = c.buyout.instead;
+      return { tag: 'bought out', label: `Cut · ${them} bought out`,
+        explain: `The ${what} is cut by our road. The ${sides[0]} part still reaches ${reachOf(c, 0, name)}, the ${sides[1]} part ${reachOf(c, 1, name)}; each ${ends}.${detourOf(c, name)} Cheaper to buy out than to keep its access: ${them}, ${money(c.houseCost ?? 0)}${instead ? `; ${remedyWords(instead.type)} would cost ${money(instead.cost)}` : ''}.` };
+    }
+    if (both) return { tag: 'closed', label: cut,
+      explain: `The ${what} is cut by our road. The ${sides[0]} part still reaches ${reachOf(c, 0, name)}, the ${sides[1]} part ${reachOf(c, 1, name)}; each ${ends}.${detourOf(c, name)}${link}` };
+    if (!Math.round(c.linkLength ?? 0)) {
+      const k = right ? 0 : 1;
+      return { tag: 'closed', label: cut,
+        explain: `The ${what} is cut by our road. The ${sides[k]} part still reaches ${reachOf(c, k, name)} and ${ends}; ${c.closure.nothing?.[1 - k]
+          ? 'the other is a short stub that serves nothing (no house, no other road) and is left as it is' : 'nothing is left of the other beyond our earthworks'}.${link}` };
+    }
+    const k = right ? 0 : 1, kept = sides[k], led = sides[1 - k];
     return { tag: 'rerouted', label: `The ${led} part led to ${crossesAt} (+${m(c.linkLength)} m of new ${c.cls === 'track' ? 'track' : 'road'})`,
-      explain: `The ${what} is cut by our road. The ${kept} part still reaches other roads, so it ${ends}; the ${led} part, cut off, is led to ${crossesAt} by a new piece of ${c.cls === 'track' ? 'track' : 'road'} along the outside of the earthworks.${link}` };
+      explain: `The ${what} is cut by our road. The ${kept} part still reaches ${reachOf(c, k, name)}, so it ${ends}; the ${led} part, cut off, is led to ${crossesAt} by a new piece of ${c.cls === 'track' ? 'track' : 'road'} along the outside of the earthworks.${link}` };
   }
   // (its cut ends lie on the road that crosses there: nothing new to build)
   if ((c.type === 'reconnection' || c.type === 'diversion') && !c.moved && !Math.round(c.linkLength ?? 0)) return { tag: c.type === 'diversion' ? 'rerouted' : 'reconnected',
@@ -161,6 +208,14 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   if (c.moved && (c.type === 'reconnection' || c.type === 'diversion')) return { tag: 'moved aside',
     label: `Moved beside our road (+${m(c.linkLength)} m of new ${c.type === 'diversion' ? 'track' : 'road'})`,
     explain: `The ${what} runs into our earthworks and comes back out on the same side, so it does not need to cross our road: that stretch is rebuilt beside the earthworks.${link}` };
+  // a mapped bridge or tunnel that already clears our road (crossings.ts keepsBridge / keepsTunnel)
+  if (c.kept && c.type === 'overbridge') return { tag: 'existing bridge kept', label: 'Existing bridge kept',
+    explain: `Our road fits under the ${what}'s own ${m(c.span)} m bridge. Nothing is built.` };
+  if (c.kept && c.type === 'underpass') return { tag: 'existing tunnel kept', label: 'Existing tunnel kept',
+    explain: `Our road passes over the ${what}'s tunnel. Nothing is built.` };
+  // (its own bridge here, rebuilt: too low over our road, or too short for our earthworks; not where it is laid anew)
+  const replaced = c.mapped === 'bridge' && c.squared === undefined
+    ? ` Its old bridge here is too ${(c.h ?? 0) > -CROSSING_RULES.underDepth ? 'low' : 'short'} for our road.` : '';
   switch (c.type) {
     case 'bridge': return c.above ? { tag: 'over our bridge', label: 'Passes over our bridge on its own bridge',
       explain: `Our road is on a bridge here; the ${what} crosses high above it on a bridge of its own.` }
@@ -170,7 +225,7 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
     case 'overbridge': return { tag: 'its bridge over us',
       label: `Carried over our road${c.overRailway ? ' and the railway beside it' : ''} on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}${square}`,
-      explain: `The ${what} is raised onto a new bridge over our road${c.overRailway ? ', long enough to span the railway it crossed at the same level beside it too' : ''}; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${squareWhy}${works}` };
+      explain: `The ${what} is raised onto a new bridge over our road${c.overRailway ? ', long enough to span the railway it crossed at the same level beside it too' : ''}; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${replaced}${squareWhy}${works}` };
     case 'junction': return { tag: 'junction', label: 'Junction with our road',
       explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.${works}` };
     case 'reconnection': return { tag: 'reconnected',
@@ -256,7 +311,7 @@ export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overb
   ['junction', 'Junction', 'The crossed road meets ours at the same level in a junction, at least 1.5 km from the next junction (Automatic offers this to class I–III roads only; motorways never).'],
   ['bridge', 'Our bridge over it', 'Our road crosses over the crossed road on a bridge; it needs enough height above it.'],
   ['overbridge', 'Its bridge over us', 'The crossed road is raised onto a new bridge over our road, with earth ramps on both sides (a motorway only over a cutting at least 6 m deep).'],
-  ['reconnection', 'Cut and reroute', 'The crossed road is cut at our road; on each side a new piece of road runs along the outside of our earthworks to the nearest place where it can cross, and the cut ends get a turning area.'],
+  ['reconnection', 'Cut it', `The crossed road is cut at our road. Where both parts still reach other roads and its traffic goes round at most ${CLOSURE_ROUND} m further (a track serving no houses: however far), each just ends at our earthworks; otherwise a new piece of road leads a part along the outside of our earthworks to the nearest place where it can cross.`],
   ['underpass', 'Underpass', `The crossed track or local road passes through our embankment in a concrete box (5 × 4.5 m inside for tracks, 8 × 4.5 m for local roads). It needs 5.5 / 5.65 m of embankment above the road; where there is less, the road is lowered into a cutting, by up to ${LOWERING_RULES.maxDepth} m.`],
 ];
 

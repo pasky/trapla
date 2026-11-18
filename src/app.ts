@@ -88,7 +88,8 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   const presetId = scenario.presetId ?? scenario.id;
   const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
   // crossing choices on designed roads are stored on those roads; the editor maps them like the worker
-  if (pack.overlays.net) registerNet(objectData, pack.overlays.net.ways.length);
+  if (pack.roadNet) registerNet(objectData, pack.roadNet.ways.length + (pack.roadNet.structures?.ways.length ?? 0),
+    pack.roadNet.structures && { from: pack.roadNet.ways.length, osm: pack.roadNet.structures.osm ?? [] });
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
@@ -182,7 +183,14 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
       return { receiver, name: (id) => { const r = routes.find(q => q.id === id); return !r || r.role === 'mission' ? 'our road' : r.name; } };
     },
     onRing: (j) => !!session.projectFull?.works.items.some(w => w.removes?.includes(j)),
+    // (the road links hold the names: loaded the first time a card asks, then the card is drawn again)
+    roadName: (way) => {
+      // (not over a field being typed into: render() waits for it; a failed load is tried again by the next card)
+      if (!links.graph && !namesAsked) { namesAsked = true; void ensureTransport().then(() => { if (links.graph) inspector.render(); else namesAsked = false; }); }
+      return links.wayName(way);
+    },
   });
+  let namesAsked = false;
   // ---- road links: the transport graph, loaded on first need (ui/road-links.ts) ----
   const links = createRoadLinks({ session, store, projectStore, pack, view, transportData, worker, previewWorker, select: next => select(next) });
   const { ensure: ensureTransport, claimedSources, mappedRoadNear, legacyRoadAt } = links;
@@ -254,14 +262,14 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   });
 
   works = new CrossingHighlight(view, document.getElementById('overlay')!, {
-    selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull,
+    selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull, heightAt: (x, y) => pack.terrain.heightAt(x, y),
   });
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
     selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull, design: () => store.design,
     select: (roadId) => { if (session.sel?.kind !== 'crossing' || session.sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
     setVia, commit: () => store.commit(), heightAt: (x, y) => pack.terrain.heightAt(x, y),
     setEnd: (roadId, side, end) => setEnd(roadId, side, end),
-    roads: () => pack.overlays.net ? (mappedNet ??= new RoadNet(pack.overlays.net)) : null,
+    roads: () => pack.roadNet ? (mappedNet ??= new RoadNet(pack.roadNet)) : null,
   });
 
   // ---- routes: the line being edited, the motorway's directions, Build, the road list, and what follows

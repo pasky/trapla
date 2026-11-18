@@ -15,6 +15,11 @@ const SNAP = 2;
 /** How far over the network a piece is followed, m (engine bound; within the local retry's core, crossings-kept.ts):
  * a piece that meets no public road within it counts as cut off. */
 export const PIECE_SEARCH = 1500;
+/** GAME RULE (PROVISIONAL, research/45 and research/86 found no Czech maximum detour; the road act asks only that
+ * neighbouring properties stay accessible, 13/1997 Sb. §7, §24(4)): Auto closes a public road at our road, or a
+ * track or service road whose cut piece serves buildings, only where its traffic goes round over other roads at
+ * most this much further, m. */
+export const CLOSURE_ROUND = 500;
 /** Ways that are no public road: a piece of one reaches the network only where it meets a public road. */
 const MINOR = new Set(['track', 'service']);
 
@@ -87,10 +92,13 @@ export interface PieceContext {
   net: RoadNet;
   /** Is the stretch a–b of a way under our earthworks (cut there)? */
   severed: (a: XY, b: XY) => boolean;
-  /** Measure how far round up to this far (a public road: whether it may be closed), m; a track or service
-   * road just ends, however far round. */
+  /** Measure how far round up to this far (whether it may be closed, and how far its traffic goes round), m. */
   round?: number;
+  /** The buildings a piece's own stretch, from its cut end to where it meets the road network, serves (segments). */
+  serves?: (segments: readonly (readonly [XY, XY])[]) => readonly number[];
 }
+/** A piece that still reaches the road network: the way there (from its cut end) and the road it meets. */
+export interface PieceReach { path: XY[]; way: number; cls: string }
 export interface PieceAccess {
   /** Per piece (the cut ends given): does it still reach the road network over other ways? */
   connected: [boolean, boolean];
@@ -98,6 +106,12 @@ export interface PieceAccess {
   round: number;
   /** Per piece cut off: all it still reaches (its length over the network from the cut end, and its far end). */
   stubs?: [{ length: number; far: XY } | undefined, { length: number; far: XY } | undefined];
+  /** Per piece that still reaches the network: the way there and the road it meets. */
+  reach?: [PieceReach | undefined, PieceReach | undefined];
+  /** Per piece (`ctx.serves`): the buildings its own stretch serves. */
+  serves?: [readonly number[], readonly number[]];
+  /** The way round (where measured): the public road it runs along furthest. */
+  via?: { way: number; cls: string };
 }
 
 /** The two pieces of `way` beyond its cut ends `ends` (on the way or a way continuing it, just outside the cut). */
@@ -128,38 +142,70 @@ export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): Pie
   /** From cut end p on edge `start` over open stretches (only the part of `start` beyond the cut is the piece):
    * does it meet a public road other than its own way, and, given the other cut end's edge `goal`, how far round. */
   const search = (start: number, p: XY, goal?: number, limit = PIECE_SEARCH) => {
-    const dist = new Map<number, number>(), heap = new MinHeap();
+    const dist = new Map<number, number>(), prev = new Map<number, number>(), heap = new MinHeap(), settled: number[] = [];
     // (the start edge's nodes the piece reaches from p without crossing our earthworks)
     for (const n of [g.edges[start * 4], g.edges[start * 4 + 1]]) {
       const q = { x: g.x[n], y: g.y[n] };
       if (ctx.severed(p, q)) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y); dist.set(n, d); heap.push(d, n);
     }
-    let reached = false, round = Infinity, extent = 0, far = p, cut = false;
+    let reached = false, round = Infinity, extent = 0, far = p, cut = false, met: { node: number; edge: number } | undefined, home: number | undefined;
     while (heap.size) {
       const [d, u] = heap.pop();
       if (d > (dist.get(u) ?? Infinity)) continue;
       if (d >= round || d > limit) { cut = true; break; }
+      settled.push(u);
       if (d > extent) { extent = d; far = { x: g.x[u], y: g.y[u] }; }
       for (const e of g.adj[u]) {
-        if (e === goal && !ctx.severed({ x: g.x[u], y: g.y[u] }, ends[1])) round = Math.min(round, d + Math.hypot(g.x[u] - ends[1].x, g.y[u] - ends[1].y));
+        if (e === goal && !ctx.severed({ x: g.x[u], y: g.y[u] }, ends[1])) {
+          const r = d + Math.hypot(g.x[u] - ends[1].x, g.y[u] - ends[1].y);
+          if (r < round) { round = r; home = u; }
+        }
         if (e === start || !open(e)) continue;
         const w = g.edges[e * 4 + 2];
         // a piece reaches the network where it meets a public road other than its own way
-        if (w !== way && !MINOR.has(g.cls.get(w) ?? '')) reached = true;
+        if (w !== way && !MINOR.has(g.cls.get(w) ?? '') && !reached) { reached = true; met = { node: u, edge: e }; }
         const v = g.edges[e * 4] === u ? g.edges[e * 4 + 1] : g.edges[e * 4], nd = d + g.edges[e * 4 + 3];
-        if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); heap.push(nd, v); }
+        if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, e); heap.push(nd, v); }
       }
       if (reached && goal === undefined) break;
     }
+    /** the nodes from the piece's start to node n */
+    const chain = (n: number) => {
+      const out = [n];
+      for (let e = prev.get(n); e !== undefined; e = prev.get(n)) { n = g.edges[e * 4] === n ? g.edges[e * 4 + 1] : g.edges[e * 4]; out.push(n); }
+      return out.reverse();
+    };
+    const point = (n: number) => ({ x: g.x[n], y: g.y[n] });
+    const reach = met && { path: [p, ...chain(met.node).map(point)], way: g.edges[met.edge * 4 + 2], cls: g.cls.get(g.edges[met.edge * 4 + 2]) ?? '' };
+    // (its own stretch: what it passes before it meets the network, each settled node and the edge it was reached by)
+    const tree = met && ctx.serves ? settled.map(n => {
+      const e = prev.get(n);
+      return [point(n), e === undefined ? p : point(g.edges[e * 4] === n ? g.edges[e * 4 + 1] : g.edges[e * 4])] as const;
+    }) : undefined;
+    // (the way round: the public road it runs along furthest)
+    let via: PieceAccess['via'];
+    if (home !== undefined) {
+      const along = new Map<number, number>(), nodes = chain(home);
+      for (let i = 1; i < nodes.length; i++) {
+        const e = prev.get(nodes[i])!, w = g.edges[e * 4 + 2];
+        if (w !== way && !MINOR.has(g.cls.get(w) ?? '')) along.set(w, (along.get(w) ?? 0) + g.edges[e * 4 + 3]);
+      }
+      let best = -1, length = 0;
+      for (const [w, l] of along) if (l > length) { best = w; length = l; }
+      if (best >= 0) via = { way: best, cls: g.cls.get(best) ?? '' };
+    }
     // (a piece whose whole network was gone through without meeting a public road: how far it reaches, and its far end)
-    return { reached, round, stub: reached || cut ? undefined : { length: extent, far } };
+    return { reached, round, stub: reached || cut ? undefined : { length: extent, far }, reach, tree, via };
   };
   const s0 = startOf(ends[0]), s1 = startOf(ends[1]);
   const a = s0 >= 0 ? search(s0, ends[0]) : undefined, b = s1 >= 0 ? search(s1, ends[1]) : undefined;
   const connected: [boolean, boolean] = [!!a?.reached, !!b?.reached];
-  const round = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 && s0 !== s1 ? search(s0, ends[0], s1, ctx.round).round : Infinity;
-  return { connected, round, stubs: [a?.stub, b?.stub] };
+  const back = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 ? search(s0, ends[0], s1, ctx.round) : undefined;
+  return { connected, round: back?.round ?? Infinity, stubs: [a?.stub, b?.stub],
+    ...(a?.reach || b?.reach ? { reach: [a?.reach, b?.reach] as [PieceReach | undefined, PieceReach | undefined] } : {}),
+    ...(ctx.serves ? { serves: [a?.tree ? ctx.serves(a.tree) : [], b?.tree ? ctx.serves(b.tree) : []] as [readonly number[], readonly number[]] } : {}),
+    ...(back?.via ? { via: back.via } : {}) };
 }
 
 class MinHeap {

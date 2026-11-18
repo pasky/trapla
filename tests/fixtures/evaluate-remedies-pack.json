@@ -4,5 +4,6 @@
   "height.i16.gz": "475db37503c9b8d670884a7c73cc5411271b0c02609c33463695d7e3150d6336",
   "landcover.u8.gz": "830fbc8befa2e16578d5557f1f740a28b468ba17613a32f5a6ebeafa692d0fcc",
   "ground.u8.gz": "de8db2dc7e29cd6ed0b341bcac6ffd7474a3d9fd323a3b84b94117dee3536207",
-  "watercourses.json.gz": "946d1868e9fe8b5348f8fd4ba7294bb807155346df67edcf20e1a5dde82fcf71"
+  "watercourses.json.gz": "946d1868e9fe8b5348f8fd4ba7294bb807155346df67edcf20e1a5dde82fcf71",
+  "structures.json": "ab2697ba5cd65563cb1fbaad44e44b58ef471f80f7e2af70d46e8b786969609b"
 }

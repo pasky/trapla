@@ -2,7 +2,7 @@
 
 import type { GroundMeta } from './core/ground';
 import type { BuildingInfo } from './core/buildings';
-import type { RoadNetData } from './core/roadnet';
+import { withStructures, type RoadNetData, type StructureData } from './core/roadnet';
 import type { TransportGraphData, TransportMeta } from './core/project-transport';
 import type { EndpointJunction } from './core/evaluate';
 import type { EndpointJunctionKind } from './core/data/urban';
@@ -81,6 +81,9 @@ export interface Pack {
   q: Uint16Array;
   lc: Uint8Array;
   overlays: Overlays;
+  /** The road network the game evaluates: `overlays.net` and the pack's mapped bridges and tunnels
+   * (`structures.json`, pipeline/build_structures.py) as ways after it. `overlays.net` alone is the identity. */
+  roadNet?: RoadNetData;
   vectors: VectorPack | null;
   /** Independent identity; legacy D11 meta/object fingerprints deliberately exclude this graph. */
   transportMeta?: TransportMeta | null;
@@ -111,6 +114,14 @@ async function transportSidecar(base: string): Promise<TransportMeta | null> {
   return meta === ABSENT ? null : meta;
 }
 
+/** The pack's mapped road bridges and tunnels (`structures.json`, pipeline/build_structures.py): null when it ships none. */
+async function structuresSidecar(base: string): Promise<StructureData | null> {
+  const data = await optional<StructureData>(`${base}/structures.json`);
+  if (data === ABSENT) return null;
+  if (data?.version !== 1 || !Array.isArray(data.ways) || !Array.isArray(data.kind) || data.kind.length !== data.ways.length) throw new Error('Unsupported mapped bridges file');
+  return data;
+}
+
 /** The pack's nature protection areas (`protected.json`, pipeline/build_protected.py): null when it ships none. */
 async function protectedSidecar(base: string): Promise<ProtectedData | null> {
   const data: unknown = await optional(`${base}/protected.json`);
@@ -124,7 +135,7 @@ export async function loadPack(base: string): Promise<Pack> {
   const transportMeta = meta.transport ?? await transportSidecar(base);
   if (transportMeta && (transportMeta.version !== 1 || !/^[a-zA-Z0-9_.-]+$/.test(transportMeta.file)))
     throw new Error('Unsupported transport map');
-  const [hb, lb, overlays, vectorData, gb, wb, protectedAreas] = await Promise.all([
+  const [hb, lb, overlays, vectorData, gb, wb, protectedAreas, structures] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     json<Overlays>(`${base}/overlays.json`),
@@ -135,6 +146,7 @@ export async function loadPack(base: string): Promise<Pack> {
     meta.ground ? gunzip(`${base}/${meta.ground.file}`) : Promise.resolve(null),
     meta.watercourses ? gunzip(`${base}/${meta.watercourses.file}`) : Promise.resolve(null),
     protectedSidecar(base),
+    structuresSidecar(base),
   ]);
   const vectors = vectorData ? parseVectorPack(vectorData) : null;
   let bytes: Promise<ArrayBuffer | null> | null = null, graph: Promise<TransportGraphData | null> | null = null;
@@ -165,5 +177,9 @@ export async function loadPack(base: string): Promise<Pack> {
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
     ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
     watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined, protectedAreas: protectedAreas ?? undefined });
-  return { base, meta, terrain, q, lc, overlays, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic };
+  // (built from this pack's transport graph: one left from an older build is not used)
+  const ownStructures = structures && structures.transport === transportMeta?.fingerprint ? structures : null;
+  if (structures && !ownStructures) console.warn('Mapped bridges file is from another build of this map: run pipeline/build_structures.py');
+  const roadNet = overlays.net ? withStructures(overlays.net, ownStructures) : undefined;
+  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic };
 }

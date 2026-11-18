@@ -1289,6 +1289,67 @@ The two "Open:" items of the sections above, shots 510–513 (`scripts/render-wo
   - The strip's width is not differentiated by the size of the works (a track's regrade and a motorway's embankment
     keep the same 3 m); no source tells them apart (research/85).
 
+### Mapped bridges and tunnels are crossings (owner report, cost model 55, 2026-11-18)
+
+Owner, D11 along the official line, grade by hand: a local road crosses ours at km 6.40, no crossing can be selected, its
+card says "Bridges and tunnels of existing roads cannot be changed yet", and it is drawn flat across our cut, nothing
+built or billed. Cause: `build_pack.py road_network` leaves every way tagged bridge / tunnel / covered out of the crossing
+network ("crossing them at ground level is free"). That local road (OSM 1500239979, `highway=unclassified`, `bridge=yes`,
+`layer=1`, 60 m) is the real overbridge over the planned D11; the net had the road either side of it and a 60 m gap, so
+our road crossed nothing there. Across the packs 1,700 such ways (bridges over streams, railways and roads mostly).
+- **Data.** `pipeline/build_structures.py` writes each pack's `structures.json` from its own transport graph (the road
+  sources without a net way: bridge, tunnel, covered), in the net's format (simplified 1 m, metres, so they meet the
+  ways either side). Additive like protected.json: `overlays.json` and its object-data identity are untouched; the game
+  adds them as ways after the net's (`RoadNetData.structures`, `RoadNet.structure(way)`), so saved choices keep their
+  ways; designed roads are numbered after them (`registerNet` takes the whole count). An older pack without the file
+  plays as before.
+- **Level.** OSM gives no height: a bridge's deck (a tunnel's road) runs straight between the ground at its two ends,
+  where it meets the road either side (`mapped-structures.ts`; the DMR 5G under a bridge is the valley floor or the
+  cutting it spans). Its crossing's `h` is measured from it (card: "our road 11 m below its bridge today"), and the
+  crossing geometry reads the crossed road at that level along it (`structureLevels`; the same function, bit for bit,
+  where no mapped structure is crossed).
+- **Kept or engineered.** A bridge our road passes under with the depth a new bridge over us needs (`underDepth`, 6 m)
+  whose ends reach the edges of our earthworks (bank-top abutments, as Auto's own) is kept: "Existing bridge kept",
+  nothing billed, its deck drawn at its level end to end (no ramps). A tunnel 6 m or more under our road (`overHeight`,
+  as our bridge over a road) likewise ("Existing tunnel kept"; type `underpass`, `kept`). Otherwise it is a crossing like
+  any other (bridge over us rebuilt higher on ramps, box, reroute, closure, our bridge over it) and billed; the card adds
+  "Its old bridge here is too low or too short for our road and is replaced." A player's "Its bridge over us" on a bridge
+  that already clears us is the bridge kept.
+- **Elsewhere.** A mapped bridge 4.8 m (`OVERBRIDGE_CLEARANCE`, deck depth unknown) or more above our road, or a tunnel
+  6 m under it, is not buried by our earthworks (footprint.ts), e.g. road 101's bridge right at the whole D3's start; a
+  road moved aside passes under or over one (road-realignment.ts). Roads run on over their bridges: closures (way-pieces),
+  reroute targets and a crossed road's path see them connected.
+- **Selecting.** The crossing is a crossing: its marker and its drawn works select its card before the mapped road's (a
+  click on the kept deck selects it, screenshot 543). The mapped road's own card away from the crossing still says a
+  bridge cannot be rebuilt yet (road-edit.ts), which no longer hides anything.
+- **Audit** `scripts/mapped-structures-audit.ts` (every pack: straight, starter, a line along the official one, N random):
+  each mapped bridge or tunnel our line meets must be a crossing (or a footprint item), a kept one billed 0 and drawn, none
+  left at grade. With 8 random designs per pack: 11 hits in all, no flags. D11 along the official line: km 6.30 the
+  local road's bridge, Auto's grade 3.5 m under its deck: rebuilt on ramps (15.6 M); the grade by hand 11 m under it:
+  kept (`tests/fixtures/d11-official-line*-design.json`, tests/mapped-structures.test.ts). Nová Paka starter along the
+  real bypass: the street's 51 m bridge at km 3.24 kept, two local roads' bridges at km 0.89 / 1.57 replaced (Auto's line
+  2–3 m under their decks; a new bridge replaces the whole old one: 38 and 28 m). Shots 540–545
+  (`scripts/mapped-bridge-shots.mjs`).
+- **Review fixes.** Our bridge clears a mapped bridge or tunnel under it at its level (support lifts, grade retries, a
+  motorway's must-clear, minor crossroads); one high over our bridge passes over it (kept). A kept tunnel needs its portals
+  beyond our works and the road on its own line; it is not drawn (underground). The crossing geometry keeps the natural
+  ground and reads the crossed road's level separately (`CrossingRoute.wayLevel`, one function for the whole network, so
+  no pass sees another's levels); a mapped bridge under our bridge is drawn on the ground as the map draws it. Retaining
+  walls skip a mapped bridge with room (as footprint.ts). Mapped structures join other ways only at their ends
+  (`RoadNet.joinsAt`: no junction with a road under a span); their hits are never merged with roads on the ground. A
+  choice on one is saved with its OSM id (`target.structure`); an older save's raw remnant id keeps its meaning. The
+  sidecar is used only with the transport graph it was built from.
+- **Bills.** D11 frozen: see COST_MODEL_VERSION 55 in prices.ts. Starters against model 54 (M CZK): D11 8,798.2 →
+  8,771.0; Nová Paka 1,237.6 → 1,274.8; D3 full 36,290.4 → 36,279.9; D3 0305 9,467.1 → 9,458.1; the rest unchanged;
+  validity unchanged.
+- **Open:**
+  - The grade search does not aim for a mapped bridge's clearance (keeping it is not in its objective): Nová Paka's two
+    bridges are rebuilt where lowering the line 3 m might have been cheaper.
+  - Mapped railway tunnels are still drawn into the railway raster (build_pack.py: every `railway=rail`), so our road
+    over one is treated as crossing the railway at the ground (the D3 official line meets the 130 m tunnel OSM 30231638);
+    fixing it needs the packs rebuilt.
+  - A road moved aside ignores a mapped bridge's level (passes under or over it, unchecked).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
@@ -2186,3 +2247,73 @@ goes back. One undo step ("where a reroute leads"). Dragging the middle of the n
 - **Known limits.** For a way crossing ours more than once, the ends belong to the crossing nearest the drop (as a
   shape belongs to the one nearest its bend points), not to the one whose end was dragged. A new piece led far away
   may run beside an existing road that already leads there (509).
+
+## A cut way that serves houses; what each part still reaches (owner request, cost model 54, 2026-11-18)
+
+Owner (D11, the service road at km 17.67, set to "Cut and reroute"): the card said "Closed here · Both parts still
+reach other roads, so each just ends at our earthworks. our road 5 m above the crossed road's level today", the button
+read "Cut and reroute", and the map showed nothing rerouted, nor where the parts end or what they reach. And: it is the
+only access to a hamlet of about eight buildings east of our road, closed with no limit on how far round its traffic goes.
+- **Detour limit for access to buildings** (`crossing-geometry.ts` `crossingReroutes`, `way-pieces.ts`): a track's or
+  service road's part that serves buildings (one people go to: a house, flats, a farm or works, a civic building, no shed
+  or garage, within STUB_HOUSE = 30 m of its stretch from the cut to where it meets a public road, and not within 30 m of a
+  public road, which serves it instead: the houses of a village a field track ends in) is closed only as a public road
+  is: both parts still reach the road network and its traffic goes round at most CLOSURE_ROUND = 500 m further. No Czech
+  number exists (research/86: the road act §7(1) and §24(4) and the civil code §1029 ask only that properties keep
+  access), so 500 m stays PROVISIONAL. Over it Auto keeps the way across (a box, a bridge over us or a reroute, priced
+  as usual, also one whose works take a home); a field track serving nothing keeps the research/45 rule (it just ends,
+  however far round). How far round is measured over the mapped network (up to 1.5 km beyond the cut for tracks and
+  service roads; public roads as before).
+- **Buying out instead** (`buyout`, owner's follow-up): where the buildings a part serves are the only reason to keep
+  its way across, Auto weighs buying them out (the buildings.ts buyout price: building, purchase multiplier, demolition,
+  plot) against the cheapest way across it can build, on the crossing's bill, and takes the cheaper. Homes count as
+  homes (research/60): a buyout that takes a home is taken only where every way across takes as many, never where
+  nothing else can be built (a house the player keeps is never bought out so). Billed and drawn as bought out; the card:
+  "Cut · 7 buildings bought out … Cheaper to buy out than to keep its access: 7 buildings, 109 M CZK; its bridge over us
+  would cost 153 M CZK"; each building's card: "The way to it is cut at km 22.08: buying it out costs less than keeping
+  that way across our motorway." D35 full km 22.08 (a farm of seven halls and sheds, 3,500 m², no home): bought out for
+  109 M instead of its 153 M bridge over the motorway; no other starter or saved design changes.
+- **Last resort** (`farClosure`): where nothing that keeps it across can be built, Auto closes it anyway (both parts
+  still reach the network); the card says so. D35 full km 7.51 (two houses, a civic building and two works on the track):
+  no way across can be built and a buyout would take homes, so it stays closed this way.
+- **The player's "Cut it" over the limit** (`cutOff`): closed where its new road cannot reach a crossing, but where Auto
+  would keep it across it is a problem on the crossing (game rule): "Houses cut off from the road" (or "Buildings"), its
+  fix what Auto builds and its price, computed by evaluating the design once more with that choice left to Auto (full
+  evaluations only, and only for such a cut), as a public road closed over CLOSURE_ROUND is a problem. D11 km 17.67:
+  "Back to Auto: an underpass, 25 M CZK".
+  Without it the Královec railway QA projects (track 5550 at km 12.89, beside the mapped railway) were left with an
+  unbuildable reroute.
+- **D11 km 17.67** (the saved best design, its bend near km 17.6 moved 60 m east; `tests/cut-access.test.ts`): Auto
+  now carries the hamlet's service road through our embankment in a box (24.6 M, a house under its ramps bought out;
+  buying out the hamlet would take six homes); the player's "Cut it" cannot lead it to a crossing (a railway on the
+  ground between it and every crossing), so it is closed, NOT VALID ("Houses cut off from the road"): "Cut · no new road needed · The service road is cut by our road. The east part still reaches road I/16, the
+  west part a class III road; each just ends at our earthworks. Its traffic has no way round over other roads within
+  1.5 km. No new road can lead it to a crossing from here."
+- **Changed closures** (Auto, every installed pack's starters and the five saved D11 designs): 90 → 57; 33 tracks or
+  service roads that served buildings now keep their way across (17 reroutes, 7 bridges over us, 9 boxes), one is
+  closed with its farm bought out (D35 full km 22.08), and 3 stay
+  closed as the last resort (direct-90 km 9.80, D35 stage 1 km 7.52, D35 full km 7.51: nothing that keeps them across can be built). Bills: D11
+  starter unchanged, Královec railway +18.2 M (10.742 → 10.760 bn: the track at km 12.05 carried over us, 16.1 M), best +33.5, demo +19.4, direct-80 +58.0, direct-90 −0.8, town-centre
+  +32.9, D3 0301 +11.8, 0302 +8.4, 0303 +28.2, 0304 +65.1, 0305 +12.9, D35 stage 1 unchanged, Nová Paka +43.6, D35 full
+  +109.3 (km 22.08 the farm bought out), D3 full +105.3. All VALID as before.
+- **Words.** The choice is "Cut it" (it cuts the way; a part is led on only where it needs to be). A cut with nothing new
+  built is "Cut · no new road needed", its body names what each part still reaches (the way's own name or number from
+  the road links, e.g. "road I/16", else its class: "a class III road") and how far round its traffic goes and along
+  which road ("Its traffic goes round 1.9 km further, via road II/325"). A part led on says "the north part, cut off, is
+  led to …". The "our road N m above the crossed road's level today" line is gone from cut crossings (closures and
+  reroutes alike). The road links load the first time such a card asks for a name.
+- **Map** (`ui/crossing-highlight.ts`): with the crossing selected each part that just ends is lit dashed from where it
+  now ends, the ground just beyond our earthworks and its setback (what the engine keeps of it: nothing billed, nothing
+  drawn into our slope), a bar across it there, to a dot where it meets the road it still reaches.
+- **Leading a part elsewhere** (`ui/link-edit.ts`): the model-52 square end handle now also stands at the end of a part
+  that just ends; dragged onto a road, the part is led there by a new road (`CrossingOverride.ends` as before; the other
+  part still just ends, or is closed as the last resort above). Played: `node scripts/cut-card-shots.mjs`, screenshots
+  530–537 (the hamlet's part led to road I/16, +299 m, 10.3 M; 531 the player's cut with its problem; 536–537 the D35
+  full farm bought out).
+- **Fixed on the way:** a cut inside one mapped segment (both cut ends on it) was never measured round (way-pieces.ts:
+  a public road there could not be closed); no saved bill moved. A motorway or railway beside a house is no way in to it.
+- **Known issues.** How far round a track's traffic goes is not measured beyond 1.5 km ("no way round over other roads
+  within 1.5 km"). Auto's last resort means nothing it tried (structures, the nearest crossings to lead to) can be built.
+  The buildings a part serves are those along its stretch up to the first public road; a farm beyond a second track
+  junction is not looked for. direct-90 now runs the regrade retry once more (a reroute through a home on the way to
+  its km 4.61 box: +≈ 300 ms of its full evaluation).

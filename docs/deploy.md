@@ -148,7 +148,7 @@ and on the About page; (§4.4) the derived database itself is under the ODbL, wh
 (§4.6) everyone who gets a Produced Work must be offered the derived database (or a file / method that makes the
 same changes) in machine-readable form, free. The About page does this: it says the map files are available under
 the ODbL and links each pack's OpenStreetMap-derived files (`meta.json`, `overlays.json`, `vector.bin.gz`,
-`landcover.u8.gz`, `watercourses.json.gz`, the road graph); the heights, ground, protected areas and traffic are
+`landcover.u8.gz`, `watercourses.json.gz`, the road graph, the mapped bridges and tunnels `structures.json`); the heights, ground, protected areas and traffic are
 not offered there. For the offer to be useful the formats must be documented:
 they are (README "Scenario pack format", the pipeline in `pipeline/`); if this repository stays private, publish at
 least the README's format section and `pipeline/` with the site, or say on the About page where to get them. Do not
