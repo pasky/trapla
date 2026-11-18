@@ -84,10 +84,11 @@ function onOld(paths: OldPaths, x: number, y: number, far: number) {
   const w = Math.max(0, 1 - far / TIE_LENGTH), p = nearestPoint(paths, x, y);
   return { x: p.x + w * (x - p.x), y: p.y + w * (y - p.y) };
 }
-/** A rebuilt stretch's line as it is drawn and built (layOnGround): its samples (`st`, any spacing) at the
- * kernel's kept cells (`kept`, spacing `ds`) lie on the old line `old`. What other roads cross (the plan line
- * in their networks, project-roadnet.ts): the old road where it is kept, not the line within KEPT_TOLERANCE
- * of it that the kernel designs. Null: nothing is kept. */
+/** A rebuilt stretch's line as it is built and drawn (layOnGround), sampled at `st` (any spacing, along the kernel's
+ * alignment): at the kernel's kept cells (`kept`, spacing `ds`) it lies on the old line `old` itself (drawn through
+ * the kernel's stations snapped the same way). What other roads cross (the plan line in their networks,
+ * project-roadnet.ts): the old road where it is kept, not the line within KEPT_TOLERANCE of it that the kernel
+ * designs. Null: nothing is kept. */
 export function lineAsDrawn(st: { n: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number> },
   kept: ArrayLike<number>, ds: number, old: OldPaths): { x: Float64Array; y: Float64Array } | null {
   if (!old.some(p => p.length > 1) || !Array.prototype.some.call(kept, Boolean)) return null;
@@ -174,7 +175,7 @@ export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' |
   };
   const yielded = pis.map((q, k) => q.mapped && q.r !== null && anew(k));
   if (yielded.some(Boolean)) { pis = pis.map((q, k) => yielded[k] ? { ...q, r: null } : q); p = plan(pis); }
-  return { kept: p.kept, st: p.st, pis };
+  return { kept: p.kept, st: p.st, pis, al: p.al };
 }
 
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes

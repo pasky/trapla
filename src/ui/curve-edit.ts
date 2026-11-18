@@ -13,6 +13,7 @@ import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
 import { bendNo } from './chainage';
 import { stationIndex } from '../core/range';
+import { KEPT_TOLERANCE } from '../core/project-kept';
 
 export interface CurveEditHost {
   a: Vec2;
@@ -145,7 +146,8 @@ export class CurveEditor {
       if (kept?.keptCells?.[stationIndex(kept, s)]) {
         const f = Math.max(0, Math.min(kept.n - 1, s / kept.ds)), i = Math.min(kept.n - 2, Math.floor(f)), t = f - i;
         const x = kept.x[i] + t * (kept.x[i + 1] - kept.x[i]), y = kept.y[i] + t * (kept.y[i + 1] - kept.y[i]);
-        return { x, y, z: this.zAt(x, y, s) };
+        // (a result of the line before an edit that kept its length is further off: not this line's)
+        if (Math.hypot(x - p.x, y - p.y) <= KEPT_TOLERANCE + 1) return { x, y, z: this.zAt(x, y, s) };
       }
       return { x: p.x, y: p.y, z: this.zAt(p.x, p.y, s) };
     };

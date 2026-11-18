@@ -1069,7 +1069,14 @@ const ZONE_ALONG = 150;
 /** |sin| of the angle between the owner and the crossed road's plan line at the crossing. */
 function crossingSine(own: Result, c: CrossingResult, line: readonly number[], s: number): number {
   const k = Math.max(0, Math.min(own.n - 2, c.i)), ox = own.x[k + 1] - own.x[k], oy = own.y[k + 1] - own.y[k];
-  const j = Math.max(0, Math.min(line.length / 2 - 2, Math.round(s / 5))) * 2, lx = line[j + 2] - line[j], ly = line[j + 3] - line[j + 1];
+  // (the line's segment through the crossing: its samples are about 5 m apart, nearer where it is drawn on its old road)
+  let j = Math.max(0, Math.min(line.length / 2 - 2, Math.round(s / 5))) * 2, gap = Infinity;
+  for (let q = Math.max(0, j - 8); q + 3 < line.length && q <= j + 8; q += 2) {
+    const dx = line[q + 2] - line[q], dy = line[q + 3] - line[q + 1], l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((c.x - line[q]) * dx + (c.y - line[q + 1]) * dy) / l2)), d = Math.hypot(c.x - line[q] - t * dx, c.y - line[q + 1] - t * dy);
+    if (d < gap) { gap = d; j = q; }
+  }
+  const lx = line[j + 2] - line[j], ly = line[j + 3] - line[j + 1];
   return Math.abs(ox * ly - oy * lx) / (Math.hypot(ox, oy) * Math.hypot(lx, ly) || 1);
 }
 const HOLD_TOLERANCE = 0.5; // m, as a grade pin (GRADE_PIN_TOLERANCE)
