@@ -4,6 +4,51 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## P2 fixes re-check — main 5331cc1 (cost model 49; 2026-11-18, two browser chunks of 14 and 7 min + Node repros)
+
+The P2s from the second re-check (PLAN.md "Portals, cones over houses, side roads of a rebuilt road" and "A drag past
+the next bend; an unreachable pin"), played with real mouse in SwiftShader 1440×900 (`qa3/drive.mjs`). Screenshots
+470–477 (`docs/screenshots/47x-qa-p2-*.png`), the rest under `/tmp/trapla-qa-p2/`. Bills on main: D35 first section
+19.65 bn (was 19.22 at 1258a07), Královec starter 10.69 bn, D11 straight 8.79 bn, D3 0304 10.09 bn, all VALID.
+
+| # | item | verdict | evidence |
+|---|---|---|---|
+| 1 | D35 drag along the road past the next bend | **FIXED** | Whole route (camera 13.8 km), click km 12 (the cut), drag 40 px right: the new bend passes bend 7 and swaps with it (bends at km 12.60 / 12.78), no U-turn; the only problem is "Bends 7 and 8 are too close for an S-bend · move them at least 393 m further apart", 19.13 bn (470). Other along-the-road drags VALID: D35 km 8.2 +50 px (19.40 bn), km 4.2 −50 px (18.88 bn, −778 M), km 13.8 +80 px (19.74 bn); D11 km 9 +40 px (9.05 bn), km 5 −60 px (8.48 bn). P2 below: a dragged bend can land on a straight and turn 0°. |
+| 2 | Královec pin 8 px up at km 2.03 | **FIXED** (new P1 next to it) | "Pinned height out of reach: too steep · Set it to 439.5 m, or unpin", the card "Auto cannot reach it, so the track stays where it was", bill **10.69 bn**, no other problem (472). Typing 439.5 + Set: the pin is met (track 439.0 m, "Auto passes within 0.5 m of it"), but Auto leaves a stream in its open cut (P1 #1 below) (473). |
+| 3 | D3 0304: the hill above the tunnel portal | **FIXED** | the far portal (km 1.59) from the hill at 45 and 120 m: the approach cut ends in the portal box, nothing pokes out of the hill (474). |
+| 4 | D11 III/3012 dragged 23 m at km 2.4 | **FIXED** (new P1 next to it) | `qa3/designs/d11-iii3012-dragged-23m.json`: III/3012 10.4 M VALID, the track a junction ("track:junction"), no "covers a track", the old road removed (475). A UI drag of the road 30 px off its corner (new bend 3 at its km 0.31): track:junction too; NOT VALID only by "Bends 2 and 3 merge into one curve that is too sharp · move them about 20 m further apart" (honest). P2: two small white shards at the track's access by the cut edge (close-up `/tmp/trapla-qa-p2/c2/007`). |
+| 5 | houses under bridge-end cones; turning areas | **FIXED** | D11 km 4.07: the civic building is drawn demolished beside the cone, card "Demolished · 18 M CZK · Under the fill in front of our bridge's end, km 4.07" (477). `scripts/bridge-ends-audit.ts --only d11`: 222 ends, 59 closed, no house under a cone (Královec starter: 13 cones, 0 walls). `scripts/works-clash-audit.ts --all`: no house clash; 12 "ours" track-diversion clashes on D3 / D35 starters (exit 0, as before). |
+
+### New
+
+- **P1 #1 — a met height pin leaves a stream in Auto's open cut, and the bill drops for it.** Královec starter, profile
+  zoomed to km 1.7–2.4, drag the line at km 2.03 8 px up, then type 439.5 in the pin's Height and Set: the pin holds
+  (439.0 m), but the cut-and-cover tunnel that started at km 2.0 now starts at km 2.15, and the 8–9 m deep open cut
+  between runs through the stream at km 2.087 (1.6 km² catchment): "Our earthworks block a stream · put our railway on
+  a bridge from km 2.05 to km 2.11" and "Our cutting runs through a stream · raise our railway … at least 2.8 m above
+  the stream bed for a 2.0 × 2.0 m culvert, or use a bridge": neither is buildable 8 m under the ground with the pin
+  1 m away, and Auto's own answer without the pin (cover it, the tunnel from km 2.0) is not offered. Bill 10.69 →
+  **10.49 bn** (−198 M), NOT VALID: a player sees a cheaper invalid design one metre higher. Auto should engineer the
+  stream for the pinned line (keep the cover over it) and price it (473).
+- **P1 #2 — III/3012's corner dragged but "kept on the old road": our road's bridge shrinks for a road not built.**
+  D11 straight, select III/3012 (click it south of our bridge), drag its north leg (its km ≈ 0.12 from the corner,
+  camera after `lookAt(7660, 5430, 150, 250, 45)`) 25 px: the mapped corner PI moves 22 m (7652, 5362) → (7631, 5367),
+  but the card says "Rebuilt stretch, up to 0 m from the old road … 566 m stay on the old road: kept as it is", the
+  road bills 0 CZK and its drawn line is ≤ 0.6 m from the old road. Our road meanwhile bills **−143 M** (8.787 →
+  8.644 bn): its bridge over III/3012 goes from km 2.185–2.424 to km 2.205–2.365, the crossing moved from (7658, 5483)
+  on the old road to (7645, 5444), which lies on the straight from the start to the moved PI, i.e. our road crosses a
+  line that is neither drawn nor built. The map also draws the moved handles away from the road (476). Repro:
+  `SCENARIO=d11 npx tsx qa3/kept-corner.ts qa3/designs/d11-iii3012-corner-kept-on-old-road.json` (with the rebuilt
+  road 8,643.8 M, bridge 2205–2365; mission only 8,787.0 M, bridge 2185–2424).
+- **P2 — the computed fix of an unreachable pin is not a button.** "Set it to 439.5 m, or unpin" is plain text; the
+  player has to type the number into Height. The other cards offer their fixes as buttons.
+- **P2 — a dragged bend can land on the straight and stay as a 0° bend.** D35 km 4.2, drag 50 px back along the road:
+  the dragged bend passes bend 2 and ends 137 m before it; old bend 2 is now "Bend 3 · turns 0° · no curve (straight)"
+  with "Tightest the rules allow", Tightest / Widest and a design speed choice for a bend that does not bend; its
+  number sits on top of bend 2's on the map (471). Same on D11 km 9: "Bend 1 · turns 0° · R 1,350 m · 4 m of curve".
+- Not a bug, for the owner: a 40 px drag "along" D11's straight at km 9 still puts the bend 14 m off the line (the
+  perspective), +264 M; known ("the price of a different road").
+
 ## Sweep 3 — second re-check — main 1258a07 (cost model 48; 2026-11-18, one 12 min chunk + Node repros)
 
 The owner's shots (`/tmp/owner-shots/`) re-checked on the Královec starter (now 10.69 bn VALID), then a short sweep of
