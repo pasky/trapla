@@ -13,6 +13,7 @@ import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
 import { bendNo } from './chainage';
 import { stationIndex } from '../core/range';
+import { KEPT_TOLERANCE } from '../core/project-kept';
 
 export interface CurveEditHost {
   a: Vec2;
@@ -137,7 +138,19 @@ export class CurveEditor {
     this.warn.title = v ? `${v.fix}${v.detail ? `\n\n${v.detail}` : ''}` : '';
     this.warn.style.display = v ? '' : 'none';
     const c = this.curve();
-    const at = (s: number) => { const p = pointAt(this.al!, s); return { x: p.x, y: p.y, z: this.zAt(p.x, p.y, s) }; };
+    // (where a rebuilt stretch stays on its old road the road is the old road, drawn and kept there: the grips sit on it,
+    // core/project-kept.ts)
+    const r = this.host.result(), kept = r?.keptCells && Math.abs(r.length - this.al.length) < 0.5 ? r : null;
+    const at = (s: number) => {
+      const p = pointAt(this.al!, s);
+      if (kept?.keptCells?.[stationIndex(kept, s)]) {
+        const f = Math.max(0, Math.min(kept.n - 1, s / kept.ds)), i = Math.min(kept.n - 2, Math.floor(f)), t = f - i;
+        const x = kept.x[i] + t * (kept.x[i + 1] - kept.x[i]), y = kept.y[i] + t * (kept.y[i + 1] - kept.y[i]);
+        // (a result of the line before an edit that kept its length is further off: not this line's)
+        if (Math.hypot(x - p.x, y - p.y) <= KEPT_TOLERANCE + 1) return { x, y, z: this.zAt(x, y, s) };
+      }
+      return { x: p.x, y: p.y, z: this.zAt(p.x, p.y, s) };
+    };
     if (c) {
       const mid = pointAt(this.al, (c.sStart + c.sEnd) / 2);
       this.inward = { x: -mid.ty * c.dir, y: mid.tx * c.dir };

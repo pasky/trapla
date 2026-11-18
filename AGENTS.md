@@ -135,7 +135,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   junction lies at our slope's toe. What mostly breaks them is the hand-set radii at the norm's limit (S-bends 4–6,
   bend 9; PLAN.md, model 37).
 - A pin Auto cannot reach is left out and said at the pin (the line stays Auto's own, engineered as such), also one
-  met only by leaving a crossing it must clear (a stream in an open cut; model 50); its suggested height is a button; a
+  met only by leaving a crossing it must clear (a stream in an open cut; model 51); its suggested height is a button; a
   drag past the next bend swaps the two in order, and a bend a drag leaves on the line goes on release
   (`core/bend-order.ts`; PLAN.md "A drag past the next bend; an unreachable pin", "A pin that leaves a crossing; bends
   left straight").

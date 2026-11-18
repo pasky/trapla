@@ -962,6 +962,22 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       let near = path[0];
       for (const q of path) if (Math.hypot(q.x - c.oldJunction.x, q.y - c.oldJunction.y) < Math.hypot(near.x - c.oldJunction.x, near.y - c.oldJunction.y)) near = q;
       stub = near.d < d0 ? -1 : near.d > d1 ? 1 : 0;
+      // (it ends at our carriageway's edge: not across our slope to the edge of our earthworks, a stub between walls
+      // that leads nowhere)
+      if (stub) {
+        const half = (ours.crownWidth ?? 0) / 2, on = (d: number) => Math.abs(project(along(path, d), false).lateral) <= half;
+        // (the first point off it going out from our centreline, then the edge between it and the point before)
+        let a = path[centre].d, b = a;
+        for (let k = centre; k >= 0 && k < path.length && stub * (path[k].d - (stub < 0 ? d0 : d1)) < 0; k += stub) {
+          if (!on(path[k].d)) { b = path[k].d; break; }
+          a = path[k].d;
+        }
+        if (b === a && !on(stub < 0 ? d0 : d1)) b = stub < 0 ? d0 : d1;
+        if (b !== a && on(a)) {
+          for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (on(m)) a = m; else b = m; }
+          if (stub < 0) d0 = (a + b) / 2; else d1 = (a + b) / 2;
+        }
+      }
       if (stub) g.removed = stub < 0 ? [near.d, d0] : [d1, near.d]; else delete g.removed;
     }
     const f0 = stub < 0 ? d0 : foot(d0, -1, edgeZ(d0)), f1 = stub > 0 ? d1 : foot(d1, 1, edgeZ(d1));

@@ -164,13 +164,18 @@
  * best, best-*: unchanged. Starters: Nová Paka 1,185.7 → 1,194.0 (a house under a service road moved aside at km 2.60),
  * D3 motorway 14,585.7 → 14,586.9, D11 retired railway 24,830 → 24,952 (not valid either way); others unchanged
  * (PLAN.md "Portals, cones over houses, side roads of a rebuilt road").
- * 50: a height pin Auto meets only by missing a crossing its own line clears (a stream left in an open cut, a railway
+ * 50: where a rebuilt stretch stays on its old road (kept as it is, drawn there), other roads cross it as that old
+ * road, not as the kernel's line up to 12 m off it; a side road's piece towards its old junction ends at our
+ * carriageway (display only). D11 frozen unchanged (no rebuilt stretch); the QA project with III/3012's corner dragged
+ * 22 m and kept: our road 8,643.8 → 8,787.0 M, as without it (PLAN.md "A rebuilt stretch kept on its old road; a side
+ * road's stub").
+ * 51: a height pin Auto meets only by missing a crossing its own line clears (a stream left in an open cut, a railway
  * crossed too low) after the retry that asks for that crossing at any price, is left out like one too steep: the line
  * stays Auto's own, the pin says what it would not clear; a suggested height is one whose first solve misses no such
  * crossing. A pin left out holds no support lift. Frozen bills, starters and saved designs unchanged; pinned edits
  * (scripts/edit-locality.ts): Královec pin +5 m at km 4.2 10.49 → 10.69 bn, D11 pin −8 m at km 7.2 3.82 → 3.66 bn,
  * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight"). */
-export const COST_MODEL_VERSION = 50;
+export const COST_MODEL_VERSION = 51;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

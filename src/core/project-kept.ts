@@ -71,17 +71,45 @@ function nearestPoint(paths: OldPaths, x: number, y: number) {
  * and still be "kept", which must not show as a moved road), on the ground, as wide as the road, without
  * slopes. Beside a new part the kernel's line and heights (held near the ground there, evaluate.ts
  * OLD_ROAD_TIE) fade into it over TIE_LENGTH. The result gets its own arrays: the kernel's are never changed. */
+/** Along kept cells, how far each lies from the nearest cell built anew, m (Infinity: none is). */
+function farFromNew(kept: ArrayLike<number>, ds: number): Float64Array {
+  const n = kept.length, far = new Float64Array(n).fill(Infinity);
+  for (let i = 0, d = Infinity; i < n; i++) { d = kept[i] ? d + ds : 0; far[i] = d; }
+  for (let i = n - 1, d = Infinity; i >= 0; i--) { d = kept[i] ? d + ds : 0; far[i] = Math.min(far[i], d); }
+  return far;
+}
+/** Where a point of the line at a kept cell (`far` from the nearest new part) is drawn: on the old line, fading
+ * into the line itself over TIE_LENGTH beside a new part. */
+function onOld(paths: OldPaths, x: number, y: number, far: number) {
+  const w = Math.max(0, 1 - far / TIE_LENGTH), p = nearestPoint(paths, x, y);
+  return { x: p.x + w * (x - p.x), y: p.y + w * (y - p.y) };
+}
+/** A rebuilt stretch's line as it is built and drawn (layOnGround), sampled at `st` (any spacing, along the kernel's
+ * alignment): at the kernel's kept cells (`kept`, spacing `ds`) it lies on the old line `old` itself (drawn through
+ * the kernel's stations snapped the same way). What other roads cross (the plan line in their networks,
+ * project-roadnet.ts): the old road where it is kept, not the line within KEPT_TOLERANCE of it that the kernel
+ * designs. Null: nothing is kept. */
+export function lineAsDrawn(st: { n: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number> },
+  kept: ArrayLike<number>, ds: number, old: OldPaths): { x: Float64Array; y: Float64Array } | null {
+  if (!old.some(p => p.length > 1) || !Array.prototype.some.call(kept, Boolean)) return null;
+  const far = farFromNew(kept, ds), x = Float64Array.from(st.x), y = Float64Array.from(st.y);
+  for (let k = 0; k < st.n; k++) {
+    const i = Math.max(0, Math.min(kept.length - 1, Math.round(st.s[k] / ds)));
+    if (!kept[i]) continue;
+    const p = onOld(old, st.x[k], st.y[k], far[i]);
+    x[k] = p.x; y[k] = p.y;
+  }
+  return { x, y };
+}
 function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRoad) {
-  const far = new Float64Array(r.n).fill(Infinity);
-  for (let i = 0, d = Infinity; i < r.n; i++) { d = kept[i] ? d + r.ds : 0; far[i] = d; }
-  for (let i = r.n - 1, d = Infinity; i >= 0; i--) { d = kept[i] ? d + r.ds : 0; far[i] = Math.min(far[i], d); }
+  const far = farFromNew(kept, r.ds);
   if (old && old.paths.some(p => p.length > 1)) {
     const x = r.x.slice(), y = r.y.slice(), tx = r.tx.slice(), ty = r.ty.slice(), ground = r.ground.slice();
     let moved = false;
     for (let i = 0; i < r.n; i++) {
       if (!kept[i]) continue;
-      const w = Math.max(0, 1 - far[i] / TIE_LENGTH), p = nearestPoint(old.paths, r.x[i], r.y[i]);
-      x[i] = p.x + w * (r.x[i] - p.x); y[i] = p.y + w * (r.y[i] - p.y);
+      const p = onOld(old.paths, r.x[i], r.y[i], far[i]);
+      x[i] = p.x; y[i] = p.y;
       if (x[i] !== r.x[i] || y[i] !== r.y[i]) { moved = true; ground[i] = old.heightAt(x[i], y[i]); }
     }
     if (moved) {
@@ -147,7 +175,7 @@ export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' |
   };
   const yielded = pis.map((q, k) => q.mapped && q.r !== null && anew(k));
   if (yielded.some(Boolean)) { pis = pis.map((q, k) => yielded[k] ? { ...q, r: null } : q); p = plan(pis); }
-  return { kept: p.kept, st: p.st, pis };
+  return { kept: p.kept, st: p.st, pis, al: p.al };
 }
 
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes
