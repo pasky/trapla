@@ -11,6 +11,7 @@ import { parseVectorPack, type VectorPack } from './render/vectorPack';
 import { validTrafficCensus, type TrafficCensus } from './core/traffic-census';
 import { validProtectedData, type ProtectedData } from './core/data/protected';
 import { objectDataKey } from './core/build-controls';
+import { isMissing, packFile } from './pack-fetch';
 
 /** `junction`: scenario-declared connection to retained roads (legacy net way indices). */
 export interface PackEndpoint { xy: [number, number]; latlon: [number, number]; note: string;
@@ -94,53 +95,37 @@ export interface Pack {
   loadTraffic: () => Promise<TrafficCensus | null>;
 }
 
-/** fetch a gzip file; some servers (e.g. Vite dev) already send it with Content-Encoding: gzip */
-async function gunzip(url: string): Promise<ArrayBuffer> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-  const buf = await r.arrayBuffer();
-  const b = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
-  if (b[0] !== 0x1f || b[1] !== 0x8b) return buf;
-  const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Response(ds).arrayBuffer();
-}
+/** a pack file, unpacked if it is gzipped (src/pack-fetch.ts: the start screen may have started it already) */
+const gunzip = (url: string) => packFile(url);
+const json = async <T>(url: string): Promise<T> => JSON.parse(new TextDecoder().decode(await packFile(url))) as T;
+/** an optional file of the pack: null when the pack has none */
+const optional = <T>(url: string): Promise<T | null> => json<T>(url).catch((error) => { if (isMissing(error)) return null; throw error; });
 
 async function sha256(bytes: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function transportSidecar(base: string): Promise<TransportMeta | null> {
-  const r = await fetch(`${base}/transport-meta.json`);
-  // Vite returns its HTML shell for an absent optional sidecar. Existing packs still load.
-  if (r.status === 404 || r.headers.get('content-type')?.includes('text/html')) return null;
-  if (!r.ok) throw new Error(`Transport metadata: HTTP ${r.status}`);
-  return await r.json() as TransportMeta;
+function transportSidecar(base: string): Promise<TransportMeta | null> {
+  return optional<TransportMeta>(`${base}/transport-meta.json`);
 }
 
 /** The pack's nature protection areas (`protected.json`, pipeline/build_protected.py): null when it ships none. */
 async function protectedSidecar(base: string): Promise<ProtectedData | null> {
-  const r = await fetch(`${base}/protected.json`);
-  // Vite returns its HTML shell for an absent optional sidecar.
-  if (r.status === 404 || r.headers.get('content-type')?.includes('text/html')) return null;
-  if (!r.ok) throw new Error(`Protected areas: HTTP ${r.status}`);
-  const data: unknown = await r.json();
+  const data: unknown = await optional(`${base}/protected.json`);
+  if (data === null) return null;
   if (!validProtectedData(data)) throw new Error('Unsupported protected areas file');
   return data;
 }
 
-export async function loadPack(base: string, progress?: (msg: string) => void): Promise<Pack> {
-  progress?.('loading scenario…');
-  const metaResponse = await fetch(`${base}/meta.json`);
-  if (!metaResponse.ok) throw new Error(`Scenario map: HTTP ${metaResponse.status}`);
-  const meta: PackMeta = await metaResponse.json();
+export async function loadPack(base: string): Promise<Pack> {
+  const meta = await json<PackMeta>(`${base}/meta.json`);
   const transportMeta = meta.transport ?? await transportSidecar(base);
   if (transportMeta && (transportMeta.version !== 1 || !/^[a-zA-Z0-9_.-]+$/.test(transportMeta.file)))
     throw new Error('Unsupported transport map');
-  progress?.('loading terrain (DMR 5G, 5 m)…');
   const [hb, lb, overlays, vectorData, gb, wb, protectedAreas] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
-    fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
+    json<Overlays>(`${base}/overlays.json`),
     // render-only: without it the view falls back to plain shaded relief
     meta.vector?.file
       ? gunzip(`${base}/${meta.vector.file}`).catch((e) => { console.warn('vector render data unavailable', e); return null; })
@@ -168,10 +153,8 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   }).catch((error) => { graph = null; throw error; });
   let traffic: Promise<TrafficCensus | null> | null = null;
   const loadTraffic = () => traffic ??= (async () => {
-    const r = await fetch(`${base}/traffic.json`);
-    // Vite returns its HTML shell for an absent optional sidecar.
-    if (!r.ok || r.headers.get('content-type')?.includes('text/html')) return null;
-    const census: unknown = await r.json();
+    const census: unknown = await optional(`${base}/traffic.json`);
+    if (census === null) return null;
     if (!validTrafficCensus(census)) throw new Error('Unsupported traffic census');
     return census;
   })().catch((error) => { console.warn('Traffic census unavailable', error); return null; });

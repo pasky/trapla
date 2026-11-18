@@ -1,0 +1,9 @@
+.scenario-picker.about { position: static; min-height: 100vh; overflow: visible; }
+html:has(.about), body:has(.about) { overflow: auto; height: auto; }
+.about h2 { margin: 34px 0 10px; font-size: 22px; }
+.about-sources { border-collapse: collapse; width: 100%; font-size: 14px; background: #fffefa; }
+.about-sources th, .about-sources td { text-align: left; vertical-align: top; padding: 7px 10px; border: 1px solid #ccd6cd; }
+.about-sources th { background: #e3e9e2; }
+.about-packs { padding-left: 20px; font-size: 14px; }
+.about-packs li { margin: 6px 0; }
+.about-files { color: #50645a; font-size: 13px; overflow-wrap: anywhere; }

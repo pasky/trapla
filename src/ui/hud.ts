@@ -296,7 +296,7 @@ export class Hud {
           <li><b>Keys:</b> <kbd>Esc</kbd> deselect, <kbd>Del</kbd> delete a bend, <kbd>Ctrl+Z</kbd> undo; on a stretch <kbd>A</kbd> <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> = Auto / Bridge / Tunnel / Earthwork.</li>
           <li><b>The model:</b> real terrain, Czech prices and norms; noise and some crossings are rough estimates.</li>
         </ul>
-        <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>`)}`;
+        <div class="btns"><button type="button" id="show-intro">Show the intro</button> <a href="about.html" target="_blank" rel="noopener">About Trapla and its data</a></div>`)}`;
     this.goalText = sc.mode === 'motorway'
       ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
       : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(trainsPerDay(sc.railTraffic))} trains a day`

@@ -47,11 +47,14 @@ export interface ScenarioParams {
   ports?: { a: { xy: [number, number]; latlon: [number, number]; note: string }; b: { xy: [number, number]; latlon: [number, number]; note: string } };
   /** Railway mission: trains a day (both directions) by period, a sourced count or a labelled prior. */
   railTraffic?: { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number };
-  /** Short catalogue copy; D3/D35 road exercises are not motorway demand forecasts. */
-  picker?: { kind: string; goal: string; note?: string };
-  /** Picker heading shared by the sections of one corridor (cards in PRESETS order). */
+  /** The start screen's card: what the line is (its length is added) and what you do, in one line each.
+   * `section`: the mission is one choice of its corridor's card (`group`), labelled so; `startHere`: the one
+   * mission offered first to a new player; `aside`: a short warning under the card. */
+  picker?: { kind: string; goal: string; section?: string; startHere?: boolean; aside?: string };
+  /** The corridor the mission belongs to: its sections share one card on the start screen. */
   group?: string;
-  /** Superseded mission: no Start card in the picker; its saves stay loadable (Continue, direct link). */
+  /** Superseded mission: not offered on the start screen; a save of one is listed under "Your older saves"
+   * (and its direct link still loads). */
   retired?: boolean;
   /** traffic Y, vehicles/day (scenario value) */
   traffic: number;
@@ -78,7 +81,7 @@ export const D11_SCENARIO: ScenarioParams = {
   terrainClass: 'hilly',
   maxGradient: 0.06,
   labels: { a: 'Trutnov', b: 'PL border', official: 'official D11', brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border)' },
-  picker: { kind: 'Class I road · 90 km/h', goal: 'Connect Trutnov to the Polish border.' },
+  picker: { kind: 'Class I road', goal: 'Connect Trutnov to the Polish border through the hills.' },
 };
 
 // New two-lane exercises use explicit GAME PRIORS, not local census/forecast claims.
@@ -87,7 +90,7 @@ export const D11_SCENARIO: ScenarioParams = {
 // Superseded by the D3 sections below (kept loadable): its ends are ≈ 1.8 km before the 0301/0302 boundary and
 // ≈ 2 km before the end of 0303 on the mapped line (research/39), i.e. most of sections 0302 and 0303.
 export const D3_SCENARIO: ScenarioParams = {
-  id: 'd3', presetId: 'd3-road', title: 'Jílové → Václavice (earlier map)', retired: true, group: 'Středočeská D3',
+  id: 'd3', presetId: 'd3-road', title: 'Jílové → Václavice, two-lane road', retired: true, group: 'Středočeská D3',
   // Editable starter near the reference, validated on this pack; no hidden structure overrides.
   // Three bends moved <12 m by the existing bounded repair tool to resolve a track conflict; under the local
   // grade solve (model 25) the last one 60 + 25 m more for another track and an underpass approach, and the
@@ -97,8 +100,7 @@ export const D3_SCENARIO: ScenarioParams = {
     { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
     { x: 5549, y: 6639, r: null }, { x: 7079, y: 5914, r: null }, { x: 8487.7, y: 4262.8, r: null },
   ] },
-  picker: { kind: 'Class I road · 90 km/h', goal: 'Cross the Sázava and find a way through the hills.',
-    note: 'Earlier map: most of sections 0302 and 0303.' },
+  picker: { kind: 'Class I road', goal: 'Cross the Sázava and find a way through the hills.' },
   // 11.5 min allows 17.25 km at 90 (mapped reference 15.68 km), 15.33 km at 80.
   traffic: 9_000, heavyShare: 0.15, maxTravelMin: 11.5,
   terrainClass: 'hilly', maxGradient: 0.06,
@@ -108,7 +110,7 @@ export const D3_SCENARIO: ScenarioParams = {
 export const D35_SCENARIO: ScenarioParams = {
   // First stage only: the full 34 km corridor to Mohelnice missed the live-drag budget (research/27).
   // Superseded by the motorway missions (the two-lane road exercise in a motorway corridor); kept loadable.
-  id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město (two-lane road)', retired: true, group: 'D35',
+  id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město, two-lane road', retired: true, group: 'D35',
   // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
   // bend 7 by 7.6 m to clear a track (research/27); under model 25 bend 2 by 25 m (a track with no buildable
   // reroute at km 6.99). No junction: B is the section boundary.
@@ -117,7 +119,7 @@ export const D35_SCENARIO: ScenarioParams = {
     { x: 9356.7, y: 4036.3, r: null }, { x: 11092.7, y: 3524, r: null }, { x: 12724.6, y: 3498.3, r: null },
     { x: 14565.1, y: 3794.8, r: null }, { x: 16198, y: 3345, r: null }, { x: 17709.9, y: 2719.1, r: null },
   ] },
-  picker: { kind: 'Class I road · 90 km/h', goal: 'Pass the ridge and villages to Staré Město.' },
+  picker: { kind: 'Class I road', goal: 'Pass the ridge and villages to Staré Město.' },
   // 12 min allows 18 km at 90 or 16 km at 80 (project section 16.6 km); a mission choice, not a norm.
   traffic: 9_000, heavyShare: 0.15, maxTravelMin: 12,
   terrainClass: 'hilly', maxGradient: 0.06,
@@ -138,8 +140,8 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
     { x: 8681.1, y: 6184.7, r: 385 }, { x: 8686.4, y: 6756.4, r: 400 }, { x: 8951.8, y: 6960.2, r: 530 },
     { x: 9478.9, y: 7633.8, r: 770 }, { x: 11069.8, y: 7293.7, r: 500 }, { x: 10748.1, y: 9346.6, r: 470 },
   ] },
-  picker: { kind: 'Class I road · 70 km/h', goal: 'Take traffic around town without moving too much earth.',
-    note: 'Ground includes the real bypass’s cuts. Photo shows construction.' },
+  picker: { kind: 'Class I road', goal: 'Take traffic around town without moving too much earth.',
+    aside: 'The real road is already in the ground here.' },
   traffic: 10_000, heavyShare: 0.15, maxTravelMin: 8,
   terrainClass: 'hilly', maxGradient: 0.06,
   labels: { a: 'Kumburský Újezd', b: 'Vidochov', official: 'bypass reference', brief: '<b>Kumburský Újezd</b> to <b>Vidochov</b>, around Nová Paka' },
@@ -152,7 +154,7 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
 // Capacity: D 27.5 carries it. Time targets are mission choices (≈ 10 % longer than the reference).
 export const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
 export const D3_MOTORWAY: ScenarioParams = {
-  ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Motorway D3: Jílové → Václavice (earlier map)',
+  ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Jílové → Václavice, motorway', retired: true,
   // The real 0302/0303 sections are D 27.5/120 (research/25). Starter = the road exercise's bends with
   // the last bend moved 30 m (bounded validity-first search) so the wider body clears a track, and (model 25)
   // the one before it 12 m for another track; not optimised.
@@ -161,8 +163,7 @@ export const D3_MOTORWAY: ScenarioParams = {
     { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
     { x: 5549, y: 6639, r: null }, { x: 7073.9, y: 5903.2, r: null }, { x: 8498.8, y: 4259.8, r: null },
   ] },
-  picker: { kind: 'Motorway · 120 km/h', goal: 'Both directions together; split them where the hills ask for it.',
-    note: 'Earlier map: most of sections 0302 and 0303.' },
+  picker: { kind: 'Motorway', goal: 'Both directions together; split them where the hills ask for it.' },
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.6, // 17.2 km at 120 (reference 15.68 km)
 };
 
@@ -170,60 +171,63 @@ export const D3_MOTORWAY: ScenarioParams = {
 // motorway mission per section, D 27.5 at the section's design speed. Ends: section boundaries on the mapped
 // proposed line (by leaflet chainage), the D0 interchange (0301) and the operating D3 (0305/I). Time targets
 // are mission choices: reference length + 10 % at the design speed, rounded up to 0.1 min.
-const d3Section = (id: string, title: string, speed: 120 | 130, pis: PI[], maxTravelMin: number,
-  labels: ScenarioParams['labels'], goal: string, note: string, ends: ScenarioParams['ends']): ScenarioParams => ({
+const d3Section = (id: string, section: string, title: string, speed: 120 | 130, pis: PI[], maxTravelMin: number,
+  labels: ScenarioParams['labels'], goal: string, ends: ScenarioParams['ends']): ScenarioParams => ({
   id, presetId: `${id}-motorway`, mode: 'motorway', title, group: 'Středočeská D3', ends,
   initial: { category: 'D27.5', speed, pis },
-  picker: { kind: `Motorway · ${speed} km/h`, goal, note },
+  picker: { kind: 'Motorway', goal, section },
   ...MOTORWAY_TRAFFIC, maxTravelMin, terrainClass: 'hilly', maxGradient: 0.06, labels,
 });
+const startHere = (p: ScenarioParams): ScenarioParams => ({ ...p, picker: { ...p.picker!, startHere: true } });
 const P = (pts: [number, number][]): PI[] => pts.map(([x, y]) => ({ x, y, r: null }));
 // Starters: mapped-line bends every ~1.5 km, none within 750 m of B (a bend that close cannot have its
 // curve before the end, research/39).
-export const D3_0301 = d3Section('d3-0301', '0301 Praha → Jílové', 120,
+export const D3_0301 = d3Section('d3-0301', '0301', 'Praha → Jílové', 120,
   P([[5301.3, 9003.8], [3984.8, 7437.6], [2801.8, 6262.9], [3017.2, 4757.5]]), 4.8, // 9.58 km at 120 (reference 8.71 km)
   { a: 'D0 Praha', b: 'Jílové (on to 0302)', official: 'planned D3', brief: '<b>Prague ring</b> to <b>Jílové</b>, section 0301 of the D3' },
-  'Leave the Prague ring and get through the hills to Jílové.', 'Starts in the D0 interchange; its ramps are not part of the job. Continues as section 0302.',
+  'Leave the Prague ring and get through the hills to Jílové.',
   { a: { kind: 'interchange', with: 'the D0 and road II/101' }, b: { kind: 'interchange', with: 'road II/104', section: 'section 0302' } });
 // Starter: mapped-line bends every ~1.5 km, valid as sampled.
-export const D3_0302 = d3Section('d3-0302', '0302 Jílové → Hostěradice', 120, P([[2608.6, 6143.7]]), 2.5, // 4.97 km at 120 (reference 4.52 km)
+// The start screen offers it first ("Start here"): the smallest pack (≈ 4 MB to load), a 4.5 km line that
+// evaluates fast, and one plain story: the deep Sázava valley, bridged or not.
+export const D3_0302 = startHere(d3Section('d3-0302', '0302', 'Jílové → Hostěradice', 120, P([[2608.6, 6143.7]]), 2.5, // 4.97 km at 120 (reference 4.52 km)
   { a: 'Jílové (from 0301)', b: 'Hostěradice (on to 0303)', official: 'planned D3', brief: '<b>Jílové</b> to <b>Hostěradice</b>, across the Sázava' },
-  'Cross the deep Sázava valley.', 'Follows section 0301. Continues as section 0303.',
-  { a: { kind: 'interchange', with: 'road II/104', section: 'section 0301' }, b: { kind: 'interchange', with: 'road II/106', section: 'section 0303' } });
+  'Cross the deep Sázava valley.',
+  { a: { kind: 'interchange', with: 'road II/104', section: 'section 0301' }, b: { kind: 'interchange', with: 'road II/106', section: 'section 0303' } }));
 // Starter: mapped-line bends every ~1.5 km; bend 3 moved 45 m to the right (bounded search) so that the
 // body clears a track at km 6.95 (research/39).
-export const D3_0303 = d3Section('d3-0303', '0303 Hostěradice → Václavice', 120,
+export const D3_0303 = d3Section('d3-0303', '0303', 'Hostěradice → Václavice', 120,
   P([[2849.5, 9185.1], [3544.1, 7644.6], [5073.2, 6920.3], [6490.3, 5261.7], [8308.2, 4162.2]]), 6.3, // 12.50 km at 120 (reference 11.36 km)
   { a: 'Hostěradice (from 0302)', b: 'Václavice (on to 0304)', official: 'planned D3', brief: '<b>Hostěradice</b> to <b>Václavice</b>, section 0303 of the D3' },
-  'Wind through the woods and side valleys towards Benešov.', 'Follows section 0302. Continues as section 0304.',
+  'Wind through the woods and side valleys towards Benešov.',
   { a: { kind: 'interchange', with: 'road II/106', section: 'section 0302' }, b: { kind: 'interchange', with: 'road II/112', section: 'section 0304' } });
 // Starter: mapped-line bends every ~1.5 km, valid as sampled.
-export const D3_0304 = d3Section('d3-0304', '0304 Václavice → Voračice', 130,
+export const D3_0304 = d3Section('d3-0304', '0304', 'Václavice → Voračice', 130,
   P([[7708, 15854.6], [7693.5, 14248.4], [6926.6, 12878.5], [6068.5, 11225], [4811.2, 9789.9], [4040.4, 8430.7], [3547.5, 6886.3], [3014.6, 4999.1]]), 8.1, // 17.40 km at 130 (reference 15.82 km)
   { a: 'Václavice (from 0303)', b: 'Voračice (on to 0305/I)', official: 'planned D3', brief: '<b>Václavice</b> to <b>Voračice</b>, section 0304 of the D3' },
-  'Get past the ridge at Prostřední vrch and over the valleys.', 'Follows section 0303. Continues as section 0305/I.',
+  'Get past the ridge at Prostřední vrch and over the valleys.',
   { a: { kind: 'interchange', with: 'road II/112', section: 'section 0303' }, b: { kind: 'interchange', with: 'road I/18', section: 'section 0305/I' } });
 // Starter: mapped-line bends every ~1.5 km; bend 3 moved 12 m to the left (bounded search) so that a
 // class II road at km 7.56 gets a buildable crossing.
-export const D3_0305 = d3Section('d3-0305', '0305/I Voračice → Nová Hospoda', 130,
+export const D3_0305 = d3Section('d3-0305', '0305/I', 'Voračice → Nová Hospoda', 130,
   P([[3018.9, 15108.2], [2562.2, 13483.7], [2847, 11675.1], [3706.9, 10000.3], [4588.5, 8638.8], [5054.1, 6964.2], [6481.5, 6188.7], [7979.2, 5463.5], [9211.5, 4014.4]]), 8.7, // 18.72 km at 130 (reference 17.02 km)
   { a: 'Voračice (from 0304)', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Voračice</b> to <b>Nová Hospoda</b>, where the D3 already runs' },
-  'Bridge the Mastník valley and join the D3 that is already open.', 'Follows section 0304. Ends on the open D3.',
+  'Bridge the Mastník valley and join the D3 that is already open.',
   { a: { kind: 'interchange', with: 'road I/18', section: 'section 0304' }, b: { kind: 'joins', with: 'the open D3' } });
 export const D35_MOTORWAY: ScenarioParams = {
-  ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Opatovec → Staré Město (first section)', retired: undefined,
+  ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Opatovec → Staré Město', retired: undefined,
   // The real section is D 26.0/130 (research/26), a category without an SPK 2026 row: built as D 27.5.
   initial: { ...D35_SCENARIO.initial!, category: 'D27.5', speed: 130 },
-  picker: { kind: 'Motorway · 130 km/h', goal: 'Carry the motorway over the ridge to Staré Město.', note: 'Built 27.5 m wide, our usual motorway; the planned section is 26 m wide.' },
+  picker: { kind: 'Motorway', goal: 'Carry the motorway over the ridge to Staré Město.', section: 'First section' },
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
   ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'continues', with: 'the next section, to Mohelnice' } },
 };
 // RETIRED (owner: a railway must start and end on the rail network, not at the motorway's ends). Kept so
 // its saves still load (?scenario=d11&preset=d11-railway); not on the start screen.
 export const D11_RAILWAY: ScenarioParams = {
-  ...D11_SCENARIO, presetId: 'd11-railway', mode: 'railway', title: 'Railway: Trutnov → Polish border', retired: true,
+  ...D11_SCENARIO, presetId: 'd11-railway', mode: 'railway', title: 'Trutnov → Polish border, railway', retired: true,
   initial: { category: 'R2', speed: 160 },
-  picker: { kind: 'Railway · 160 km/h', goal: 'Lay a double-track electric line through the pass to the border.' },
+  picker: { kind: 'Railway', goal: 'Lay a double-track electric line through the pass to the border.' },
   maxTravelMin: 9,
 };
 // The whole Středočeská D3 in one mission (all five sections, 58.5 km published, 57.4 km mapped): from the D0
@@ -232,10 +236,10 @@ export const D11_RAILWAY: ScenarioParams = {
 // at km 8.78 where 0301 meets 0302), bend 26 12 m (a track at km 49.4 with no buildable reroute) and, under the local
 // grade solve's long-block boundaries, bend 6 12 m (a span over a road at km 12 and an overbridge at km 33). Time:
 // reference + 10 % at 120.
-export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospoda', 120,
+export const D3_FULL = d3Section('d3-full', 'Whole route', 'Praha → Nová Hospoda', 120,
   P([[4301.3, 48003.8], [2984.8, 46437.6], [1801.8, 45262.9], [2017.2, 43757.5], [1860.6, 42184.6], [1608.6, 40643.7], [2577.1, 37739.6], [2849.5, 36185.1], [3544.1, 34644.6], [5073.2, 33920.3], [6490.3, 32261.7], [8308.2, 31162.2], [9401.1, 30118.3], [8708, 28354.6], [8693.5, 26748.4], [7926.6, 25378.5], [7068.5, 23725], [5811.2, 22289.9], [5040.4, 20930.7], [4547.5, 19386.3], [4014.6, 17499.1], [3522.9, 16083.9], [3518.9, 14108.2], [3062.2, 12483.7], [3347, 10675.1], [4206.9, 9000.3], [5076.9, 7635.6], [5554.1, 5964.2], [6981.5, 5188.7], [8479.2, 4463.5], [9711.5, 3014.4]]), 31.6, // 63.2 km at 120 (reference 57.4 km)
   { a: 'D0 Praha', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Prague ring</b> to <b>Nová Hospoda</b>, the whole Středočeská D3' },
-  'Take the D3 from the Prague ring across the Sázava to where it is already open.', 'All five sections in one go, 57 km, at one design speed of 120 km/h (sections 0304 and 0305/I alone are designed for 130). The D0 interchange ramps are not part of the job.',
+  'Take the D3 from the Prague ring across the Sázava to where it is already open.',
   { a: { kind: 'interchange', with: 'the D0 and road II/101' }, b: { kind: 'joins', with: 'the open D3' } });
 
 // The whole D35 Opatovec → Mohelnice link (research/26–28): both project sections, 34.83 km published; the
@@ -249,8 +253,7 @@ export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospo
 export const D35_FULL: ScenarioParams = {
   ...D35_MOTORWAY, id: 'd35-full', presetId: 'd35-full-motorway', title: 'Opatovec → Mohelnice', group: 'D35',
   initial: { category: 'D27.5', speed: 130, pis: P([[3918, 9114.4], [5364.7, 9523.8], [7645.8, 9348.2], [9356.7, 9036.3], [11092.7, 8524], [12724.6, 8498.3], [14565.1, 8794.8], [16196.1, 8337.6], [17709.9, 7719.1], [19116.3, 6932.6], [20631.4, 6960.7], [22517.6, 7547.6], [23954.1, 8069.3], [25909.9, 8135.3], [27602.4, 7468.2], [29118.3, 6704.6], [30545.1, 5529.8], [30952.6, 4036.8]]) },
-  picker: { kind: 'Motorway · 130 km/h', goal: 'Over the ridge and through the Maletín hills to the D35 at Mohelnice.',
-    note: 'The whole link, both project sections. Built 27.5 m wide, our usual motorway; the planned road is 26 m wide.' },
+  picker: { kind: 'Motorway', goal: 'Over the ridge and through the Maletín hills to the D35 at Mohelnice.', section: 'Whole link' },
   maxTravelMin: 17, // 36.6 km at 130 (reference 33.3 km)
   labels: { a: 'Opatovec', b: 'Mohelnice', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Mohelnice</b>, the whole D35 link' },
   ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'joins', with: 'road I/35' } },
@@ -268,7 +271,7 @@ export const D35_FULL: ScenarioParams = {
 // (KHK D26 timetable 2022). Traffic: PROVISIONAL prior, an hourly passenger train each way by day (16 h) and
 // two each way at night, no freight (that 2022 summer timetable ran 4 trains each way).
 export const D11_RAIL_KRALOVEC: ScenarioParams = {
-  ...D11_SCENARIO, presetId: 'd11-rail-kralovec', mode: 'railway', title: 'Railway: Trutnov → Královec',
+  ...D11_SCENARIO, presetId: 'd11-rail-kralovec', mode: 'railway', title: 'Trutnov → Královec',
   ports: {
     a: { xy: [6640.8, 7782.0], latlon: [50.5652, 15.91106], note: 'Trutnov hlavní nádraží, on the mapped line' },
     b: { xy: [12204.8, 19202.5], latlon: [50.67296, 15.97042], note: 'Královec station, on the mapped line before the border' },
@@ -281,8 +284,7 @@ export const D11_RAIL_KRALOVEC: ScenarioParams = {
     { x: 6012, y: 8426, r: null }, { x: 7966, y: 11521, r: null }, { x: 11000, y: 16400, r: null }, { x: 11560, y: 18613, r: null },
   ] },
   railTraffic: { passengerDay: 32, passengerNight: 4, freightDay: 0, freightNight: 0 },
-  picker: { kind: 'Railway · 120 km/h', goal: 'A faster electric line from Trutnov to the border station at Královec.',
-    note: 'A game proposal: no upgrade of this line has been announced. Trains to Poland take 26 minutes on the old single-track line today.' },
+  picker: { kind: 'Railway', goal: 'Build a faster electric line from Trutnov to the border station at Královec.' },
   maxTravelMin: 9,
   labels: { a: 'Trutnov hl.n.', b: 'Královec', official: 'official D11', brief: '<b>Trutnov hl.n.</b> to <b>Královec</b> station, by rail' },
 };

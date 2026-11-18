@@ -18,8 +18,10 @@
 // A script that times the first load (perf, startup-perf, drag-perf) navigates itself, once, after
 // `dismissIntro(page)`; `open()` loads twice.
 // Lock protocol and "run from a clean checkout": AGENTS.md; scripts/gates.sh does both for the gates.
+// DIST=dist (a built site): served by a plain static server under /trapla/ instead of Vite (scripts/release.sh).
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
+import { serveStatic } from '../static-serve.mjs';
 
 /** the first-run intro's storage key (src/ui/intro.ts KEY) */
 export const INTRO_KEY = 'trapla.intro.v2';
@@ -34,11 +36,22 @@ export const dismissIntro = (page) => page.addInitScript((keys) => {
   try { for (const key of keys) localStorage.setItem(key, '1'); } catch { /* opaque origin */ }
 }, [INTRO_KEY, ...OLD_INTRO_KEYS]);
 
+/** the built site on the first free port from `port`, shaped like a Vite server for the scripts (resolvedUrls, close) */
+async function staticServer(dir, port) {
+  for (let p = port; ; p++) {
+    try {
+      const s = await serveStatic({ dir, port: p, gzEncoded: process.env.GZ_ENCODED === '1' });
+      return { resolvedUrls: { local: [s.url] }, close: s.close };
+    } catch (error) { if (error.code !== 'EADDRINUSE' || p > port + 100) throw error; }
+  }
+}
+
 /** `args`: Chromium flags on top of the GPU / software ones */
 export async function startGame({ root = process.cwd(), gpu = process.argv.includes('--gpu') || process.env.GPU === '1',
   viewport = { width: 1600, height: 1000 }, port = Number(process.env.PORT ?? 5300), args = [] } = {}) {
-  const server = await createServer({ root, server: { port, strictPort: false }, logLevel: 'warn' });
-  await server.listen();
+  const server = process.env.DIST ? await staticServer(process.env.DIST, port)
+    : await createServer({ root, server: { port, strictPort: false }, logLevel: 'warn' });
+  if (!process.env.DIST) await server.listen();
   let browser;
   try { browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: [...(gpu ? GPU : SOFTWARE), ...args] }); }
   catch (error) { await server.close(); throw error; }
