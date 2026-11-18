@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { RoadNet, withStructures } from '../src/core/roadnet';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { crossingOutcome } from '../src/core/terms';
+import type { CrossingResult } from '../src/core/crossings';
 
 describe('a road net with mapped structures', () => {
   const net = new RoadNet(withStructures({ cls: ['tertiary', 'track'], ways: [[0, 0, 0, 100, 0], [0, 140, 0, 240, 0]] },
@@ -55,7 +56,7 @@ describe.skipIf(!existsSync(`${DIR}/structures.json`))('D11 along the official l
 describe('a mapped tunnel under our road', async () => {
   const { resolveCrossings } = await import('../src/core/crossings');
   const { KIND } = await import('../src/core/structures');
-  const crossing = (h: number) => ({ s: 500, i: 50, x: 0, y: 0, cls: 'unclassified', roadId: 7, h, type: 'atGrade' as const, cost: 0, mapped: 'tunnel' as const });
+  const crossing = (h: number): CrossingResult => ({ s: 500, i: 50, x: 0, y: 0, cls: 'unclassified', roadId: 7, h, type: 'atGrade', cost: 0, mapped: 'tunnel' });
   const resolve = (h: number) => { const c = crossing(h); resolveCrossings([c], 1000, new Uint8Array(101).fill(KIND.earth), new Float64Array(101).fill(30), new Float64Array(101)); return c; };
   it('deep enough (our road ≥ 6 m over its road): kept as it is, nothing billed', () => {
     expect(resolve(8)).toMatchObject({ type: 'underpass', kept: true, cost: 0 });
