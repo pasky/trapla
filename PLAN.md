@@ -1939,7 +1939,13 @@ Now Auto leaves out the pins it cannot meet (the others kept), says so at the pi
 the track stays where it was") and engineers its own line (`AutoProfileResult.lineOk`, `usableLine`): the repro
 bills 10.69 bn with only the pin's problem (screenshot 431; a QA case in `scripts/edit-locality.ts`). Frozen
 bills unchanged.
-Left: the card's suggestion is the slopes' bound (440.44 m), which the search's 0.5 m grid (≤ 3 m per 254 m knot)
-cannot quite reach either (≤ 439.0 m); a reachable pin's envelope also narrows the boundary windows that do not
+The card's suggested height is one Auto meets (`reachableSuggestions`, core/grade-pins.ts): the slopes' bound
+(440.44 m here) is only necessary, as the search's 0.5 m grid takes ≤ 3 m per 254 m knot (11.8 ‰, not 12.5 ‰) and
+changes of slope need room; so the bound is tried with the route's first solve (the memo re-solves only the
+windows around the pin), then halved towards the line's height now on the editor's 0.1 m step, ≤ 6 solves, settled
+evaluations only: "Set it to 439.5 m", which then holds (tests/rail-drag-locality.test.ts). A failed search's
+suggestion (the height now) is found the same way. A retry no longer trades a line meeting the pins for one
+leaving one out.
+Left: a reachable pin's envelope also narrows the boundary windows that do not
 contain it (the pin −9 m at km 2.7 moves km 12.7, EXPECTED in edit-locality): physics there (a line at its limit),
 and leaving those windows unpruned made that pin's line 1.3 bn dearer, so it stays.

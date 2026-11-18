@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile, profileOk, type AutoProfileOptions } from '../src/core/autoprofile';
-import { GRADE_PIN_TOLERANCE, gradePinViolations, normalizeGradePins, type GradePin } from '../src/core/grade-pins';
+import { GRADE_PIN_TOLERANCE, gradePinViolations, normalizeGradePins, reachableSuggestions, type GradePin } from '../src/core/grade-pins';
 import { buildProfile, elevationAt } from '../src/core/vertical';
 
 const opt: AutoProfileOptions = { maxGradient: 0.06, minCrest: 6000, minSag: 3400,
@@ -68,6 +68,22 @@ describe('pinned Auto DP heights', () => {
     // A to B in its place moved the Královec railway 25 m at km 7)
     expect(r.lineOk).toBe(true);
     expect(r.vpis).toEqual(autoProfile(s, g, opt).vpis);
+  });
+
+  it('suggests a height the search meets, not the slopes\' bound it cannot reach', () => {
+    // 36 m in the first 600 m is the slopes' bound; the changes of slope from A (6 % takes room) leave it out of reach
+    const run = (pins: GradePin[]) => autoProfile(s, g, { ...opt, pins });
+    for (const z of [50, -50]) {
+      const v0 = run([{ s: 600, z }]).pinViolations![0];
+      expect(Math.abs(v0.pin.suggested!.z)).toBe(36);
+      expect(run([{ s: 600, z: v0.pin.suggested!.z }]).pinViolations![0].pin.reason).toBe('search');
+      const [v] = reachableSuggestions([v0], [{ s: 600, z }], run);
+      const set = v.pin.suggested!.z;
+      expect(Math.abs(set)).toBeLessThan(36);
+      expect(Math.abs(set)).toBeGreaterThan(30);
+      expect(run([{ s: 600, z: set }]).pinViolations).toEqual([]);
+      expect(v.fix).toBe(`Set it to ${set.toFixed(1)} m, or unpin`);
+    }
   });
 
   it('keeps meeting the reachable pins beside an unreachable one', () => {

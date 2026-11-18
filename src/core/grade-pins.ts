@@ -99,3 +99,50 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
   }
   return out;
 }
+
+/** Inward to the editor's 0.1 m step (towards `from`): a height typed from the card is the one checked. */
+const inward = (z: number, from: number) => (z > from ? Math.floor(z * 10 + 1e-9) : Math.ceil(z * 10 - 1e-9)) / 10;
+/** Most solves spent on one pin's suggestion (each re-solves only the windows and blocks around the pin when the
+ * solve shares its memo). 0.1 m steps over the ≈ 3 m an envelope overshoots a 0.5 m grid search: 5 halvings. */
+const SUGGEST_SOLVES = 6;
+
+/**
+ * Each pin Auto could not meet, with a suggested height the same solve does meet. The slopes' envelope is only
+ * necessary: the search's grid (a 0.5 m grid takes ≤ 3 m per 254 m knot on a 12.5 ‰ railway, not 3.18 m) and
+ * the changes of slope it needs leave its edge out of reach (the Královec railway at km 2.03: 440.44 m suggested,
+ * 439.0 m reachable). `solve(pins)`: the grade search as the route's first solve, with these pins; a candidate is
+ * reachable where its result reports no problem at it. Tried: the envelope's edge, then halving towards the
+ * height the line has now (met by Auto's own line, so reachable), on the 0.1 m step, inward.
+ */
+export function reachableSuggestions(violations: readonly GradePinViolation[], pins: readonly GradePin[],
+  solve: (pins: GradePin[]) => { pinViolations?: readonly GradePinViolation[] }): GradePinViolation[] {
+  const missed = new Set(violations.map((v) => v.pin.index));
+  const met = pins.filter((_, i) => !missed.has(i));
+  return violations.map((v) => {
+    const { requested, actualZ, suggested, reason } = v.pin;
+    if (reason === 'invalid' || actualZ === null || !suggested) return v;
+    const reaches = (z: number) => {
+      const r = solve([...met, { s: requested.s, z }]);
+      return !r.pinViolations?.some((x) => x.pin.index === met.length);
+    };
+    // (a failed search suggests the height now: the edge to try is the request itself)
+    const from = inward(actualZ, requested.z), edge = inward(reason === 'search' ? requested.z : suggested.z, actualZ);
+    let best = from;
+    if (Math.abs(edge - from) > 1e-9) {
+      if (reaches(edge)) best = edge;
+      else {
+        // (lo reachable, hi not, in 0.1 m steps)
+        let lo = Math.round(from * 10), hi = Math.round(edge * 10);
+        for (let k = 1; k < SUGGEST_SOLVES && Math.abs(hi - lo) > 1; k++) {
+          const mid = Math.trunc((lo + hi) / 2);
+          if (reaches(mid / 10)) lo = mid; else hi = mid;
+        }
+        best = lo / 10;
+      }
+    }
+    if (best === suggested.z) return v;
+    return { ...v, fix: `Set it to ${best.toFixed(1)} m, or unpin`,
+      detail: `You asked for ${requested.z.toFixed(2)} m; the road is at ${actualZ.toFixed(2)} m. The nearest Automatic reaches here is ${best.toFixed(1)} m${v.pin.reachable ? ` (slopes alone would allow ${v.pin.reachable.min.toFixed(2)}–${v.pin.reachable.max.toFixed(2)} m, without the room a change of slope needs)` : ''}.`,
+      pin: { ...v.pin, suggested: { s: suggested.s, z: best } } };
+  });
+}
