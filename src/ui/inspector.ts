@@ -628,7 +628,7 @@ export class Inspector {
     const body = `
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div>${c.raised && c.raised.cost > 0
         ? `<div class="why">For it our ${line} is built up to ${c.raised.m.toFixed(1)} m higher: ${czk(c.raised.cost)} more in all.</div>` : ''}</div>
-      ${this.issues(vio)}
+      ${ourWords(this.issues(vio), line)}
       ${this.linkPath(c, d)}
       ${this.squareLine(c, d, line)}
       ${this.choices('crossing-choice', 'data-crossing', options, choice)}`;

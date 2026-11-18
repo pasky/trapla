@@ -290,7 +290,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
       works: 'another road you build is in the way', nature: 'it would have to run through a protected nature area',
     } as Record<string, string>)[problem] ?? problem).join('; ');
-    return { title: `The new ${piece} cannot reach the road you chose`, fix, basis: 'game',
+    return { title: `The new piece of ${piece} cannot reach the road you chose`, fix, basis: 'game',
       detail: `A new piece of ${piece} from the cut end to that road cannot be built: ${reasons}.`,
       rule: `Game rule: a new road is no steeper than its class allows, with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
   }
@@ -1581,7 +1581,9 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       if (route.grade[Math.min(route.s.length - 1, firstAbove(route.s, c.under, true))] - Math.max(points[0].ground, points[1].ground) < CROSSING_RULES.overHeight
         || !survivingSides.get(c)?.every(Boolean)) diagnose(g, `${REROUTE_FAILS}none`);
     }
-    if (!c.via && c.under === undefined) {
+    // (a side the player shaped or led elsewhere is built as they drew it; the other side is Auto's)
+    const own = (k: 0 | 1) => ended[k] || !!c.via?.[k]?.length;
+    if (c.under === undefined) {
       const path = getPath(c.roadId, c.x, c.y, g), access = path.length > 1 ? piecesOf(c, path, g) : null;
       if (access) {
         const ends = [along(path, g.removed![0]), along(path, g.removed![1])], sideOf = (q: XY) => project(q).lateral < 0 ? 0 : 1;
@@ -1596,7 +1598,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
         });
         const extra = access.round - Math.abs(g.removed![1] - g.removed![0]);
         const closable = !MINOR_WAYS.has(c.cls) ? connected[0] && connected[1] && extra <= CLOSURE_ROUND : true;
-        if (closable) for (const k of [0, 1] as const) if ((connected[k] || nothing[k]) && !ended[k]) required[k] = false;
+        if (closable) for (const k of [0, 1] as const) if ((connected[k] || nothing[k]) && !own(k)) required[k] = false;
         if (closable && (connected.some(Boolean) || nothing.some(Boolean))) {
           // (which way each side lies, for the card: the compass point of our road's normal there)
           const p = at(c.s), compass = (vx: number, vy: number) => Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'east' : 'west') : (vy > 0 ? 'north' : 'south');
@@ -1663,7 +1665,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     let heads = 0;
     // (a public road's turning area lies on its old road beyond the cut end, its rim at that end: off our earthworks)
     const minor = MINOR_WAYS.has(c.cls);
-    if (c.closure) for (const k of [0, 1] as const) if (c.closure.connected[k] && start?.[k] && !ended[k]) {
+    if (c.closure) for (const k of [0, 1] as const) if (c.closure.connected[k] && start?.[k] && !own(k)) {
       g.turnarounds.push(minor ? { ...start[k]! } : keptEnd(c, g, start[k]!, TURNING_RADIUS * g.width).at(-1)!); heads++;
     }
     if (minor) heads = 0;

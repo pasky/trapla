@@ -93,8 +93,8 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     const base = { ...startDesign(), ...structuredClone(scenario.initial ?? {}) };
     // the starter with a bend on the planned line at its km 2.5 (our road in a shallow cut there)
     base.pis = [base.pis[0], { x: 4551, y: 9449, r: null }, ...base.pis.slice(1)];
-    const track = (ends?: CrossingOverride['ends']) => {
-      const r = evaluate(ctx, { ...structuredClone(base), crossingOverrides: [{ roadId: 1327, type: 'reconnection', ...(ends ? { ends } : {}) }] });
+    const track = (ends?: CrossingOverride['ends'], via?: CrossingOverride['via']) => {
+      const r = evaluate(ctx, { ...structuredClone(base), crossingOverrides: [{ roadId: 1327, type: 'reconnection', ...(ends ? { ends } : {}), ...(via ? { via } : {}) }] });
       return { r, c: r.crossings.find(c => c.roadId === 1327)! };
     };
     const a = track();
@@ -113,6 +113,10 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     expect(ours(b.r)).toBeCloseTo(ours(a.r), -3);
     expect(b.r.cost.crossings - a.r.cost.crossings).toBeCloseTo(b.c.cost - a.c.cost, -3);
     expect(crossingOutcome(b.c, 'motorway').label).toMatch(/^The north part led to the class III road that crosses at km 2\.29 \(\+[\d,]+ m of new track\)$/);
+    // bent in its middle as well: still led there; the south part still just ends (it reaches other roads)
+    const bent = track([null, { way: 1129, x: 4200, y: 9462 }], [[], [{ x: 4382, y: 9499 }]]);
+    expect(bent.c.geometry!.links![0]).toEqual([]); expect(bent.c.endTo?.[1]?.built).toBe(true);
+    expect(bent.c.geometry!.links![1].some(p => p.x === 4382 && p.y === 9499)).toBe(true);
     const c = track([null, { way: 1129, x: 4500, y: 9300 }]);
     expect(c.r.violations.map(v => v.title)).toEqual(['The road you chose is across our road']);
     expect(c.c.geometry!.links).toEqual(a.c.geometry!.links);
