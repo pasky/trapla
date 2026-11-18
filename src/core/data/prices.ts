@@ -174,8 +174,12 @@
  * stays Auto's own, the pin says what it would not clear; a suggested height is one whose first solve misses no such
  * crossing. A pin left out holds no support lift. Frozen bills, starters and saved designs unchanged; pinned edits
  * (scripts/edit-locality.ts): Královec pin +5 m at km 4.2 10.49 → 10.69 bn, D11 pin −8 m at km 7.2 3.82 → 3.66 bn,
- * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight"). */
-export const COST_MODEL_VERSION = 51;
+ * both not valid either way (PLAN.md "A pin that leaves a crossing; bends left straight").
+ * 52: a reroute's side the player shaped no longer makes the other side be built too (it keeps Auto's closure: a part
+ * that still reaches other roads just ends); new player option: a reroute's piece led to a road of the player's
+ * choosing (`CrossingOverride.ends`). Only designs with shaped reroutes change (D35 full km 2.51 bent: −1.6 M); frozen
+ * bills, starters and saved designs unchanged (PLAN.md "A reroute led where the player drags its end"). */
+export const COST_MODEL_VERSION = 52;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
