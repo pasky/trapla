@@ -1773,8 +1773,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     return copy;
   };
   /** a reroute that buys out a home: Auto's last resort (expropriation only where nothing else will do,
-   * research/60) */
-  const takesHome = (x: CrossingResult) => !!x.homes;
+   * research/60); not one another crossing's works take anyway (a junction's approach beside it) */
+  const takesHome = (x: CrossingResult) => !!x.homes && !!x.houses?.some(j => route.dwelling?.(j)
+    && !crossings.some(o => o.houses?.includes(j) && !(o.s === x.s && o.roadId === x.roadId)));
   // (a way the player asked to straighten that is built on its own line instead still carries traffic)
   const feasible = (c: CrossingResult) => !c.issues?.some(v => v.crossing.code !== 'square') && !c.geometry?.diagnostics?.length;
   const baseline = crossings.map(c => ({ state: { ...c }, feasible: feasible(c) }));
