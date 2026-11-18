@@ -4,6 +4,47 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Sweep 3 — second re-check — main 1258a07 (cost model 48; 2026-11-18, one 12 min chunk + Node repros)
+
+The owner's shots (`/tmp/owner-shots/`) re-checked on the Královec starter (now 10.69 bn VALID), then a short sweep of
+the railway, D11 and D35. Screenshots 420–429 (`docs/screenshots/42x-qa3re2-*.png`), the rest under `/tmp/trapla-qa3/s2/`.
+
+### The owner's spots
+
+| shot | spot on the starter | verdict |
+|---|---|---|
+| bridge-end-vertical-wall, rail-4 | km 10.27 (bend 3) | **FIXED**: one viaduct km 10.09–10.46, a cone at its high end, no wall (420). `SCENARIO=d11 npx tsx qa3/bridge-ends.ts rail`: no closed end on the line (was 3 walls of 16–28 m). |
+| rail-2 fill under the viaduct | km 5.61–5.70 | **FIXED**: the walled 80 m fill is gone, one viaduct km 5.45–6.54 with cones (421). |
+| rail-5 cone and walls | km 8.7–9.6 | **FIXED**: fills between the bridges end in paved cones; only the seam where a fill's side slope meets its cone reads as a line (422). |
+| rail-7 overbridge fill into our cut | km 1.81, by the tunnel portal | **FIXED**: the street crosses on a deck from cut edge to cut edge, nothing spills into our cut (423). |
+| rail-3 houses in the ramp | km 12.98, road II over our line and the station tracks | **looks FIXED**: ramps and the regraded side road pass beside the houses (nearest house centroids 12.7–16.6 m from the ramp axis), VALID; tight, worth an engineer's eye (424). |
+| rail-1 a road cut and closed | not on the starter as drawn; km 12.05 is the same kind | **shown**: "Closed here · The track is cut by our railway. Both parts still reach other roads, so each just ends at our earthworks", with the crossing choices offered (425). |
+| rail-6 two roundings overlap | km 2.03 | not re-tested in By hand (the fixer's shots 400–402 cover it); two Auto pins 15 m apart at km 2.03 / 2.045 give no overlap, the card reads "Pinned height · Auto passes within 0.5 m of it". |
+
+### Sweep
+
+- **Select before drag: PASS.** Railway, D35, D11 mapped road: a drag on a road that is not selected moves the map
+  (camera 1.4 km, design unchanged) and the hover says "click to select"; a click selects (card: "Drag it to change
+  its line. The highlighted 574 m … would be rebuilt"), then a drag bends / rebuilds it (426). A first-time player's
+  drag on D11 with the intro up bends our road at once.
+- Score change line: **FIXED** (Build → Road, Remove, drag III/3012, two undos: every headline matches its step, no
+  stray per-road line). Lone hairpin: **FIXED** ("Hairpin at bend 2 has no room for its curve · move the bends next to
+  it about 90 m further", 428); three hairpins still R 30 m and VALID but the end's sight line. Undo labels say what
+  ("Undo: the motorway", "Undo: changing Road III/3012").
+- **P2 — a drag along the road past the next bend makes a U-turn.** D35 first section, Whole route view (camera
+  16.7 km), click the motorway at km 12 (selects the cut), drag 40 px right (along the road): the new bend lands at
+  (14876, 3860), beyond bend 7 (14565, 3795) — "Bend 7 turns back almost on itself (178°)", "Bend 8 is too close to
+  the U-turn", NOT VALID (427). One drag still can crowd a bend when it runs along the line.
+- **P2 — one unreachable pin moves the railway 4–7 km away.** Railway starter, profile zoomed to km 1.7–2.4, drag the
+  line at km 2.03 8 px up (pin 441.9 m, 10 m over the portal grade): "Pinned height out of reach" (honest) but the bill
+  goes 10.69 → 12.06 bn and six problems appear at km 6.3–9.1 (a track covered, a stream blocked, two spans too low,
+  overbridge ramps over 250 m / 10 m high) (429). The climb at its limit carries the lift (PLAN.md's known physics),
+  but Auto then leaves its own new line invalid far from the pin.
+- Still open from the first re-check: lines poking out of the hill above the 0304 portal; III/3012's drag covers 13 m
+  of a track (PLAN.md "left").
+- Bills on main: Královec starter 10.69 bn, D11 straight 8.79 bn (one 50 px drag at km 9: 6.97 bn VALID), D35 first
+  section 19.22 bn.
+
 ## Sweep 3 re-check — main 81cd806 (cost model 41; 2026-11-17, one 9 min chunk + Node repros)
 
 Same steps and `qa3/` repros as Sweep 3 below; screenshots 282–289 (`docs/screenshots/28x-qa3re-*.png`), the rest
