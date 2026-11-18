@@ -46,6 +46,7 @@ local-retry|node|full|npx tsx scripts/local-retry-report.ts
 vc-overlap|node|full|npx tsx scripts/vc-overlap-audit.ts
 bridge-ends|node|full|npx tsx scripts/bridge-ends-audit.ts
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
+scenario-d11-motorway|node|full|env SCENARIO=d11 PRESET=d11-motorway node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts
 pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m unittest discover -s pipeline -p 'test_*.py'
 smoke|browser|full|PORT=\$((PORT + 10)) node scripts/smoke.mjs
 playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/playtest.mjs

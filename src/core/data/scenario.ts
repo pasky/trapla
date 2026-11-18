@@ -78,7 +78,8 @@ export const D11_SCENARIO: ScenarioParams = {
   terrainClass: 'hilly',
   maxGradient: 0.06,
   labels: { a: 'Trutnov', b: 'PL border', official: 'official D11', brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border)' },
-  picker: { kind: 'Class I road · 90 km/h', goal: 'Connect Trutnov to the Polish border.' },
+  picker: { kind: 'Class I road · 90 km/h', goal: 'Connect Trutnov to the Polish border.',
+    note: 'The simpler job: a two-lane road where the D11 motorway is planned.' },
 };
 
 // New two-lane exercises use explicit GAME PRIORS, not local census/forecast claims.
@@ -286,8 +287,29 @@ export const D11_RAIL_KRALOVEC: ScenarioParams = {
   maxTravelMin: 9,
   labels: { a: 'Trutnov hl.n.', b: 'Královec', official: 'official D11', brief: '<b>Trutnov hl.n.</b> to <b>Královec</b> station, by rail' },
 };
+// The real project (research/87): D11 stavba 1109 Trutnov – státní hranice ČR/PR, 21.175 km, ŘSD leaflets 04–05/2026:
+// D 26.0/130 for its first ≈ 1 km to the Střítež interchange, D 21.5/110 from there to the border (MÚK Střítež,
+// Poříčí, Královec; twin-tube tunnels Poříčí 540/576 m and Opevnění 2 × 492 m; 2024 contract CZK 11.71 bn ex VAT).
+// Neither width has an SPK 2026 row: built as D 27.5 at the 110 km/h of almost all its length. A = the pack's A on the
+// mapped D11, 21.0 km before the border, where section 1108 from Jaroměř (being built) meets 1109; B = the border,
+// where OSM's ref turns D11 → S3. Traffic: ŘSD's 2040 forecast for Trutnov – Polsko, 13,000 vehicles a day (D11
+// brochure 08/2017 p. 7); acoustic heavy share the motorway mix of MOTORWAY_TRAFFIC (no share published). Time
+// target: a mission choice, the mapped line + 10 % at 110 (23.1 km). Starter: mapped-line bends every ~1.5 km, none
+// within 750 m of B (scripts/motorway-starter.ts --mapped=1.5), VALID as sampled; it is also the reference the real
+// contract is compared with (research/87).
+export const D11_MOTORWAY: ScenarioParams = {
+  ...D11_SCENARIO, presetId: 'd11-motorway', mode: 'motorway', title: 'Motorway D11: Trutnov → Polish border',
+  initial: { category: 'D27.5', speed: 110, pis: P([[7297.6, 4769.1], [8172.4, 5885.6], [9633.4, 6226.9], [10032.7, 7613.4], [9898.7, 9089.2],
+    [10102.1, 10610.2], [10834.1, 12046], [10670.3, 13528.3], [10008.6, 14908.1], [10279.5, 16368.1], [11399.3, 17363], [11619.5, 18839.6],
+    [12099.7, 20182.6]]) },
+  picker: { kind: 'Motorway · 110 km/h', goal: 'Take the D11 over the hills to the Polish S3.',
+    note: 'Built 27.5 m wide, our usual motorway; the planned road is 21.5 m wide. Its contract: 11.7 bn CZK.' },
+  traffic: 13_000, heavyShare: MOTORWAY_TRAFFIC.heavyShare, maxTravelMin: 12.6,
+  labels: { ...D11_SCENARIO.labels, brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border, where the S3 goes on)' },
+  ends: { a: { kind: 'joins', with: 'the D11 from Jaroměř' }, b: { kind: 'continues', with: 'the S3 in Poland' } },
+};
 /** Every playable mission, in picker order. */
-export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAIL_KRALOVEC, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
+export const PRESETS: ScenarioParams[] = [D11_MOTORWAY, D11_SCENARIO, D11_RAIL_KRALOVEC, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
   D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, NOVA_PAKA_SCENARIO, D11_RAILWAY];
 
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.

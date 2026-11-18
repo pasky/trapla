@@ -22,7 +22,7 @@ try {
   }
   const only = process.env.ONLY?.split(',');
   for (const [title, id] of [['0301 Praha', 'd3-0301'], ['0302 Jílové', 'd3-0302'], ['0303 Hostěradice', 'd3-0303'], ['0304 Václavice', 'd3-0304'],
-    ['0305/I Voračice', 'd3-0305'], ['The whole D3', 'd3-full'], ['Opatovec → Mohelnice', 'd35-full'], ['Nová Paka', 'i16-nova-paka']].filter(([, id]) => !only || only.includes(id))) {
+    ['0305/I Voračice', 'd3-0305'], ['The whole D3', 'd3-full'], ['Opatovec → Mohelnice', 'd35-full'], ['Motorway D11', 'd11-motorway'], ['Nová Paka', 'i16-nova-paka']].filter(([, id]) => !only || only.includes(id))) {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
     await context.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
     const page = await context.newPage();

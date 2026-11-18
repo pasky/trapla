@@ -51,5 +51,7 @@ describe('picker cards', () => {
     expect(d3[1]).toEqual(['d3-full-motorway', 'd3-0301-motorway', 'd3-0302-motorway', 'd3-0303-motorway', 'd3-0304-motorway', 'd3-0305-motorway']);
     expect(titles(true).find(([group]) => group === 'Středočeská D3')![1]).toContain('d3-motorway');
     expect(fresh.flatMap(([, ids]) => ids)).not.toContain('d3-road');
+    // Trutnov: the D11 motorway first, the class I road kept beside it as the simpler job
+    expect(fresh.find(([group]) => group === 'Trutnov')![1]).toEqual(['d11-motorway', 'd11', 'd11-rail-kralovec']);
   });
 });

@@ -1,17 +1,30 @@
 // Scenario-specific acceptance; never applies these fixtures to the top-level D11 glob.
 // SCENARIO=d3 node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts [--seed] [--straight]
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// A mission of a pack other than its default (e.g. the D11 motorway): SCENARIO=d11 PRESET=d11-motorway …; its starter is
+// scripts/scenarios/<pack>/<preset>.json, and it must also be VALID as the game evaluates it (the project evaluator).
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { loadPack } from '../loadpack';
+import { loadPack, projectContext } from '../loadpack';
 import { evaluate, type Design, type EvalContext } from '../../src/core/evaluate';
 import { PART_KEYS } from '../../src/core/cost';
 import { startDesign } from '../../src/state';
 import { ENDPOINT_JUNCTIONS } from '../../src/core/data/urban';
+import { scenarioParams } from '../../src/core/data/scenario';
+import { evaluateProject } from '../../src/core/project-evaluate';
+import { replaceCorridorFromDesign } from '../../src/core/project-motorway';
+import { replaceRouteFromLegacy } from '../../src/core/project-legacy';
 
-const { meta, scenario, terrain, buildings, roads, junctions, overlays } = loadPack();
-if (meta.id === 'd11') throw new Error('Choose a new scenario explicitly with SCENARIO.');
+const pack = loadPack();
+const { meta, terrain, buildings, roads, junctions, overlays } = pack;
+const presetId = process.env.PRESET;
+const scenario = presetId ? scenarioParams(meta.id, presetId) : pack.scenario;
+if (presetId && (scenario.presetId ?? scenario.id) !== presetId) throw new Error(`${presetId}: no such mission on ${meta.id}`);
+if (meta.id === 'd11' && !presetId) throw new Error('Choose a new scenario explicitly with SCENARIO (or a D11 mission with PRESET).');
+if (presetId && scenario.ports) throw new Error('A mission with its own ports: not checked here.');
 const dir = `public/scenarios/${meta.id}`;
-const ready = JSON.parse(readFileSync(`${dir}/ready.json`, 'utf8'));
+// (the D11 pack predates the build's ready marker and manifest)
+const legacyPack = meta.id === 'd11' && !existsSync(`${dir}/ready.json`);
+const ready = legacyPack ? { id: meta.id, ready: true } : JSON.parse(readFileSync(`${dir}/ready.json`, 'utf8'));
 if (ready.id !== meta.id || !ready.ready) throw new Error('Pack build is incomplete.');
 const ctx: EvalContext = { terrain, scenario, buildings, roads, junctions,
   a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
@@ -30,7 +43,7 @@ for (const j of junctions) {
   if (!(nearest <= ENDPOINT_JUNCTIONS[j.kind].zone)) throw new Error(`Declared ${j.kind} is not within its junction zone.`);
 }
 const fixtureDir = `scripts/scenarios/${meta.id}`;
-if (process.argv.includes('--seed')) {
+if (process.argv.includes('--seed') && !presetId) {
   mkdirSync(fixtureDir, { recursive: true });
   const initial: Design = { ...startDesign(), ...scenario.initial };
   writeFileSync(`${fixtureDir}/default.json`, JSON.stringify({ scenario: meta.id, purpose: scenario.mode === 'motorway' ? 'Fresh motorway mission (starter)' : 'Fresh road exercise', design: initial }, null, 2));
@@ -53,7 +66,7 @@ if (process.argv.includes('--seed')) {
     purpose: `${scenario.mode === 'motorway' ? 'Motorway' : 'Road exercise'} near the mapped reference, not the official motorway design or surveyed profile`, design: reference }, null, 2));
 }
 let failed = false;
-for (const name of ['default', 'reference', ...(process.argv.includes('--straight') ? ['straight'] : [])]) {
+for (const name of [...(presetId ? [presetId] : ['default', 'reference']), ...(process.argv.includes('--straight') ? ['straight'] : [])]) {
   const fixture = name === 'straight'
     ? { scenario: meta.id, design: { ...startDesign(), ...scenario.initial, pis: [] } }
     : JSON.parse(readFileSync(`${fixtureDir}/${name}.json`, 'utf8'));
@@ -66,18 +79,27 @@ for (const name of ['default', 'reference', ...(process.argv.includes('--straigh
     const start = performance.now(); r = evaluate(ctx, d); samples.push(performance.now() - start);
   }
   const sum = PART_KEYS.reduce((total, key) => total + r.parts[key].reduce((a, b) => a + b, 0), 0);
-  const valid = r.violations.length === 0 && Math.abs(sum - r.cost.total) < .01;
+  let valid = r.violations.length === 0 && Math.abs(sum - r.cost.total) < .01, project: { valid: boolean; cost: number | null; issues: string[] } | undefined;
+  if (presetId && name !== 'straight') {
+    if (fixture.preset !== presetId) throw new Error('Fixture belongs to another mission.');
+    const { ctx: pctx, initial } = projectContext(pack, scenario), start = initial();
+    const design = scenario.mode === 'motorway' ? replaceCorridorFromDesign(start, start.corridors[0].id, d)
+      : replaceRouteFromLegacy(start, start.routes.find(route => route.role === 'mission')!.id, d);
+    const p = evaluateProject(pctx, { epoch: 'check', revision: 1, design });
+    project = { valid: p.valid, cost: p.cost.total, issues: p.issues.map(i => i.violation?.title ?? i.code) };
+    valid &&= p.valid;
+  }
   // Raw straight diagnostics remain visible/reproducible; only the offered starter/reference
   // fixtures are acceptance claims. Never change norms or suppress violations to pass them.
   if (name !== 'straight') failed ||= !valid;
   console.log(JSON.stringify({ scenario: meta.id, name, valid, lengthM: r.length, travelMin: r.travelMin,
     cost: r.cost.total, partsError: sum - r.cost.total,
     medianMs: samples.sort((a, b) => a - b)[5], maxMs: samples[9],
-    violations: r.violations.map(v => ({ title: v.title, fix: v.fix, basis: v.basis })) }, null, 2));
+    violations: r.violations.map(v => ({ title: v.title, fix: v.fix, basis: v.basis })), ...(project ? { project } : {}) }, null, 2));
 }
 console.log(JSON.stringify({ nx: meta.nx, ny: meta.ny, cell: meta.cell,
   heightBytes: meta.nx * meta.ny * 4,
   groundFingerprint: meta.ground?.fingerprint, waterFingerprint: meta.watercourses?.sha256,
-  manifestSha256: createHash('sha256').update(readFileSync(`${dir}/manifest.json`)).digest('hex'),
+  manifestSha256: legacyPack ? null : createHash('sha256').update(readFileSync(`${dir}/manifest.json`)).digest('hex'),
   processMemory: process.memoryUsage() }, null, 2));
 if (failed) process.exitCode = 1;
