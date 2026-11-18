@@ -94,8 +94,8 @@ export interface PieceContext {
   severed: (a: XY, b: XY) => boolean;
   /** Measure how far round up to this far (whether it may be closed, and how far its traffic goes round), m. */
   round?: number;
-  /** Does a piece's own stretch, from its cut end to where it meets the road network, serve buildings (segments)? */
-  serves?: (segments: readonly (readonly [XY, XY])[]) => boolean;
+  /** The buildings a piece's own stretch, from its cut end to where it meets the road network, serves (segments). */
+  serves?: (segments: readonly (readonly [XY, XY])[]) => readonly number[];
 }
 /** A piece that still reaches the road network: the way there (from its cut end) and the road it meets. */
 export interface PieceReach { path: XY[]; way: number; cls: string }
@@ -108,8 +108,8 @@ export interface PieceAccess {
   stubs?: [{ length: number; far: XY } | undefined, { length: number; far: XY } | undefined];
   /** Per piece that still reaches the network: the way there and the road it meets. */
   reach?: [PieceReach | undefined, PieceReach | undefined];
-  /** Per piece (`ctx.serves`): does its own stretch serve buildings? */
-  serves?: [boolean, boolean];
+  /** Per piece (`ctx.serves`): the buildings its own stretch serves. */
+  serves?: [readonly number[], readonly number[]];
   /** The way round (where measured): the public road it runs along furthest. */
   via?: { way: number; cls: string };
 }
@@ -204,7 +204,7 @@ export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): Pie
   const back = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 ? search(s0, ends[0], s1, ctx.round) : undefined;
   return { connected, round: back?.round ?? Infinity, stubs: [a?.stub, b?.stub],
     ...(a?.reach || b?.reach ? { reach: [a?.reach, b?.reach] as [PieceReach | undefined, PieceReach | undefined] } : {}),
-    ...(ctx.serves ? { serves: [!!a?.tree && ctx.serves(a.tree), !!b?.tree && ctx.serves(b.tree)] as [boolean, boolean] } : {}),
+    ...(ctx.serves ? { serves: [a?.tree ? ctx.serves(a.tree) : [], b?.tree ? ctx.serves(b.tree) : []] as [readonly number[], readonly number[]] } : {}),
     ...(back?.via ? { via: back.via } : {}) };
 }
 

@@ -471,7 +471,8 @@ export class Inspector {
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
     // a road the player led its new piece to that cannot take it: back to where Auto leads it
     else if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'end') btn(`data-fix-crossing-end="${roadId}"`, END_AUTO_TEXT);
-    else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
+    // (a fix that says what Auto builds there: on the button)
+    else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, v.fix.startsWith('Choose "Automatic": ') ? `Back to Auto: ${esc(v.fix.slice('Choose "Automatic": '.length))}` : 'Back to Auto');
     // (not where our road already is on a bridge: a pier or a bridge end on something asks for a longer bridge)
     const onBridge = !!this.r && this.r.kind[stationIndex(this.r, v.s0)] === KIND.bridge;
     // (nor in our cutting: no bridge carries a line below the ground)
@@ -700,6 +701,7 @@ export class Inspector {
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
       why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is bought out, km ${km(r.s[removed.i])}, and goes with it.`
+        : removed.in === 'access' ? `The way to it is cut at km ${km(r.s[removed.i])}: buying it out costs less than keeping that way across our ${CATEGORIES[d.category].mode}.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}, or within ${BUILDING_RULES.clearance} m of it.`
         : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}, or within ${BUILDING_RULES.clearance} m of them.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`

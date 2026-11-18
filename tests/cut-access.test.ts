@@ -22,11 +22,13 @@ describe.skipIf(!existsSync(`${D11}/meta.json`))('a cut service road that serves
     expect(Math.round(c.s)).toBe(17667);
     expect(c.type).toBe('underpass'); expect(c.issues ?? []).toEqual([]); expect(r.valid).toBe(true);
   }, 60_000);
-  it('the player\'s "Cut it" with no new road to a crossing is closed, and the card says what each part reaches', () => {
+  it('the player\'s "Cut it" with no new road to a crossing is closed, the card says what each part reaches, and the houses cut off are a problem', () => {
     const { r, c } = at({ ...structuredClone(design), crossingOverrides: [{ roadId: SERVICE, type: 'reconnection' }] });
     expect(c.closure?.connected).toEqual([true, true]);
     expect(c.closure?.serves).toEqual([true, false]);
-    expect(c.farClosure).toBe(true); expect(c.issues ?? []).toEqual([]); expect(r.valid).toBe(true);
+    expect(c.farClosure).toBe(true); expect(r.valid).toBe(false);
+    // (its fix: what Auto builds there, and its price)
+    expect((c.issues ?? []).map(v => [v.title, v.fix, v.basis])).toEqual([['Houses cut off from the road', 'Choose "Automatic": an underpass, 25 M CZK', 'game']]);
     // each part is drawn from where it ends, beyond our earthworks, to the road it still reaches
     expect(c.closure?.reach?.map(p => p?.cls)).toEqual(['primary', 'tertiary']);
     const o = crossingOutcome(c, 'road', (way) => way === c.closure!.reach![0]!.way ? 'road I/16' : undefined);

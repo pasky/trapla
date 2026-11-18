@@ -5,7 +5,8 @@
 // road each part still reaches, and the map lights each part to that road with a bar where it ends. Then a part's end
 // (the hamlet's) dragged onto road I/16 south of the hamlet leads it there by a new road (north, a railway on the
 // ground keeps every new road from the crossings there; the west part's ground is too steep for one).
-// node scripts/cut-card-shots.mjs   (writes docs/screenshots/530…535)
+// Then D35 full km 22.08: a farm's track that Auto buys out rather than carry it over the motorway on a bridge.
+// node scripts/cut-card-shots.mjs   (writes docs/screenshots/530…537)
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { startGame } from './lib/browser.mjs';
@@ -35,7 +36,9 @@ try {
   await page.locator('#inspector button', { hasText: 'Cut it' }).click(); await idle(1500); await game.still();
   const cut = await crossing(), text = await card();
   console.log('cut', JSON.stringify(cut)); console.log('card', text);
-  assert.equal(cut.type, 'reconnection'); assert.equal(cut.far, true); assert.deepEqual(cut.issues, []);
+  assert.equal(cut.type, 'reconnection'); assert.equal(cut.far, true);
+  // (the houses it serves left going round further: a problem, its fix what Auto builds)
+  assert.deepEqual(cut.issues, ['Houses cut off from the road']); assert.match(text, /Back to Auto: an underpass, 25 M CZK/);
   assert.match(text, /Cut · no new road needed/); assert.match(text, /still reaches/); assert.match(text, /way round/);
   assert.doesNotMatch(text, /level today|Cut and reroute/);
   assert.equal(await page.locator('#inspector button.on', { hasText: 'Cut it' }).count(), 1);
@@ -68,5 +71,21 @@ try {
   assert.equal(ov.ends[side].way, ROAD); assert.equal(led.endTo?.[side]?.built, true); assert.deepEqual(led.issues, []);
   await game.park();
   await page.screenshot({ path: `${out}/535-cut-hamlet-end-led.png` });
+  // D35 full km 22.08: the farm's track, its buildings bought out (cheaper than its bridge over the motorway)
+  await game.open('scenario=d35-full'); await idle(2500);
+  const FARM = 3946;
+  const farm = await T((id) => { const c = window.trapla.result().crossings.find(c => c.roadId === id); return { s: c.s, x: c.x, y: c.y, type: c.type, cost: c.cost, buyout: c.buyout, houses: c.houses, issues: (c.issues ?? []).map(v => v.title) }; }, FARM);
+  console.log('farm', JSON.stringify(farm));
+  assert(farm.buyout?.instead, 'the farm bought out'); assert.deepEqual(farm.issues, []);
+  await T(([id, x, y]) => { window.trapla.setView({ photo: true, contours: false }); window.trapla.selectCrossing(id); window.trapla.lookAt(x, y, 600, 0, 50); }, [FARM, farm.x, farm.y]);
+  await idle(); await game.still(); await game.park();
+  const farmCard = await card(); console.log('card', farmCard);
+  assert.match(farmCard, /Cheaper to buy out than to keep its access/);
+  await page.screenshot({ path: `${out}/536-cut-farm-bought-out.png` });
+  // (the farm, 800 m east of the crossing: bought out, drawn as such)
+  await T((j) => { window.trapla.selectBuilding(j); window.trapla.lookAt(24310, 7490, 450, 0, 50); }, farm.houses.at(-1)); await idle(); await game.still(); await game.park();
+  const houseCard = await card(); console.log('building', houseCard);
+  assert.match(houseCard, /buying it out costs less than keeping that way across/);
+  await page.screenshot({ path: `${out}/537-cut-farm-building.png` });
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

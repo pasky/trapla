@@ -37,3 +37,8 @@ how far round may its traffic go? Builds on research/45 (no Czech maximum detour
   crossing or a reroute to one, priced as usual), and so does the player's "Cut it".
 - A field track with no buildings along it keeps the research/45 rule: it just ends, however far round.
 - The card says how far round a closed way's traffic goes (measured over the mapped network) and along which road.
+- Buying the buildings out is weighed against keeping the way across (the cheaper on the crossing's bill), as a designer
+  buys out a farm rather than bridge a motorway for it; homes are bought so only where every way across takes as many
+  (research/60). The civil code's necessary way (§1029) is a neighbour's matter and is not modelled.
+- The player's cut that leaves houses going round further is a problem (a game rule, as for a public road), its fix
+  what Auto builds instead.

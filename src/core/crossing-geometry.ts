@@ -4,7 +4,7 @@ import { ACCESS, BUILDING_RULES, CROSSING_RULES, JUNCTION, ROAD_CLASSES, sideJun
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { STRUCTURE_RULES } from './data/prices';
-import { END_AUTO_TEXT } from './terms';
+import { cutOffFix, END_AUTO_TEXT } from './terms';
 import { CLOSURE_ROUND, PIECE_SEARCH, pieceAccess, type PieceAccess } from './way-pieces';
 export { CLOSURE_ROUND } from './way-pieces';
 import { smoothLink } from './crossing-link';
@@ -154,6 +154,8 @@ const SHAPED = 'Shaped link';
  * lies across our road), 'cut' (our road cuts it too), 'own' (the cut way itself), 'class:<cls>' (it may not join
  * that class), 'none' (no road on the ground there), or the new piece's link problems (link-route.ts). */
 const END_FAILS = 'Shaped link end: ';
+/** The player's cut leaves buildings it serves going round further than CLOSURE_ROUND (`homes:remedy:cost`). */
+const CUT_OFF = 'Cut off: ';
 
 export const LINK_OVER_OUR_ROAD = 'Shaped link enters our earthworks';
 export const LINK_TOO_STEEP = 'Shaped link is steeper than its class allows';
@@ -278,6 +280,14 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       fix,
       detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
       rule: `Game rule: a new road is no steeper than its class allows (ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts, buys out houses in its way or within ${BUILDING_RULES.clearance} m of its works and never runs on the ground across motorways, railways, ponds or rivers` };
+  }
+  if (message.startsWith(CUT_OFF)) {
+    const [homes, remedy, cost] = message.slice(CUT_OFF.length).split(':'), who = Number(homes) ? 'houses' : 'buildings';
+    return { title: `${who === 'houses' ? 'Houses' : 'Buildings'} cut off from the road`,
+      fix: cutOffFix(remedy, Number(cost)),
+      detail: `With the ${what} cut here, the ${who} it serves have no way round over other roads within ${CLOSURE_ROUND} m further, and no new road can lead it to a crossing.`,
+      basis: 'game',
+      rule: `Game rule (provisional): a track or service road serving houses is closed only where its traffic goes round at most ${CLOSURE_ROUND} m further; neighbouring properties keep their access (Act 13/1997 §7(1), §24(4))` };
   }
   if (message.startsWith(END_FAILS)) {
     const why = message.slice(END_FAILS.length), piece = c.cls === 'track' ? 'track' : 'road';
@@ -1304,7 +1314,11 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     // serves buildings, for whether it may be closed: one people go to (no shed or garage) within STUB_HOUSE of its
     // stretch, and not within that of a public road, which serves it instead, as the houses of a village a track ends in)
     const minor = MINOR_WAYS.has(c.cls), removed = Math.abs(g.removed[1] - g.removed[0]), served = route.served;
-    const serves = minor && served ? (segments: readonly (readonly [XY, XY])[]) => segments.some(([a, b]) => served(a, b, g.width / 2 + STUB_HOUSE, STUB_HOUSE)) : undefined;
+    const serves = minor && served ? (segments: readonly (readonly [XY, XY])[]) => {
+      const out = new Set<number>();
+      for (const [a, b] of segments) for (const j of served(a, b, g.width / 2 + STUB_HOUSE, STUB_HOUSE)) out.add(j);
+      return [...out].sort((x, y) => x - y);
+    } : undefined;
     if (!pieces.has(key)) pieces.set(key, pieceAccess({ net: roads, severed, round: (minor ? PIECE_SEARCH : CLOSURE_ROUND) + removed + 1, ...(serves ? { serves } : {}) },
       c.roadId, [along(path, g.removed[0]), along(path, g.removed[1])]));
     return pieces.get(key)!;
@@ -1607,7 +1621,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     // A piece still reaching the road network over other ways just ends here (research/45: no Czech rule caps a
     // detour; a public road is closed only where its traffic goes round at most CLOSURE_ROUND further, a game rule);
     // only a piece cut off from the network is given access. (A shape the player drew is built as drawn.)
-    delete c.closure;
+    delete c.closure; delete c.accessFor;
     // Led under our bridge nearby (Auto's candidate, c.under): a new piece of road from each cut end along our
     // earthworks to under the deck, joined there across under it (as a designer leads a track cut right beside a
     // bridge end under that bridge rather than kilometres round).
@@ -1638,11 +1652,14 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
         });
         const extra = access.round - Math.abs(g.removed![1] - g.removed![0]);
         // (a track or service road whose pieces both still reach the network, one serving buildings: as a public road)
-        const serves: [boolean, boolean] = [false, false];
-        ends.forEach((q, k) => { if (access.serves?.[k]) serves[sideOf(q)] = true; });
+        const serves: [boolean, boolean] = [false, false], servedIds: number[] = [];
+        ends.forEach((q, k) => { const ids = access.serves?.[k] ?? []; if (ids.length) { serves[sideOf(q)] = true; servedIds.push(...ids); } });
         const tested = !MINOR_WAYS.has(c.cls) || (connected[0] && connected[1] && serves.some(Boolean));
-        // (Auto's last resort, c.farClosure: a piece serving buildings goes round further where nothing else can be built)
-        const closable = tested ? connected[0] && connected[1] && (extra <= CLOSURE_ROUND || (!!c.farClosure && MINOR_WAYS.has(c.cls))) : true;
+        // (the buildings keeping its way across would be for: a closure would send their traffic round further)
+        if (MINOR_WAYS.has(c.cls) && tested && !(extra <= CLOSURE_ROUND)) c.accessFor = [...new Set(servedIds)].sort((x, y) => x - y);
+        // (Auto's last resort, c.farClosure: a piece serving buildings goes round further where nothing else can be built;
+        // c.buyout: those buildings are bought out instead, where that is cheaper than keeping its way across)
+        const closable = tested ? connected[0] && connected[1] && (extra <= CLOSURE_ROUND || ((!!c.farClosure || !!c.buyout) && MINOR_WAYS.has(c.cls))) : true;
         if (closable) for (const k of [0, 1] as const) if (connected[k] || nothing[k]) { closed[k] = true; if (!own(k)) required[k] = false; }
         if (closable && (connected.some(Boolean) || nothing.some(Boolean))) {
           // (which way each side lies, for the card: the compass point of our road's normal there)
@@ -1733,6 +1750,10 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     if (c.under !== undefined && links[0].length && links[1].length) links[0] = [...links[0], { ...links[1][links[1].length - 1] }];
     g.links = links as [CrossingPoint[], CrossingPoint[]];
     if (kept.length) g.keptEnds = kept; else delete g.keptEnds;
+    // (closed with the buildings it served bought out: billed with it, as houses a reroute runs through)
+    if (c.buyout && c.closure && !links.some(l => l.length)) for (const j of c.accessFor ?? []) houses.add(j);
+    // (the player's cut that leaves them going round further: said, with what Auto builds instead)
+    if (c.cutOff && c.closure && !links.some(l => l.length)) diagnose(g, `${CUT_OFF}${c.cutOff.homes}:${c.cutOff.buyout ? 'buyout' : c.cutOff.type}:${Math.round(c.cutOff.cost)}`);
     g.turnarounds = links.filter(path => path.length > 0).map(path => path[0]);
     c.linkLength = links.reduce((sum, path) => sum + crossingPlanLength(path), 0);
     // (a piece that just ends: a public road's cut end gets a turning area, a track's or service road's none)
@@ -1959,7 +1980,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     }
     return !!next;
   };
-  const FIELDS = ['span', 'approachLength', 'linkLength', 'targetS', 'targetRoadId', 'underpassLength', 'worksCost', 'tieLength', 'wallLength', 'culverts', 'culvertCost', 'houses', 'houseCost', 'homes', 'linkGrade', 'lowered', 'drainage', 'drainCost', 'square', 'squared', 'realignLength', 'realignCost', 'moved', 'closure', 'farClosure', 'overRailway', 'under'] as const;
+  const FIELDS = ['span', 'approachLength', 'linkLength', 'targetS', 'targetRoadId', 'underpassLength', 'worksCost', 'tieLength', 'wallLength', 'culverts', 'culvertCost', 'houses', 'houseCost', 'homes', 'linkGrade', 'lowered', 'drainage', 'drainCost', 'square', 'squared', 'realignLength', 'realignCost', 'moved', 'closure', 'farClosure', 'accessFor', 'buyout', 'cutOff', 'overRailway', 'under'] as const;
   /** (a reroute every new piece of which the player led to a road of their choosing leads nowhere Auto chose) */
   const autoLed = (x: CrossingResult) => !x.endTo || !(x.geometry?.links ?? []).every((l, k) => !l.length || x.endTo?.[k]?.built);
   const leadsTo = (x: CrossingResult, c: CrossingResult) => x !== c && (x.type === 'reconnection' || x.type === 'diversion') && !x.moved && x.targetS === c.s && x.targetRoadId === c.roadId && autoLed(x);
@@ -2022,8 +2043,22 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       return shut.closure && (!Math.round(shut.linkLength ?? 0) || !!c.ends) && feasible(shut) ? shut : undefined;
     };
     if (c.requestedType === 'reconnection' && !c.moved && !feasible(c)) {
+      // (closed so already: what keeps it from being valid is its own problem, below)
+      if (c.farClosure) return;
       const shut = lastResort();
-      if (shut) { for (const key of FIELDS) delete c[key]; Object.assign(c, shut); changed = true; }
+      if (!shut) return;
+      // Buildings it serves left going round further than CLOSURE_ROUND, where Auto would keep its way across: a problem,
+      // as for a public road the player cuts (its fix: what Auto builds, and its price)
+      if (shut.accessFor?.length && !shut.ends?.some(Boolean)) {
+        const auto = clone(c); delete auto.requestedType;
+        if (auto.issues) { auto.issues = auto.issues.filter(v => v.crossing.code !== 'reach'); if (!auto.issues.length) delete auto.issues; }
+        reconsiderOnce(auto, false);
+        if (feasible(auto) && !auto.farClosure && auto !== c) {
+          shut.cutOff = { type: auto.type, cost: auto.cost, homes: shut.accessFor.filter(j => route.dwelling?.(j)).length, ...(auto.buyout ? { buyout: true as const } : {}) };
+          build([shut]);
+        }
+      }
+      for (const key of FIELDS) delete c[key]; Object.assign(c, shut); changed = true;
       return;
     }
     if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !(worksFail || ['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type))) return;
@@ -2073,7 +2108,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (best !== c) {
         delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
         delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
-        delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure; delete c.farClosure; delete c.overRailway; delete c.under;
+        delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure; delete c.farClosure; delete c.accessFor; delete c.buyout; delete c.cutOff; delete c.overRailway; delete c.under;
         Object.assign(c, best); changed = true;
       }
       return;
@@ -2103,11 +2138,14 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // which needs a crossing nearby: weighed with the reroutes below)
     // (not one others are led to: it carries them)
     const carriesOthers = crossings.some(x => leadsTo(x, c)) || endsOn(c);
+    // (the buildings that keep it from being closed, if any: they may be bought out instead, below)
+    let accessFor: number[] | undefined;
     if (MINOR_WAYS.has(c.cls) && !c.via && !carriesOthers && (c.type !== 'reconnection' && c.type !== 'diversion' || !c.closure)) {
-      const shut = clone(c); shut.type = c.cls === 'track' ? 'diversion' : 'reconnection'; delete shut.farClosure;
+      const shut = clone(c); shut.type = c.cls === 'track' ? 'diversion' : 'reconnection'; delete shut.farClosure; delete shut.buyout; delete shut.accessFor;
       delete shut.targetS; delete shut.targetRoadId; delete shut.span; delete shut.approachLength; delete shut.underpassLength; delete shut.linkLength;
       build([shut], ok(best) ? best.cost : Infinity);
       if (shut.closure && !Math.round(shut.linkLength ?? 0)) consider(shut);
+      else accessFor = shut.accessFor;
     }
     // …or (a track or service road) one led under our bridge where it begins or ends within UNDER_REACH of the crossing
     if (MINOR_WAYS.has(c.cls) && !c.via && !carriesOthers && route.kind && !c.geometry?.sameSide) for (const direction of [-1, 1]) {
@@ -2124,7 +2162,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (cannotPay(target)) break;
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
-      link.targetS = target.s; link.targetRoadId = target.roadId; delete link.under; delete link.closure; delete link.farClosure;
+      link.targetS = target.s; link.targetRoadId = target.roadId; delete link.under; delete link.closure; delete link.farClosure; delete link.accessFor; delete link.buyout; delete link.cutOff;
       const anchor = clone(target); anchor.square = target.square;
       // A resolved diversion's source is a real ground-level road node; its downstream link need
       // not be rebuilt to evaluate a new branch arriving at that source.
@@ -2143,12 +2181,26 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       consider(move);
     }
     if (!ok(best) && fallback && (stale || !feasible(c) || fallback.cost < c.cost)) best = fallback;
+    // Buildings that are the only reason to keep a track's or service road's way across our road may be bought out
+    // instead, where that costs less than the cheapest way across Auto can build (on the crossing's bill: the
+    // buildings' buyout price against the structure or reroute and all it takes). Homes count as homes: a buyout that
+    // takes a home goes only where every way across takes more (research/60), never where nothing else can be built.
+    const kept = best === c ? (!stale && feasible(c) ? c : undefined) : feasible(best) ? best : undefined;
+    if (accessFor?.length && kept && !c.designed && !accessFor.some(j => route.keptHouse?.(j))) {
+      const buy = clone(c); buy.type = c.cls === 'track' ? 'diversion' : 'reconnection'; buy.buyout = {}; delete buy.farClosure;
+      delete buy.targetS; delete buy.targetRoadId; delete buy.span; delete buy.approachLength; delete buy.underpassLength; delete buy.linkLength;
+      build([buy], kept.cost);
+      const homes = (x: CrossingResult) => ownHomes(x, crossings, j => !!route.dwelling?.(j)).length;
+      if (buy.closure && !Math.round(buy.linkLength ?? 0) && feasible(buy) && buy.cost < kept.cost && (ok(buy) || (!ok(kept) && homes(buy) <= homes(kept)))) {
+        buy.buyout = { instead: { type: kept.type, cost: kept.cost } }; best = buy;
+      }
+    }
     // (below even one that takes a home: keeping the way across our road comes first)
     if (!(best === c ? !stale && feasible(c) : feasible(best)) && !c.designed) { const shut = lastResort(); if (shut) best = shut; }
     if (best !== c) {
       delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
       delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
-      delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure; delete c.farClosure; delete c.overRailway; delete c.under;
+      delete c.square; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.closure; delete c.farClosure; delete c.accessFor; delete c.buyout; delete c.cutOff; delete c.overRailway; delete c.under;
       Object.assign(c, best); changed = true;
     }
   };
@@ -2199,7 +2251,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     for (const x of [c, ...along]) {
       const link = clone(x); link.type = x.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
-      link.targetS = target.s; link.targetRoadId = target.roadId; delete link.under; delete link.closure; delete link.farClosure;
+      link.targetS = target.s; link.targetRoadId = target.roadId; delete link.under; delete link.closure; delete link.farClosure; delete link.accessFor; delete link.buyout; delete link.cutOff;
       const anchor = clone(target); anchor.square = target.square;
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], before - spent, new Set([anchor]));
@@ -2242,7 +2294,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // reroute then has no crossing to lead to, and says so)
       if (!t && x.requestedType === 'reconnection') { total += x.cost; moves.push({ ...x }); continue; }
       if (!t) { total = Infinity; break; }
-      const link = clone(x); link.targetS = t.s; link.targetRoadId = t.roadId; delete link.under; delete link.closure; delete link.farClosure;
+      const link = clone(x); link.targetS = t.s; link.targetRoadId = t.roadId; delete link.under; delete link.closure; delete link.farClosure; delete link.accessFor; delete link.buyout; delete link.cutOff;
       const anchor = clone(t); anchor.square = t.square;
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], before - total, new Set([anchor]));
@@ -2261,7 +2313,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // (the player's own "Cut it" left without a crossing to lead to is not such a connection: it says so)
   if (crossings.some((c,i) => baseline[i].feasible && !feasible(c) && !(c.requestedType === 'reconnection' && c.via === undefined))) {
     crossings.forEach((c,i) => {
-      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','homes','linkGrade','lowered','drainage','drainCost','square','squared','realignLength','realignCost','moved','closure','farClosure','overRailway','under'] as const) delete c[key];
+      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','homes','linkGrade','lowered','drainage','drainCost','square','squared','realignLength','realignCost','moved','closure','farClosure','accessFor','buyout','cutOff','overRailway','under'] as const) delete c[key];
       Object.assign(c, baseline[i].state);
     });
     if (persist) persist.rolledBack = true;

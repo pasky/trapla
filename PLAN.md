@@ -2203,22 +2203,38 @@ only access to a hamlet of about eight buildings east of our road, closed with n
   as usual, also one whose works take a home); a field track serving nothing keeps the research/45 rule (it just ends,
   however far round). How far round is measured over the mapped network (up to 1.5 km beyond the cut for tracks and
   service roads; public roads as before).
+- **Buying out instead** (`buyout`, owner's follow-up): where the buildings a part serves are the only reason to keep
+  its way across, Auto weighs buying them out (the buildings.ts buyout price: building, purchase multiplier, demolition,
+  plot) against the cheapest way across it can build, on the crossing's bill, and takes the cheaper. Homes count as
+  homes (research/60): a buyout that takes a home is taken only where every way across takes as many, never where
+  nothing else can be built (a house the player keeps is never bought out so). Billed and drawn as bought out; the card:
+  "Cut · 7 buildings bought out … Cheaper to buy out than to keep its access: 7 buildings, 109 M CZK; its bridge over us
+  would cost 153 M CZK"; each building's card: "The way to it is cut at km 22.08: buying it out costs less than keeping
+  that way across our motorway." D35 full km 22.08 (a farm of seven halls and sheds, 3,500 m², no home): bought out for
+  109 M instead of its 153 M bridge over the motorway; no other starter or saved design changes.
 - **Last resort** (`farClosure`): where nothing that keeps it across can be built, Auto closes it anyway (both parts
-  still reach the network), and so does the player's "Cut it" whose new road cannot reach a crossing; the card says so.
+  still reach the network); the card says so. D35 full km 7.51 (two houses, a civic building and two works on the track):
+  no way across can be built and a buyout would take homes, so it stays closed this way.
+- **The player's "Cut it" over the limit** (`cutOff`): closed where its new road cannot reach a crossing, but where Auto
+  would keep it across it is a problem on the crossing (game rule): "Houses cut off from the road" (or "Buildings"), its
+  fix what Auto builds and its price, computed by evaluating the design once more with that choice left to Auto (full
+  evaluations only, and only for such a cut), as a public road closed over CLOSURE_ROUND is a problem. D11 km 17.67:
+  "Back to Auto: an underpass, 25 M CZK".
   Without it the Královec railway QA projects (track 5550 at km 12.89, beside the mapped railway) were left with an
   unbuildable reroute.
 - **D11 km 17.67** (the saved best design, its bend near km 17.6 moved 60 m east; `tests/cut-access.test.ts`): Auto
-  now carries the hamlet's service road through our embankment in a box (24.6 M, a house under its ramps bought out);
-  the player's "Cut it" cannot lead it to a crossing (a railway on the ground between it and every crossing), so it is
-  closed: "Cut · no new road needed · The service road is cut by our road. The east part still reaches road I/16, the
+  now carries the hamlet's service road through our embankment in a box (24.6 M, a house under its ramps bought out;
+  buying out the hamlet would take six homes); the player's "Cut it" cannot lead it to a crossing (a railway on the
+  ground between it and every crossing), so it is closed, NOT VALID ("Houses cut off from the road"): "Cut · no new road needed · The service road is cut by our road. The east part still reaches road I/16, the
   west part a class III road; each just ends at our earthworks. Its traffic has no way round over other roads within
   1.5 km. No new road can lead it to a crossing from here."
-- **Changed closures** (Auto, every installed pack's starters and the five saved D11 designs): 90 → 56; 34 tracks or
-  service roads that served buildings now keep their way across (17 reroutes, 8 bridges over us, 9 boxes), and 3 stay
+- **Changed closures** (Auto, every installed pack's starters and the five saved D11 designs): 90 → 57; 33 tracks or
+  service roads that served buildings now keep their way across (17 reroutes, 7 bridges over us, 9 boxes), one is
+  closed with its farm bought out (D35 full km 22.08), and 3 stay
   closed as the last resort (direct-90 km 9.80, D35 stage 1 km 7.52, D35 full km 7.51: nothing that keeps them across can be built). Bills: D11
   starter unchanged, Královec railway +14.1 M, best +33.5, demo +19.4, direct-80 +58.0, direct-90 −0.8, town-centre
   +32.9, D3 0301 +11.8, 0302 +8.4, 0303 +28.2, 0304 +65.1, 0305 +12.9, D35 stage 1 unchanged, Nová Paka +43.6, D35 full
-  +198.5 (km 22.08 a farm building's track carried over the motorway, 153 M), D3 full +105.3. All VALID as before (the
+  +109.3 (km 22.08 the farm bought out), D3 full +105.3. All VALID as before (the
   Královec starter was not VALID before either).
 - **Words.** The choice is "Cut it" (it cuts the way; a part is led on only where it needs to be). A cut with nothing new
   built is "Cut · no new road needed", its body names what each part still reaches (the way's own name or number from
@@ -2232,7 +2248,8 @@ only access to a hamlet of about eight buildings east of our road, closed with n
 - **Leading a part elsewhere** (`ui/link-edit.ts`): the model-52 square end handle now also stands at the end of a part
   that just ends; dragged onto a road, the part is led there by a new road (`CrossingOverride.ends` as before; the other
   part still just ends, or is closed as the last resort above). Played: `node scripts/cut-card-shots.mjs`, screenshots
-  530–535 (the hamlet's part led to road I/16, +299 m, 10.3 M).
+  530–537 (the hamlet's part led to road I/16, +299 m, 10.3 M; 531 the player's cut with its problem; 536–537 the D35
+  full farm bought out).
 - **Fixed on the way:** a cut inside one mapped segment (both cut ends on it) was never measured round (way-pieces.ts:
   a public road there could not be closed); no saved bill moved. A motorway or railway beside a house is no way in to it.
 - **Known issues.** How far round a track's traffic goes is not measured beyond 1.5 km ("no way round over other roads

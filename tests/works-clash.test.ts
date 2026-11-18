@@ -27,8 +27,11 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('other ways\' wor
         if (c.closure && c.cls !== 'track' && c.cls !== 'service' && !Math.round(c.linkLength ?? 0))
           if (!(c.closure.connected[0] && c.closure.connected[1] && (c.closure.extra ?? Infinity) <= CLOSURE_ROUND)) failures.push(`${name} km ${Math.round(c.s)}: public road closed (${JSON.stringify(c.closure)})`);
         // …and a track or service road serving houses on both parts' sides likewise, unless nothing else can be built (research/86)
-        if (c.closure?.serves?.some(Boolean) && c.closure.connected[0] && c.closure.connected[1] && !Math.round(c.linkLength ?? 0) && !c.farClosure && !((c.closure.extra ?? Infinity) <= CLOSURE_ROUND))
+        if (c.closure?.serves?.some(Boolean) && c.closure.connected[0] && c.closure.connected[1] && !Math.round(c.linkLength ?? 0) && !c.farClosure && !c.buyout && !((c.closure.extra ?? Infinity) <= CLOSURE_ROUND))
           failures.push(`${name} km ${Math.round(c.s)}: access to houses closed (${JSON.stringify({ ...c.closure, reach: undefined })})`);
+        // (or bought out, where that costs less than the way across it replaces, and billed and drawn as bought out)
+        if (c.buyout && !(c.accessFor?.length && c.accessFor.every(j => c.houses?.includes(j) && result.demolished.some(p => p.j === j)) && c.cost < (c.buyout.instead?.cost ?? 0)))
+          failures.push(`${name} km ${Math.round(c.s)}: a buyout not cheaper or not billed (${JSON.stringify(c.buyout)})`);
         // no reroute of next to nothing that is not said to be a closure (two stubs onto the way's own line)
         if (!c.closure && !c.moved && !c.issues?.length && (c.linkLength ?? 0) > 0 && (c.linkLength ?? 0) < 20) failures.push(`${name} km ${Math.round(c.s)}: a ${Math.round(c.linkLength!)} m reroute`);
       }

@@ -198,8 +198,11 @@
  * or garage, within 30 m of its stretch from the cut to the road network and not within 30 m of a public road) is closed
  * only as a public road is: both parts still reach the network and its traffic goes round at most CLOSURE_ROUND (500 m,
  * PROVISIONAL: research/86, the road act asks only that access be kept) further; otherwise Auto keeps the way across (a
- * box, a bridge over us or a reroute, priced as usual) and closes it only where nothing of that can be built (as the
- * player's "Cut it" whose new road cannot reach a crossing; the card says so). D11 frozen (M CZK): best +33.6 (km 7.96
+ * box, a bridge over us or a reroute, priced as usual), or buys those buildings out (buildings.ts price, billed and
+ * drawn as bought out) where that costs the crossing less than the cheapest way across, a buyout taking homes only where
+ * every way across takes as many (research/60); it closes it only where nothing of that can be built. The player's "Cut
+ * it" whose new road cannot reach a crossing is closed and, where Auto would keep it across, a problem ("Houses cut off
+ * from the road", its fix what Auto builds and its price). D11 frozen (M CZK), no buyout in any: best +33.6 (km 7.96
  * the service road 4742 to houses, closed before, through a box; km 17.64 the track to the hamlet at km 17.67 through a
  * box, a house under its ramps bought out, 7.7; km 8.74 the track's reroute becomes its bridge over us and km 9.04's box a
  * reroute to it), best-drag / -pin / -structures / -manual alike (+33.2 / +34.8 / +36.0 / +33.6); demo +19.4 (km 17.93 the

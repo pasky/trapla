@@ -26,13 +26,13 @@ describe('a cut way\'s pieces', () => {
     // (not measured beyond the limit)
     expect(pieceAccess({ net, severed, round: 900 }, 0, ends).round).toBe(Infinity);
   });
-  it('says whether a piece\'s own stretch serves buildings', () => {
+  it('says which buildings a piece\'s own stretch serves', () => {
     const house = { x: 5, y: 60 };
     const near = (a: { x: number; y: number }, b: { x: number; y: number }) => {
       const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((house.x - a.x) * dx + (house.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
       return Math.hypot(house.x - a.x - t * dx, house.y - a.y - t * dy) < 30;
     };
-    expect(pieceAccess({ net, severed, serves: s => s.some(([a, b]) => near(a, b)) }, 0, ends).serves).toEqual([false, true]);
+    expect(pieceAccess({ net, severed, serves: s => s.some(([a, b]) => near(a, b)) ? [7] : [] }, 0, ends).serves).toEqual([[], [7]]);
   });
 });
 describe('a cut inside one mapped segment', () => {

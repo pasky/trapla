@@ -81,13 +81,18 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo' | 'ends' | 'farClosure' | 'requestedType'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo' | 'ends' | 'farClosure' | 'requestedType' | 'houseCost' | 'buyout'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
   : text.replace(/\bour road\b/g, `our ${line}`).replace(/\bOur road\b/g, `Our ${line}`).replace(/\bthe new road\b/g, `the new ${line}`);
 /** What a rebuilt stretch replaces, in the player's words: "old road", "old track". */
 export const oldLineWords = (line: OurLine = 'road') => line === 'railway' ? 'old track' : 'old road';
+/** What keeps a cut way across our road, in a few words ("an underpass"; `buyout`: buying out what it serves). */
+export const remedyWords = (type: string) => ({ underpass: 'an underpass', overbridge: 'its bridge over us', bridge: 'our bridge over it',
+  junction: 'a junction', reconnection: 'a new road to a crossing', diversion: 'a new track to a crossing', buyout: 'buy out what it serves' } as Record<string, string>)[type] ?? 'keep it across our road';
+/** The fix of the player's cut that leaves houses going round further: what Auto builds there instead. */
+export const cutOffFix = (remedy: string, cost: number) => `Choose "Automatic": ${remedyWords(remedy)}, ${Math.round(cost / 1e6).toLocaleString('en-US')} M CZK`;
 /** A mapped road's name where the game knows one (`way`: its index in the pack's network): "road II/325", "Husova". */
 export type RoadNamer = (way: number) => string | undefined;
 export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, line: OurLine = 'road', name?: RoadNamer): OutcomeText {
@@ -99,6 +104,13 @@ export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, l
   }
   return words(ownOutcome(c, name));
 }
+/** "a house", "2 buildings", "a house and 2 other buildings" */
+function buildingsWords(homes: number, others: number): string {
+  const house = homes === 1 ? 'a house' : homes ? `${homes} houses` : '';
+  const rest = !others ? '' : homes ? (others === 1 ? 'another building' : `${others} other buildings`) : (others === 1 ? 'a building' : `${others} buildings`);
+  return [house, rest].filter(Boolean).join(' and ');
+}
+const money = (v: number) => `${Math.round(v / 1e6).toLocaleString('en-US')} M CZK`;
 /** "A house stands", "2 buildings stand", "3 houses and 3 other buildings stand" (homes, sheds / garages / barns …) */
 function standing(homes: number, others: number): string {
   const house = homes === 1 ? 'a house' : homes ? `${homes} houses` : '';
@@ -170,6 +182,12 @@ function ownOutcome(c: OutcomeOf, name?: RoadNamer): OutcomeText {
     const sides = c.closure.sides, cut = 'Cut · no new road needed';
     if (!right && !left && !Math.round(c.linkLength ?? 0)) return { tag: 'closed', label: cut,
       explain: `The ${what} is cut by our road. What is left of it on either side is a short stub that serves nothing (no house, no other road): it is left as it is.${link}` };
+    // (closed with the buildings it served bought out, cheaper than keeping its way across)
+    if (both && c.buyout) {
+      const n = c.houses?.length ?? 0, homes = c.homes ?? 0, them = buildingsWords(homes, n - homes), instead = c.buyout.instead;
+      return { tag: 'bought out', label: `Cut · ${them} bought out`,
+        explain: `The ${what} is cut by our road. The ${sides[0]} part still reaches ${reachOf(c, 0, name)}, the ${sides[1]} part ${reachOf(c, 1, name)}; each ${ends}.${detourOf(c, name)} Cheaper to buy out than to keep its access: ${them}, ${money(c.houseCost ?? 0)}${instead ? `; ${remedyWords(instead.type)} would cost ${money(instead.cost)}` : ''}.` };
+    }
     if (both) return { tag: 'closed', label: cut,
       explain: `The ${what} is cut by our road. The ${sides[0]} part still reaches ${reachOf(c, 0, name)}, the ${sides[1]} part ${reachOf(c, 1, name)}; each ${ends}.${detourOf(c, name)}${link}` };
     if (!Math.round(c.linkLength ?? 0)) {

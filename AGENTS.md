@@ -91,7 +91,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   by piece (model 42, `way-pieces.ts`): a piece still reaching the road network just ends, a piece cut off is led to
   a crossing (a track beside our bridge under it), a public road is closed only within 500 m of extra detour, and so
   is a track or service road serving buildings (model 54, research/86; else Auto keeps it across, a closure only where
-  nothing else can be built: `farClosure`); the card names what each part still reaches and how far round, the map lights
+  nothing else can be built: `farClosure`; or its buildings bought out where cheaper, homes only where every way
+  across takes as many: `buyout`; the player's cut over the limit is a problem: `cutOff`); the card names what each part still reaches and how far round, the map lights
   each part to that road (`closure.reach`), and a part's end can be dragged onto a road as a reroute's (model 52); other
   ways' slopes keep off houses, railways and our body (`scripts/works-clash-audit.ts`, tests/works-clash.test.ts; every way's works keep our 3 m working
   strip from houses, model 53); a rebuilt road's side road crossed by
