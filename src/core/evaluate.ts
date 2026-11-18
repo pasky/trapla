@@ -27,7 +27,7 @@ import { bendRules, horizontalRules, speedNorms } from './data/norms';
 import { geometryPis, heightSpeeds, searchSpeeds, hairpinFixes, hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
+import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, sideJunctionCost, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { groundWorksPerM, treatedSubgrade } from './earthengineering';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
@@ -272,6 +272,10 @@ export interface EvalOptions {
    * height where it leaves and rejoins it. Whatever the kernel still designs and bills on those cells is
    * dropped and credited by project-kept.ts. One entry per station; otherwise ignored. */
   oldRoad?: Uint8Array;
+  /** A rebuilt stretch: the ways that joined its old road (the stretch's side roads, as legacy way ids). Where
+   * the new line crosses one at its level, Auto keeps its access there: the side road joins the new road in a
+   * junction (an access for a track or service road), as it joined the old one, rather than being cut. */
+  sideWays?: readonly number[];
   /** Drag preview of a long route (core/preview-window.ts): evaluate only the stations within
    * [s0, s1] of the route's own chainage as if they were the whole route, with the grade continuing
    * `grades` at its ends (endpointElevations give the heights). Never used for a scored result. */
@@ -2301,7 +2305,8 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   })) : [];
   if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
   const resolve = () => resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
-    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor);
+    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor,
+    opts.sideWays?.length ? (c: CrossingResult) => c.roadId !== undefined && opts.sideWays!.includes(c.roadId) ? sideJunctionCost(c.cls, cat.minor) : undefined : undefined);
   let crossingIssues = resolve();
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
   // other roads' works it is kept clear of).

@@ -107,10 +107,16 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
     if (options.holds?.length) releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
   }
+  // A rebuilt stretch's side roads (its branch connections): where the new line crosses one, it joins the new road
+  const sideWays = route.source ? project.connections.flatMap(c => {
+    if (!c.id.includes(':branch:') || !c.ports.some(p => p.kind === 'route' && p.routeId === route.id)) return [];
+    const port = c.ports.find(p => p.kind === 'source'), way = port?.kind === 'source' ? options.sourceWays?.get(port.location.sourceId) : undefined;
+    return way === undefined ? [] : [way];
+  }) : [];
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
-  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
+  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(sideWays.length ? { sideWays } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
   if (ties.length && roads && !options.preview) {

@@ -253,6 +253,15 @@ export function minorCrossroads(ours: 'local' | 'track' | undefined, cls: string
   if (!ours || !theirs) return undefined;
   return theirs === ours ? MINOR_CROSSROADS[ours] : MINOR_CROSSROADS.mixed;
 }
+/** Junction of a side road onto the rebuilt road: an access for tracks and service roads (research/13),
+ * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). On a
+ * rebuilt local road or track (`minor`) a minor side road's junction is a crossroads of two minor roads
+ * (research/43-minor-crossroads.md). */
+export function sideJunctionCost(cls: string, minor?: 'local' | 'track'): number {
+  return minorCrossroads(minor, cls)
+    ?? (cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost);
+}
+
 const LOCAL_ROAD = {
   roadPerKm: [24_133_000, 32_930_000] as [number, number],
   roadCodes: ['A.1.M.7,5.NER', 'A.1.M.11,5.NIR'] as [string, string],

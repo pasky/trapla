@@ -287,7 +287,11 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   junctionSpacing: number = CROSSING_RULES.junctionSpacing,
   /** Our road is a local road or a track (its category's `minor`): where it meets another minor road at the
    * same level, Auto builds a crossroads (minorCrossroads), as for class I–III roads. */
-  minor?: 'local' | 'track'): CrossingIssue[] {
+  minor?: 'local' | 'track',
+  /** A rebuilt stretch's side road (EvalOptions.sideWays): what its junction costs where the new line crosses it
+   * at its level (undefined: not one). Its access is kept: it joins the new road there as it joined the old one
+   * (an existing access, not a new junction: no spacing). */
+  sideAccess?: (c: CrossingResult) => number | undefined): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
   /** what a junction with the crossed way costs; undefined: Auto does not meet it at a junction */
   const junctionCost = (c: CrossingResult) => minorCrossroads(minor, c.cls) ?? (ROAD_CLASSES[c.cls].junction ? JUNCTION : undefined);
@@ -398,6 +402,12 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       c.type = 'overbridge'; Object.assign(c, separated(c));
     } else continue;
     if (!row.noAtGrade) anchors.push(c);
+  }
+  for (const c of priority) {
+    const access = gradeSeparated ? undefined : sideAccess?.(c);
+    if (access === undefined || c.requestedType || c.type !== 'atGrade' || c.h <= -CROSSING_RULES.underDepth || c.h >= CROSSING_RULES.overHeight) continue;
+    c.type = 'junction'; c.cost = access; anchors.push(c);
+    if (ROAD_CLASSES[c.cls].junction) junctions.push(c.s);
   }
   for (const c of priority) {
     const cost = junctionCost(c);

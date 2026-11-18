@@ -148,6 +148,11 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a mapped road once dra
     expect(curve(r)).toMatchObject({ auto: true });
     const built = r.routes['route:r1'].legacy!;
     expect(built.violations.filter(v => ['radius', 'transition', 'compound', 'arcShort'].includes(v.kind))).toEqual([]);
+    // the field track that joined the old road at the corner is crossed by the new line: it joins the new road
+    // there, as it joined the old one (an access), rather than being cut with nowhere to go (it covered 16 m of it)
+    const track = built.crossings.find(c => c.roadId === ctx.sourceWays.get('osm:way:1550240776'))!;
+    expect([track.type, track.cost]).toEqual(['junction', 500_000]);
+    expect(built.valid).toBe(true);
     // other roads see it where it is built (its plan line in their networks: project-roadnet.ts planLine; the
     // old corner's R 104 m there was 3.9 m off)
     const { planLine } = await import('../src/core/project-roadnet');

@@ -3,7 +3,8 @@
 // old stretch, project-road.ts); here: removing the old pavement where the new road leaves it, and
 // keeping every side road that joined the old stretch connected (never dropped).
 import type { Violation } from './checks';
-import { ACCESS, ENDPOINT_JUNCTIONS, JUNCTION, minorCrossroads, ROAD_CLASSES } from './data/urban';
+import { ROAD_CLASSES, sideJunctionCost } from './data/urban';
+export { sideJunctionCost };
 import { CATEGORIES, type CategoryId } from './data/categories';
 import type { Result } from './evaluate';
 import type { ConnectionDesign, RouteDesign } from './project';
@@ -53,15 +54,6 @@ const nearest = (r: Result, x: number, y: number) => {
   for (let k = 0; k < r.n; k++) { const d = Math.hypot(r.x[k] - x, r.y[k] - y); if (d < best) { best = d; i = k; } }
   return { i, d: best };
 };
-/** Junction of a side road onto the rebuilt road: an access for tracks and service roads (research/13),
- * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). On a
- * rebuilt local road or track (`minor`) a minor side road's junction is a crossroads of two minor roads
- * (research/43-minor-crossroads.md). */
-export function sideJunctionCost(cls: string, minor?: 'local' | 'track'): number {
-  return minorCrossroads(minor, cls)
-    ?? (cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost);
-}
-
 /** `base` is the network WITH the old stretch (the cut network has lost it); `way` the old stretch's
  * legacy way; `branchWays` the legacy way of every side road at the stretch's branch connections. */
 export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, way: number,
