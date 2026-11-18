@@ -23,7 +23,7 @@ checks `dist/` itself: relative URLs only, every asset of each page present, not
 (`/@fs`, `/@vite`, `localhost`), every ready pack in under its content hash with all its files, no file over
 25 MiB, the whole under 1 GB. Any browser script runs on a build the same way: `DIST=dist node scripts/smoke.mjs`.
 
-What is in `dist/` (2026-11-18, all 11 packs): 176 MB in 154 files, the largest file 13.5 MB
+What is in `dist/` (2026-11-18, all 11 packs): 176 MB in 145 files, the largest file 13.5 MB
 (`d3-full`'s heights).
 
 | | |
@@ -68,19 +68,19 @@ main thread 4× slower (the evaluation workers are not throttled: Chromium throt
 from navigation, the median of 2–3 runs. "map": the mission opened by its link shows its map; "playable": its first
 evaluation has settled.
 
-| build | start screen usable | Jílové → Hostěradice (3.9 MB): map / playable | Trutnov → Polish border (17 MB): map / playable |
-|---|---|---|---|
-| before (main bd42ffe, served at `/`) | 0.62 s | 2.98 s / 3.83 s | 9.7 s / 13.2 s |
-| now | 0.36 s | 2.87 s / 3.90 s | 9.6 s / 12.4 s |
+| build | start screen usable | Jílové → Hostěradice (3.9 MB) by its link: map / playable | the same from *Start here* after reading the start screen for 3 s: map / playable, after the click | Trutnov → Polish border (17 MB) by its link: map / playable |
+|---|---|---|---|---|
+| before (main bd42ffe, served at `/`) | 0.59 s | 2.91 s / 3.77 s | ≈ 2.9 s / 3.8 s (the download starts at the click) | 9.9 s / 12.8 s |
+| now | 0.29 s | 2.95 s / 3.90 s | 1.28 s / 2.12 s | 9.8 s / 12.9 s |
 
-The loads are bound by the download (3.9 MB take 1.6 s at 20 Mbit/s, 17 MB 6.8 s) and then ≈ 1 s (3.9 MB) to
-≈ 3 s (17 MB) of 4×-throttled main-thread work: unpacking and decoding the pack, then building the 3D terrain. What
-changed for a visitor: the start screen comes up sooner (its code is split from the game's); from the start screen,
-the *Start here* mission's map is downloaded while the visitor reads it (only on a first visit, stopped when another
-mission is picked) and any mission's from when the pointer reaches its Start button; with a 3 s read, *Start here*
-shows its map ≈ 2.5 s after the click instead of ≈ 3 s (host loaded, numbers noisy). The loading card shows what
-loads and how much of it ("1.3 of 3.9 MB"), then "Drawing the terrain…"; the map is drawn and usable before its first
-price ("Working out the cost…" over the map until then).
+(2026-11-18, host load ≈ 7–16.) A load by link is bound by the download (3.9 MB take 1.6 s at 20 Mbit/s, 17 MB
+6.8 s) and then ≈ 1 s (3.9 MB) to ≈ 3 s (17 MB) of 4×-throttled main-thread work: unpacking and decoding the pack,
+then building the 3D terrain; the first price follows ≈ 1–3 s later from the worker. What changed for a visitor: the
+start screen comes up in half the time (its code is split from the game's, which loads behind it); on a first visit
+the *Start here* mission's map downloads while the visitor reads the start screen (stopped if another mission is
+picked), and any mission's from when the pointer reaches its Start button (at most one fetched ahead). The loading
+card says what loads and how much ("1.3 of 3.9 MB"), then "Drawing the terrain…"; the map is drawn and can be looked
+around before its first price ("Working out the cost…" over the map until then).
 
 ## Host 1: a VPS with Caddy or nginx, copied with rsync
 
@@ -94,7 +94,7 @@ price ("Working out the cost…" over the map until then).
 
 ## Host 2: Cloudflare Pages (or GitHub Pages)
 
-**Cloudflare Pages** fits as is: at most 25 MiB per file (the largest is 13.5 MB) and 20,000 files per site (154);
+**Cloudflare Pages** fits as is: at most 25 MiB per file (the largest is 13.5 MB) and 20,000 files per site (145);
 no total size listed ([limits](https://developers.cloudflare.com/pages/platform/limits/)). Upload
 `dist/` directly, without git (the packs are not in the repository):
 
