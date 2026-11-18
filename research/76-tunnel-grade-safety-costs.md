@@ -45,7 +45,12 @@ sources opened unless said otherwise.
 - **No cost.** A tunnel over 500 m steeper than 3 % gets a note on its card ("needs extra safety measures after a
   risk study"), as before.
 - **No search weight.** Auto's grade search no longer prefers 3 %: the 1 M CZK/m per 0.1 % weight is removed.
-- **A 5 % hard limit.** Auto's search takes no line wholly in a tunnel steeper than 5 % between two knots, as in model
-  45. The player's tunnel over 500 m steeper than 5 % is a problem with basis law.
+- **A 5 % hard limit** in Auto's search:
+  - It takes no line steeper than 5 % between two knots wholly in a tunnel, as in model 45.
+  - Where its line still has a tunnel over 500 m that is steeper anywhere (at its ends), it searches again with the
+    limit on every interval in a tunnel.
+  - It is a rule of the search, not a check on the finished tunnel: the structure choice can still tunnel a long cut on
+    a steep grade (PLAN.md).
+  - The player's tunnel over 500 m steeper than 5 % is a problem with basis law.
 
 Not reached: the RABT 2006/2016 and RVS 09.02.31 texts (paid), ČSN 73 7507 (paid), and a current jet-fan price.

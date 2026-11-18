@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ProtectedAreas } from '../src/core/protected-areas';
 import { PROTECTED_ORDER, protectedRule, type ProtectedData } from '../src/core/data/protected';
-import { natureNote, natureProblems, type NatureHit, type NatureWork } from '../src/core/nature-works';
+import { natureHits, natureNote, natureProblems, type NatureHit, type NatureWork } from '../src/core/nature-works';
 import { Terrain } from '../src/core/terrain';
 import { footprintConflicts, type FootprintRoute } from '../src/core/footprint';
 import { KIND, type Run } from '../src/core/structures';
@@ -89,5 +89,14 @@ describe('our works in a protected area', () => {
     expect(footprintConflicts(route(KIND.bridge, [clear]), terrain, undefined, [], []).violations).toEqual([]);
     const pier = { ...clear, pierStations: [300, 440, 600] };
     expect(footprintConflicts(route(KIND.bridge, [pier]), terrain, undefined, [], []).violations.map(x => x.title)).toEqual(['A bridge pier stands in a nature monument']);
+  });
+  it('a pier in a Natura 2000 site is no problem, only a note that it needs a Natura assessment', () => {
+    const river = new Terrain({ nx: 260, ny: 100, cell: 5, base: 0, scale: 0.01, q: new Uint16Array(26000).fill(10000), lc: new Uint8Array(26000),
+      protectedAreas: { version: 1, source: 't', sites: [{ kind: 'EVL', name: 'River', rings: [square(500, 200, 580, 300)] }] } });
+    const r = route(KIND.bridge, [{ kind: KIND.bridge, i0: 0, i1: 100, s0: 0, s1: 1000, length: 1000, pierStations: [300, 440, 600] }]);
+    expect(footprintConflicts(r, river, undefined, [], []).violations).toEqual([]);
+    const hits = natureHits(r, river, true);
+    expect(hits.map(h => [h.level, h.work])).toEqual([['info', 'pier']]);
+    expect(natureNote(river, hits, true)).toBe('Our bridge pier stands in River (Natura 2000 site). Works here need a Natura assessment.');
   });
 });

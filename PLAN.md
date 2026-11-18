@@ -1097,6 +1097,13 @@ research/73 §7 (D35 again). Shots 410–414.
   of its line in a tunnel. Where the normal band still holds such a line, the wide band's line is taken if it has none.
   Shorter tunnels keep the road's own limit: the Act covers tunnels over 500 m. The model-45 extra passes for the 3 %
   weight are gone.
+  - This is a rule of the search, not a check on the finished road. The structure choice can still turn a long cut
+    9–30 m deep that the search meant to leave open into a tunnel. The QA's new road across the Královec railway gets a
+    760 m tunnel at 6.6 % that way (model 45: 6.1 %). Its card says the tunnel is allowed only where the ground leaves
+    no other way, and it is not a problem.
+- **A boundary corridor's shared solve is keyed by its boundary.** Two boundaries whose 5 km corridors cover the same
+  stretch (a short route, long knots) were handed the first one's heights. No saved design or starter changed
+  (exact.ts); tests/regressions.test.ts.
 - **A boundary's corridor held by its band.** The 5 km corridor that fixes a block boundary's heights searches only
   15 m round the ground. Where its heights at the boundary lie at that band's edge, the wide band's line is taken if it
   is cheaper. On d3-full the corridor pinned km 11.67 16 m low, which put an 800 m tunnel in at km 9.67 (+1.66 bn
@@ -1120,7 +1127,8 @@ research/73 §7 (D35 again). Shots 410–414.
   - D3: motorway 15,198 → 14,396 (the Sázava viaduct's piers in the Natura 2000 river again); road 3,882 → 3,904 (a
     near-tie: a 50 m bridge at km 1.40 goes); d3-0302 6,776 → 6,770; d3-0304 10,073 → 10,089; d3-full 36,241 → 36,144.
   - The rest unchanged, all VALID.
-  - Outcome audit (24 random D11 lines, against model 46): VALID 14 → 15 (random-9: a span too low at km 6.30 gone),
+  - Outcome audit (the straight line, 5 saved designs and 24 random D11 lines, against model 46): VALID 14 → 15 of 30
+    (random 8 → 9 of 24; random-9: a span too low at km 6.30 gone),
     flags 63 → 63, 11 lines −431 … +386 M. random-13 now takes a 500 m tunnel at km 4.52 that the 3 % weight kept off:
     +393 M against holding its old line. Most of that is bought fill (+230 M route-wide): the earth balance of the
     whole route that the search's blocks do not see, the near-tie the weight hid.

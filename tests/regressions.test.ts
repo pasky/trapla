@@ -122,3 +122,19 @@ describe('review regressions', () => {
     expect(runs[0].length).toBeGreaterThanOrEqual(30);
   });
 });
+
+describe('grade search shared solves', () => {
+  it('two block boundaries whose corridors cover the same stretch each keep their own heights', () => {
+    // 6.8 km, boundaries at 2.4 and 4.5 km, knots 500 m apart: both corridors (5 km either side) are the whole route,
+    // so a memo keyed by the stretch alone handed the second boundary the first one's heights (cost 2.6 → 31 M)
+    const n = 681, s = Float64Array.from({ length: n }, (_, i) => i * 10);
+    const g = Float64Array.from(s, x => 300 + 40 * Math.sin(x / 900) + 25 * Math.sin(x / 270));
+    const costFor = (v: number) => (h: number) => 2000 + (h < 0 ? 150 * h * h : 300 * h * h) + v * h;
+    const balance = { costFor, balanceOf: () => 0, start: 200, lo: -200, hi: 500, tolerance: 1 };
+    const o = { maxGradient: 0.06, minCrest: 6000, minSag: 3400, costPerM: costFor(200), blocks: [2400, 4500], balance, knotSpacing: 500 };
+    const fresh = autoProfile(s, g, o), shared = autoProfile(s, g, { ...o, memo: new Map() });
+    expect(fresh.feasible).toBe(true);
+    expect(shared.vpis).toEqual(fresh.vpis);
+    expect(shared.cost).toBe(fresh.cost);
+  });
+});

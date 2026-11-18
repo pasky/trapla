@@ -198,10 +198,11 @@ The same comparison (`scripts/_d35real.ts`, stage-1 motorway; the By-hand lines 
 | Portal out of the forest, 3.9 % in the tunnel | 3.60–7.24 | 410 m | 21,040 M | +7.3 % |
 
 **How the real layout ranks.**
-- Auto still chooses the real kind of layout: a long mined tunnel under Pod skálou that exits below the protected forest
-  (east portal km 7.07 in both).
-- Without the 3 % preference its west portal is higher and 280 m further east (559 m at km 4.15, real 514 m at km 3.3),
-  so the tunnel is 1 km shorter than the real one and steeper (3.8 %, needing a risk analysis).
+- Auto still chooses the real kind of layout: a long mined tunnel under Pod skálou that exits below the protected forest.
+  Its east portal (km 7.07, as with the 3 % weight) is 180 m short of the real one (km 7.25).
+- Without the 3 % preference Auto's west portal moves 280 m east (km 3.87 → 4.15) and up (559 m). The real west portal is
+  at km 3.3 and 514 m, 850 m further west. So Auto's tunnel is 1 km shorter than the real one and steeper (3.8 %, which
+  needs a risk analysis).
 - The real-portal line is 5.4 % dearer by our prices. Its tunnel costs 2.9 bn more before surcharge (11,380 against
   8,451 M), which outweighs its cheaper approaches (earthworks 1,297 against 2,768 M).
 - The real designers chose a gentle grade. Our model has no price for that choice: the 3–5 % safety measures are

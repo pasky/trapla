@@ -771,7 +771,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (ka === 0) fixed.set(0, zA);
       if (kb === nK) fixed.set(nK, zB);
       const r: Range = { ka, kb, fixed };
-      const key = memo && rangeKey('w', r, [bal!.start]);
+      const key = memo && rangeKey('w', r, [bal!.start, K]);
       let pins = key ? memo!.get(key) as number[] | null | undefined : undefined;
       if (pins === undefined) {
         // a narrower band first (it only fixes the corridor), the full passes where that finds nothing
@@ -875,19 +875,21 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     if (!t || !steepLongTunnel(t, range)) return t ?? plain;
     return solveIn(table, gmax, u, padM, around, range, step, true, undefined, true) ?? t;
   }
-  /** Whether a line has a tunnel (deeper than its portal at the cost samples) longer than `tunnelHardFrom` that is
-   * steeper than `tunnelHardGrade` between two knots anywhere in it. */
+  /** Whether a line has a tunnel (deeper than its portal at the cost samples along the road, each standing for its
+   * ≈ DP_STATION_STEP) longer than `tunnelHardFrom` that is steeper than `tunnelHardGrade` between two knots anywhere
+   * in it. */
   function steepLongTunnel(x: Solved, r: Range): boolean {
     const cap = opt.tunnelHardGrade, portal = opt.portalDepth, from = opt.tunnelHardFrom ?? 0;
     if (cap === undefined || portal === undefined) return false;
     let start = NaN, steep = false;
     for (let k = r.ka; k < r.kb; k++) {
       const slope = (x.z[k + 1] - x.z[k]) / Dk(k);
-      for (let q = costStart[k]; q < costStart[k + 1]; q++) {
+      // (a stream's point samples come first in an interval, at the bed: not the ground along the road)
+      for (let q = costStart[k] + (anchored ? pointsIn[k].length : 0); q < costStart[k + 1]; q++) {
         if (x.z[k] + slope * (cS[q] - knotS[k]) - cG[q] <= -portal) {
           if (Number.isNaN(start)) { start = cS[q]; steep = false; }
           if (Math.abs(slope) > cap + 1e-9) steep = true;
-          if (steep && cS[q] - start > from) return true;
+          if (steep && cS[q] - start + DP_STATION_STEP > from) return true;
         } else start = NaN;
       }
     }
@@ -1113,7 +1115,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           }
           seg[d2] = c;
           // no line wholly in a tunnel steeper than the law allows
-          if (tunnelMode) segIn[d2] = tunnelGrade === undefined || !deepIn[d2] || (openIn[d2] && !strict) || Math.abs(slope) <= tunnelGrade + 1e-9 ? ci : Infinity;
+          // (the line's own slope, with B's off-grid correction)
+          if (tunnelMode) segIn[d2] = tunnelGrade === undefined || !deepIn[d2] || (openIn[d2] && !strict) || Math.abs(slope + cSlope) <= tunnelGrade + 1e-9 ? ci : Infinity;
         }
         // a line may enter or leave a tunnel here where the ground is shallower than a portal
         const free = tunnelMode && gKnot - (zm + cIn) < portalDepth;
