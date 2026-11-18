@@ -13,7 +13,7 @@ import type { ProjectDesign, RouteDesign } from './project';
 import type { CategoryId } from './data/categories';
 import type { CrossingOverride } from './crossings';
 import type { RoadNet } from './roadnet';
-import { plannedKept, type OldPaths } from './project-kept';
+import { lineAsDrawn, plannedKept, type OldPaths } from './project-kept';
 
 export type SourceWays = ReadonlyMap<string, number>;
 /** Map class of a designed road of each legal class (ROAD_CLASSES key). */
@@ -77,29 +77,36 @@ export type ResolvedEnds = { a?: { x: number; y: number }; b?: { x: number; y: n
 /** A rebuilt stretch's old line (where its old road's own curves are kept: PI.mapped), for its plan line. */
 export type OldLineOf = (route: RouteDesign) => OldPaths | undefined;
 /** `old`: a rebuilt stretch's old line; an old road's own curve it no longer lies on is then Auto's, as its
- * kernel builds it (project-kept.ts plannedKept). */
-export function planLine(route: RouteDesign, ends?: ResolvedEnds, step = LINE_STEP, design?: ProjectDesign, old?: OldPaths): number[] {
+ * kernel builds it (project-kept.ts plannedKept). `asDrawn` (with `old`): where the line stays on its old line it
+ * is that line, as it is drawn and kept (project-kept.ts lineAsDrawn): what other roads cross. */
+export function planLine(route: RouteDesign, ends?: ResolvedEnds, step = LINE_STEP, design?: ProjectDesign, old?: OldPaths, asDrawn = false): number[] {
   const corridor = route.kind === 'motorway' ? design?.corridors.find(c => c.children.forward === route.id || c.children.reverse === route.id) : undefined;
-  let al;
+  let al, kept: ReturnType<typeof plannedKept> | undefined;
+  /** its bends as its kernel builds them, and (asDrawn) where it stays on its old line */
+  const plan = (a: { x: number; y: number }, b: { x: number; y: number }, pis: PI[], speed: number, category: CategoryId) => {
+    if (!old || !(asDrawn || pis.some(p => p.mapped))) return pis;
+    const planned = plannedKept(a, b, { pis, speed, category }, old);
+    if (asDrawn) kept = planned;
+    return planned.pis;
+  };
   if (corridor) {
     if (corridor.mode !== 'paired' || corridor.spine.kind !== 'pi' || route.specification.kind !== 'motorway') return [];
     al = buildAlignment(corridor.endpoints.a.position, corridor.endpoints.b.position, corridor.spine.pis, horizontalRules(route.specification.designSpeed, 'D27.5'));
   } else if (route.kind === 'railway' && route.alignment.kind === 'pi' && route.specification.kind === 'railway') {
     const category = route.specification.tracks === 2 ? 'R2' : 'R1', a = route.endpoints.a.position, b = route.endpoints.b.position;
-    al = buildAlignment(a, b, effectivePis(route.alignment.pis, a, b, route.specification.designSpeed, category, old),
+    al = buildAlignment(a, b, plan(a, b, route.alignment.pis, route.specification.designSpeed, category),
       horizontalRules(route.specification.designSpeed, category));
   } else if (route.alignment.kind !== 'pi' || route.specification.kind !== 'road' || route.specification.crossSection === 'existing') return [];
   else {
     const a = ends?.a ?? route.endpoints.a.position, b = ends?.b ?? route.endpoints.b.position, category = route.specification.crossSection;
-    al = buildAlignment(a, b, effectivePis(route.alignment.pis, a, b, route.specification.designSpeed, category, old),
+    al = buildAlignment(a, b, plan(a, b, route.alignment.pis, route.specification.designSpeed, category),
       horizontalRules(route.specification.designSpeed, category));
   }
   const st = station(al, step), xy: number[] = [];
-  for (let i = 0; i < st.n; i++) xy.push(st.x[i], st.y[i]);
+  const drawn = kept && old ? lineAsDrawn(st, kept.kept, kept.st.ds, old) : null;
+  for (let i = 0; i < st.n; i++) xy.push(drawn ? drawn.x[i] : st.x[i], drawn ? drawn.y[i] : st.y[i]);
   return xy;
 }
-const effectivePis = (pis: PI[], a: { x: number; y: number }, b: { x: number; y: number }, speed: number, category: CategoryId, old?: OldPaths) =>
-  old && pis.some(p => p.mapped) ? plannedKept(a, b, { pis, speed, category }, old).pis : pis;
 /** Ends on another designed road, from the plan alone: that road's station sample nearest to the stored end,
  * as the evaluator resolves it on that road's result (`step`: the evaluator's station spacing). For roads
  * whose joined road is not evaluated yet. */
@@ -212,7 +219,7 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
       r.kind === 'motorway' ? design.corridors.find(c => c.children.forward === r.id && c.mode === 'paired') ?? null : null] : r.id)]);
   const at = cache.findIndex(c => c.key === key && c.base === roads);
   if (at >= 0) { const [hit] = cache.splice(at, 1); cache.unshift(hit); return hit.net; }
-  const lines = slots.map((r, k) => drawn[k] ? planLine(r, ends[k], LINE_STEP, design, oldOf?.(r)) : []);
+  const lines = slots.map((r, k) => drawn[k] ? planLine(r, ends[k], LINE_STEP, design, oldOf?.(r), true) : []);
   const net: EditedNetwork = { roads: roads.edited(cuts, slots.map((r, k) => ({ cls: mapClass(design, r)!, xy: lines[k] }))),
     designed: new Map(slots.flatMap((r, k) => drawn[k] ? [[roads.wayCount + k, r.id] as const] : [])),
     lines: new Map(slots.flatMap((r, k) => drawn[k] ? [[r.id, lines[k]] as const] : [])) };

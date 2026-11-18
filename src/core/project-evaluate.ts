@@ -103,10 +103,11 @@ interface KindInput {
   edited(owners: RouteDesign[]): EvalContext;
 }
 type KindEvaluation = CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
-/** A rebuilt stretch's old line, where it keeps an old road's own curves (PI.mapped): what its plan line in other
- * roads' networks yields them to (project-roadnet.ts planLine), as its kernel does. */
+/** A rebuilt stretch's old line, for its plan line in other roads' networks (project-roadnet.ts planLine): an old
+ * road's own curve it no longer lies on yields to Auto's (PI.mapped), and where it stays on the old line it is that
+ * line, kept as it is and drawn there, as its kernel does. */
 const oldLineOf = (ctx: ProjectEvalContext): OldLineOf => r => {
-  if (!r.source || r.alignment.kind !== 'pi' || !r.alignment.pis.some(p => p.mapped)) return undefined;
+  if (!r.source || r.alignment.kind !== 'pi') return undefined;
   if (r.kind === 'railway') {
     const lines = ctx.railPaths ? r.source.intervals.map(i => railInterval(ctx.railPaths!, i.sourceId, i.s0, i.s1)) : [];
     return lines.length && lines.every(l => l) ? lines as { x: number; y: number }[][] : undefined;

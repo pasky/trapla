@@ -77,6 +77,21 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const { alone: bills, expected } = billedOnce(design, r);
     expect(Math.abs(bills - expected)).toBeLessThan(1);
   }, 60_000);
+  // QA P2 re-check P1 #2: III/3012's old corner dragged 22 m, its line still within the tolerance of the old road, so
+  // all of it is kept as it is (0 CZK, drawn on the old road). Our road crossed the dragged line, not the kept road:
+  // its bridge km 2.185–2.424 shrank to 2.205–2.365 (−143 M) for a road that is not built.
+  it('our road crosses a rebuilt stretch where it stays on the old road as that old road', () => {
+    const design = fixture('d11-iii3012-corner-kept'), r = run(design);
+    const alone = run({ ...design, routes: design.routes.filter(q => q.role === 'mission'), connections: [] });
+    const ours = r.routes[design.routes[0].id].legacy!, mission = alone.routes[design.routes[0].id].legacy!;
+    const side = r.routes[design.routes[1].id].legacy!;
+    expect(side.cost.total).toBe(0);
+    const at = (l: typeof ours) => l.crossings.filter(c => c.s > 2200 && c.s < 2500).map(c => [c.type, Math.round(c.x), Math.round(c.y)]);
+    expect(at(ours)).toEqual(at(mission));
+    expect(ours.runs.filter(u => u.kind === 1).map(u => [u.s0, u.s1])).toEqual(mission.runs.filter(u => u.kind === 1).map(u => [u.s0, u.s1]));
+    // (the stretch's ends fade from the old road into its line: 20 k CZK)
+    expect(Math.abs(ours.cost.total - mission.cost.total)).toBeLessThan(0.1e6);
+  }, 60_000);
 });
 
 // D11 straight start, road III/3012 at our km 2.3, its one bend (the old road's own R 104 m corner) dragged
