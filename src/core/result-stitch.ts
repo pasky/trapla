@@ -138,6 +138,10 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
       })
       .replace(/\bkm (\d+(?:\.\d+)?)/g, (_all, x: string) => `km ${(s(Number(x) * 1000) / 1000).toFixed(x.split('.')[1]?.length ?? 0)}`);
     const out: Violation = { ...v, s0: s(v.s0), s1: s(v.s1), title: text(v.title), fix: text(v.fix), ...(v.detail ? { detail: text(v.detail) } : {}) };
+    // (a height pin's stations: the pin, its suggestion, the crossing it would not clear)
+    const pin = (v as Violation & { pin?: { requested: { s: number; z: number }; suggested: { s: number; z: number } | null; clearanceAt?: number } }).pin;
+    if (pin) Object.assign(out, { pin: { ...pin, requested: { ...pin.requested, s: s(pin.requested.s) },
+      suggested: pin.suggested && { ...pin.suggested, s: s(pin.suggested.s) }, ...(pin.clearanceAt !== undefined ? { clearanceAt: s(pin.clearanceAt) } : {}) } });
     if (v.pi !== undefined) { const i = bend(v.pi); if (i === null) delete out.pi; else out.pi = i; }
     if (v.pis) out.pis = v.pis.flatMap(i => { const j = bend(i); return j === null ? [] : [j]; });
     if (v.horizontal) out.horizontal = { ...v.horizontal, manualRadii: v.horizontal.manualRadii.flatMap(m => { const j = bend(m.pi); return j === null ? [] : [{ ...m, pi: j }]; }) };

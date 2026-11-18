@@ -1210,6 +1210,8 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
 /** A stream our cutting runs through: lower our line `down` m to tunnel under it, or raise it `up` m for a culvert,
  * the nearer first. */
 function cutStreamFix(down: number, up: number, opening: string): string {
+  // (deep enough already: what is missing is the tunnel itself)
+  if (down >= 0) return 'Make it a tunnel here, with the stream over it';
   const lower = `lower our road here by ${(-down).toFixed(1)} m to tunnel under the stream`, raise = `raise it by ${up.toFixed(1)} m for a ${opening} culvert`;
   return -down <= up ? `${lower[0].toUpperCase()}${lower.slice(1)}, or ${raise}` : `Raise our road here by ${up.toFixed(1)} m for a ${opening} culvert, or lower it by ${(-down).toFixed(1)} m to tunnel under the stream`;
 }
@@ -1262,7 +1264,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     }
     // what a pin may not make the line miss: the crossings' own clearances and the player's structures (not what a
     // retry asks for: floors, narrowings, roads to clear; a crossing hold, an old road's band)
-    const pinBounds = d.gradePins?.length ? { minH: minH.slice(), maxH: maxH.slice(), eitherH: { above: waterMin.slice(), below: waterBelow.slice() } } : undefined;
+    const pinBounds = d.gradePins?.length ? { minH: minH.slice(), maxH: maxH.slice(), eitherH: { above: waterMin.slice(), below: waterBelow.slice() },
+      ...(blocks ? { clearanceS: clearanceS.slice() } : {}) } : undefined;
     for (const f of opts.choiceFloors ?? []) {
       const i0 = Math.min(n - 2, Math.floor(f.s / ds));
       for (const i of [i0, i0 + 1]) {
@@ -1315,7 +1318,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
           const j = freeStation(x, taken);
           if (j < 0) continue;
           minH[j] = z - ground[j]; clearanceS[j] = x; slots.push(j);
-          if (pinBounds) pinBounds.minH[j] = minH[j];
+          if (pinBounds) { pinBounds.minH[j] = minH[j]; if (pinBounds.clearanceS) pinBounds.clearanceS[j] = x; }
         }
         for (const c of r.items) runSlots.set(c, slots);
       }
@@ -1391,6 +1394,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       const cut = <T extends ArrayLike<number>>(a: T | undefined) => a && (a as unknown as Float64Array).slice(j0, j1 + 1) as unknown as T;
       const subS = Float64Array.from(st.s.subarray(j0, j1 + 1), v => v - sa), subG = ground.slice(j0, j1 + 1);
       solveAuto = (o) => {
+        const inside = (o.pins ?? []).flatMap((p, k) => p.s > sa && p.s < sb ? [k] : []);
         const r = autoProfile(subS, subG, { ...o, endpointElevations: { a: za, b: zb }, startGrade: za1 - za, endGrade: zb - zb0,
           ...(fp.slack ? { startGradeSlack: fp.slack[0], endGradeSlack: fp.slack[1] } : {}),
           minH: cut(o.minH), maxH: cut(o.maxH), structureKind: cut(o.structureKind), costClass: cut(o.costClass),
@@ -1398,9 +1402,13 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
           ...(o.eitherH ? { eitherH: { above: cut(o.eitherH.above)!, below: cut(o.eitherH.below)! } } : {}),
           ...(o.pinBounds ? { pinBounds: { minH: cut(o.pinBounds.minH), maxH: cut(o.pinBounds.maxH),
             ...(o.pinBounds.eitherH ? { eitherH: { above: cut(o.pinBounds.eitherH.above)!, below: cut(o.pinBounds.eitherH.below)! } } : {}) } } : {}),
-          pins: (o.pins ?? []).filter(p => p.s > sa && p.s < sb).map(p => ({ ...p, s: p.s - sa })),
+          pins: inside.map(k => ({ ...o.pins![k], s: o.pins![k].s - sa })),
           ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
-        return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(v => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa })) };
+        // (each pin as the route has it: its index among all pins, its stations on the route's chainage)
+        return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(v => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa,
+          pin: { ...v.pin, index: inside[v.pin.index], requested: { ...o.pins![inside[v.pin.index]] },
+            suggested: v.pin.suggested && { ...v.pin.suggested, s: v.pin.suggested.s + sa },
+            ...(v.pin.clearanceAt !== undefined ? { clearanceAt: v.pin.clearanceAt + sa } : {}) } })) };
       };
       constrainedSolve = solveAuto;
       const outside = Array.from(st.s).filter(x => x < sa - 1e-6 || x > sb + 1e-6), fixedZ = elevations(fixedProf, outside);

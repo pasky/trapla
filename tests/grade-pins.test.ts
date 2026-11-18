@@ -173,3 +173,34 @@ describe('pinned Auto DP heights', () => {
     expect(calls).toBeLessThanOrEqual(4);
   });
 });
+
+// A pin met only by missing a crossing's clearance Auto's own line keeps (cost model 51): out of reach, the line
+// Auto's own. Judged on the finished (rounded) line; only where the search must keep it (a retry asked at any price,
+// or a suggestion's strict check); the nearest of several pins is not blamed when another is the one in the way.
+describe('a pin against a crossing', () => {
+  // flat ground, a crossing over km 0.80–1.20 our line must clear 6 m above
+  const floor = Float64Array.from(s, (x) => x >= 800 && x <= 1200 ? 6 : NaN);
+  const at = (penalty: number) => Float64Array.from(s, () => penalty);
+  const ask = { minH: floor, clearancePenaltyAt: at(1e11) };
+  it('leaves out a pin that holds the line under it, only where the search must keep it', () => {
+    const own = autoProfile(s, g, { ...opt, ...ask });
+    const ownP = buildProfile(own.vpis, opt.minCrest, opt.minSag);
+    for (let x = 800; x <= 1200; x += 10) expect(elevationAt(ownP, x)).toBeGreaterThanOrEqual(6 - 0.05);
+    const pinned = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 900, z: 0 }] });
+    expect(pinned.vpis).toEqual(own.vpis);
+    expect(pinned.pinViolations!.map(v => v.pin.reason)).toEqual(['clearance']);
+    expect(pinned.lineOk).toBe(true);
+    // a first pass (the ordinary penalty): the pin holds, the retries may still meet the crossing
+    expect(autoProfile(s, g, { ...opt, minH: floor, clearancePenaltyAt: at(1e8), pins: [{ s: 900, z: 0 }] }).pinViolations).toEqual([]);
+    // a suggestion's check: strict
+    expect(autoProfile(s, g, { ...opt, minH: floor, pinStrict: true, pins: [{ s: 900, z: 0 }] }).pinViolations![0].pin.reason).toBe('clearance');
+  });
+  it('keeps a pin out of the way although nearer the crossing, and a saved pin off the route costs nothing', () => {
+    // the pin at km 1.00 holds the line down through the whole crossing; the misses at its start lie nearer the pin at
+    // km 0.70, which a line clearing the crossing meets
+    const r = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 700, z: 3 }, { s: 1000, z: 0 }, { s: 3000, z: 0 }] });
+    expect(r.pinViolations!.map(v => v.pin.index)).toEqual([1]);
+    const lone = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 3000, z: 0 }] });
+    expect(lone.vpis).toEqual(autoProfile(s, g, { ...opt, ...ask }).vpis);
+  });
+});

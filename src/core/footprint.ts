@@ -517,7 +517,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     else block(conflict, h.structure ? `A bridge ${h.structure === 'pier' ? 'pier' : 'support'} stands in a stream` : 'Our earthworks block a stream',
       h.structure ? `Move the route at km ${kmText(conflict.s0)} a little so the support misses the stream, or make the bridge longer here`
         // (in a cutting no bridge can carry our road over it: under it in a tunnel, or over it on a culvert)
-        : minCover < 0 ? moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream', 'lower our road here to tunnel under the stream, or raise it over the stream for a culvert')
+        : minCover < 0 ? moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream', size.type === 'bridge' ? 'lower our road here to tunnel under the stream'
+          : 'lower our road here to tunnel under the stream, or raise it over the stream for a culvert')
           : moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream'),
       'Game rule: a stream under our earthworks needs a culvert with enough earth over it and open ends; the game does not move streams it cannot reroute safely',
       h.structure ? 'engine' : 'game');

@@ -466,7 +466,9 @@ export class Inspector {
     else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
     // (not where our road already is on a bridge: a pier or a bridge end on something asks for a longer bridge)
     const onBridge = !!this.r && this.r.kind[stationIndex(this.r, v.s0)] === KIND.bridge;
-    if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
+    // (nor in our cutting: no bridge carries a line below the ground)
+    const inCut = !!this.r && (() => { const i = stationIndex(this.r!, v.s0); return this.r!.kind[i] === KIND.earth && this.r!.grade[i] < this.r!.ground[i]; })();
+    if (v.kind === 'footprint' && !t && !onBridge && !inCut) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     // a pin Auto cannot reach: the height it suggests (one Auto meets, core/grade-pins.ts), then unpin
     const pinAt = (v as Violation & { pin?: { requested: { s: number }; suggested: { z: number } | null } }).pin;
