@@ -116,6 +116,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   bridge clearances the search never saw; three fixes tried, none merged, the last judged by the whole bill: +45 % D11
   evaluate time and edit-locality failures; PLAN.md "Natura 2000 a note …"). Two roads of a project whose
   earthworks come within the working strip: the later one keeps clear behind a wall (project-ledger.ts, evaluateProject).
+- Mapped road bridges and tunnels (each pack's `structures.json`, `pipeline/build_structures.py`; copy it with the pack,
+  and run the script on a pack built without it) are crossings at their own level: one with room over / under our road is
+  kept (billed 0), else engineered (cost model 54, PLAN.md "Mapped bridges and tunnels are crossings";
+  `scripts/mapped-structures-audit.ts`). Railway tunnels are still in the railway raster.
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
   hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /

@@ -1289,6 +1289,55 @@ The two "Open:" items of the sections above, shots 510–513 (`scripts/render-wo
   - The strip's width is not differentiated by the size of the works (a track's regrade and a motorway's embankment
     keep the same 3 m); no source tells them apart (research/85).
 
+### Mapped bridges and tunnels are crossings (owner report, cost model 54, 2026-11-18)
+
+Owner, D11 along the official line, grade by hand: a local road crosses ours at km 6.40, no crossing can be selected, its
+card says "Bridges and tunnels of existing roads cannot be changed yet", and it is drawn flat across our cut, nothing
+built or billed. Cause: `build_pack.py road_network` leaves every way tagged bridge / tunnel / covered out of the crossing
+network ("crossing them at ground level is free"). That local road (OSM 1500239979, `highway=unclassified`, `bridge=yes`,
+`layer=1`, 60 m) is the real overbridge over the planned D11; the net had the road either side of it and a 60 m gap, so
+our road crossed nothing there. Across the packs 1,700 such ways (bridges over streams, railways and roads mostly).
+- **Data.** `pipeline/build_structures.py` writes each pack's `structures.json` from its own transport graph (the road
+  sources without a net way: bridge, tunnel, covered), in the net's format (simplified 1 m, metres, so they meet the
+  ways either side). Additive like protected.json: `overlays.json` and its object-data identity are untouched; the game
+  adds them as ways after the net's (`RoadNetData.structures`, `RoadNet.structure(way)`), so saved choices keep their
+  ways; designed roads are numbered after them (`registerNet` takes the whole count). An older pack without the file
+  plays as before.
+- **Level.** OSM gives no height: a bridge's deck (a tunnel's road) runs straight between the ground at its two ends,
+  where it meets the road either side (`mapped-structures.ts`; the DMR 5G under a bridge is the valley floor or the
+  cutting it spans). Its crossing's `h` is measured from it (card: "our road 11 m below its bridge today"), and the
+  crossing geometry reads the crossed road at that level along it (`structureLevels`; the same function, bit for bit,
+  where no mapped structure is crossed).
+- **Kept or engineered.** A bridge our road passes under with the depth a new bridge over us needs (`underDepth`, 6 m)
+  whose ends reach the edges of our earthworks (bank-top abutments, as Auto's own) is kept: "Existing bridge kept",
+  nothing billed, its deck drawn at its level end to end (no ramps). A tunnel 6 m or more under our road (`overHeight`,
+  as our bridge over a road) likewise ("Existing tunnel kept"; type `underpass`, `kept`). Otherwise it is a crossing like
+  any other (bridge over us rebuilt higher on ramps, box, reroute, closure, our bridge over it) and billed; the card adds
+  "Its old bridge here is too low or too short for our road and is replaced." A player's "Its bridge over us" on a bridge
+  that already clears us is the bridge kept.
+- **Elsewhere.** A mapped bridge 4.8 m (`OVERBRIDGE_CLEARANCE`, deck depth unknown) or more above our road, or a tunnel
+  6 m under it, is not buried by our earthworks (footprint.ts), e.g. road 101's bridge right at the whole D3's start; a
+  road moved aside passes under or over one (road-realignment.ts). Roads run on over their bridges: closures (way-pieces),
+  reroute targets and a crossed road's path see them connected.
+- **Selecting.** The crossing is a crossing: its marker and its drawn works select its card before the mapped road's (a
+  click on the kept deck selects it, screenshot 543). The mapped road's own card away from the crossing still says a
+  bridge cannot be rebuilt yet (road-edit.ts), which no longer hides anything.
+- **Audit** `scripts/mapped-structures-audit.ts` (every pack: straight, starter, a line along the official one, N random):
+  each mapped bridge or tunnel our line meets must be a crossing (or a footprint item), a kept one billed 0 and drawn, none
+  left at grade. With 8 random designs per pack: 11 hits in all, no flags. D11 along the official line: km 6.30 the
+  local road's bridge, Auto's grade 3.5 m under its deck: rebuilt on ramps (15.6 M); the grade by hand 11 m under it:
+  kept (`tests/fixtures/d11-official-line*-design.json`, tests/mapped-structures.test.ts). Nová Paka starter along the
+  real bypass: the street's 51 m bridge at km 3.24 kept, two local roads' bridges at km 0.89 / 1.57 rebuilt (Auto's line
+  2–3 m under their decks), +24.9 M. Shots 540–545 (`scripts/mapped-bridge-shots.mjs`).
+- **Bills.** D11 frozen: see COST_MODEL_VERSION 54 in prices.ts.
+- **Open:**
+  - The grade search does not aim for a mapped bridge's clearance (keeping it is not in its objective): Nová Paka's two
+    bridges are rebuilt where lowering the line 3 m might have been cheaper.
+  - Mapped railway tunnels are still drawn into the railway raster (build_pack.py: every `railway=rail`), so our road
+    over one is treated as crossing the railway at the ground (the D3 official line meets the 130 m tunnel OSM 30231638);
+    fixing it needs the packs rebuilt.
+  - A road moved aside ignores a mapped bridge's level (passes under or over it, unchecked).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
