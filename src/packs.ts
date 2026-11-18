@@ -30,8 +30,9 @@ export function prefetchPack(id: string): { url: string; bytes: number }[] {
   });
 }
 
-/** "5 MB" (one decimal under 10 MB) */
+/** "5 MB" (one decimal under 10 MB; under 0.1 MB in kB) */
 export function megabytes(bytes: number): string {
+  if (bytes < 1e5) return `${Math.max(1, Math.round(bytes / 1e3))} kB`;
   const mb = bytes / 1e6;
   return `${mb < 10 ? mb.toFixed(1).replace(/\.0$/, '') : Math.round(mb)} MB`;
 }

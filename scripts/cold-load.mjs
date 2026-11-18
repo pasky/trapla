@@ -9,7 +9,8 @@
 //
 //   node scripts/cold-load.mjs [--dist dist] [--scenario d3-0302 --preset d3-0302-motorway] [--runs 3] [--gpu]
 //                              [--mbit 20] [--rtt 40] [--cpu 4] [--picker]   (--picker: open the mission from the
-//                              start screen's "Start here" instead of its link; the times then add up)
+//                              start screen's "Start here" instead of its link; the times then add up;
+//                              --read MS: the visitor reads the start screen that long before the click)
 // Timed: run under `flock -x /tmp/trapla-browser.lock` (AGENTS.md).
 import { chromium } from 'playwright-core';
 import { serveStatic } from './static-serve.mjs';
@@ -17,7 +18,7 @@ import { serveStatic } from './static-serve.mjs';
 const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i < 0 ? d : process.argv[i + 1] ?? d; };
 const dist = arg('--dist', 'dist'), runs = Number(arg('--runs', 3)), scenario = arg('--scenario', 'd3-0302');
 const preset = arg('--preset', 'd3-0302-motorway'), mbit = Number(arg('--mbit', 20)), rtt = Number(arg('--rtt', 40)), cpu = Number(arg('--cpu', 4));
-const viaPicker = process.argv.includes('--picker'), gpu = process.argv.includes('--gpu');
+const viaPicker = process.argv.includes('--picker'), gpu = process.argv.includes('--gpu'), read = Number(arg('--read', 0));
 const SOFTWARE = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const GPU = ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan'];
 
@@ -57,6 +58,7 @@ try {
     row.paint = Math.round(await fcp(page));
     await pickerUp(page); row.picker = Date.now() - t0;
     if (viaPicker) {
+      await page.waitForTimeout(read); row.click = Date.now() - t0;
       const start = page.locator('[data-start-here] button').first();
       await start.click();
     } else {
@@ -68,6 +70,8 @@ try {
     await page.waitForFunction(() => !!window.trapla, null, { timeout: 300000 });
     await page.evaluate(() => window.trapla.whenIdle()); row.playable = Date.now() - t0;
     row.MB = +(bytes() / 1e6).toFixed(1);
+    // the startup's steps (src/app.ts marks), ms from navigation
+    row.marks = await page.evaluate(() => Object.fromEntries(performance.getEntriesByType('mark').filter((m) => m.name.startsWith('trapla:')).map((m) => [m.name.slice(7), Math.round(m.startTime)])));
     row.longtasks = await page.evaluate(() => { try { return performance.getEntriesByType('longtask').length; } catch { return null; } });
     if (errors.length) row.errors = errors;
     rows.push(row);
@@ -77,4 +81,4 @@ try {
 } finally { await browser.close(); await server.close(); }
 const median = (k) => { const v = rows.map((r) => r[k]).filter((x) => x != null).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
 console.log(JSON.stringify({ dist, scenario: `${scenario}${preset ? `/${preset}` : ''}`, viaPicker, mbit, rtt, cpu, gpu,
-  median: Object.fromEntries(['paint', 'picker', 'mapPaint', 'map', 'playable', 'MB'].map((k) => [k, median(k)])) }));
+  read, median: Object.fromEntries(['paint', 'picker', 'click', 'mapPaint', 'map', 'playable', 'MB'].map((k) => [k, median(k)])) }));

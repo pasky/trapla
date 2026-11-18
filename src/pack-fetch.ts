@@ -8,6 +8,7 @@ export interface PackFileSize { bytes: number; raw?: number }
 
 type Progress = (url: string, done: number) => void;
 const files = new Map<string, Promise<ArrayBuffer>>();
+const aborts = new Map<string, AbortController>();
 const listeners = new Set<Progress>();
 
 /** be told how far each download is (in the file's own bytes on disk); returns the unsubscribe */
@@ -16,8 +17,8 @@ export function onPackProgress(fn: Progress): () => void { listeners.add(fn); re
 /** A missing file on a host that answers every path with the page itself (an SPA fallback) is not a file. */
 function isPage(r: Response) { return (r.headers.get('content-type') ?? '').includes('text/html'); }
 
-async function read(url: string, size?: PackFileSize): Promise<ArrayBuffer> {
-  const r = await fetch(url);
+async function read(url: string, size: PackFileSize | undefined, signal: AbortSignal): Promise<ArrayBuffer> {
+  const r = await fetch(url, { signal });
   if (!r.ok || isPage(r)) throw Object.assign(new Error(r.ok ? `${url}: not found` : `${url}: HTTP ${r.status}`), { missing: r.status === 404 || r.ok });
   const report = (done: number) => { for (const fn of listeners) fn(url, done); };
   let bytes: ArrayBuffer;
@@ -45,9 +46,10 @@ async function read(url: string, size?: PackFileSize): Promise<ArrayBuffer> {
 function start(url: string, size?: PackFileSize): Promise<ArrayBuffer> {
   let p = files.get(url);
   if (!p) {
-    const q = read(url, size).then((buf) => url.endsWith('.gz') ? gunzipped(buf) : buf);
-    files.set(url, p = q);
-    q.catch(() => { if (files.get(url) === q) files.delete(url); });
+    const abort = new AbortController();
+    const q = read(url, size, abort.signal).then((buf) => url.endsWith('.gz') ? gunzipped(buf) : buf);
+    files.set(url, p = q); aborts.set(url, abort);
+    q.catch(() => { if (files.get(url) === q) files.delete(url); }).finally(() => { if (aborts.get(url) === abort) aborts.delete(url); });
   }
   return p;
 }
@@ -55,11 +57,16 @@ function start(url: string, size?: PackFileSize): Promise<ArrayBuffer> {
 /** Start downloading `url` now (the start screen, as soon as a mission is picked); `packFile` takes it. */
 export function prefetchPackFile(url: string, size?: PackFileSize): void { void start(url, size).catch(() => { /* the taker sees it */ }); }
 
+/** stop and forget the prefetched downloads of other URLs (a pack fetched ahead on the start screen, not picked) */
+export function keepPrefetched(urls: ReadonlySet<string>): void {
+  for (const url of [...files.keys()]) if (!urls.has(url)) { files.delete(url); aborts.get(url)?.abort(); aborts.delete(url); }
+}
+
 /** The file at `url` as bytes: the prefetched download if there is one (handed over once, so its bytes are not
  * kept), else a new one. `*.gz` files come back unpacked whether the host sent them packed or not. */
 export function packFile(url: string, size?: PackFileSize): Promise<ArrayBuffer> {
   const p = start(url, size);
-  files.delete(url);
+  files.delete(url); aborts.delete(url);
   return p;
 }
 

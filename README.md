@@ -21,6 +21,12 @@ npm run data      # builds public/scenarios/d11/ (≈ 17 MB; needs uv; ~10 min o
 npm run dev       # → http://localhost:5173/
 ```
 
+Build and publish as a static site (no server of its own, any host, any path): `scripts/release.sh` builds `dist/`
+with the packs in it under content-hashed URLs, checks it and plays smoke / playtest / toolbar / the start screen on
+it through a plain static server; hosts (Caddy / nginx with rsync, Cloudflare Pages, GitHub Pages), cache headers,
+first-load times and what publishing the data implies (ODbL, two permissions still to ask for):
+[docs/deploy.md](docs/deploy.md).
+
 Another scenario: `npm run data -- <id>` builds `pipeline/scenarios/<id>.json`, the app opens it with
 `?scenario=<id>`, Node scripts with `SCENARIO=<id>`. How to add one (area, geology, traffic, X, validation, what is
 still D11-specific): [docs/new-scenario.md](docs/new-scenario.md).
@@ -30,7 +36,10 @@ Other commands:
 | command | what |
 |---|---|
 | `npm test` | vitest unit tests of the pure maths (geometry, earthworks, cost, auto-profile) |
-| `npm run typecheck` / `npm run build` | TypeScript check / production build into `dist/` |
+| `npm run typecheck` / `npm run build` | TypeScript check / production build into `dist/` (with the packs, docs/deploy.md) |
+| `scripts/release.sh [--no-browser \| --serve]` | build, check `dist/` (`scripts/release-check.mjs`) and run the browser checks on it served by `scripts/static-serve.mjs` under `/trapla/`; any browser script runs on a build with `DIST=dist` |
+| `node scripts/cold-load.mjs [--picker --read 3000] [--scenario … --preset …]` | a first visit on a slow line (20 Mbit/s, 40 ms, main thread 4× slower): start screen, map, playable |
+| `node scripts/release-shots.mjs --check \| --docs [--before DIR]` | the first minute on the built site: start screen, loading card, first run and drag, older saves, no-WebGL and small-screen notices, a failed download, the About page; `--docs` writes 550–564 |
 | `npm run bench [design.json]` | recompute timing + realism numbers in Node (default: straight line and an official-line-like design) |
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
 | `npm run smoke` | interaction smoke test with real mouse events (empty clicks add nothing, drag the road to add a bend, drag / delete / double-click bends, the inspector's stretch choices and keys, By hand, undo, persistence) |
@@ -225,7 +234,22 @@ Before the rethink: [docs/screenshots/rethink-before](docs/screenshots/rethink-b
 
 ### Scenarios
 
-Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scenario-picker.png),
+The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),
+[at 1280 × 800](docs/screenshots/552-start-screen-1280x800.png)) offers one mission first, *Start here*: Jílové →
+Hostěradice across the Sázava (the smallest map, 3.9 MB, a 4.5 km motorway). Below it one card per corridor or
+mission: what it is and how long, one line of what you do, the download size; the D3 and the D35 each have one card
+with their sections as choices, the whole route last ([the D3 card](docs/screenshots/553-start-screen-d3-whole-route.png)).
+Nová Paka comes last: the real bypass is already in its ground. Retired missions are never offered; a save of one
+is listed under [Your older saves](docs/screenshots/554-start-screen-older-saves.png). A picked mission's map
+loads with [a card that counts the megabytes](docs/screenshots/555-loading-card.png); the map is drawn
+[before its first price](docs/screenshots/556-map-before-its-first-price.png); then [the first run](docs/screenshots/557-first-run.png)
+([before](docs/screenshots/560-first-run-before.png)) and [its first drag](docs/screenshots/558-first-drag.png).
+A browser without WebGL 2 [is told so](docs/screenshots/561-no-webgl.png), [a phone or a small window](docs/screenshots/562-small-screen.png)
+too (with *Continue anyway*), [a failed download says so with Try again](docs/screenshots/563-loading-failed.png);
+[About Trapla and its data](docs/screenshots/564-about-data.png) lists the sources and licences and offers the map
+files (linked from the start screen, [the map's credits](docs/screenshots/559-map-credits-about-link.png) and Help).
+
+Earlier start screens: [the four scenarios](docs/screenshots/73-scenario-picker.png),
 [Posázaví across the Sázava](docs/screenshots/74-d3-posazavi.png),
 [D35 first stage, Opatovec → Staré Město](docs/screenshots/75-d35-opatovec-stare-mesto.png),
 [Nová Paka bypass](docs/screenshots/76-nova-paka.png),
@@ -695,6 +719,8 @@ without `meta.ground` use the explicitly labelled norm mix; run `npm run data` f
 Pipeline geometry/cache tests: `uv run --with numpy --with shapely python -m unittest discover -s pipeline -p 'test_*.py'`.
 
 ## Data attribution
+
+Shown in the game on *About Trapla and its data* (`about.html`); licences and what publishing implies: docs/deploy.md.
 
 - Terrain: © ČÚZK, DMR 5G, CC BY 4.0.
 - Overlays, vector map layers, buildings and the official D11 line: © OpenStreetMap contributors, ODbL.

@@ -41,7 +41,9 @@ repro changes anything beyond 10 km, or a repro marked so is not valid) for anyt
 the whole route's on the 177 exact cases) for anything touching the crossing engine or what a pass hands it. Look at the screenshots yourself; reviews of numbers alone missed
 broken visuals and jargon before.
 
-One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
+Release (a static site, docs/deploy.md): `scripts/release.sh` builds `dist/` with the packs and runs the browser
+checks on it through a plain static server (the full gates do too: `smoke-dist`, `playtest-dist`, `toolbar-dist`,
+`start-screen`). One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
 built in; `list` shows the gates; `--no-browser`, `--only`, `--skip`, `--jobs`). Full runs drag-perf first and alone,
 then vitest alone, the other Node gates nproc/2 at a time, then smoke / playtest / toolbar together (all but drag-perf: 13.5 min serial → 10 min with the host at load ≈ 60 from other agents). A change meant to preserve behaviour
 (refactor, performance): `npx tsx scripts/exact.ts --out /tmp/before.json` on the base, then

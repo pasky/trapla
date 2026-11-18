@@ -10,6 +10,7 @@ import { pickScenario } from './ui/scenario-picker';
 import { deviceCheck } from './ui/device-check';
 import { Loading } from './ui/loading';
 import { prefetchPack } from './packs';
+import { keepPrefetched } from './pack-fetch';
 
 const game = import('./app');
 game.catch(() => { /* reported when it is needed */ });
@@ -26,7 +27,9 @@ async function boot() {
   const status = document.getElementById('status');
   if (status) status.style.display = 'none';
   const loading = new Loading(document.getElementById('view')!, scenario.title);
-  loading.track(prefetchPack(scenario.id));
+  const files = prefetchPack(scenario.id);
+  keepPrefetched(new Set(files.map(f => f.url)));
+  loading.track(files);
   try {
     const { startApp } = await game;
     await startApp({ picked, storage, loading });

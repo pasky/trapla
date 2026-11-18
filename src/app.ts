@@ -69,7 +69,9 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
     status.textContent = s; status.style.display = s ? '' : 'none';
   };
   const scenario = scenarioParams(picked.scenarioId, picked.presetId);
+  performance.mark('trapla:app');
   const pack = await loadPack(packBase(scenario.id));
+  performance.mark('trapla:pack');
   const { meta } = pack;
   // A mission with its own ends (railway stations on a mapped line) replaces the pack's road ends; the
   // motorway reference line means nothing to a railway.
@@ -125,6 +127,7 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   setStatus('Drawing the terrain…');
   await new Promise(requestAnimationFrame); // the card says so before the main thread is busy building it
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
+  performance.mark('trapla:view');
   const extras = new RouteExtras(view);
   const routeScene = new RouteScene(view);
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
@@ -335,6 +338,7 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   // the map is drawn: the card goes, the first evaluation runs in its worker meanwhile
   await new Promise(requestAnimationFrame);
   loading.done();
+  performance.mark('trapla:map'); // the startup's steps, for scripts/cold-load.mjs
   if (!session.last) setStatus('Pricing the road…');
 
   // ---- debug / automation API (src/automation.ts) ----

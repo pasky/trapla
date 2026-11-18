@@ -1,7 +1,7 @@
 import './scenario-picker.css';
 import { PRESETS, SCENARIOS, type ScenarioParams } from '../core/data/scenario';
 import { hasProjectSave } from '../project-store-contract';
-import { megabytes, packBase, PACKS } from '../packs';
+import { megabytes, packBase, PACKS, prefetchPack } from '../packs';
 
 export interface ScenarioPickerOptions {
   /** Supplied by the project store: the picker never invents a project storage key. */
@@ -136,6 +136,13 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
       resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null });
     };
     const layout = pickerLayout(PRESETS, isSaved);
+    // A first visit (no design saved anywhere) most likely starts the mission offered first: its map downloads
+    // while the visitor reads (stopped if another one is picked, main.ts).
+    const firstVisit = !PRESETS.some(isSaved);
+    if (layout.startHere && firstVisit && !requested) {
+      const id = layout.startHere.id, go = () => { void available(id).then((ok) => { if (ok && root.isConnected) prefetchPack(id); }); };
+      if ('requestIdleCallback' in window) requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 300);
+    }
     if (layout.startHere) {
       const section = element('section', '', 'scenario-picker-group scenario-picker-first');
       section.append(element('h2', 'Start here'));
@@ -234,6 +241,10 @@ function missionCard(presets: ScenarioParams[], isSaved: (s: ScenarioParams) => 
     chips!.append(chip);
   }
   button.addEventListener('click', () => open(chosen));
+  // a pointer on Start (or the keyboard on it) is a likely click: the map's download starts a moment earlier
+  const early = () => { if (ready.get(chosen)) prefetchPack(chosen.id); };
+  button.addEventListener('pointerenter', early);
+  button.addEventListener('focus', early);
   for (const scenario of presets) void check(scenario);
   show();
   return card;

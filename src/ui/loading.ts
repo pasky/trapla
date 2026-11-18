@@ -37,6 +37,7 @@ export class Loading {
       this.el.classList.remove('busy');
       this.bar.style.width = `${Math.min(100, 100 * got / total).toFixed(1)}%`;
       this.line.textContent = `${megabytes(got).replace(/ MB$/, '')} of ${megabytes(total)}`;
+      if (got >= total && !performance.getEntriesByName('trapla:downloaded').length) performance.mark('trapla:downloaded');
     };
     this.stop = onPackProgress((url, bytes) => { if (wanted.has(url)) { done.set(url, bytes); show(); } });
     show();

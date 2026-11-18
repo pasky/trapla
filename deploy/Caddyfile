@@ -1,0 +1,22 @@
+# Trapla on a VPS with Caddy (docs/deploy.md). Copy dist/ to /var/www/trapla (deploy/rsync.sh), then `caddy reload`.
+# Caddy gets the HTTPS certificate itself.
+trapla.example.org {
+	root * /var/www/trapla
+	# compresses JSON / JS / CSS / HTML on the way; *.gz packs are sent as they are (not in encode's types)
+	encode zstd gzip
+	# content-hashed names never change: cached for a year
+	@immutable path /assets/* /scenarios/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	# the pages are revalidated on every visit, so a new deploy shows at once
+	@pages path / /index.html /about.html /404.html
+	header @pages Cache-Control "no-cache"
+	header X-Content-Type-Options nosniff
+	file_server
+	handle_errors {
+		rewrite * /404.html
+		file_server
+	}
+}
+# Under a sub-path of an existing site instead (the build works under any path):
+#   handle_path /trapla/* { root * /var/www/trapla; file_server }   plus the headers above with /trapla/ prefixes,
+#   and `redir /trapla /trapla/` (relative URLs need the trailing slash).

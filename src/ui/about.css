@@ -1,3 +1,4 @@
+body:has(.about) { margin: 0; }
 .scenario-picker.about { position: static; min-height: 100vh; overflow: visible; }
 html:has(.about), body:has(.about) { overflow: auto; height: auto; }
 .about h2 { margin: 34px 0 10px; font-size: 22px; }
