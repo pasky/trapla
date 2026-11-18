@@ -94,6 +94,11 @@ around before its first price ("Working out the cost…" over the map until then
 
 ## Host 2: Cloudflare Pages (or GitHub Pages)
 
+**Live now on GitHub Pages:** <https://pasky.github.io/trapla/>, source at <https://github.com/pasky/trapla>
+(MIT). Redeploy with `deploy/gh-pages.sh` (runs `scripts/release.sh`, then force-pushes a one-commit `gh-pages`
+branch that also keeps the previous build's files for the 10-minute cache). Move to Cloudflare Pages if traffic or
+repeat visits make the 10-minute cache hurt.
+
 **Cloudflare Pages** fits as is: at most 25 MiB per file (the largest is 13.5 MB) and 20,000 files per site (145);
 no total size listed ([limits](https://developers.cloudflare.com/pages/platform/limits/)). Upload
 `dist/` directly, without git (the packs are not in the repository):
