@@ -516,11 +516,13 @@ export class Inspector {
     const delta = leftOut ? corner(end(i - 1), pi, end(i + 1)) : cv?.delta ?? 0;
     const turn = cv ? `turns ${((delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = leftOut ? 'no room for its curve' : cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
+    const speedRow = `${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole ${line}` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>${stretchNote}${keptNote && !auto ? `<div class="why">${keptNote}</div>` : ''}` : ''}`;
     if (leftOut) {
       const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
       return `${this.head(`Bend ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">It turns against the bend next to it where no S-curve fits, so the ${line} runs straight ${(cv?.offset ?? 0).toFixed(1)} m beside it. Move them further apart, or delete it.</div></div>
+      <div class="ctx-state"><b>${status}</b><div class="why">It turns the other way from the bend next to it, too close for an S-bend, so the ${line} skips it (${(cv?.offset ?? 0).toFixed(1)} m off the line between its neighbours). Move them apart, or delete it.</div></div>
       ${this.issues(vio)}
+      ${pi.speed !== undefined ? speedRow : ''}
       <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height pin here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button></div>`;
     }
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
@@ -531,7 +533,7 @@ export class Inspector {
         // (a slowed bend: Auto keeps the faster curve where it fits; the tightest is the player's to ask for)
         ? [['auto', 'Auto', `The ${d.speed} km/h curve where it fits, else the tightest`], ['min', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']]
         : [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
-      ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole ${line}` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>${stretchNote}${keptNote && !auto ? `<div class="why">${keptNote}</div>` : ''}` : ''}
+      ${speedRow}
       ${road && (pi.hairpin || (cv?.delta ?? 0) >= HAIRPIN.minTurn) ? `<div class="ctx-row">${this.choices('bend-type', 'data-hairpin', [['0', 'Curve', 'An ordinary curve'], ['1', 'Hairpin', `A ${HAIRPIN.radius} m hairpin with widened lanes, for steep mountain ground`]], pi.hairpin ? '1' : '0')}</div>` : ''}
       <div class="more-box">
         <div class="ctx-row"><label>Radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}"> m</label></div>

@@ -2072,12 +2072,14 @@ Left: a pin and a stream in conflict could be met by a trough carrying the strea
 the < 0.5° rule kept it, but no S-curve fits between it and the dragged bend 137 m before it: the fit leaves it out,
 4.9 m off the line between its neighbours, and the card said "turns 0° · no curve (straight)" with radius and speed
 choices, its number over bend 2's). On release (`dropStraightBends` with the road's speed and category) a neighbour of the
-dragged bend that the fit leaves out (`CurveInfo.ignored`) goes too, if its radius is Auto's and it sets no speed (not a
-hairpin, not an old road's corner); the dragged bend itself stays. The road already skips it, so the line is the same
-(tests/bend-order.test.ts: the same alignment, element by element). A bend left out otherwise (the dragged one, a loaded
-design) says so on its card: "Bend 3 · turns 2° · no room for its curve. It turns against the bend next to it where no
-S-curve fits, so the road runs straight 4.1 m beside it. Move them further apart, or delete it.", no radius or speed
-choices. Played: D35, the new bend held at (5228, 4540.6): old bend 2 goes on release, VALID 18.90 bn (screenshot 492);
+dragged bend that the fit leaves out (`CurveInfo.ignored`) goes too, if its radius is Auto's, it sets no speed and
+neither neighbour does (a bend bounds its neighbour's speed stretch), it is no hairpin nor an old road's corner, and the
+road without it is the same: built as evaluate builds it (`planPis`: on a slowed stretch the plan may keep a curve the
+plain fit leaves out), the same length and curves (the fit leaves bends out one at a time: without one, its neighbour
+may get its curve back). The dragged bend itself stays (tests/bend-order.test.ts, with the review's three repros). A
+bend left out otherwise (the dragged one, a loaded design) says so on its card: "Bend 3 · turns 2° · no room for its
+curve. It turns the other way from the bend next to it, too close for an S-bend, so the road skips it (4.1 m off the
+line between its neighbours). Move them apart, or delete it.", no radius choices (a speed it sets stays editable). Played: D35, the new bend held at (5228, 4540.6): old bend 2 goes on release, VALID 18.90 bn (screenshot 492);
 old bend 2 dragged 1.3 m towards the line instead: it stays, left out, with that card, 18.88 bn (493).
 
 **The Královec pin set to the suggested 438.3 m bills 10.72 bn, +25 M over no pin, with the track at the pin at the

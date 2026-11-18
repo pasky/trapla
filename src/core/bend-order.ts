@@ -5,7 +5,8 @@
 // back. A neighbour turning back on purpose (a hairpin) is left alone.
 import { bendRules, horizontalRules } from './data/norms';
 import type { CategoryId } from './data/categories';
-import { buildAlignment, type PI, type Vec2 } from './horizontal';
+import { buildAlignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
+import { planPis } from './plan-speeds';
 
 /** the cosine of the turn at q between p→q and q→r (1: straight on, −1: straight back; no transcendental
  * function, core/detmath.ts) */
@@ -57,7 +58,9 @@ const STRAIGHT_COS = 0.9999619230641713; // cos 0.5°
  * `fit` (the road's speed and category): also a bend among `near` other than `fit.dragged` that the curve fit leaves
  * out (it turns against its neighbour where no S-curve fits, a few metres off the line between its neighbours:
  * horizontal.ts `ignored`; QA second-round re-check, D35 km 4.2: a 2.2° corner, "turns 0° · no curve") goes, if its
- * radius is Auto's: the road already skips it, so the line stays the same.
+ * radius is Auto's and neither neighbour sets a stretch's speed (it bounds that stretch), and only where the road
+ * without it is the same: the plan as evaluate builds it (planPis: a slowed bend's faster curve), the same length
+ * and the same curves (the fit leaves bends out one at a time: without one, another may get its curve back).
  */
 export function dropStraightBends(a: Vec2, b: Vec2, pis: readonly PI[], near: readonly number[],
   fit?: { speed: number; category: CategoryId; dragged: number }): { pis: readonly PI[]; dropped: number[] } {
@@ -74,11 +77,26 @@ export function dropStraightBends(a: Vec2, b: Vec2, pis: readonly PI[], near: re
       keep.splice(q, 1); again = true;
       break;
     }
-    if (again || !fit || !keep.some(({ p, k }) => watched.has(k) && k !== fit.dragged && p.r === null && !kept(p))) continue;
-    const ps = keep.map(x => x.p);
-    const curves = buildAlignment(a, b, ps, horizontalRules(fit.speed, fit.category), bendRules(ps, fit.speed, fit.category)).curves;
-    const q = keep.findIndex(({ p, k }, q) => watched.has(k) && k !== fit.dragged && p.r === null && !kept(p) && curves[q]?.ignored);
-    if (q >= 0) { keep.splice(q, 1); again = true; }
+    if (again || !fit) continue;
+    const free = (q: number) => {
+      const { p, k } = keep[q];
+      return watched.has(k) && k !== fit.dragged && p.r === null && !kept(p)
+        && keep[q - 1]?.p.speed === undefined && keep[q + 1]?.p.speed === undefined;
+    };
+    if (!keep.some((_, q) => free(q))) continue;
+    const line = (ps: PI[]) => {
+      const pp = planPis(a, b, ps, fit.speed, fit.category);
+      return buildAlignment(a, b, pp, horizontalRules(fit.speed, fit.category), bendRules(pp, fit.speed, fit.category));
+    };
+    const now = line(keep.map(x => x.p));
+    const same = (c: CurveInfo, d: CurveInfo | undefined) => !!d && c.ignored === d.ignored
+      && [c.x - d.x, c.y - d.y, c.rEff - d.rEff, c.sStart - d.sStart, c.sEnd - d.sEnd].every(v => Math.abs(v) < 1e-6);
+    for (let q = 0; q < keep.length && !again; q++) {
+      if (!free(q) || !now.curves[q]?.ignored) continue;
+      const without = line(keep.filter((_, j) => j !== q).map(x => x.p));
+      if (Math.abs(without.length - now.length) > 1e-6 || !now.curves.every((c, j) => j === q || same(c, without.curves[j < q ? j : j - 1]))) continue;
+      keep.splice(q, 1); again = true;
+    }
   }
   if (keep.length === pis.length) return { pis, dropped: [] };
   const left = new Set(keep.map(x => x.k));

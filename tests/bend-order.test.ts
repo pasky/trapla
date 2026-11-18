@@ -100,3 +100,21 @@ it('a neighbour the curve fit leaves out after a drag goes on release', () => {
   expect(dropStraightBends(a, b, pis.map((p, k) => k === 2 ? { ...p, r: 2000 } : p), [0, 1, 2], fit).dropped).toEqual([]);
   expect(dropStraightBends(a, b, pis.map((p, k) => k === 2 ? { ...p, speed: 100 } : p), [0, 1, 2], fit).dropped).toEqual([]);
 });
+
+// Review: the cleanup keeps the road as evaluate builds it. A bend that only the plain fit leaves out (on a slowed
+// stretch the plan keeps a faster curve: 28 m of curve), one that gets its curve back once its left-out neighbour
+// goes (the fit leaves bends out one at a time), and one next to a bend that sets its stretch's speed (it bounds
+// that stretch) stay.
+it('a left-out neighbour goes only where the road stays the same', () => {
+  const fit = { speed: 90, category: 'S9.5' as const };
+  const plan: PI[] = [{ x: 761, y: 84, r: null }, { x: 816, y: 86, r: null, speed: 70 }, { x: 921, y: 80, r: null }, { x: 1044, y: 66, r: null }];
+  expect(dropStraightBends({ x: 0, y: 0 }, { x: 2200, y: 140 }, plan, [0, 1, 2], { ...fit, dragged: 1 }).dropped).not.toContain(2);
+  const chain: PI[] = [{ x: 719, y: 76, r: null }, { x: 856, y: 73, r: null }, { x: 970, y: 79, r: null }, { x: 1016, y: 75, r: null }];
+  const a = { x: 0, y: 0 }, b = { x: 2200, y: 6 };
+  const al = buildAlignment(a, b, chain, horizontalRules(90, 'S9.5'), bendRules(chain, 90, 'S9.5'));
+  expect(al.curves[1].ignored).toBe(true);
+  expect(dropStraightBends(a, b, chain, [-1, 0, 1], { ...fit, dragged: 0 }).dropped).toEqual([]);
+  const d = JSON.parse(readFileSync('scripts/scenarios/d35/d35-stage1-motorway.json', 'utf8')).design;
+  const pis: PI[] = [d.pis[0], { x: 5228, y: 4541.8, r: null, speed: 110 }, ...d.pis.slice(1)];
+  expect(dropStraightBends({ x: 2393.8, y: 3212 }, { x: 18222.3, y: 2459.4 }, pis, [0, 1, 2], { speed: d.speed, category: d.category, dragged: 1 }).dropped).toEqual([]);
+});
