@@ -2075,8 +2075,10 @@ choices, its number over bend 2's). On release (`dropStraightBends` with the roa
 dragged bend that the fit leaves out (`CurveInfo.ignored`) goes too, if its radius is Auto's and it sets no speed (not a
 hairpin, not an old road's corner); the dragged bend itself stays. The road already skips it, so the line is the same
 (tests/bend-order.test.ts: the same alignment, element by element). A bend left out otherwise (the dragged one, a loaded
-design) says so on its card: "Bend 3 · turns 2° · no room for its curve. It turns against the next bend where no S-curve
-fits, so the road runs straight 4.9 m beside it. Move them further apart, or delete it.", no radius or speed choices.
+design) says so on its card: "Bend 3 · turns 2° · no room for its curve. It turns against the bend next to it where no
+S-curve fits, so the road runs straight 4.1 m beside it. Move them further apart, or delete it.", no radius or speed
+choices. Played: D35, the new bend held at (5228, 4540.6): old bend 2 goes on release, VALID 18.90 bn (screenshot 492);
+old bend 2 dragged 1.3 m towards the line instead: it stays, left out, with that card, 18.88 bn (493).
 
 **The Královec pin set to the suggested 438.3 m bills 10.72 bn, +25 M over no pin, with the track at the pin at the
 same 437.9 m: legitimate, a near-tie of the block search.** A pin bounds every knot of every window by its slopes' reach

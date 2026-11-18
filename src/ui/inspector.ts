@@ -519,7 +519,7 @@ export class Inspector {
     if (leftOut) {
       const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: this.fixes(v, d) }));
       return `${this.head(`Bend ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">It turns against the next bend where no S-curve fits, so the ${line} runs straight ${(cv?.offset ?? 0).toFixed(1)} m beside it. Move them further apart, or delete it.</div></div>
+      <div class="ctx-state"><b>${status}</b><div class="why">It turns against the bend next to it where no S-curve fits, so the ${line} runs straight ${(cv?.offset ?? 0).toFixed(1)} m beside it. Move them further apart, or delete it.</div></div>
       ${this.issues(vio)}
       <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height pin here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button></div>`;
     }
