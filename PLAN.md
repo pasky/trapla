@@ -1178,7 +1178,10 @@ Sweep-3 P2s (docs/playtest-findings.md), shots 450–453 (`scripts/render-cones-
   - III/3012 dragged 23 m east of its corner (qa3/designs/d11-iii3012-dragged-23m.json) had "covers 16 m of a track"
     and "No place to reconnect the track". It is now VALID, 10.4 M (`EvalOptions.sideWays`,
     project-road.ts; tests/qa3-sweep.test.ts).
-  - The track's 17 m stub to where the old road was is left as it is: a stub serving nothing (model 46).
+  - The side road's piece beyond the new road, which led only to the old road, is taken up (`CrossingResult.oldJunction`).
+    On that side the junction's approach ends at our road: it is not regraded or billed. The piece is the crossing's
+    `removed` and leaves the map with the rebuilt stretch (the project's accepted replacements). For III/3012 this is
+    the track's 10 m to the old corner. Only the crossing nearest the old junction keeps the access.
 - **Houses under a cone.** The building screen now reads the billed cone. A house is taken where the cone's surface lies
   over the ground, or within the 3 m working strip round it. This also holds under a deck high enough for a house to
   stay, because the fill buries it. Such a house is bought out and drawn demolished; its card says "Under the fill in
