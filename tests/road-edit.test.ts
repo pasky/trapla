@@ -509,7 +509,11 @@ describe('pricing a rebuilt stretch (C1 b)', () => {
     expect(result.cost.alone.r).toBeCloseTo(own.cost.total + works.reduce((t, w) => t + w.cost, 0), 3);
     expect(result.cost.total).toBeCloseTo(result.cost.alone.r, 3);
     expect(result.cost.routes.r).toBe(result.cost.total);
-    expect(result.acceptedReplacements).toEqual([interval]);
+    // (it joins the new road where it crosses it, an access; its piece beyond, which led only to the old road, is taken up)
+    expect(own.crossings.find(c => c.roadId === 1)!.type).toBe('junction');
+    expect(result.acceptedReplacements).toEqual([interval, { transportData: 'transport', sourceId: 'side1', s0: expect.any(Number), s1: expect.any(Number) }]);
+    const stub = result.acceptedReplacements[1];
+    expect(stub.s1 - stub.s0).toBeGreaterThan(20); expect(stub.s1 - stub.s0).toBeLessThan(70);
   });
 });
 
