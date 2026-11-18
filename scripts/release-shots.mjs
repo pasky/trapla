@@ -128,6 +128,8 @@ try {
     await page.locator('[data-start-here] button').click();
     await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 120000 });
     const heights = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /height\.i16\.gz$/.test(e.name)).map((e) => e.responseEnd));
+    const sidecars = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /\/structures\.json$/.test(e.name)).length);
+    ok(sidecars === 1, `its mapped bridges (structures.json) are loaded, once (${sidecars})`);
     ok(heights.length === 1 && heights[0] < clickAt, `a first visit downloads the Start here map while reading, once (${heights.map(Math.round)} ms, click at ${Math.round(clickAt)})`);
     await idle(page);
     ok(errors.length === 0, `…and opens it without errors (${errors.join('; ')})`);
