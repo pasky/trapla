@@ -3256,7 +3256,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "cf38440c3098b25a4d38b7f3ad365fbcb94fb813c2ea8a9006142945a6fc265a",
+        "geometryHash": "f2e50ba85ad3f8461afd9b086f6fe5a97fdce0256a1f98da0c1bc2ced61f1ba3",
         "cost": {
           "roadBase": 834907956.4136062,
           "earthworks": 994945918.54836,
@@ -3273,10 +3273,10 @@
           },
           "bridges": 827517219.5149709,
           "tunnels": 0,
-          "crossings": 292001424.5419234,
+          "crossings": 313494288.5702632,
           "noiseWalls": 25157737.593987837,
-          "construction": 2974530256.6128483,
-          "surcharge": 874436220.3238002,
+          "construction": 2996023120.641188,
+          "surcharge": 880755122.3481321,
           "land": 448251266.72331864,
           "landDetail": {
             "land": 230049872.7864141,
@@ -3284,7 +3284,7 @@
             "buildings": 209142050,
             "noiseBuyouts": 0
           },
-          "total": 4297217743.659967
+          "total": 4325029509.712639
         },
         "parts": {
           "roadBase": 834907956.4136062,
@@ -3299,9 +3299,9 @@
           "culverts": 68252528.07502921,
           "bridges": 827517219.5149709,
           "tunnels": 0,
-          "crossings": 292001424.5419234,
+          "crossings": 313494288.5702632,
           "noiseWalls": 25157737.593987837,
-          "surcharge": 874436220.3238002,
+          "surcharge": 880755122.3481321,
           "land": 230049872.7864141,
           "forest": 9059343.936904559,
           "buildings": 209142050,
@@ -4633,7 +4633,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "935184f2f76da22405c1cc87d975d9c29c5c826c2d3e4e923d386da7e1aa885b",
+        "geometryHash": "2e9d5cdb20a6dc1a985e73dd60ad8a15a51528d99f8cbfc1212bae9ae249fb19",
         "cost": {
           "roadBase": 587064014.6739862,
           "earthworks": 1326185838.3219473,
@@ -5032,7 +5032,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "18cd713d35756884dcd500fede60bfe36291a13cbbdce8d8b0bbc681675c0a06",
+        "geometryHash": "31ba1324597d010d7fc218f9accbfb0377838df0c8d5046fb1a05f63591c7ee1",
         "cost": {
           "roadBase": 587064014.6739862,
           "earthworks": 1326185838.3219473,

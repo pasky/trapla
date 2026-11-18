@@ -6,7 +6,8 @@
 // a crossed road is read at this level wherever it is on one of them, not on the ground below.
 
 import type { RoadNet } from './roadnet';
-import { ROAD_CLASSES } from './data/urban';
+import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
+import { OVERBRIDGE_CLEARANCE } from './data/remedies';
 
 type HeightAt = (x: number, y: number) => number;
 
@@ -45,31 +46,67 @@ function levelOn(s: Laid, x: number, y: number): number {
   return Number.isNaN(at) ? NaN : total > 0 ? s.z0 + (s.z1 - s.z0) * at / total : s.z0;
 }
 
-/** The crossed-road level of the ground function: on the given mapped bridges and tunnels (way indices) their own level,
- * elsewhere `ground`. The same function when none of them is a structure (bit for bit what it was). */
-export function structureLevels(roads: RoadNet | undefined, ways: Iterable<number | undefined>, ground: HeightAt): HeightAt {
-  if (!roads?.structures.size) return ground;
-  const laid: Laid[] = [];
-  const seen = new Set<number>();
-  for (const way of ways) if (way !== undefined && !seen.has(way)) {
-    seen.add(way);
-    const s = lay(roads, way, ground);
-    if (s) laid.push(s);
+type Index = { cells: Map<number, Laid[]>; laid: Laid[] };
+const CELL = 50;
+/** every mapped bridge and tunnel of a network (its `structures`, shared by its edited networks) on a 50 m grid, per terrain */
+const indexes = new WeakMap<object, WeakMap<object, Index>>();
+function indexOf(roads: RoadNet, ground: { heightAt: HeightAt }): Index {
+  let byGround = indexes.get(roads.structures);
+  if (!byGround) indexes.set(roads.structures, byGround = new WeakMap());
+  let index = byGround.get(ground);
+  if (!index) {
+    index = { cells: new Map(), laid: [] };
+    const at = (x: number, y: number) => ground.heightAt(x, y);
+    for (const way of roads.structures.keys()) {
+      const s = lay(roads, way, at);
+      if (!s) continue;
+      index.laid.push(s);
+      for (let cx = Math.floor(s.box[0] / CELL); cx <= Math.floor(s.box[2] / CELL); cx++)
+        for (let cy = Math.floor(s.box[1] / CELL); cy <= Math.floor(s.box[3] / CELL); cy++) {
+          const key = cx * 100003 + cy, list = index.cells.get(key);
+          if (list) list.push(s); else index.cells.set(key, [s]);
+        }
+    }
+    byGround.set(ground, index);
   }
-  if (!laid.length) return ground;
-  return (x, y) => {
-    for (const s of laid) { const z = levelOn(s, x, y); if (!Number.isNaN(z)) return z; }
-    return ground(x, y);
-  };
+  return index;
+}
+
+/** The level of the mapped road surface at (x, y): on a mapped bridge or tunnel its own level (the first of them there),
+ * elsewhere undefined (the ground: a road on it). `ground`: the terrain (its heightAt gives the level at their ends). */
+export function wayLevelAt(roads: RoadNet | undefined, ground: { heightAt: HeightAt }, x: number, y: number, way?: number): number | undefined {
+  if (!roads?.structures.size) return undefined;
+  const list = indexOf(roads, ground).cells.get(Math.floor(x / CELL) * 100003 + Math.floor(y / CELL));
+  if (!list) return undefined;
+  for (const s of list) if (way === undefined || s.way === way) { const z = levelOn(s, x, y); if (!Number.isNaN(z)) return z; }
+  return undefined;
+}
+
+/** The crossed roads' level (a crossing's geometry, crossings.ts CrossingRoute.wayLevel): a mapped bridge's deck or a
+ * mapped tunnel's road where one is, else the ground. Undefined when the network has none (the ground everywhere). */
+export function wayLevels(roads: RoadNet | undefined, ground: { heightAt: HeightAt }): HeightAt | undefined {
+  if (!roads?.structures.size) return undefined;
+  return (x, y) => wayLevelAt(roads, ground, x, y) ?? ground.heightAt(x, y);
 }
 
 /** A mapped bridge's or tunnel's level on its own way at (x, y) (the crossing point), or undefined for other ways. */
-export function structureLevel(roads: RoadNet | undefined, way: number | undefined, x: number, y: number, ground: HeightAt): number | undefined {
+export function structureLevel(roads: RoadNet | undefined, way: number | undefined, x: number, y: number, ground: { heightAt: HeightAt }): number | undefined {
   if (way === undefined || !roads?.structure(way)) return undefined;
-  const s = lay(roads, way, ground);
-  if (!s) return undefined;
-  const z = levelOn(s, x, y);
-  return Number.isNaN(z) ? undefined : z;
+  return wayLevelAt(roads, ground, x, y, way);
+}
+/** The level a crossed way is met at here: a mapped bridge's or tunnel's own, else the ground. */
+export const crossedLevel = (roads: RoadNet | undefined, way: number | undefined, x: number, y: number, ground: { heightAt: HeightAt }) =>
+  structureLevel(roads, way, x, y, ground) ?? ground.heightAt(x, y);
+
+/** Does a mapped bridge pass over (a tunnel under) a surface at height z here with the room the game asks (`over`: under a
+ * bridge's deck, `under`: over a tunnel's road)? Undefined for an ordinary way (or off the structure). */
+export function clearsAt(roads: RoadNet | undefined, way: number, x: number, y: number, z: number, ground: { heightAt: HeightAt },
+  over: number, under: number): boolean | undefined {
+  const s = roads?.structure(way);
+  if (!s || s.kind === 'covered') return undefined;
+  const level = structureLevel(roads, way, x, y, ground);
+  if (level === undefined) return undefined;
+  return s.kind === 'bridge' ? level - z >= over : z - level >= under;
 }
 
 /** Where a mapped bridge lies along a crossed road's path near our road (way chainages, d = 0 at the crossing): its two
@@ -99,4 +136,25 @@ export function bridgeOnPath(roads: RoadNet | undefined, way: number | undefined
 export function mappedKind(roads: RoadNet | undefined, way: number | undefined): 'bridge' | 'tunnel' | undefined {
   const k = roads?.structure(way)?.kind;
   return k === 'bridge' || k === 'tunnel' ? k : undefined;
+}
+
+/** A mapped bridge's or tunnel's stretch [a, b] (way chainages of `segment`) clears a surface at height z with the room a road
+ * passing under a bridge needs (OVERBRIDGE_CLEARANCE, its deck's own depth unknown) or that a road over a tunnel keeps
+ * (CROSSING_RULES.overHeight, as our bridge over a road): sampled at both ends and the middle. */
+export function clearedHit(roads: RoadNet, segment: { way: number; ax: number; ay: number; bx: number; by: number; d: number; length: number },
+  hit: readonly [number, number], z: number, ground: { heightAt: HeightAt }): boolean {
+  return [hit[0], (hit[0] + hit[1]) / 2, hit[1]].every(d => {
+    const t = Math.max(0, Math.min(1, (d - segment.d) / (segment.length || 1)));
+    return clearsAt(roads, segment.way, segment.ax + t * (segment.bx - segment.ax), segment.ay + t * (segment.by - segment.ay), z, ground,
+      OVERBRIDGE_CLEARANCE, CROSSING_RULES.overHeight) === true;
+  });
+}
+
+/** Is a mapped bridge or tunnel within these bounds ([x0, y0, x1, y1]; a quick screen on the 50 m grid)? */
+export function structuresNear(roads: RoadNet, ground: { heightAt: HeightAt }, bounds: readonly number[]): boolean {
+  if (!roads.structures.size) return false;
+  const { cells } = indexOf(roads, ground);
+  for (let cx = Math.floor(bounds[0] / CELL); cx <= Math.floor(bounds[2] / CELL); cx++)
+    for (let cy = Math.floor(bounds[1] / CELL); cy <= Math.floor(bounds[3] / CELL); cy++) if (cells.has(cx * 100003 + cy)) return true;
+  return false;
 }

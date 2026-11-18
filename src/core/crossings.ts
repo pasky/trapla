@@ -337,7 +337,9 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   /** A rebuilt stretch's side road (EvalOptions.sideWays): what its junction costs where the new line crosses it
    * at its level (undefined: not one). Its access is kept: it joins the new road there as it joined the old one
    * (an existing access, not a new junction: no spacing). */
-  sideAccess?: (c: CrossingResult) => number | undefined): CrossingIssue[] {
+  sideAccess?: (c: CrossingResult) => number | undefined,
+  /** A mapped bridge's or tunnel's ends lie outside our earthworks (evaluate.ts): only then can it stay as it stands. */
+  endsOutside: (c: CrossingResult) => boolean = () => true): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
   /** what a junction with the crossed way costs; undefined: Auto does not meet it at a junction */
   const junctionCost = (c: CrossingResult) => minorCrossroads(minor, c.cls) ?? (ROAD_CLASSES[c.cls].junction ? JUNCTION : undefined);
@@ -431,7 +433,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       if (c.h >= CROSSING_RULES.overHeight) issue(c, 'clearance', 'Junction would lie high above the crossed road',
         `Lower our road here by more than ${(c.h - CROSSING_RULES.overHeight).toFixed(1)} m, below ${CROSSING_RULES.overHeight} m above the crossed road, or choose "Our bridge over it"`, c.h, CROSSING_RULES.overHeight);
       if (!row.noAtGrade && (access === undefined || row.junction)) junctions.push(c.s);
-    } else if (choice === 'underpass' && keepsTunnel(c) && kind[c.i] === KIND.earth) {
+    } else if (choice === 'underpass' && keepsTunnel(c) && kind[c.i] === KIND.earth && !c.square && endsOutside(c)) {
       // (a mapped tunnel deep enough under us already is one: kept as it stands)
       c.kept = true;
     } else if (choice === 'underpass') {
@@ -450,10 +452,12 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   for (const c of priority) {
     const row = ROAD_CLASSES[c.cls];
     if (c.requestedType) continue;
-    if (kind[c.i] === KIND.bridge) c.type = 'bridge';
+    // (a mapped bridge with room over our own bridge passes over it as it stands: the geometry checks its ends)
+    if (kind[c.i] === KIND.bridge && keepsBridge(c)) { c.type = 'overbridge'; Object.assign(c, separated(c)); }
+    else if (kind[c.i] === KIND.bridge) c.type = 'bridge';
     else if (kind[c.i] === KIND.tunnel) c.type = 'tunnel';
-    // a mapped tunnel deep enough under our earthworks passes under us as it is (nothing built)
-    else if (keepsTunnel(c)) { c.type = 'underpass'; c.kept = true; }
+    // a mapped tunnel deep enough under our earthworks, its portals beyond them, passes under us as it is (nothing built)
+    else if (keepsTunnel(c) && endsOutside(c)) { c.type = 'underpass'; c.kept = true; }
     else if (row.noAtGrade && (c.h <= -CROSSING_RULES.underDepth || heldRailway(c))) {
       // (a railway of the project passes over us wherever our line is: it follows our crossing's height,
       // project-evaluate.ts, as a road of the project does)
@@ -573,6 +577,9 @@ export interface CrossingRoute {
   streams?: (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: number; y: number; crossing: import('./watercourses').WaterCrossing })[];
   /** Urban share per station (≥ 0.5: urban SPK price rows for side-road regrades). */
   urban?: ArrayLike<number>;
+  /** The crossed roads' own level: a mapped bridge's deck or a mapped tunnel's road where one is (mapped-structures.ts
+   * wayLevels), the ground elsewhere (absent: the ground everywhere). The same for every pass of an evaluation. */
+  wayLevel?: (x: number, y: number) => number;
   /** What blocks a new road of this half-width from a to b on the ground (a player's reroute shape; a kept house
    * within its working strip). */
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => LinkObstacle | null;

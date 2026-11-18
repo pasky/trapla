@@ -20,7 +20,7 @@ import type { FootprintConflict } from './footprint';
 import type { RoadRealignmentPlan } from './road-realignment';
 import type { ProjectReceiver } from './project';
 import * as dm from './detmath';
-import { ROAD_CLASSES } from './data/urban';
+import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { LOWERING_RULES, underpassAssembly } from './data/remedies';
 
 /** Internal terms that never appear in player-facing text, with the reason shown when a test fails. */
@@ -81,7 +81,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
   | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo'
-  | 'mapped' | 'kept'>;
+  | 'mapped' | 'kept'> & { h?: number };
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -164,11 +164,12 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     explain: `The ${what} runs into our earthworks and comes back out on the same side, so it does not need to cross our road: that stretch is rebuilt beside the earthworks.${link}` };
   // a mapped bridge or tunnel that already clears our road (crossings.ts keepsBridge / keepsTunnel)
   if (c.kept && c.type === 'overbridge') return { tag: 'existing bridge kept', label: 'Existing bridge kept',
-    explain: `The ${what} already crosses here on its own bridge (${m(c.span)} m), high enough over our road and reaching past our earthworks: it stays as it is, nothing is built.` };
+    explain: `Our road fits under the ${what}'s own ${m(c.span)} m bridge. Nothing is built.` };
   if (c.kept && c.type === 'underpass') return { tag: 'existing tunnel kept', label: 'Existing tunnel kept',
-    explain: `The ${what} already runs in a tunnel here, deep enough under our road: it stays as it is, nothing is built.` };
-  // (its own bridge here, rebuilt: too low over our road, or too short for our earthworks)
-  const replaced = c.mapped === 'bridge' ? ` Its old bridge here is too low or too short for our road and is replaced.` : '';
+    explain: `Our road passes over the ${what}'s tunnel. Nothing is built.` };
+  // (its own bridge here, rebuilt: too low over our road, or too short for our earthworks; not where it is laid anew)
+  const replaced = c.mapped === 'bridge' && c.squared === undefined
+    ? ` Its old bridge here is too ${(c.h ?? 0) > -CROSSING_RULES.underDepth ? 'low' : 'short'} for our road.` : '';
   switch (c.type) {
     case 'bridge': return c.above ? { tag: 'over our bridge', label: 'Passes over our bridge on its own bridge',
       explain: `Our road is on a bridge here; the ${what} crosses high above it on a bridge of its own.` }

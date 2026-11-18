@@ -6,7 +6,8 @@ import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { LINK_MAX_SUPPORT as MAX_SUPPORT, retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
 import { cellBounds, clipFootprint, insideFootprint, touchesFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
-import type { RoadNet } from './roadnet';
+import type { RoadNet, RoadSegment } from './roadnet';
+import { mappedKind } from './mapped-structures';
 import { barrelLength, waterSize, waterWidth } from './watercourses';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 import * as dm from './detmath';
@@ -157,8 +158,9 @@ function dense(path: readonly WayPoint[]): WayPoint[] {
 export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry = true): RoadRealignmentPlan {
   const { route: r, terrain, roads, grid, way, cls, hit: h, covered, bounds } = input;
   const row = ROAD_CLASSES[cls], half = row.width / 2, pad = half + SETBACK;
-  /** another way that is a mapped bridge or tunnel (not the one moved) */
-  const mapped = (other: number) => other !== way && !!roads.structure(other) && roads.structure(other)!.kind !== 'covered';
+  /** another way that is a mapped bridge or tunnel: at its own level, the new piece passes under or over it (its headroom
+   * is not checked: PLAN.md "Mapped bridges and tunnels are crossings", Open) */
+  const mapped = (segment: RoadSegment) => segment.way !== way && mappedKind(roads, segment.way) !== undefined;
   const point = (q: WayPoint): CrossingPoint => {
     const ground = terrain.heightAt(q.x, q.y);
     return { ...q, z: ground, ground, surface: 'terrain' };
@@ -455,12 +457,13 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
           const hits: { t: number; way: number; d: number }[] = [];
           roads.nearSegments([Math.min(p.x, q.x) - 1, Math.min(p.y, q.y) - 1, Math.max(p.x, q.x) + 1, Math.max(p.y, q.y) + 1], segment => {
             // (nor a mapped bridge or tunnel: at its own level, mapped-structures.ts, it passes over or under the new piece)
-            if (ROAD_CLASSES[segment.cls].noAtGrade || mapped(segment.way)) return;
+            if (ROAD_CLASSES[segment.cls].noAtGrade) return;
             const ex = segment.bx - segment.ax, ey = segment.by - segment.ay, den = dx * ey - dy * ex;
             if (Math.abs(den) < 1e-9) return;
             const t = ((segment.ax - p.x) * ey - (segment.ay - p.y) * ex) / den, u = ((segment.ax - p.x) * dy - (segment.ay - p.y) * dx) / den;
             if (t < 0 || t > 1 || u < 0 || u > 1) return;
             const d = segment.d + u * segment.length;
+            if (mapped(segment)) return;
             // Its own replaced stretch and other owned/engineered intervals are not junctions.
             if (sourceIntervals.some(s => s.way === segment.way && d >= s.a - 1 && d <= s.b + 1)) return;
             if ((covered?.get(segment.way) ?? []).some(([lo, hi]) => d >= lo && d <= hi)) return;
@@ -632,7 +635,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     const roadObstacles = (cell: FootprintCell, p?: CrossingPoint, q?: CrossingPoint, at = 0) => roads.nearSegments(cellBounds(cell, 14), segment => {
       const other = ROAD_CLASSES[segment.cls], otherHalf = other.width / (segment.cls === 'motorway' ? 4 : 2);
       const overlap = clipFootprint(segment, cell, otherHalf);
-      if (!overlap || mapped(segment.way)) return;
+      if (!overlap || mapped(segment)) return;
       if (other.noAtGrade) { problems.add('new pavement intersects a grade-separated road'); return; }
       const margin = (half + otherHalf) * Math.SQRT2 + 0.05; // rotated ribbon end-cap at an actual source tie-in
       const contains = (a: number, b: number) => overlap[0] >= a - margin && overlap[1] <= b + margin;

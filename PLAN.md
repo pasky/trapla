@@ -1289,7 +1289,7 @@ The two "Open:" items of the sections above, shots 510–513 (`scripts/render-wo
   - The strip's width is not differentiated by the size of the works (a track's regrade and a motorway's embankment
     keep the same 3 m); no source tells them apart (research/85).
 
-### Mapped bridges and tunnels are crossings (owner report, cost model 54, 2026-11-18)
+### Mapped bridges and tunnels are crossings (owner report, cost model 55, 2026-11-18)
 
 Owner, D11 along the official line, grade by hand: a local road crosses ours at km 6.40, no crossing can be selected, its
 card says "Bridges and tunnels of existing roads cannot be changed yet", and it is drawn flat across our cut, nothing
@@ -1327,9 +1327,20 @@ our road crossed nothing there. Across the packs 1,700 such ways (bridges over s
   left at grade. With 8 random designs per pack: 11 hits in all, no flags. D11 along the official line: km 6.30 the
   local road's bridge, Auto's grade 3.5 m under its deck: rebuilt on ramps (15.6 M); the grade by hand 11 m under it:
   kept (`tests/fixtures/d11-official-line*-design.json`, tests/mapped-structures.test.ts). Nová Paka starter along the
-  real bypass: the street's 51 m bridge at km 3.24 kept, two local roads' bridges at km 0.89 / 1.57 rebuilt (Auto's line
-  2–3 m under their decks), +24.9 M. Shots 540–545 (`scripts/mapped-bridge-shots.mjs`).
-- **Bills.** D11 frozen: see COST_MODEL_VERSION 54 in prices.ts.
+  real bypass: the street's 51 m bridge at km 3.24 kept, two local roads' bridges at km 0.89 / 1.57 replaced (Auto's line
+  2–3 m under their decks; a new bridge replaces the whole old one: 38 and 28 m). Shots 540–545
+  (`scripts/mapped-bridge-shots.mjs`).
+- **Review fixes.** Our bridge clears a mapped bridge or tunnel under it at its level (support lifts, grade retries, a
+  motorway's must-clear, minor crossroads); one high over our bridge passes over it (kept). A kept tunnel needs its portals
+  beyond our works and the road on its own line; it is not drawn (underground). The crossing geometry keeps the natural
+  ground and reads the crossed road's level separately (`CrossingRoute.wayLevel`, one function for the whole network, so
+  no pass sees another's levels); a mapped bridge under our bridge is drawn on the ground as the map draws it. Retaining
+  walls skip a mapped bridge with room (as footprint.ts). Mapped structures join other ways only at their ends
+  (`RoadNet.joinsAt`: no junction with a road under a span); their hits are never merged with roads on the ground. A
+  choice on one is saved with its OSM id (`target.structure`); an older save's raw remnant id keeps its meaning. The
+  sidecar is used only with the transport graph it was built from.
+- **Bills.** D11 frozen: see COST_MODEL_VERSION 55 in prices.ts. Starters (M CZK): D11 8,798.2 → 8,751.2; Nová Paka
+  1,194.0 → 1,231.8; D3 full 36,185.2 → 36,170.8; D3 0305 9,454.2 → 9,441.4; the rest unchanged; validity unchanged.
 - **Open:**
   - The grade search does not aim for a mapped bridge's clearance (keeping it is not in its objective): Nová Paka's two
     bridges are rebuilt where lowering the line 3 m might have been cheaper.

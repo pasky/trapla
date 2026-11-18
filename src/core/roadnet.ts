@@ -12,10 +12,10 @@ export interface RoadJunction { x: number; y: number; connections: RoadConnectio
  * out of `ways`; they become ways `ways.length …` (after the net's own, so a saved choice keeps its way). */
 export interface RoadNetData { cls: string[]; ways: number[][]; structures?: StructureData }
 /** A pack's `structures.json`: ways in the net's format (class index into its own `cls`), what each is. */
-export interface StructureData { version: 1; cls: string[]; ways: number[][]; kind: StructureKind[]; osm?: string[] }
+export interface StructureData { version: 1; cls: string[]; ways: number[][]; kind: StructureKind[]; osm?: string[]; /** the transport graph's fingerprint it was built from */ transport?: string }
 export type StructureKind = 'bridge' | 'tunnel' | 'covered';
 /** A mapped bridge or tunnel way: what it is, and its polyline as mapped (x0, y0, x1, y1, …). */
-export interface MappedStructure { kind: StructureKind; xy: readonly number[] }
+export interface MappedStructure { kind: StructureKind; xy: readonly number[]; /** its OSM way id (a saved choice's binding) */ osm?: string }
 
 /** The pack's net with its mapped structures as ways after its own (what RoadNet builds from). */
 export function withStructures(net: { cls: string[]; ways: number[][] }, structures: StructureData | null | undefined): RoadNetData {
@@ -31,6 +31,8 @@ export interface RoadCrossing {
   cls: string;
   /** index of the OSM way in the pack */
   way: number;
+  /** a mapped bridge or tunnel (at its own level): merged only with others of its own (mergeCrossings) */
+  level?: true;
 }
 /** A merged crossing (mergeCrossings) and the first hit of each other way merged into it. */
 export interface MergedCrossing extends RoadCrossing { members?: RoadCrossing[] }
@@ -73,7 +75,7 @@ export class RoadNet {
       const s = data.structures, cls = data.cls.slice(), mapped = new Map<number, MappedStructure>();
       const index = (name: string) => { let i = cls.indexOf(name); if (i < 0) { i = cls.length; cls.push(name); } return i; };
       const ways = data.ways.slice();
-      s.ways.forEach((w, k) => { mapped.set(ways.length, { kind: s.kind[k], xy: w.slice(1) }); ways.push([index(s.cls[w[0]]), ...w.slice(1)]); });
+      s.ways.forEach((w, k) => { mapped.set(ways.length, { kind: s.kind[k], xy: w.slice(1), ...(s.osm?.[k] ? { osm: s.osm[k] } : {}) }); ways.push([index(s.cls[w[0]]), ...w.slice(1)]); });
       data = { cls, ways }; this.structures = mapped;
     } else if (overlay) this.structures = overlay.base.structures;
     this.ways = data.ways; this.clsNames = data.cls;
@@ -149,6 +151,23 @@ export class RoadNet {
   readonly structures: ReadonlyMap<number, MappedStructure> = new Map();
   /** What a way is when it is a mapped bridge or tunnel (undefined: an ordinary way). */
   structure(way: number | undefined): MappedStructure | undefined { return way === undefined ? undefined : this.structures.get(way); }
+  /** A mapped bridge or tunnel joins other ways only at its two ends (where it meets the road either side), never a road
+   * that passes under or over it at a point of its span: may `way` take part in a junction at p? */
+  private joinsAt(way: number, p: { x: number; y: number }): boolean {
+    const s = this.structures.get(way);
+    if (!s || s.kind === 'covered') return true;
+    const n = s.xy.length;
+    return Math.hypot(s.xy[0] - p.x, s.xy[1] - p.y) <= 0.02 || Math.hypot(s.xy[n - 2] - p.x, s.xy[n - 1] - p.y) <= 0.02;
+  }
+  /** The segments meeting at p that connect there: a mapped structure's span meets only itself (see joinsAt). */
+  private meeting<T extends { way: number }>(segments: readonly T[], p: { x: number; y: number }): T[] {
+    if (!this.structures.size) return segments as T[];
+    const apart = segments.filter(s => !this.joinsAt(s.way, p));
+    if (!apart.length) return segments as T[];
+    // (on a structure's span: the ways at its own level only, i.e. that structure where nothing else is there, else the others)
+    const others = segments.filter(s => this.joinsAt(s.way, p));
+    return others.length ? others : apart;
+  }
   /** The same network without the given stretches (way chainages d0 < d1): a rebuilt stretch of an
    * existing road is not a road its own replacement crosses. See `edited` for the numbering. */
   without(cuts: readonly { way: number; d0: number; d1: number }[]): RoadNet {
@@ -156,6 +175,11 @@ export class RoadNet {
   }
   /** Ways in the pack's network (designed roads of an edited network are numbered from here). */
   get wayCount(): number { return this.ways.length; }
+  /** Where the mapped structures start (the pack net's own ways before them) and their OSM ids, in order. */
+  get structureIds(): { from: number; osm: string[] } {
+    const ways = [...this.structures.keys()].sort((a, b) => a - b);
+    return { from: ways.length ? ways[0] : this.ways.length, osm: ways.map(w => this.structures.get(w)!.osm ?? '') };
+  }
   /** The network as the player edited it: rebuilt stretches cut out and designed roads added as ways of
    * their class. Numbering is stable whatever else is edited: every pack way keeps its index (a cut way:
    * its part before the first cut); `extra[k]` is way `wayCount + k`; what follows cut `i` on its way (up
@@ -287,6 +311,8 @@ export class RoadNet {
     for (const side of [-1, 1]) {
       let p = side < 0 ? path[0] : path[path.length - 1];
       let prev = side < 0 ? path[1] : path[path.length - 2];
+      /** the way this side's traversal is on (its last segment's) */
+      let onWay = roadId, bestWay = roadId;
       const extension: typeof path = [];
       while (Math.abs(p.d) < reach - 1e-6 && path.length + extension.length < maxPoints) {
         const candidates = this.at(Math.floor(p.x / this.cell) * 100003 + Math.floor(p.y / this.cell)) ?? [];
@@ -304,14 +330,16 @@ export class RoadNet {
           if (dot < -0.5) continue; // never prefer a same-class U-turn over the through alignment
           const nextCls = this.wayCls[this.way[k]];
           if (!ROAD_CLASSES[cls].noAtGrade && ROAD_CLASSES[nextCls].noAtGrade) continue;
+          // (a mapped bridge's or tunnel's span meets no road passing under or over it)
+          if (this.structures.size && this.way[k] !== onWay && (!this.joinsAt(this.way[k], p) || (onWay !== undefined && !this.joinsAt(onWay, p)))) continue;
           const value = dot + (nextCls === cls ? 0.25 : 0);
           if (value <= score) continue;
-          score = value;
+          score = value; bestWay = this.way[k];
           const fraction = Math.min(1, (reach - Math.abs(p.d)) / step);
           best = { x: p.x + (bx - p.x) * fraction, y: p.y + (by - p.y) * fraction, d: p.d + side * step * fraction };
         }
         if (!best) break;
-        visited.add(pointKey(best.x, best.y)); extension.push(best); prev = p; p = best;
+        visited.add(pointKey(best.x, best.y)); extension.push(best); prev = p; p = best; onWay = bestWay;
       }
       if (side < 0) path.unshift(...extension.reverse()); else path.push(...extension);
     }
@@ -348,15 +376,17 @@ export class RoadNet {
    * the junction cannot accidentally claim the untouched continuation beyond that boundary. */
   connections(p: { x: number; y: number }, tolerance = 0.02): RoadConnection[] {
     const out: RoadConnection[] = [];
-    this.nearSegments([p.x - tolerance, p.y - tolerance, p.x + tolerance, p.y + tolerance], s => {
+    const near: RoadSegment[] = [];
+    this.nearSegments([p.x - tolerance, p.y - tolerance, p.x + tolerance, p.y + tolerance], s => near.push(s));
+    for (const s of this.meeting(near, p)) {
       const dx = s.bx - s.ax, dy = s.by - s.ay;
       const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / (s.length * s.length || 1)));
-      if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > tolerance) return;
+      if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > tolerance) continue;
       for (const [x, y, direction] of [[s.ax, s.ay, -1], [s.bx, s.by, 1]]) {
         const len = Math.hypot(x - p.x, y - p.y);
         if (len > 0.02) out.push({ way: s.way, cls: s.cls, d: s.d + t * s.length + direction * Math.min(0.01, len / 2), dx: (x - p.x) / len, dy: (y - p.y) / len });
       }
-    });
+    }
     return out;
   }
 
@@ -396,7 +426,7 @@ export class RoadNet {
       if (key(p) === goal || Math.hypot(p.x - to.x, p.y - to.y) <= 0.02) return d;
       const segments: RoadSegment[] = [];
       this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => segments.push(s));
-      for (const s of segments) {
+      for (const s of this.meeting(segments, p)) {
         const dx = s.bx - s.ax, dy = s.by - s.ay, len2 = s.length * s.length || 1;
         const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / len2));
         if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02 || avoid(s)) continue;
@@ -404,6 +434,7 @@ export class RoadNet {
         // inside this segment (an unsplit T-junction), so traversal is the same either way round.
         const stops: { x: number; y: number; u: number }[] = [{ x: s.ax, y: s.ay, u: 0 }, { x: s.bx, y: s.by, u: 1 }];
         const attach = (x: number, y: number) => {
+          if (!this.joinsAt(s.way, { x, y })) return;
           const u = ((x - s.ax) * dx + (y - s.ay) * dy) / len2;
           if (u > 0 && u < 1 && Math.hypot(x - s.ax - u * dx, y - s.ay - u * dy) <= 0.02) stops.push({ x, y, u });
         };
@@ -470,7 +501,8 @@ export class RoadNet {
           const ex = this.x0[k] - px, ey = this.y0[k] - py;
           const t = (ex * qy - ey * qx) / den, u = (ex * ry - ey * rx) / den;
           if (t < -EPS || (i + 2 === n ? t > 1 + EPS : t >= 1 - EPS) || u < -EPS || u > 1 + EPS) continue;
-          out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: px + t * rx, y: py + t * ry, cls: this.wayCls[this.way[k]], way: this.way[k] });
+          const level = this.structures.get(this.way[k])?.kind;
+          out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: px + t * rx, y: py + t * ry, cls: this.wayCls[this.way[k]], way: this.way[k], ...(level === 'bridge' || level === 'tunnel' ? { level: true as const } : {}) });
         }
       }
       if (out.length - first > 1) {
@@ -509,6 +541,8 @@ export function mergeCrossings(raw: RoadCrossing[], length: number,
       // Keep EVERY hit of a selected road: a second intersection can have a different clearance.
       // Raw intersections already deduplicate shared vertices. Auto keeps historical billing groups.
       if (selectedRoadIds.has(c.way) || out[k].ways.some(w => selectedRoadIds.has(w))) continue;
+      // (a mapped bridge or tunnel is at another level than the roads on the ground beside it: never one crossing with them)
+      if (!!c.level !== !!out[k].rep.level) continue;
       const gap = c.s - out[k].last;
       if (gap <= rules.mergeDistance || (gap <= rules.sameWayMergeDistance && out[k].ways.includes(c.way))) { hit = k; break; }
     }
@@ -523,6 +557,6 @@ export function mergeCrossings(raw: RoadCrossing[], length: number,
   }
   return out.map(({ s, x, y, cls, way, hits, rep }) => {
     const members = hits.filter(h => h !== rep);
-    return { s, x, y, cls, way, ...(members.length ? { members } : {}) };
+    return { s, x, y, cls, way, ...(rep.level ? { level: true as const } : {}), ...(members.length ? { members } : {}) };
   });
 }

@@ -10,6 +10,7 @@ import { sideSection, slopeSurfaceAt, slopeSurfaceFn, type Sections, type SideRe
 import type { Terrain } from './terrain';
 import { natureCells, protectedRasterCells, type NatureCell } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
+import { clearedHit } from './mapped-structures';
 import { subtract, type FootprintConflict } from './footprint';
 import { KIND } from './structures';
 import { barrelContains, barrelIntervals, culvertEnvelope, waterWidth, type BarrelEnvelope, type WaterCrossing, type WaterSegment } from './watercourses';
@@ -325,6 +326,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     recording = events;
     for (const seg of candidates.roads) {
       const pad = roadHalfWidth(seg.cls);
+      // (a mapped bridge with room over our road here, a mapped tunnel deep enough under it: nothing to hold off, footprint.ts)
+      if (roads!.structure(seg.way)) { const hit = clipFootprint(seg, c, pad); if (hit && clearedHit(roads!, seg, hit, grade, terrain)) continue; }
       if (!crossingWays?.has(seg.way)) { segment(c, seg, pad, 'road'); continue; }
       const hit = clipFootprint(seg, c, pad);
       if (!hit) continue;

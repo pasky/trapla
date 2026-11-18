@@ -29,7 +29,7 @@ try {
   await idle(); await game.still();
   const autoCard = await card();
   console.log(autoCard);
-  assert.match(autoCard, /old bridge here is too low or too short/);
+  assert.match(autoCard, /old bridge here is too low/);
   await page.screenshot({ path: `${out}/540-mapped-bridge-rebuilt.png` });
   // the grade by hand, lowered 8 m at the bridge: it passes under it, the bridge is kept
   await T((d) => window.trapla.setDesign(d), design('d11-official-line-lowered-design.json')); await idle(1000);

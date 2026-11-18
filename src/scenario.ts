@@ -195,6 +195,9 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
     ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
     watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined, protectedAreas: protectedAreas ?? undefined });
-  const roadNet = overlays.net ? withStructures(overlays.net, structures) : undefined;
+  // (built from this pack's transport graph: one left from an older build is not used)
+  const ownStructures = structures && structures.transport === transportMeta?.fingerprint ? structures : null;
+  if (structures && !ownStructures) console.warn('Mapped bridges file is from another build of this map: run pipeline/build_structures.py');
+  const roadNet = overlays.net ? withStructures(overlays.net, ownStructures) : undefined;
   return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic };
 }

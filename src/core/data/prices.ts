@@ -198,14 +198,16 @@
  * left them out: a gap in the crossed road, nothing built or billed) are ways of the network, crossed at their own level
  * (their deck, between the ground at their ends: mapped-structures.ts). One our road passes under with the depth a new
  * bridge over us needs (6 m), reaching past our earthworks, is kept (billed 0, "Existing bridge kept"); a tunnel 6 m or
- * more under us likewise; otherwise it is engineered and billed like any crossing. A mapped bridge or tunnel at its own
- * level is not buried by our earthworks (4.8 m under a bridge's deck), nor in the way of a road moved aside. Roads now run
- * on over their bridges (closures, reroutes, a crossed road's path). D11 frozen (M CZK): straight −47.1 (km 18.24 the
- * track, its pieces joined over a mapped bridge, is closed rather than carried over us, −15.3; km 6.32 the street on the
- * line no longer lifted for its box, carried over us on ramps, +17.4, our bridge at km 6.41 40 m shorter); demo +21.5 (km
- * 6.07 the local road's 60 m bridge over the planned D11, our road 3 m under its deck: rebuilt higher on ramps, 16.6 +
- * surcharge); direct-80 +0.004, town-centre and town-controls +0.047 (a crossed way's path runs on over its bridge);
- * best, best-* and direct-90 unchanged. Starters: PLAN.md "Mapped bridges and tunnels are crossings". */
+ * more under us, its portals beyond our works, likewise; otherwise it is engineered and billed like any crossing (a new
+ * bridge replaces the whole old one). Our bridge clears a mapped bridge or tunnel under it at its level (lifts, the grade
+ * retries, a motorway's must-clear). A mapped bridge or tunnel with room is not buried by our earthworks nor held off by a
+ * wall (4.8 m under a bridge's deck), nor in the way of a road moved aside. Roads run on over their bridges (closures,
+ * reroutes, a crossed road's path), never into a road under or over one's span. D11 frozen (M CZK): straight −47.1 (km
+ * 18.24 the track, its pieces joined over a mapped bridge, is closed rather than carried over us, −15.3; km 6.32 the
+ * street on the line no longer lifted for its box, carried over us on ramps, +17.4, our bridge at km 6.41 40 m shorter);
+ * demo +49.3 (km 6.07 the local road's 60 m bridge over the planned D11, our road 3 m under its deck: replaced by a 61 m
+ * bridge on ramps, 38.1 + surcharge); direct-80 +0.004, town-centre and town-controls +0.047 (a crossed way's path runs
+ * on over its bridge); best, best-* and direct-90 unchanged. Starters: PLAN.md "Mapped bridges and tunnels are crossings". */
 export const COST_MODEL_VERSION = 54;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

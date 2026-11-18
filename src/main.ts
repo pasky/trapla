@@ -86,7 +86,8 @@ async function main() {
   const presetId = scenario.presetId ?? scenario.id;
   const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
   // crossing choices on designed roads are stored on those roads; the editor maps them like the worker
-  if (pack.roadNet) registerNet(objectData, pack.roadNet.ways.length + (pack.roadNet.structures?.ways.length ?? 0));
+  if (pack.roadNet) registerNet(objectData, pack.roadNet.ways.length + (pack.roadNet.structures?.ways.length ?? 0),
+    pack.roadNet.structures && { from: pack.roadNet.ways.length, osm: pack.roadNet.structures.osm ?? [] });
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;

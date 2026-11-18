@@ -27,7 +27,10 @@ export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAU
     protectedAreas: process.env.PROTECTED !== '0' && existsSync(`${dir}/protected.json`) ? JSON.parse(readFileSync(`${dir}/protected.json`, 'utf8')) : undefined });
   const ov = JSON.parse(readFileSync(`${dir}/overlays.json`, 'utf8'));
   // the pack's mapped road bridges and tunnels (pipeline/build_structures.py); STRUCTURES=0 loads a pack without them
-  const structures = process.env.STRUCTURES !== '0' && existsSync(`${dir}/structures.json`) ? JSON.parse(readFileSync(`${dir}/structures.json`, 'utf8')) : null;
+  let structures = process.env.STRUCTURES !== '0' && existsSync(`${dir}/structures.json`) ? JSON.parse(readFileSync(`${dir}/structures.json`, 'utf8')) : null;
+  // (built from this pack's transport graph, as the browser checks: scenario.ts)
+  const transport = meta.transport ?? (existsSync(`${dir}/transport-meta.json`) ? JSON.parse(readFileSync(`${dir}/transport-meta.json`, 'utf8')) : null);
+  if (structures && structures.transport !== transport?.fingerprint) { console.warn(`${dir}/structures.json is from another build: ignored`); structures = null; }
   return {
     meta, scenario: scenarioParams(meta.id), terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings, ov.binfo),
     roads: ov.net ? new RoadNet(withStructures(ov.net, structures)) : undefined,

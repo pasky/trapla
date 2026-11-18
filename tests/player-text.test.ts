@@ -28,6 +28,11 @@ describe('player-facing text', () => {
         const o = crossingOutcome({ type, cls, span: 25, approachLength: 120, linkLength: 300, targetS: 1200, underpassLength: 40 });
         for (const text of [o.tag, o.label, o.explain]) { expect(text.trim()).not.toBe(''); check(`outcome ${type}/${cls}`, text); }
       }
+    // a mapped bridge or tunnel: kept as it stands, or its bridge rebuilt (too low, too short)
+    for (const [type, kept, h] of [['overbridge', true, -9], ['underpass', true, 8], ['overbridge', false, -3], ['overbridge', false, -7]] as const) {
+      const o = crossingOutcome({ type, cls: 'unclassified', span: 60, approachLength: kept ? 0 : 80, mapped: type === 'overbridge' ? 'bridge' : 'tunnel', ...(kept ? { kept } : {}), h });
+      for (const text of [o.tag, o.label, o.explain]) check(`outcome mapped ${type}${kept ? ' kept' : ''}`, text);
+    }
     expect(crossingOutcome({ type: 'diversion', cls: 'track', linkLength: 412, targetS: 2310 }).label)
       .toBe('Rerouted to the nearest crossing at km 2.31 (+412 m of new track)');
     for (const action of ['relocation', 'retaining-wall', 'culvert', 'channel-relocation', 'blocked'] as const)

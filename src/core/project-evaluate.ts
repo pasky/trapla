@@ -218,7 +218,7 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
   last?: ProjectResult | null): RouteResult {
   assertProjectDesign(snapshot.design);
   const design = snapshot.design;
-  if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
+  if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount, ctx.legacy.roads.structureIds);
   const route = design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
   // (a railway's ends do not follow other roads, but it follows the crossings they built with it; a motorway's
   // corridor kernel takes no holds)
@@ -463,7 +463,7 @@ function projectStart(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepCl
   let { order, placed } = ordered(r => [...endHosts(r), ...owners(r), ...design.routes.filter(q => draws(design, r, q)).flatMap(endHosts).filter(id => id !== r.id)]);
   if (order.length < design.routes.length) ({ order, placed } = ordered(r => [...endHosts(r), ...owners(r)]));
   if (order.length < design.routes.length) ({ order, placed } = ordered(endHosts));
-  if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
+  if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount, ctx.legacy.roads.structureIds);
   /** where a higher-ranking road's crossing holds a designed road (filled as owners are evaluated) */
   const holdsOf = new Map<string, Hold[]>(), seenOwners = new Set<Result>();
   const cyclic = design.routes.filter(r => !placed.has(r.id));

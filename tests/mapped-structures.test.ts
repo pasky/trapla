@@ -39,7 +39,7 @@ describe.skipIf(!existsSync(`${DIR}/structures.json`))('D11 along the official l
     expect(c.mapped).toBe('bridge');
     expect([c.type, c.kept, c.h < -3 && c.h > -4]).toEqual(['overbridge', undefined, true]);
     expect(c.cost).toBeGreaterThan(10e6);
-    expect(crossingOutcome(c).explain).toMatch(/old bridge here is too low or too short/);
+    expect(crossingOutcome(c).explain).toMatch(/old bridge here is too low for our road/);
   });
   it('with the grade by hand 11 m under it: kept as it stands, nothing billed, its deck drawn over our cut', () => {
     const c = at(evaluate(ctx, fixture('d11-official-line-lowered-design.json')));
