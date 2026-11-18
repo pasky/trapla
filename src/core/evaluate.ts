@@ -1932,12 +1932,10 @@ function routeLift(d: Design, setup: ReturnType<typeof routeSetup>, caches: Retu
 /** A design pass, 1: engineer the starting line, then (Auto, full evaluations) lift it where bridge spans,
  * supports and abutments need more height, in up to five rounds; the targets are kept for a later pass. */
 function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, strict: ReadonlySet<number>, start: VPI[], from: LiftState | undefined, setup: ReturnType<typeof routeSetup>, engineerStage: ReturnType<typeof routeEngineer>, solved: ReturnType<typeof routeGradeLine>, lifting: ReturnType<typeof routeLift>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>) {
-  const { oobInput, preview, blocks, snapTraced, vlim, mustBridge, norms, n, freeStation, ds, ground, st, timing } = setup;
+  const { oobInput, preview, blocks, snapTraced, vlim, mustBridge, norms } = setup;
   const { engineer } = engineerStage;
-  const { profileFeasible, liftBlocks, keepsExterior, autoOptions, blockValues, materialValue, constrainedSolve } = solved;
+  const { profileFeasible, liftBlocks, keepsExterior, autoOptions } = solved;
   const { liftProfile } = lifting;
-  const { costFor } = prices;
-  const { work } = caches;
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
@@ -2018,24 +2016,8 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
     // line does not depend on which pass or attempt needed it.
     const fresh = failed.filter(c => c.some(q => !retried.has(q.s)));
     if (fresh.length && autoOptions) {
-      const minH = autoOptions.minH ? Float64Array.from(autoOptions.minH) : new Float64Array(n).fill(NaN);
-      const atS = autoOptions.clearanceS ? Float64Array.from(autoOptions.clearanceS) : undefined;
       for (const c of fresh) for (const q of c) retried.set(q.s, Math.max(q.z, retried.get(q.s) ?? -Infinity));
-      // blocks: each target on a station of its own, at its own chainage
-      const ao = autoOptions, taken = (j: number) => !Number.isNaN(minH[j]) || !Number.isNaN(ao.maxH?.[j] ?? NaN)
-        || !Number.isNaN(ao.eitherH?.above[j] ?? NaN) || !Number.isNaN(ao.eitherH?.below[j] ?? NaN);
-      for (const [s, z] of retried) {
-        const i = atS ? freeStation(s, taken) : Math.min(n - 1, Math.round(s / ds));
-        if (i < 0) continue;
-        minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], z - ground[i] + 0.25);
-        if (atS) atS[i] = s;
-      }
-      const retryStart = performance.now();
-      const retryOptions = blockValues ? { ...autoOptions, minH, blockValues, clearanceS: atS }
-        : { ...autoOptions, minH, costPerM: costFor(materialValue), balance: undefined };
-      const retry = constrainedSolve ? constrainedSolve(retryOptions) : autoProfile(st.s, ground, retryOptions);
-      work('retryDP', retryStart);
-      timing['count.retryDP'] = (timing['count.retryDP'] ?? 0) + 1;
+      const retry = floorSolve(retried, setup, solved, prices, caches)!;
       // kept only if it meets a stretch the lifts could not (a target it cannot reach either, e.g. next
       // to a fixed end, would only trade the line for one that pays its clearance penalty)
       if (retry.feasible) {
@@ -2048,6 +2030,32 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
     engineering = engineer(vpis, relaxed, strict);
   }
   return { oob, vpis, engineering, repairTargets, retried, liftShared };
+}
+
+/** The grade search again with heights the structures need as floors (`targets`: chainage → height), at the
+ * material values already settled (no repeat balance search); null without an Auto search. */
+function floorSolve(targets: ReadonlyMap<number, number>, setup: ReturnType<typeof routeSetup>, solved: ReturnType<typeof routeGradeLine>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>) {
+  const { n, freeStation, ds, ground, st, timing } = setup;
+  const { autoOptions, blockValues, materialValue, constrainedSolve } = solved;
+  if (!autoOptions) return null;
+  const minH = autoOptions.minH ? Float64Array.from(autoOptions.minH) : new Float64Array(n).fill(NaN);
+  const atS = autoOptions.clearanceS ? Float64Array.from(autoOptions.clearanceS) : undefined;
+  // blocks: each target on a station of its own, at its own chainage
+  const ao = autoOptions, taken = (j: number) => !Number.isNaN(minH[j]) || !Number.isNaN(ao.maxH?.[j] ?? NaN)
+    || !Number.isNaN(ao.eitherH?.above[j] ?? NaN) || !Number.isNaN(ao.eitherH?.below[j] ?? NaN);
+  for (const [s, z] of targets) {
+    const i = atS ? freeStation(s, taken) : Math.min(n - 1, Math.round(s / ds));
+    if (i < 0) continue;
+    minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], z - ground[i] + 0.25);
+    if (atS) atS[i] = s;
+  }
+  const retryStart = performance.now();
+  const retryOptions = blockValues ? { ...autoOptions, minH, blockValues, clearanceS: atS }
+    : { ...autoOptions, minH, costPerM: prices.costFor(materialValue), balance: undefined };
+  const retry = constrainedSolve ? constrainedSolve(retryOptions) : autoProfile(st.s, ground, retryOptions);
+  caches.work('retryDP', retryStart);
+  timing['count.retryDP'] = (timing['count.retryDP'] ?? 0) + 1;
+  return retry;
 }
 
 /** A design pass, 2: what was built. Structures and their problems, retaining walls and moved channels on
