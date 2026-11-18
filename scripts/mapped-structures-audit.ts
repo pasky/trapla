@@ -1,7 +1,8 @@
 // Mapped road bridges and tunnels crossed by our road (a pack's structures.json, pipeline/build_structures.py): every
 // one must be a crossing of its own (selectable, engineered and billed, or an existing structure kept with its
-// clearance), never a gap in the crossed road. For each pack: the straight line, the mission's starter and N random
-// designs (outcome-audit.ts's generator); prints each such crossing and flags what is wrong.
+// clearance), never a gap in the crossed road. For each pack: the straight line, the mission's starter, a line along the
+// official (mapped) one (a bend every 700 m of it, as tests/fixtures/d11-official-line-design.json) and N random designs
+// (outcome-audit.ts's generator); prints each such crossing and flags what is wrong.
 //   npx tsx scripts/mapped-structures-audit.ts [--random N] [--seed S] [pack …]   (default: every pack with structures.json)
 // Exit 1 on a flag.
 import { existsSync, readdirSync } from 'node:fs';
@@ -26,6 +27,19 @@ for (const id of packs) {
   const base = scenario.initial ?? { category: 'S9.5' as const, speed: 90 };
   const designs: { name: string; design: Design }[] = [{ name: 'straight', design: { category: base.category, speed: base.speed, pis: [], profileMode: 'auto', vpis: [] } }];
   if (scenario.initial?.pis?.length) designs.push({ name: 'starter', design: { category: base.category, speed: base.speed, pis: scenario.initial.pis, profileMode: 'auto', vpis: [] } });
+  // along the official line between A and B
+  const off: number[] = meta.official?.xy ? (meta.official.xy as number[] | number[][]).flat() : [];
+  if (off.length >= 4) {
+    const pts: { x: number; y: number; d: number }[] = [];
+    for (let i = 0, d = 0; i + 1 < off.length; i += 2) { if (i) d += Math.hypot(off[i] - off[i - 2], off[i + 1] - off[i - 1]); pts.push({ x: off[i], y: off[i + 1], d }); }
+    const near = (p: { x: number; y: number }) => pts.reduce((a, q) => Math.hypot(q.x - p.x, q.y - p.y) < Math.hypot(a.x - p.x, a.y - p.y) ? q : a);
+    const da = near(A).d, db = near(B).d, dir = db > da ? 1 : -1, pis = [];
+    for (let s = da + dir * 700; dir * (db - s) > 350; s += dir * 700) {
+      const q = dir > 0 ? pts.find(p => p.d >= s)! : [...pts].reverse().find(p => p.d <= s)!;
+      pis.push({ x: Math.round(q.x), y: Math.round(q.y), r: null });
+    }
+    designs.push({ name: 'official', design: { category: base.category, speed: base.speed, pis, profileMode: 'auto', vpis: [] } });
+  }
   for (let k = 0; k < opt('--random', 6); k++) {
     const count = 2 + Math.floor(rand() * 7), dx = B.x - A.x, dy = B.y - A.y, len = Math.hypot(dx, dy);
     const pis = Array.from({ length: count }, (_, j) => {

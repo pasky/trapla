@@ -51,3 +51,17 @@ describe.skipIf(!existsSync(`${DIR}/structures.json`))('D11 along the official l
     expect(Math.abs(deck[0].z - pack.terrain.heightAt(deck[0].x, deck[0].y))).toBeLessThan(0.3);
   });
 });
+
+describe('a mapped tunnel under our road', async () => {
+  const { resolveCrossings } = await import('../src/core/crossings');
+  const { KIND } = await import('../src/core/structures');
+  const crossing = (h: number) => ({ s: 500, i: 50, x: 0, y: 0, cls: 'unclassified', roadId: 7, h, type: 'atGrade' as const, cost: 0, mapped: 'tunnel' as const });
+  const resolve = (h: number) => { const c = crossing(h); resolveCrossings([c], 1000, new Uint8Array(101).fill(KIND.earth), new Float64Array(101).fill(30), new Float64Array(101)); return c; };
+  it('deep enough (our road ≥ 6 m over its road): kept as it is, nothing billed', () => {
+    expect(resolve(8)).toMatchObject({ type: 'underpass', kept: true, cost: 0 });
+  });
+  it('too shallow: a crossing like any other', () => {
+    const c = resolve(2);
+    expect(c.kept).toBeUndefined(); expect(c.type).not.toBe('atGrade');
+  });
+});
