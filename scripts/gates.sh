@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.."
 LOCK=${TRAPLA_BROWSER_LOCK:-/tmp/trapla-browser.lock}
 # the browser scripts start at PORT (the next free one if it is taken): one per checkout, 10 apart per browser gate
 export PORT=${PORT:-$((5300 + $(pwd | cksum | cut -d' ' -f1) % 600))}
-PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-paka"
+PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-paka i46-sternberk"
 branch=$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
 log=${GATES_LOG:-/tmp/trapla-gates-$branch}
 

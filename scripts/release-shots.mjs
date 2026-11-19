@@ -51,11 +51,20 @@ try {
     ok(await first.count() === 1 && /Jílové → Hostěradice/.test(await first.textContent()), 'one mission is marked Start here: Jílové → Hostěradice');
     const d3 = page.locator('.scenario-picker-card', { hasText: 'The D3 south of Prague' });
     const chips = await d3.locator('.scenario-picker-section').allTextContents();
-    ok(chips.length === 6 && /^0301/.test(chips[0]) && /^Whole route/.test(chips[5]) && chips.every((c) => /km · [\d.]+ MB$/.test(c)),
-      `the D3 card has its sections with length and size, the whole route last (${chips.join(' | ')})`);
-    const nova = page.locator('.scenario-picker-card').last();
-    ok(/Nová Paka/.test(await nova.textContent()) && /already in the ground/.test(await nova.textContent()), 'Nová Paka is last, marked "the real road is already in the ground here"');
-    ok(!/km\/h|section 0|Built 27\.5|Earlier map|proposal/.test(await page.locator('.scenario-picker').textContent()), 'no speeds, notes or internal words on the cards');
+    ok(chips.length === 6 && /^Praha → Jílové/.test(chips[0]) && /^Whole route/.test(chips[5]) && chips.every((c) => /km · [\d.]+ MB$/.test(c)),
+      `the D3 card has its sections by place names with length and size, the whole route last (${chips.join(' | ')})`);
+    const town = page.locator('.scenario-picker-card').last();
+    ok(/Šternberk bypass/.test(await town.textContent()) && !(await town.locator('.scenario-picker-note').count()), 'the Šternberk bypass is last, with no warning');
+    ok(!/Nová Paka/.test(await page.locator('.scenario-picker').textContent()), 'the retired Nová Paka is not offered');
+    ok(!/km\/h|section 0|\b030[1-5]\b|Built 27\.5|Earlier map|proposal/.test(await page.locator('.scenario-picker').textContent()), 'no speeds, section numbers, notes or internal words on the cards');
+    // a card's description never repeats its title or its chosen section's name
+    for (const card of await page.locator('.scenario-picker-card').all()) {
+      const title = (await card.locator('h3').textContent()).trim(), goal = (await card.locator('.scenario-picker-goal').textContent()).trim();
+      const chip = await card.locator('.scenario-picker-section.on b').count() ? (await card.locator('.scenario-picker-section.on b').textContent()).trim() : null;
+      ok(goal && !goal.includes(title) && (!chip || !goal.includes(chip)) && !/^[^.]*→[^.]*:/.test(goal), `"${title}": the description does not repeat the title ("${goal}")`);
+    }
+    ok(/Design roads and railways on real terrain/.test(await page.locator('h1').textContent())
+      && /roads, motorways and railways/.test(await page.locator('.scenario-picker-lead').textContent()), 'the headline and the line under it name roads, motorways and railways');
     await shot(page, 551, 'start-screen');
     await d3.locator('.scenario-picker-section', { hasText: 'Whole route' }).click();
     ok(/57 km/.test(await d3.locator('.scenario-picker-kind').textContent()) && await d3.getByRole('button', { name: 'Start' }).isEnabled(), 'choosing Whole route: its length on the card, Start ready');

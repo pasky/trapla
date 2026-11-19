@@ -11,19 +11,20 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/
   ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 try {
-  // The earlier Jílové → Václavice map is retired: not offered without a save; the D3 sections are one card.
+  // The earlier Jílové → Václavice map and Nová Paka are retired: not offered without a save; the D3 sections are one card.
   {
     const page = await browser.newPage();
     await page.goto(server.resolvedUrls.local[0]);
     await page.locator('.scenario-picker-card').first().waitFor();
     assert.equal(await page.locator('.scenario-picker-card', { hasText: 'Václavice,' }).count(), 0, 'retired D3 map is not offered');
+    assert.equal(await page.locator('.scenario-picker-card', { hasText: 'Nová Paka' }).count(), 0, 'retired Nová Paka is not offered');
     assert.equal(await page.locator('.scenario-picker-card', { hasText: 'The D3 south of Prague' }).locator('.scenario-picker-section').count(), 6, 'D3 sections on one card');
     await page.close();
   }
   const only = process.env.ONLY?.split(',');
   const D3 = 'The D3 south of Prague';
-  for (const [title, chip, id] of [[D3, '0301', 'd3-0301'], [D3, '0302', 'd3-0302'], [D3, '0303', 'd3-0303'], [D3, '0304', 'd3-0304'],
-    [D3, '0305/I', 'd3-0305'], [D3, 'Whole route', 'd3-full'], ['The D35 to Mohelnice', 'Whole link', 'd35-full'], ['Trutnov → Polish border', 'Motorway D11', 'd11-motorway'], ['Nová Paka', null, 'i16-nova-paka']].filter(([, , id]) => !only || only.includes(id))) {
+  for (const [title, chip, id] of [[D3, 'Praha → Jílové', 'd3-0301'], [D3, 'Jílové → Hostěradice', 'd3-0302'], [D3, 'Hostěradice → Václavice', 'd3-0303'], [D3, 'Václavice → Voračice', 'd3-0304'],
+    [D3, 'Voračice → Nová Hospoda', 'd3-0305'], [D3, 'Whole route', 'd3-full'], ['The D35 to Mohelnice', 'Whole link', 'd35-full'], ['Trutnov → Polish border', 'Motorway D11', 'd11-motorway'], ['Šternberk bypass', null, 'i46-sternberk']].filter(([, , id]) => !only || only.includes(id))) {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
     await context.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
     const page = await context.newPage();

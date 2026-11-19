@@ -54,12 +54,12 @@ describe('picker cards', () => {
     // Trutnov: the D11 motorway (the real project) first, the class I road beside it as the simpler job
     expect(ids(fresh.cards.find(c => c.group === 'Trutnov')!.presets)).toEqual(['d11-motorway', 'd11']);
     expect(fresh.startHere?.presetId).toBe('d3-0302-motorway');
-    // the mission whose real road is already in the ground comes last
-    expect(fresh.cards.at(-1)!.presets[0].id).toBe('i16-nova-paka');
+    // the town bypass is its own card, last
+    expect(ids(fresh.cards.at(-1)!.presets)).toEqual(['i46-sternberk-road']);
   });
 
   it('never offers a retired mission; a save of one is listed apart', () => {
-    const retired = ['d3-road', 'd3-motorway', 'd35-stage1-road', 'd11-railway'];
+    const retired = ['d3-road', 'd3-motorway', 'd35-stage1-road', 'i16-nova-paka-road', 'd11-railway'];
     const offered = (saved: boolean) => pickerLayout(PRESETS, () => saved).cards.flatMap(c => ids(c.presets));
     for (const saved of [false, true]) expect(offered(saved).filter(id => retired.includes(id))).toEqual([]);
     expect(pickerLayout(PRESETS, () => false).older).toEqual([]);

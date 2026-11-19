@@ -1,0 +1,23 @@
+{
+  "scenario": "i46-sternberk",
+  "purpose": "Road exercise near the mapped reference, not the official motorway design or surveyed profile",
+  "design": {
+    "category": "S11.5",
+    "speed": 90,
+    "pis": [
+      {
+        "x": 3047.7,
+        "y": 3963.9,
+        "r": null
+      },
+      {
+        "x": 3649.7,
+        "y": 5310.3,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

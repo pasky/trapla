@@ -1,0 +1,41 @@
+{
+  "scenario": "i46-sternberk",
+  "purpose": "Fresh road exercise",
+  "design": {
+    "category": "S11.5",
+    "speed": 90,
+    "pis": [
+      {
+        "x": 2656.9,
+        "y": 3503.2,
+        "r": 1500
+      },
+      {
+        "x": 3212.8,
+        "y": 4153.7,
+        "r": 1000
+      },
+      {
+        "x": 3452.5,
+        "y": 4769.9,
+        "r": 800,
+        "speed": 70
+      },
+      {
+        "x": 3466.1,
+        "y": 5342.5,
+        "r": 360,
+        "speed": 70
+      },
+      {
+        "x": 4574.1,
+        "y": 5350,
+        "r": 340,
+        "speed": 70
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

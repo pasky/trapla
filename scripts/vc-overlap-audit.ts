@@ -32,6 +32,7 @@ const SUITES: Record<string, { scenario: string; designs: string[]; n?: number; 
   d3: { scenario: 'd3', designs: pack('d3', 'scripts/scenarios/d3/d3-motorway.json') },
   d35: { scenario: 'd35', designs: pack('d35', 'scripts/scenarios/d35/d35-stage1-motorway.json') },
   'i16-nova-paka': { scenario: 'i16-nova-paka', designs: pack('i16-nova-paka') },
+  'i46-sternberk': { scenario: 'i46-sternberk', designs: pack('i46-sternberk') },
   'd3-full': { scenario: 'd3-full', designs: ['scripts/scenarios/d3-full/d3-full-motorway.json'], n: 4 },
   'd35-full': { scenario: 'd35-full', designs: ['scripts/scenarios/d35-full/d35-full-motorway.json'], n: 4 },
   ...Object.fromEntries(['d3-0301', 'd3-0302', 'd3-0303', 'd3-0304', 'd3-0305'].map(id => [id, { scenario: id, designs: pack(id, `scripts/scenarios/${id}/${id}-motorway.json`), n: 6 }])),

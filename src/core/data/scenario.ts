@@ -132,7 +132,9 @@ export const D35_SCENARIO: ScenarioParams = {
 };
 
 export const NOVA_PAKA_SCENARIO: ScenarioParams = {
-  id: 'i16-nova-paka', presetId: 'i16-nova-paka-road', title: 'Nová Paka bypass', group: 'I/16',
+  // RETIRED (replaced by the Šternberk bypass, research/88): its terrain and photo were captured while the real
+  // bypass was being built. Kept so its saves still load (?scenario=i16-nova-paka); not on the start screen.
+  id: 'i16-nova-paka', presetId: 'i16-nova-paka-road', title: 'Nová Paka bypass', group: 'I/16', retired: true,
   ends: { b: { kind: 'roundabout', with: 'road I/16' } },
   photoNote: 'The photo was taken while the real bypass was being built: the bare earth you see is its construction site, not our road.',
   // S11.5/70 is the actual project's category (OPD entry); 10,000/day is a GAME PRIOR,
@@ -150,6 +152,29 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
   traffic: 10_000, heavyShare: 0.15, maxTravelMin: 8,
   terrainClass: 'hilly', maxGradient: 0.06,
   labels: { a: 'Kumburský Újezd', b: 'Vidochov', official: 'bypass reference', brief: '<b>Kumburský Újezd</b> to <b>Vidochov</b>, around Nová Paka' },
+};
+
+// The I/46 Šternberk bypass (research/88): planned, not built (ŘSD leaflet 07/2025: 4,708 m, S 11.5/90 to the
+// interchange at km 2.0, S 11.5/70 past it "where the terrain is mountainous"; 2,037 M ex VAT; permit suspended until
+// 9/2027 at the latest). Ends: where the OSM planned line leaves the I/46 from Olomouc south of the town (the real
+// start is the split of an interchange there) and where it rejoins the I/46 towards Opava past the Domašov turn.
+// Traffic: the town count, not a forecast: ŘSD CSD 2025 on the I/46 through Šternberk, from the town sign to the
+// Domašov turn (sections 7-1096 16,731, 7-1091 12,816, 7-2182 9,671, 7-2196 5,241 vehicles a day over 957 / 651 /
+// 753 / 1,335 m), averaged over their lengths: 10,453 a day, 898 heavy (8.6 %, used as the noise model's heavy
+// share). Time target: a mission choice, the mapped line + 10 % at the real project's speeds (2.0 km at 90, 2.23 km
+// at 70: 3.57 → 3.6 min). Starter: the mapped line's five curves as bends at its tangent intersections, radii
+// near the mapped ones, the three past km 2.0 at 70 km/h as the real project.
+export const STERNBERK_SCENARIO: ScenarioParams = {
+  id: 'i46-sternberk', presetId: 'i46-sternberk-road', title: 'Šternberk bypass', group: 'I/46',
+  initial: { category: 'S11.5', speed: 90, pis: [
+    { x: 2656.9, y: 3503.2, r: 1500 }, { x: 3212.8, y: 4153.7, r: 1000 }, { x: 3452.5, y: 4769.9, r: 800, speed: 70 },
+    { x: 3466.1, y: 5342.5, r: 360, speed: 70 }, { x: 4574.1, y: 5350, r: 340, speed: 70 },
+  ] },
+  picker: { kind: 'Class I road', goal: 'Take the I/46 around the town, over a wooded valley and up towards Opava.' },
+  traffic: 10_453, heavyShare: 0.086, maxTravelMin: 3.6,
+  terrainClass: 'hilly', maxGradient: 0.06,
+  labels: { a: 'Olomouc', b: 'Opava', official: 'planned bypass', brief: 'Around <b>Šternberk</b>, from the <b>Olomouc</b> road to the <b>Opava</b> road' },
+  ends: { a: { kind: 'joins', with: 'road I/46 from Olomouc' }, b: { kind: 'joins', with: 'road I/46 to Opava' } },
 };
 
 // Motorway missions in the same corridors: separate presets (own saves) next to the unchanged road
@@ -180,7 +205,8 @@ const d3Section = (id: string, section: string, title: string, speed: 120 | 130,
   labels: ScenarioParams['labels'], goal: string, ends: ScenarioParams['ends']): ScenarioParams => ({
   id, presetId: `${id}-motorway`, mode: 'motorway', title, group: 'Středočeská D3', ends,
   initial: { category: 'D27.5', speed, pis },
-  picker: { kind: 'Motorway', goal, section },
+  // the start screen's chip names the section by its places (the section number is ŘSD's, not the player's)
+  picker: { kind: 'Motorway', goal, section: /^Whole/.test(section) ? section : title },
   ...MOTORWAY_TRAFFIC, maxTravelMin, terrainClass: 'hilly', maxGradient: 0.06, labels,
 });
 const startHere = (p: ScenarioParams): ScenarioParams => ({ ...p, picker: { ...p.picker!, startHere: true } });
@@ -223,7 +249,7 @@ export const D35_MOTORWAY: ScenarioParams = {
   ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Opatovec → Staré Město', retired: undefined,
   // The real section is D 26.0/130 (research/26), a category without an SPK 2026 row: built as D 27.5.
   initial: { ...D35_SCENARIO.initial!, category: 'D27.5', speed: 130 },
-  picker: { kind: 'Motorway', goal: 'Carry the motorway over the ridge to Staré Město.', section: 'First section' },
+  picker: { kind: 'Motorway', goal: 'Carry the motorway over the ridge to Staré Město.', section: 'Opatovec → Staré Město' },
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
   ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'continues', with: 'the next section, to Mohelnice' } },
 };
@@ -320,12 +346,12 @@ export const D11_MOTORWAY: ScenarioParams = {
 };
 /** Every playable mission, in picker order. */
 export const PRESETS: ScenarioParams[] = [D11_MOTORWAY, D11_SCENARIO, D11_RAIL_KRALOVEC, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
-  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, NOVA_PAKA_SCENARIO, D11_RAILWAY];
+  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, STERNBERK_SCENARIO, NOVA_PAKA_SCENARIO, D11_RAILWAY];
 
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
  * D11 intentionally retains its exact legacy parameters and default. */
 export const SCENARIOS: Record<string, ScenarioParams> = {
-  d11: D11_SCENARIO, d3: D3_SCENARIO, d35: D35_SCENARIO, 'i16-nova-paka': NOVA_PAKA_SCENARIO,
+  d11: D11_SCENARIO, d3: D3_SCENARIO, d35: D35_SCENARIO, 'i16-nova-paka': NOVA_PAKA_SCENARIO, 'i46-sternberk': STERNBERK_SCENARIO,
   'd3-full': D3_FULL, 'd35-full': D35_FULL, 'd3-0301': D3_0301, 'd3-0302': D3_0302, 'd3-0303': D3_0303, 'd3-0304': D3_0304, 'd3-0305': D3_0305,
 };
 export const DEFAULT_SCENARIO = 'd11';

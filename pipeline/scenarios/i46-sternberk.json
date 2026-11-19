@@ -1,0 +1,30 @@
+{
+  "id": "i46-sternberk",
+  "name": "Šternberk bypass",
+  "bbox5514": [-545500, -1113000, -538500, -1104500],
+  "cell": 5,
+  "requireComplete": true,
+  "coherentTransport": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way(id:939310911,939310910,939310915,939310913,939310912,939310914,939310909,939310908,939310907,939310906,939310918,939310905,939310904);",
+    "ref": "46", "highway": "primary",
+    "wayIds": [939310911, 939310910, 939310915, 939310913, 939310912, 939310914, 939310909, 939310908, 939310907, 939310906, 939310918, 939310905, 939310904],
+    "startNode": 2929004274,
+    "lengthRangeM": [4150, 4300],
+    "publishedProjectLengthM": 4708,
+    "note": "The OSM highway=proposed line of the I/46 Šternberk bypass (ref 46, source:ref rsd_cr), from where it leaves the existing I/46 south of the town to where it rejoins it on the way to Opava (research/88)."
+  },
+  "A": {"alongOfficial": 0, "note": "South of Šternberk: the bypass leaves the existing I/46 from Olomouc (node 2929004274; the real project starts at the split of an interchange there)",
+        "junction": {"kind": "merge", "osmWayIds": [289348606], "about": "The existing I/46 from Olomouc, which our road leaves at A; it goes on into the town as Olomoucká street."}},
+  "B": {"latlon": [49.72457, 17.31956], "note": "North-east of Šternberk, past the Domašov turn: the bypass rejoins the existing I/46 towards Opava (node 26401008)",
+        "junction": {"kind": "merge", "osmWayIds": [4337741], "about": "The existing I/46 towards Opava, which our road joins at B (node 26401008 lies on it)."}},
+  "baselineNote": "Planned, not built: no works before the terrain and photo (ŘSD leaflet 07/2025, permit suspended until 9/2027 at the latest, research/88). The planned line is OSM highway=proposed, outside the road network. Ground depths are uncalibrated regional priors.",
+  "sources": [
+    "https://apdos.roadmedia.cz/Upload/Stavby/329/infoletak_s46-sternberk-obchvat.pdf",
+    "https://zdopravy.cz/nejdriv-historicka-vila-ted-chraneni-motyli-priprava-obchvatu-sternberka-se-znovu-zasekla-307213/",
+    "https://portal.cenia.cz/eiasea/detail/EIA_OLK068",
+    "https://www.openstreetmap.org/way/939310911",
+    "https://www.openstreetmap.org/way/939310904"
+  ]
+}

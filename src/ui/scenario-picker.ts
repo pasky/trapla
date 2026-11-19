@@ -116,10 +116,10 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   const root = element('main', '', 'scenario-picker');
   root.setAttribute('aria-labelledby', 'scenario-picker-heading');
   const content = element('div', '', 'scenario-picker-content');
-  const heading = element('h1', 'Design a road on real terrain');
+  const heading = element('h1', 'Design roads and railways on real terrain');
   heading.id = 'scenario-picker-heading';
   content.append(element('p', 'Trapla', 'scenario-picker-brand'), heading,
-    element('p', 'Bend it through real Czech hills, bridge the valleys, keep it safe, and make it as cheap as you can.', 'scenario-picker-lead'));
+    element('p', 'Lead roads, motorways and railways through real Czech hills: bridge the valleys, keep them safe, and build them as cheap as you can.', 'scenario-picker-lead'));
   if (requested) content.append(element('p', import.meta.env.PROD ? 'That place is not on this site. Choose another.'
     : 'That place is not ready. Choose another or build its map.', 'scenario-picker-notice'));
   root.append(content);
@@ -212,7 +212,7 @@ function missionCard(presets: ScenarioParams[], isSaved: (s: ScenarioParams) => 
   const chipFor = new Map<ScenarioParams, HTMLButtonElement>();
   const show = () => {
     kind.textContent = kindLine(chosen);
-    goal.textContent = sectioned ? `${chosen.title}: ${chosen.picker?.goal ?? ''}` : chosen.picker?.goal ?? '';
+    goal.textContent = chosen.picker?.goal ?? '';
     button.textContent = isSaved(chosen) ? 'Continue' : 'Start';
     const ok = ready.get(chosen);
     button.disabled = ok !== true;

@@ -443,7 +443,7 @@ export function endCard(info: EndConnection, end: 'a' | 'b'): { title: string; l
   if (info.kind === 'continues') return { title: `Goes on as ${info.with}`, lines: ['That part is not in this job.'] };
   if (info.kind === 'roundabout') return { title: `Joins the roundabout on ${info.with}`,
     lines: ['Our road gets its own arm into it here, with a splitter island, priced as a junction; the roundabout itself stays as it is.'] };
-  if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`Our motorway carries on as ${info.with} here; that road is not part of this job.`] };
+  if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`It carries on as ${info.with} here; that road is not part of this job.`] };
   return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
     ...(info.section ? [end === 'b' ? `The motorway goes on as ${info.section}.` : `The motorway comes from ${info.section}.`] : [])] };
 }
