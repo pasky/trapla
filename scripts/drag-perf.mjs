@@ -122,7 +122,7 @@ const uncovered = async (selector) => {
 };
 const T = (f, a) => page.evaluate(f, a);
 /** where the drag starts and its pointer offset (px) at phase u ∈ [0, 1) of the measured drag */
-let grab, path, beforeMeasure = async () => {};
+let grab, path, beforeMeasure = async () => {}, afterWarmUp = async () => {};
 if (mode === 'bend') {
   // a loop around the bend's spot (the route length changes every step)
   grab = () => uncovered(`.pi[data-i="${bend}"]`);
@@ -191,11 +191,19 @@ if (mode === 'bend') {
     return pts.find(p => { const s = screen(p.x, p.y, p.z); return marks.every(m => Math.hypot(s.sx - m.sx, s.sy - m.sy) > 40); }) ?? pts[0];
   }, at.link);
   grab = async () => {
+    // (the link drawn where it is before a press grabs it: on a loaded host the scene of a long route catches up after the
+    // camera move or the evaluation)
+    await T(() => new Promise((resolve) => { const tick = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? tick() : resolve())); tick(); }));
     return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, q);
   };
-  // after the warm-up drag: back to the automatic path, so the measured drag starts on it too
+  afterWarmUp = async () => {
+    if (!(await T(() => (window.trapla.getDesign().crossingOverrides ?? []).some(o => o.via)))) throw new Error('the warm-up drag did not shape the reroute');
+  };
+  // after the warm-up drag: back to Auto's crossing as the design had it, so the measured drag is the reroute's first
+  // shaping, as a player's first drag of it
+  const before = await T(() => window.trapla.getDesign().crossingOverrides ?? []);
   beforeMeasure = async () => {
-    await T(() => { const d = window.trapla.getDesign(); for (const o of d.crossingOverrides ?? []) { delete o.via; delete o.to; } window.trapla.setDesign(d); });
+    await T((before) => { const d = window.trapla.getDesign(); d.crossingOverrides = before; window.trapla.setDesign(d); }, before);
     await T(() => window.trapla.whenIdle());
     // (the link drawn again where it was, and still selected, before the measured drag grabs it: on a loaded host the
     // scene of a long route catches up after the evaluation)
@@ -205,14 +213,16 @@ if (mode === 'bend') {
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
 } else throw new Error(`unknown --mode ${mode}`);
 
-const drag = async (secs, size, shotAt = null) => {
+/** `minMoves`: moves made even past `secs` (the warm-up: on a loaded host the first moves over a long route can take
+ * the whole time, a hover's first picks, and a drag must still begin) */
+const drag = async (secs, size, shotAt = null, minMoves = 0) => {
   const c = await grab();
   await page.mouse.move(c.x, c.y);
   await page.mouse.down();
   const t0 = Date.now();
   let k = 0;
   // pointer moves on a fixed 60 Hz timeline (late moves jump ahead, as a real mouse would)
-  while (Date.now() - t0 < secs * 1000) {
+  while (Date.now() - t0 < secs * 1000 || k < minMoves) {
     const o = path((Date.now() - t0) / 1000 / secs, size);
     await page.mouse.move(c.x + o.x, c.y + o.y);
     // next slot of the timeline: missed slots are skipped, not sent in a burst
@@ -225,8 +235,9 @@ const drag = async (secs, size, shotAt = null) => {
   return k;
 };
 // warm-up: a short drag so JIT / shader programs are not first-use (the owner drags repeatedly)
-await drag(0.6, 30);
+await drag(0.6, 30, null, 12);
 await page.evaluate(() => window.trapla.whenIdle());
+await afterWarmUp();
 await beforeMeasure();
 await page.waitForTimeout(800);
 

@@ -44,15 +44,19 @@ export function stationWindow(st: Stationing, s0: number, s1: number): Stationin
   return out;
 }
 
-interface FullEntry { key: string; design: Design; result: Result }
+/** `loose`: the lineage key without the crossing choices (`looseKey`) */
+interface FullEntry { key: string; loose: string; design: Design; result: Result }
 const fullResults = new WeakMap<Terrain, FullEntry[]>();
 /** full results kept per terrain (several routes of one project, both directions of a motorway) */
 const KEEP = 6;
 
-/** Everything except the plan and the grade inputs must match for a full result to stand in. */
+/** Everything except the plan and the grade inputs must match for a full result to stand in (the crossing choices
+ * too, unless no full result of the same is kept: `baseOf`). */
 /** A crossing's choices without how the player shaped its reroute (its bend points, where it leads, its ends): a drag
  * of a reroute is a window around that crossing on the full result before it (`changedRange`). */
 const shapeless = (list: Design['crossingOverrides']) => (list ?? []).map(({ via: _v, to: _t, ends: _e, ...rest }) => rest);
+/** where the crossing choices are in the key */
+const CROSSINGS_AT = 7;
 function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
   // (the bends' own settings in order, not how many bends there are: a drag on the road between two bends adds one,
   // and its previews are windows on the full result before it, as a bend drag's; the plan comparison finds the stretch)
@@ -61,6 +65,23 @@ function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
     opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null]);
   // Not keyed: a split direction's joined ranges follow its plan, and its preview prices crossings the
   // full evaluation shares with the other direction (window only).
+}
+/** The key without the crossing choices: a full result of another choice on a crossing stands in for a window around
+ * that crossing when none of the same choices is kept (the first drag of a reroute makes Auto's own choice the
+ * player's: `changedRange`). */
+function looseKey(key: string): string {
+  const parts = JSON.parse(key) as unknown[];
+  parts.splice(CROSSINGS_AT, 1);
+  return JSON.stringify(parts);
+}
+/** the newest full result of the lineage of `d`, else of its lineage but for the crossing choices */
+function baseOf(ctx: EvalContext, d: Design, opts: EvalOptions): FullEntry | undefined {
+  const list = fullResults.get(ctx.terrain);
+  if (!list?.length) return undefined;
+  const key = lineageKey(ctx, d, opts), same = list.find(e => e.key === key);
+  if (same) return same;
+  const loose = looseKey(key);
+  return list.find(e => e.loose === loose);
 }
 
 export function rememberFull(ctx: EvalContext, d: Design, opts: EvalOptions, result: Result): void {
@@ -119,7 +140,7 @@ export function adoptFull(terrain: Terrain, result: Result): void {
   // The newest full result of a lineage replaces its predecessor.
   const at = list.findIndex(e => e.key === key);
   if (at >= 0) list.splice(at, 1);
-  list.unshift({ key, design, result });
+  list.unshift({ key, loose: looseKey(key), design, result });
   if (list.length > KEEP) list.length = KEEP;
 }
 
@@ -163,21 +184,22 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
       a = before.length ? before[before.length - 1].s : 0; b = after.length ? after[0].s : length;
     }
   }
-  // A reshaped reroute (the same choices, see `shapeless`): the stretch from its crossing to the one it leads to.
+  // A crossing's choice or its reroute's shape changed: the stretch from that crossing to the one it leads to.
   // (one led to another crossing or road, `to` / `ends`: the whole route, its new target may lie anywhere; a reroute
-  // shaped for the first time records the crossing it already leads to, `to`: no new target)
-  const shapes = (list: Design['crossingOverrides'], what: 'via' | 'to' | 'ends') => new Map((list ?? []).map(o => [o.roadId, JSON.stringify(o[what] ?? null)]));
-  const ledTo = (id: number) => { const c = r.crossings.find(x => x.roadId === id && x.targetRoadId !== undefined); return c ? JSON.stringify(c.targetRoadId) : 'null'; };
-  for (const what of ['to', 'ends'] as const) {
-    const now = shapes(d.crossingOverrides, what), then = shapes(base.design.crossingOverrides, what);
-    for (const id of new Set([...now.keys(), ...then.keys()])) {
-      const a = now.get(id) ?? 'null', b = then.get(id) ?? 'null';
-      if (a !== b && !(what === 'to' && (a === 'null' ? ledTo(id) : a) === (b === 'null' ? ledTo(id) : b))) return [0, length];
-    }
-  }
-  const now = shapes(d.crossingOverrides, 'via'), then = shapes(base.design.crossingOverrides, 'via');
+  // shaped for the first time records the crossing it already leads to, `to` (design-edits.ts setVia): no new target)
+  const overrides = (list: Design['crossingOverrides']) => new Map((list ?? []).map(o => [o.roadId, o]));
+  const now = overrides(d.crossingOverrides), then = overrides(base.design.crossingOverrides);
+  const ledTo = (id: number) => {
+    const c = r.crossings.find(x => x.roadId === id && (x.type === 'reconnection' || x.type === 'diversion') && !x.moved);
+    return c ? JSON.stringify(c.targetRoadId ?? (c.targetS === 0 ? -1 : -2)) : 'null';
+  };
+  const json = (v: unknown) => JSON.stringify(v ?? null);
   for (const id of new Set([...now.keys(), ...then.keys()])) {
-    if (now.get(id) === then.get(id)) continue;
+    const o = now.get(id), p = then.get(id);
+    if (json(o?.ends) !== json(p?.ends)) return [0, length];
+    const to = (q: typeof o) => q?.to === undefined ? ledTo(id) : json(q.to);
+    if (json(o?.to) !== json(p?.to) && to(o) !== to(p)) return [0, length];
+    if (json(o && { ...o, to: undefined }) === json(p && { ...p, to: undefined })) continue;
     const at = r.crossings.filter(c => c.roadId === id);
     if (!at.length) return [0, length]; // not crossed in the full result: the whole route
     for (const c of at) for (const x of [c.s, c.targetS ?? c.s]) { const y = x > planStart ? x + shift : x; a = Math.min(a, y); b = Math.max(b, y); }
@@ -198,7 +220,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   evaluateRoute: (ctx: EvalContext, d: Design, opts: EvalOptions) => Result): Result | null {
   if (!enabled) return null;
   const started = performance.now();
-  const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts));
+  const base = baseOf(ctx, d, opts);
   if (!base) return null;
   const ppis = planPis(ctx.a, ctx.b, d.pis, d.speed, d.category), gpis = geometryPis(d.pis, heightSpeeds(d, opts));
   const al = buildAlignment(ctx.a, ctx.b, ppis, horizontalRules(d.speed, d.category), bendRules(ppis, d.speed, d.category));

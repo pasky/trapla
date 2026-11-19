@@ -3,6 +3,7 @@ import { autoProfile } from '../src/core/autoprofile';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { adoptFull, setPreviewWindows } from '../src/core/preview-window';
+import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
 import { buildProfile, elevations } from '../src/core/vertical';
 
@@ -62,6 +63,25 @@ describe('windowed drag preview', () => {
     expect(evaluate(there, moved(30), { preview: true }).timing['window.length']).toBeUndefined();
     adoptFull(fresh, copy);
     expect(evaluate(there, moved(30), { preview: true }).timing['window.length']).toBeGreaterThan(0);
+  });
+});
+
+describe('a crossing’s choice made during a drag', () => {
+  // (a road crossing the route at km ≈ 12)
+  const roads = new RoadNet({ cls: ['residential'], ways: [[0, 12_000, -500, 12_000, 2000]] });
+  const rctx = { ...ctx, roads };
+  it('the first drag of a reroute (its choice the player’s from then on) is a window around its crossing', () => {
+    const full = evaluate(rctx, base);
+    const c = full.crossings.find(x => x.roadId === 0)!;
+    const shaped: Design = { ...base, crossingOverrides: [{ roadId: 0, type: 'reconnection', via: [[{ x: 12_100, y: 1200 }], []] }] };
+    const preview = evaluate(rctx, shaped, { preview: true, materialValue: full.quantities.materialValue });
+    const window = preview.timing['window.length'];
+    expect(window).toBeGreaterThan(0);
+    expect(window).toBeLessThan(0.6 * preview.length);
+    expect(preview.crossings.find(x => x.roadId === 0)!.s).toBeCloseTo(c.s, -1);
+    // a choice on a road the full result does not cross: the whole route
+    const elsewhere: Design = { ...base, crossingOverrides: [{ roadId: 7, type: 'bridge' }] };
+    expect(evaluate(rctx, elsewhere, { preview: true }).timing['window.length']).toBeUndefined();
   });
 });
 
