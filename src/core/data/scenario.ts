@@ -377,7 +377,7 @@ export const I35_JICIN = i35Section('i35-jicin', 'Čímyšl → Úlibice', 'Čí
   { a: 'Čímyšl', b: 'Úlibice', official: 'planned I/35', brief: '<b>Čímyšl</b> to <b>Úlibice</b>, past Jičín to the D35' },
   'Cross the Cidlina valley and reach the D35 at Úlibice.',
   { a: { kind: 'interchange', with: 'road I/35', section: 'the stage from Valdštejnsko' }, b: I35_UL });
-export const I35_FULL = i35Section('i35-full', 'Turnov → Úlibice', 'Whole route', P([]), 15_235, 0.175, 19.5, // 35.66 km at 110 (mapped 32.42 km)
+export const I35_FULL = i35Section('i35-full', 'Turnov → Úlibice', 'Whole route', P([[2115.2, 19958.9], [2672.8, 19509.4], [3360.8, 19198.4], [3748.5, 18641.7], [4259, 18303.6], [5004.7, 18056.5], [5555.7, 17798.3], [6267.7, 17830], [7000, 17527.5], [7787.6, 17708.7], [8568.1, 17652.5], [9148.6, 17119], [9796.7, 16658], [10082.5, 16070.1], [10366.1, 15476.4], [10919.5, 15149.7], [11599.9, 14941.6], [12042.8, 14491.3], [12031.3, 13518.6], [12037.8, 12804.6], [11548.3, 12205.1], [11054, 11758.4], [10855.9, 11195.2], [10983.2, 10614.9], [11711.1, 9956], [12998.4, 9284.6], [13589.5, 8941.6], [13941.6, 8395.2], [13957.3, 7777.3], [14370.5, 7171.4], [15196.1, 6828.1], [15842.7, 6197.2], [16492, 5636.4], [17117.3, 5264.6], [17660.7, 4750.2], [18146.2, 4203.7], [18944.6, 3804.3], [20314.8, 3298.9], [21160.5, 2910.6]]), 15_235, 0.175, 19.5, // 35.66 km at 110 (mapped 32.42 km)
   { a: 'Turnov', b: 'Úlibice', official: 'planned I/35', brief: '<b>Turnov</b> to <b>Úlibice</b>, along the edge of Český ráj' },
   'Take the road from Turnov to the D35 at Úlibice, round the protected rocks and ponds of Český ráj.',
   { a: I35_OHRAZENICE, b: I35_UL });

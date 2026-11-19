@@ -1,0 +1,98 @@
+{
+  "scenario": "i35-full",
+  "purpose": "Motorway near the mapped reference, not the official motorway design or surveyed profile",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 2971.7,
+        "y": 19439.1,
+        "r": null
+      },
+      {
+        "x": 4051.9,
+        "y": 18395,
+        "r": null
+      },
+      {
+        "x": 5423.9,
+        "y": 17810.5,
+        "r": null
+      },
+      {
+        "x": 7000,
+        "y": 17527.5,
+        "r": null
+      },
+      {
+        "x": 8568.1,
+        "y": 17652.5,
+        "r": null
+      },
+      {
+        "x": 9796.7,
+        "y": 16658,
+        "r": null
+      },
+      {
+        "x": 10505,
+        "y": 15338.1,
+        "r": null
+      },
+      {
+        "x": 11945.6,
+        "y": 14668.7,
+        "r": null
+      },
+      {
+        "x": 12054.7,
+        "y": 13034.9,
+        "r": null
+      },
+      {
+        "x": 11054,
+        "y": 11758.4,
+        "r": null
+      },
+      {
+        "x": 11159.1,
+        "y": 10373.3,
+        "r": null
+      },
+      {
+        "x": 12998.4,
+        "y": 9284.6,
+        "r": null
+      },
+      {
+        "x": 13960.9,
+        "y": 8086.9,
+        "r": null
+      },
+      {
+        "x": 15196.1,
+        "y": 6828.1,
+        "r": null
+      },
+      {
+        "x": 16492,
+        "y": 5636.4,
+        "r": null
+      },
+      {
+        "x": 18006.7,
+        "y": 4332.7,
+        "r": null
+      },
+      {
+        "x": 20314.8,
+        "y": 3298.9,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

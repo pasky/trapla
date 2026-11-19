@@ -135,6 +135,55 @@ Known difference: the real line is S 21.5 only to MÚK Žernov (km 12.4) and the
 its rows, A.1.S1.15,25.NER 91,359,000 CZK/km, and VL 1 sheet 12-01 its widths). The game builds one category per
 route, so the mission is S 21.5 throughout: ≈ 6 m wider than the real road for 20.5 km.
 
+## 7. The missions as built (packs `i35-turnov`, `i35-rovensko`, `i35-jicin`, `i35-full`; 2026-11-19)
+
+One start-screen card, "Turnov → Úlibice through Český ráj", with ŘSD's three road stages as choices and the whole
+route last (stage 1, MÚK Ohrazenice, rebuilds the D10 / I/35 interchange only and is not a mission). Kind "Four-lane
+road", the card's note "Not a motorway: a motorway may not enter the protected landscape."
+
+- **Packs** (EPSG:5514, 5 m): `i35-turnov` [-688000, -998500, -680500, -991500] 1,500 × 1,400; `i35-rovensko`
+  [-684000, -1006500, -674000, -995000] 2,000 × 2,300; `i35-jicin` [-678000, -1014500, -664000, -1003000]
+  2,800 × 2,300; `i35-full` [-688000, -1014500, -664000, -991500] 4,800 × 4,600 = 22.1 M cells (`maxRasterCells`
+  22,080,000; the whole D3 is 24.7 M). Each with traffic.json (ŘSD CSD 2025), protected.json (AOPK), structures.json.
+- **Ends on the mapped line** (`alongOfficial`, m): A 600 (past the D10 / I/35 interchange, whose OSM ramps reach km
+  0.28, and the Liberec–Turnov railway at km 0.39: an end at km 0 or 0.4 stood in the interchange's ramps or on the
+  railway); Turnov / Valdštejnsko 6,400 (0.7 km past the Valdštejnsko interchange: the line bridges the railway and
+  road I/35 at km 5.48 / 5.51 and crosses road III/2835 at km 6.13; a boundary at km 5.6, the interchange itself,
+  left our end 0.1 km past a railway it could not clear); Valdštejnsko / Čímyšl 18,900 (at the Čímyšl interchange's
+  ramp, 0.3 km past road III/2821); B 33,019 (the end of the mapped line, where the D35 Úlibice bypass starts, mapped
+  `highway=construction` and so not in the road network: our end meets open ground). The ends are interchanges with
+  the D10 and road I/35 (A), road I/35 (stage ends), and B "goes on as the D35 to Hradec Králové".
+- **Category:** S 21.5 at 110 km/h throughout (§6); the real road's 2+1 beyond km 12.4 is the known difference.
+- **Traffic:** the EIA forecast for 2040 (§3), by stretch: Turnov – Valdštejnsko 19,505 (15.0 % heavy), Valdštejnsko –
+  Čímyšl 17,249 (16.4 %), Čímyšl – Úlibice 11,871 (20.5 %), whole 15,235 (17.5 %); the heavy share is the noise
+  model's.
+- **Time targets:** a mission choice, the mapped stretch + 10 % at 110 km/h: 5.80 km → 3.5 min, 12.50 km → 7.5 min,
+  14.12 km → 8.5 min, 32.42 km → 19.5 min.
+- **Starters:** the mapped line's nodes as bends every ≈ 0.6 km, none within 750 m of B (`scripts/motorway-starter.ts
+  --mapped=0.6`), Auto grade, VALID as sampled on all three stages; the real line's curves (R 900–5,000 m) are long,
+  and sparser bends (the D3 / D11 starters are every 1.5 km) cut across them: every 0.8 km on the Turnov stage
+  leaves a service road under our earthworks at km 3.7; every 1.0 km on the last stage runs 400 m along a branch
+  railway at its km 7.7–8.1, whose bridge piers then stand on the track; every 1.5 km on the middle stage crosses a
+  pond near Stebno lengthwise. Auto's limits on such lines are in "Known issues" below. The 1.5 km references are VALID on Turnov and Čímyšl –
+  Úlibice; Valdštejnsko – Čímyšl's reference is bends every 1.0 km (every 1.5 km its line crosses the pond lengthwise,
+  where a bridge would need piers in the water, which the game does not build).
+
+### Our bills of the starters against the ŘSD estimate (context, not a target)
+
+Cost model 57, S 21.5/110, Auto grade (`scripts/bench.ts`, SCENARIO=<pack>):
+
+| Stage | ours | km | bridges | ŘSD 2023 estimate (CÚ 2022, construction, ex VAT) |
+|---|---:|---:|---|---:|
+| Turnov → Valdštejnsko | 5.63 bn | 5.70 | 7 / 1,420 m | 7.26 bn (with the Pelešany and Přepeře tunnels) |
+| Valdštejnsko → Čímyšl | 4.39 bn | 12.26 | 5 / 530 m | 6.21 bn (with the II/283 feeder, 5.5 km) |
+| Čímyšl → Úlibice | 5.37 bn | 13.98 | 6 / 980 m | 5.51 bn |
+
+What ours builds differently: no tunnels (Auto takes the Pelešany stretch in cuts and on bridges, and buys out 33
+buildings and 7 homes for noise, 849 M, beside the Přepeře housing estate, where the real design covers the road
+and tunnels under the houses), no interchanges, the 2+1 stretch at four lanes, land and buildings in the bill. The
+first stage's embankments buy 769 k m³ of fill (its cuts give 107 k). The real stages' figures are context for the
+player, not a target.
+
 ## Sources (opened 2026-11-19)
 
 - [P] ŘSD project portal: https://kraje.rsd.cz/s35/
