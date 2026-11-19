@@ -13,6 +13,8 @@ import type { RouteId, SourceInterval } from '../core/project';
 import type { ProjectTransportIndex } from '../core/project-network';
 import type { TransportGraphData } from '../core/project-transport';
 import type { ProjectStore } from '../project-store';
+import type { ProjectCommand } from '../project-store-contract';
+import type { MappedLineKind } from './route-kinds';
 import type { SourceHit } from '../render/source-pick';
 import type { View, ViewEvents } from '../render/view';
 import type { Pack } from '../scenario';
@@ -70,12 +72,39 @@ export function createMapGestures(app: MapGestureContext) {
     const g = app.view.pick(clientX, clientY);
     return g && app.sourceEditor!.covers(g.x, g.y, Math.max(6, 8 * app.view.metresPerPixel)) ? { ...interval } : null;
   };
+  /** The conversion of the stretch a drag of the selection would rebuild, worked out while the player looks (an idle
+   * moment after the selection; ≈ 50–100 ms of fitting the old line: not in the drag's first move). Used once. */
+  let prepared: { key: string; index: ProjectTransportIndex; command: Extract<ProjectCommand, { type: 'promote' }> } | null = null;
+  let preparing: { key: string; cancel(): void } | null = null;
+  const keyOf = (i: SourceInterval) => `${i.transportData}:${i.sourceId}:${i.s0}:${i.s1}`;
+  const ids = () => ({ routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` });
+  const prepareRebuild = (interval: SourceInterval, lineKind: MappedLineKind) => {
+    const key = keyOf(interval);
+    if (prepared?.key === key || preparing?.key === key) return;
+    preparing?.cancel();
+    const run = () => {
+      preparing = null;
+      const index = app.transportIndex; if (!index) return;
+      try { prepared = { key, index, command: lineKind.rebuild(index, interval, ids()) }; } catch { /* (a drag says so) */ }
+    };
+    const idle = (window as { requestIdleCallback?: (fn: () => void, o: { timeout: number }) => number }).requestIdleCallback;
+    if (idle) { const h = idle(run, { timeout: 1000 }); preparing = { key, cancel: () => window.cancelIdleCallback(h) }; }
+    else { const h = setTimeout(run, 50); preparing = { key, cancel: () => clearTimeout(h) }; }
+  };
+  /** a selected crossing: its ring's stretch (its works mostly lie on the same one) */
+  const prepareFor = (next: Sel | null) => {
+    if (next?.kind !== 'crossing' || !app.last) return;
+    const c = app.last.crossings.find(x => x.roadId === next.roadId), p = c && app.crossingDrag.plan(c, 'ring', c);
+    if (p?.ok && p.target.kind === 'mapped') prepareRebuild(p.target.interval, p.target.lineKind);
+  };
   /** A mapped road's stretch becomes a project road (its line converted to bends that follow the old road), the
    * active one, in a step left open for the drag that follows (ONE undo step, committed when it ends). */
   const rebuild = (interval: SourceInterval, lineKind = app.sourceEditor?.lineKind): boolean => {
     if (!app.transportIndex || !lineKind) return false;
     let command;
-    try { command = lineKind.rebuild(app.transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
+    const ready = prepared?.key === keyOf(interval) && prepared.index === app.transportIndex ? prepared.command : null;
+    prepared = null;
+    try { command = ready ?? lineKind.rebuild(app.transportIndex, interval, ids()); }
     catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return false; }
     const id = command.routes[0].id;
     app.intro.hide(); app.sourceEditor?.clear();
@@ -289,7 +318,7 @@ export function createMapGestures(app: MapGestureContext) {
     },
   };
   return {
-    events, mappedGrab, crossingPlan,
+    events, mappedGrab, crossingPlan, prepareFor, prepareRebuild,
     /** forget what a hitRoad probe grabbed (automation) */
     releaseGrab: () => { grabbing = null; crossingGrab = null; },
   };

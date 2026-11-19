@@ -91,7 +91,10 @@ export const violationText = (v: Violation) => `${v.title} — ${v.fix}`;
 
 
 /** the inputs of the alignment, so that fixes (e.g. the largest radius that fits) can be computed */
-export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: CategoryId }
+export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: CategoryId;
+  /** how many bends get a radius search for their fix text (default MAX_RADIUS_SEARCHES; a drag preview: none, its
+   * fixes are said without the radius found, the full result after the drag has them) */
+  radiusSearches?: number }
 
 export interface CheckFamily {
   horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
@@ -251,7 +254,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
   // A search costs ~25 ms on a 13-bend route, so only the first few bends get one per evaluation.
   const cache = new Map<number, ReturnType<typeof radiusOptions>>();
   const options = (k: number) => {
-    if (!input || !input.pis[k] || (!cache.has(k) && cache.size >= MAX_RADIUS_SEARCHES)) return null;
+    if (!input || !input.pis[k] || (!cache.has(k) && cache.size >= (input.radiusSearches ?? MAX_RADIUS_SEARCHES))) return null;
     if (!cache.has(k)) cache.set(k, radiusOptions(input.a, input.b, input.pis, k, speed, input.category));
     return cache.get(k)!;
   };
