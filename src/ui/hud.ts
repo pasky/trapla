@@ -241,6 +241,8 @@ export class Hud {
   readonly context: HTMLElement;
   /** body of the "Your decisions" section (filled by the build tools) */
   readonly decisions: HTMLElement;
+  /** the twists' chip by the verdict and their card's body, section (filled by ui/twists.ts; hidden on a mission without twists) */
+  readonly twists: { chip: HTMLButtonElement; card: HTMLElement; section: HTMLElement };
 
   /** what the active line is (road / motorway / railway): the bill's words follow it */
   private line = 'road';
@@ -256,12 +258,14 @@ export class Hud {
         <div class="chips">
           <span id="chip-time" class="chip" title="Travel time: length ÷ design speed"></span>
           <button type="button" id="chip-viol" class="chip" title="Show the first one"></button>
+          <button type="button" id="chip-twists" class="chip twists" hidden></button>
           <span id="best" class="chip best"></span>
         </div>
         <div id="delta-why" class="sub delta-why" hidden title="What the last change did to each road's own bill"></div>
         <div id="perkm" class="sub"></div>
       </section>
       <div id="context" class="context"></div>
+      ${fold('twists', 'Twists', '<div id="twists"></div>')}
       ${fold('viol', 'Violations', '<ol id="viol"></ol>', '<span class="count" id="viol-count"></span>')}
       ${fold('cost', '<span id="cost-h">Cost</span>', '<table id="breakdown"></table>')}
       ${fold('design', '<span id="design-h">Road</span>', `
@@ -303,6 +307,8 @@ export class Hud {
       : `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
     this.decisions = this.$('decisions');
+    this.twists = { chip: this.$<HTMLButtonElement>('chip-twists'), card: this.$('twists'), section: this.$('sec-twists') };
+    this.twists.section.hidden = true;
     this.context.innerHTML = '<section class="card ctx inspector" id="inspector"></section>';
     // fold state: remembered per section
     try { this.folds = JSON.parse(localStorage.getItem(FOLD_KEY) ?? '{}'); } catch { this.folds = {}; }

@@ -1,0 +1,190 @@
+{
+ "preset": "i46-sternberk-road",
+ "purpose": "Search (seed 1) for earth, landmarks, curveballs and the goal",
+ "meets": [
+  "earth",
+  "landmarks",
+  "curveballs"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i46-sternberk",
+  "presetId": "i46-sternberk-road",
+  "packId": "i46-sternberk",
+  "objectData": "499739:989438279:2301648189",
+  "transportData": "a11b116b8e6de40d4ef2bd1246d13890a4281e6c08c7cf11ef1c649da55a9e1a",
+  "routes": [
+   {
+    "id": "route:legacy-mission",
+    "name": "Road",
+    "role": "mission",
+    "revision": 0,
+    "kind": "road",
+    "acousticSourceId": "acoustic:legacy-mission",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2644.2,
+       "y": 2453.8,
+       "z": 242.53284000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 4699,
+       "y": 5512.5,
+       "z": 365.6
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2643.2273381188725,
+       "y": 3470.215153343844,
+       "r": 1500
+      },
+      {
+       "x": 3210.8425097003774,
+       "y": 4147.76290479728,
+       "r": 1000
+      },
+      {
+       "x": 3321.7132311705845,
+       "y": 4493.391196434381,
+       "r": null
+      },
+      {
+       "x": 3424.5464715346907,
+       "y": 4825.227917779072,
+       "r": 800,
+       "speed": 70
+      },
+      {
+       "x": 3466.1,
+       "y": 5342.5,
+       "r": 360,
+       "speed": 70
+      },
+      {
+       "x": 4573.398113295073,
+       "y": 5280.908823653767,
+       "r": 340,
+       "speed": 70
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 3890.9169231264564,
+        "s1": 4047.324371271276,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 920,
+        "z": 261.7
+       },
+       {
+        "s": 1829,
+        "z": 293.8
+       },
+       {
+        "s": 2010,
+        "z": 295.4
+       },
+       {
+        "s": 2260,
+        "z": 301.7
+       },
+       {
+        "s": 2477,
+        "z": 304.7
+       },
+       {
+        "s": 2716,
+        "z": 307.6
+       },
+       {
+        "s": 3376,
+        "z": 340.9
+       }
+      ],
+      "manualVpis": []
+     }
+    },
+    "specification": {
+     "kind": "road",
+     "policy": "legacy-road",
+     "legalClass": "I",
+     "crossSection": "S11.5",
+     "designSpeed": 90,
+     "operations": {
+      "aadt": 10453,
+      "heavyShare": 0.086,
+      "speed": 90,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i46-sternberk:i46-sternberk-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Olomouc",
+     "position": {
+      "x": 2644.2,
+      "y": 2453.8,
+      "z": 242.53284000000002
+     }
+    },
+    {
+     "id": "b",
+     "name": "Opava",
+     "position": {
+      "x": 4699,
+      "y": 5512.5,
+      "z": 365.6
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "road"
+     ],
+     "maxTravelMin": 3.6,
+     "demand": {
+      "kind": "road",
+      "aadt": 10453
+     }
+    }
+   ]
+  }
+ }
+}
