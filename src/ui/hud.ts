@@ -386,7 +386,7 @@ export class Hud {
     const catSelect = this.$<HTMLSelectElement>('cat'), speedSelect = this.$<HTMLSelectElement>('speed');
     if (key !== this.optionsFor) {
       this.optionsFor = key;
-      const types: CategoryId[] = cat.mode === 'road' ? PLAYABLE_CATEGORIES : cat.mode === 'railway' ? ['R1', 'R2'] : [d.category];
+      const types: CategoryId[] = cat.ramp ? [d.category] : cat.mode === 'road' ? PLAYABLE_CATEGORIES : cat.mode === 'railway' ? ['R1', 'R2'] : [d.category];
       catSelect.innerHTML = types.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('');
       catSelect.disabled = types.length < 2;
       speedSelect.innerHTML = speeds.map((s) => `<option value="${s}">${s} km/h</option>`).join('');
@@ -401,9 +401,9 @@ export class Hud {
     if (cat.mode === 'railway') {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
       norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; radius over hilltops and dips ≥ ${num(n.minCrestRadius)} m.`;
-    } else if (cat.minor) {
+    } else if (cat.minor || cat.ramp) {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
-      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; radius over hilltops ≥ ${num(n.minCrestRadius)} m, in dips ≥ ${num(n.minSagRadius)} m${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
+      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' || cat.ramp ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; radius over hilltops ≥ ${num(n.minCrestRadius)} m, in dips ≥ ${num(n.minSagRadius)} m${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
       norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; radius over hilltops ≥ ${num(n.minCrestRadius)} m, in dips ≥ ${num(n.minSagRadius)} m.`;

@@ -19,6 +19,7 @@ import type { NoiseLayer } from '../render/noise';
 import type { RouteScene } from '../render/route-scene';
 import { runSliced, type SlicedJob, type Staged } from '../render/slices';
 import type { RenderEndpoints, View } from '../render/view';
+import { SLIP_ROAD } from '../core/slip-roads';
 import type { Pack } from '../scenario';
 import type { Session } from '../session';
 import type { ActiveRouteStore } from './active-route-store';
@@ -279,6 +280,8 @@ export function createResultDisplay(app: ResultDisplayContext) {
     })(), ([geometry, sources]) => {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
       app.links.picker?.setAccepted(result.acceptedRenderReplacements);
+      // a slip road's speed-change lane: its lines on the motorway (the dashed one first, then its taper's edge)
+      app.view.setLaneMarks(result.works.items.filter(w => w.id.includes(':lane:')).flatMap(w => w.surfaces.map((q, k) => ({ points: q.points, dashed: k === 0, width: SLIP_ROAD.marking.width }))));
       syncDecorations(result);
       app.session.displayedProject = result; heavy = null;
       app.projectStore.offerBest(result); app.projectScore(false);

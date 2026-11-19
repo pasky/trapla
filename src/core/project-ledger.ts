@@ -42,7 +42,10 @@ export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; s
    * road changing them is that road's change alone (the stretch stops short of what it covers). */
   ownWays?: number[];
   /** a railway (its works, kept clear of by another road's walls, are a railway's) */
-  railway?: boolean }
+  railway?: boolean;
+  /** existing ways this road changes together with another road, as one design: a slip road's junction on the
+   * road its motorway crosses there (core/slip-roads.ts), with that motorway's crossing of it */
+  sharedWays?: { routeId: RouteId; way: number }[] }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number;
   /** shared land: where the two roads' land and works come closest, and how many metres further apart
@@ -241,8 +244,9 @@ function touchedRoads(result: Result): { roads: Map<number, { x: number; y: numb
   }
   const closes: { x: number; y: number; reach: number }[] = [];
   for (const f of result.footprintConflicts) {
-    // (a rebuilt stretch going on into its own old road changes nothing there)
-    if (!f.continuation) add(f.roadId, f.x, f.y);
+    // (a rebuilt stretch going on into its own old road changes nothing there; a new road's junction with a
+    // road changes it only where the junction rebuilds its edge, within its zone)
+    if (!f.continuation) add(f.roadId, f.x, f.y, f.action === 'junction' ? Math.max(f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) : Infinity);
     for (const interval of f.sourceIntervals ?? []) add(interval.way, f.x, f.y); // every removed old way
     if (f.closed) closes.push({ x: f.x, y: f.y, reach: f.closed.length + f.closed.detour });
   }
@@ -336,7 +340,9 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const own = new Set([...routes[a].ownWays ?? [], ...routes[b].ownWays ?? []]);
     // (two changes of one way meet where their reaches along it come within the clearance of each other;
     // further apart, each road rebuilds its own piece of it)
-    for (const [id, here] of ta.roads) if (!own.has(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
+    const together = (id: number) => !!routes[a].sharedWays?.some(w => w.way === id && w.routeId === routes[b].routeId)
+      || !!routes[b].sharedWays?.some(w => w.way === id && w.routeId === routes[a].routeId);
+    for (const [id, here] of ta.roads) if (!own.has(id) && !together(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
       const d = Math.hypot(p.x - q.x, p.y - q.y); if (d - p.r - q.r < S.clearance && d < best) { best = d; at = { x: p.x, y: p.y }; }
     }
     // (a closure's detour, and another road's change of a road it could use)

@@ -119,7 +119,7 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
   const lowest = Math.min(...designSpeeds(category));
   const rule = 'ČSN 73 6101:2018 has no hairpins; a road authority approves one only as a departure from it on a mountain road (I/44 Červenohorské sedlo)'; // research/47 §3
   for (const c of al.curves) {
-    if (!pis[c.index]?.hairpin || CATEGORIES[category].minor) continue;
+    if (!pis[c.index]?.hairpin || CATEGORIES[category].minor || CATEGORIES[category].ramp) continue;
     const where = { s0: c.sStart, s1: Math.max(c.sEnd, c.sStart), pi: c.index, pis: [c.index] };
     const speed = bendSpeed(pis[c.index], roadSpeed, category);
     if (c.delta < HAIRPIN.minTurn)
@@ -144,7 +144,7 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
  * its problem offers that, with its stretch at the category's lowest speed. Changes `violations` in place. */
 export function hairpinFixes(al: Pick<Alignment, 'curves'>, pis: readonly PI[], category: CategoryId, terrain: Terrain, violations: Violation[]): void {
   const cat = CATEGORIES[category];
-  if (cat.minor || cat.mode !== 'road') return;
+  if (cat.minor || cat.ramp || cat.mode !== 'road') return;
   const lowest = Math.min(...designSpeeds(category));
   for (const v of violations) {
     if (v.kind !== 'radius' || v.pi === undefined || pis[v.pi]?.hairpin) continue;

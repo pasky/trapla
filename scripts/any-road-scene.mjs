@@ -218,7 +218,7 @@ try {
   // 6. Build → Road: start on the mapped road beyond the rebuilt stretch, end on open ground
   await page.locator('#build-route').click();
   assert.ok((await page.locator('.route-build-choices button').allTextContents()).includes('Road'), 'a road can be built');
-  await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
+  await page.locator('.route-build-choices button', { hasText: /^Road$/ }).click();
   assert.equal(await page.evaluate(() => window.trapla.building()), true);
   const now = (await page.evaluate(() => window.trapla.getProject())).routes[1].source.intervals[0];
   const sOn = now.s1 + 100 < road.length ? now.s1 + 70 : now.s0 - 70;
@@ -289,7 +289,7 @@ try {
       .filter(c => c.d > 150 && c.d < 450 && c.square > 0.7).sort((a, b) => b.square - a.square || a.d - b.d)[0] ?? null;
   }, [mission0.id, sm]);
   if (target) {
-    await page.locator('#build-route').click(); await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
+    await page.locator('#build-route').click(); await page.locator('.route-build-choices button', { hasText: /^Road$/ }).click();
     point = await screen('routeScreen', mission0.id, sm); await page.mouse.click(point.x, point.y);
     assert.match(await page.locator('#inspector').textContent(), /joins our road/);
     point = await screen('sourceScreen', target.id, target.s); await page.mouse.click(point.x, point.y); await idle();

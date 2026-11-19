@@ -17,7 +17,7 @@ import { lineAsDrawn, plannedKept, type OldPaths } from './project-kept';
 
 export type SourceWays = ReadonlyMap<string, number>;
 /** Map class of a designed road of each legal class (ROAD_CLASSES key). */
-const MAP_CLASS: Record<string, string> = { I: 'primary', II: 'secondary', III: 'tertiary', local: 'unclassified', service: 'service', track: 'track' };
+const MAP_CLASS: Record<string, string> = { I: 'primary', II: 'secondary', III: 'tertiary', local: 'unclassified', service: 'service', track: 'track', ramp: 'ramp' };
 /** Plan line sample spacing of a designed road in the network, m (crossings are found on its chords). */
 const LINE_STEP = 5;
 

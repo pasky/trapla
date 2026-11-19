@@ -98,7 +98,7 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
     const s0 = atStart ? 0 : Math.max(0, r.length - zone), s1 = atStart ? Math.min(r.length, zone) : r.length;
     const what = row?.label ?? 'road';
     if (row?.noAtGrade) {
-      out.push(issue(s0, s1, `A ${what} cannot be joined at the same level`, 'End the road on another road; joining a motorway needs an interchange, which the game does not build yet',
+      out.push(issue(s0, s1, `A ${what} cannot be joined at the same level`, 'End the road on another road; the game builds slip roads only onto a motorway of its own',
         'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access')); // research/08
       continue;
     }

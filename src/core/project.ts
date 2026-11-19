@@ -84,7 +84,7 @@ export interface RoadOperations {
 }
 export interface RoadSpec {
   kind: 'road';
-  legalClass: 'I' | 'II' | 'III' | 'local' | 'service' | 'track';
+  legalClass: 'I' | 'II' | 'III' | 'local' | 'service' | 'track' | 'ramp';
   /** Policy ID selects sourced checks/pricing, not a category guessed from width. */
   policy: string;
   crossSection: Exclude<CategoryId, 'D27.5' | 'D27.5-1' | 'R1' | 'R2'> | 'existing';

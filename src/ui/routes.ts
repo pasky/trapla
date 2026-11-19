@@ -27,7 +27,7 @@ import type { ProfilePanel } from './profile';
 import type { ResultDisplay } from './result-display';
 import type { RoadLinks } from './road-links';
 import type { RouteBar } from './route-bar';
-import { buildInProject, registeredBuildKinds, type BuildKind } from './route-kinds';
+import { buildInProject, registeredBuildKinds, type BuildKind, type EndContext } from './route-kinds';
 import { RoadEnds } from './road-ends';
 import type { PlacedEnd } from './road-edit';
 import { followSource } from './source-editor';
@@ -187,6 +187,8 @@ export function createRoutes(app: RoutesContext) {
   };
   app.buildTool.onClose = () => app.select(null);
   app.buildTool.onDone = (a, b) => {
+    const refused = building.refuse?.(a, b);
+    if (refused) { toast(refused); return; }
     if (app.projectStore.inTransaction) app.projectStore.commit();
     let made: ReturnType<typeof buildInProject>;
     try {
@@ -199,11 +201,14 @@ export function createRoutes(app: RoutesContext) {
   };
   /** the kind being built (Build menu), which decides where its ends may go */
   let building: BuildKind = registeredBuildKinds()[0];
-  app.routeBar.onBuild = kind => {
-    const k = registeredBuildKinds().find(b => b.kind === kind); if (!k) return;
-    building = k; app.deselect(); app.buildTool.begin(k.label); app.hud.revealContext('inspector');
+  app.routeBar.onBuild = (kind, label) => {
+    const k = registeredBuildKinds().find(b => b.kind === kind && b.label === label); if (!k) return;
+    building = k; app.deselect(); app.buildTool.begin(k.label, k.hint); app.hud.revealContext('inspector');
     if (app.pack.transportMeta) void ensureTransport(); // ends may join mapped lines
   };
+  /** where an end goes next to another line: the point, the project, where a motorway's directions go */
+  const endContext = (x: number, y: number, line: RouteDesign): EndContext => ({ at: { x, y }, design: app.projectStore.snapshot.design,
+    towards: line.role === 'mission' ? { forward: placeName(app.scenario.labels.b), reverse: placeName(app.scenario.labels.a) } : { forward: 'its end', reverse: 'its start' } });
   /** where a click while building puts a road end: on a road (joins it), else free ground */
   const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => placeFor(building, clientX, clientY, x, y);
   /** where an end of a line of this kind goes with the pointer there (`exclude`: the line itself, whose end is dragged) */
@@ -213,7 +218,7 @@ export function createRoutes(app: RoutesContext) {
     const joins = (kind: string | undefined) => building.kind === 'road' || kind === building.kind;
     const hit = app.routeAt(clientX, clientY, 10, exclude), rr = hit && app.session.projectFull?.routes[hit.routeId];
     const route = hit && app.projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
-    if (hit && rr && route && joins(route.kind)) return building.onRoute(route, rr, hit.s);
+    if (hit && rr && route && joins(route.kind)) return building.onRoute(route, rr, hit.s, endContext(x, y, route));
     // on a road's carriageway or earthworks beside its centreline: that road, never "open ground"
     const under = footprintHit(Object.values(app.session.projectFull?.routes ?? {}).flatMap(r => {
       if (r.routeId === exclude) return [];
@@ -221,7 +226,7 @@ export function createRoutes(app: RoutesContext) {
       return legacy ? [{ id: r.routeId, result: legacy }] : [];
     }), x, y);
     const underRoute = under && app.projectStore.snapshot.design.routes.find(r => r.id === under.routeId), ur = under && app.session.projectFull?.routes[under.routeId];
-    if (under && underRoute && ur && joins(underRoute.kind)) return building.onRoute(underRoute, ur, under.s);
+    if (under && underRoute && ur && joins(underRoute.kind)) return building.onRoute(underRoute, ur, under.s, endContext(x, y, underRoute));
     const source = app.sourceAt(clientX, clientY);
     if (source?.kind === 'route-hit' && joins(app.projectStore.snapshot.design.routes.find(r => r.id === source.routeId)?.kind)) return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
     if (source?.kind === 'source' && app.links.index && joins(app.links.index.source(source.hit.sourceId)?.kind)) return building.onSource(app.links.index, source.hit.sourceId, source.hit.s);
@@ -241,7 +246,7 @@ export function createRoutes(app: RoutesContext) {
       if (host && rr && r) {
         let k = 0, best = Infinity;
         for (let i = 0; i < r.n; i++) { const d = Math.hypot(r.x[i] - g.x, r.y[i] - g.y); if (d < best) { best = d; k = i; } }
-        if (best <= reach) return kind.onRoute(host, rr, r.s[k]);
+        if (best <= reach) return kind.onRoute(host, rr, r.s[k], endContext(g.x, g.y, host));
       }
     } else if (anchor.kind === 'source' && app.links.index) {
       const source = app.links.index.source(anchor.location.sourceId);

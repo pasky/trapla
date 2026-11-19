@@ -96,8 +96,8 @@ export const RAIL_BUILD: BuildKind = {
 
 export const MOTORWAY_BUILD: BuildKind = {
   kind: 'motorway', label: 'Motorway',
-  onSource() { return { ok: false, why: 'A motorway joins other roads only at interchanges, which are not in the game yet: end it on open ground.' }; },
-  onRoute() { return { ok: false, why: 'A motorway joins other roads only at interchanges, which are not in the game yet: end it on open ground.' }; },
+  onSource() { return { ok: false, why: 'A motorway’s ends go on open ground: roads join it by slip roads (Build → Slip road).' }; },
+  onRoute() { return { ok: false, why: 'A motorway’s ends go on open ground: roads join it by slip roads (Build → Slip road).' }; },
   // Both directions on one D 27.5 line at 120 km/h; traffic: the national mean motorway prior of the
   // motorway missions (data/scenario.ts). It stays unpriced: no interchange at its ends.
   createInProject(project, a, b, newId) {

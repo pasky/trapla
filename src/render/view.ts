@@ -172,6 +172,8 @@ export class View {
   private officialLabel: HTMLElement | null = null;
   private officialLine: Line2 | null = null;
   private proposalLines = new Map<string, { key: string; line: Line2 }>();
+  private laneMarks: THREE.Mesh | null = null;
+  private laneKey = '';
   get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
   private labelRoom = new Declutter();
@@ -744,6 +746,40 @@ export class View {
       const line = this.makeLine(arr, null, p.active ? 5 : 3.5, { color: 0xff9f1c, opacity: 0.95, depthTest: false, dashed: true, dashSize: 10, gapSize: 6, order: 3 });
       line.name = 'proposal';
       this.world.add(line); this.proposalLines.set(p.id, { key, line });
+    }
+    this.dirty = true;
+  }
+
+  /** Lines a slip road's speed-change lane paints on the motorway (core/slip-roads.ts): flat white strips on the
+   * carriageway, `dashed` 1.5 m dash / 1.5 m gap (VL 3 V 2b), else solid; `width` m. */
+  setLaneMarks(lines: readonly { points: readonly { x: number; y: number; z: number }[]; dashed: boolean; width: number }[]) {
+    const key = JSON.stringify(lines.map(l => [l.dashed, l.width, l.points.length, l.points[0]?.x, l.points[0]?.y, l.points.at(-1)?.x, l.points.at(-1)?.z]));
+    if (key === this.laneKey) return;
+    this.laneKey = key;
+    if (this.laneMarks) { this.world.remove(this.laneMarks); this.laneMarks.geometry.dispose(); (this.laneMarks.material as THREE.Material).dispose(); this.laneMarks = null; }
+    // (0.15 m over the carriageway, drawn at +0.35: closer, the depth buffer loses them at a distance)
+    const pos: number[] = [], v = new THREE.Vector3(), lift = 0.5;
+    const quad = (p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, half: number) => {
+      const dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy); if (!(len > 1e-6)) return;
+      const nx = -dy / len * half, ny = dx / len * half;
+      const c = [[p.x + nx, p.y + ny, p.z], [p.x - nx, p.y - ny, p.z], [q.x + nx, q.y + ny, q.z], [q.x - nx, q.y - ny, q.z]].map(([x, y, z]) => { this.local(x, y, z + lift, v); return [v.x, v.y, v.z]; });
+      pos.push(...c[0], ...c[1], ...c[2], ...c[1], ...c[3], ...c[2]);
+    };
+    const at = (pts: readonly { x: number; y: number; z: number }[], d: number[], u: number) => {
+      let k = 1; while (k < pts.length - 1 && d[k] < u) k++;
+      const t = Math.max(0, Math.min(1, (u - d[k - 1]) / ((d[k] - d[k - 1]) || 1))), p = pts[k - 1], q = pts[k];
+      return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t };
+    };
+    for (const line of lines) {
+      const pts = line.points; if (pts.length < 2) continue;
+      const d = [0]; for (let k = 1; k < pts.length; k++) d.push(d[k - 1] + Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y));
+      if (!line.dashed) { for (let k = 1; k < pts.length; k++) quad(pts[k - 1], pts[k], line.width / 2); continue; }
+      for (let u = 0; u + 1.5 <= d[d.length - 1]; u += 3) quad(at(pts, d, u), at(pts, d, u + 1.5), line.width / 2);
+    }
+    if (pos.length) {
+      const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geometry.computeBoundingSphere();
+      this.laneMarks = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xf2f2ee, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+      this.laneMarks.name = 'lane-marks'; this.laneMarks.renderOrder = 2; this.world.add(this.laneMarks);
     }
     this.dirty = true;
   }

@@ -14,7 +14,8 @@ import { DIRECTIONS_TEXT, mappedRoadName } from '../core/terms';
 import { ROUNDABOUT_HOSTS } from '../core/tie-in';
 import { classTraffic } from '../core/traffic-census';
 import { fillDirections, type DirectionsState } from './hud';
-import { DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './road-edit';
+import { DEFAULT_SPEED, isTraffic, SLIP_ROAD_TRAFFIC, startSpeed, strayDistance } from './road-edit';
+import { isSlipRoad } from '../core/slip-roads';
 import { toast } from './toast';
 
 export interface RouteCardDeps {
@@ -96,10 +97,11 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
   } else {
     const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
       : e.anchor.kind === 'route' ? (() => { const host = deps.design().routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
-        return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
+        return !host ? 'a road' : host.kind === 'motorway' ? (host.role === 'mission' ? 'our motorway' : 'the motorway')
+          : host.role === 'mission' ? 'our road' : host.name; })()
       : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
         : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
-    what.textContent = `New ${rail ? 'railway' : 'road'} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
+    what.textContent = `${isSlipRoad(route) ? 'Slip road, one way,' : `New ${rail ? 'railway' : 'road'}`} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
   }
   const form = document.createElement('form'); form.className = 'source-operations route-traffic';
   const fields: HTMLInputElement[] = [];
@@ -127,14 +129,15 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
     if (!filled || Math.round(traffic) !== filled.aadt || Math.abs(heavy / 100 - filled.heavyShare) > 1e-9) basis.remove();
   };
   // where the numbers come from, while they are still the ones the game filled in
-  const cls = route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
+  // (a slip road starts as the average class II road, as a new road does)
+  const cls = route.specification.legalClass === 'ramp' ? SLIP_ROAD_TRAFFIC : route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
   const uncounted = UNCOUNTED_TRAFFIC[cls as keyof typeof UNCOUNTED_TRAFFIC];
   const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
   const basis = document.createElement('small'); basis.className = 'traffic-basis';
   if (filled && isTraffic(op, filled)) {
     basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
       : uncounted ? `Not counted: a guess for ${uncounted.what}. Change it to what you expect.`
-      : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
+      : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new ${isSlipRoad(route) ? 'slip road' : 'road'}: the average class ${averaged} road is assumed.`;
     basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
       : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'
       : `The traffic census (ŘSD) counts class I–III roads only. For ${uncounted?.what ?? 'this road'} the game guesses low (a residential zone is recommended up to 500 vehicles a day, TP 132). Change it to what you expect.`;

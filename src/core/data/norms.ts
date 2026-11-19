@@ -81,9 +81,20 @@ export const TRACK_SPEED_NORMS: Record<number, SpeedNorms> = {
   20: { speed: 20, minRadius: 12.5, noSuperelevationRadius: Infinity, minTransition: 0, minCrestRadius: 80, minSagRadius: 80, norm: TRACK_NORM, verticalNorm: TRACK_VERTICAL },
 };
 
+export const RAMP_NORM = 'ČSN 73 6110 rows (the slip-road table of ČSN 73 6102 was not found; provisional)';
+/** Slip roads of a motorway interchange at 50 / 40 km/h (research/90 §2: a D35 design uses 40–70 km/h ramps). The
+ * ramp table of ČSN 73 6102 was not found (research/90 §3): PROVISIONAL the ČSN 73 6110 rows of the same speeds
+ * (radius at 6 % banking, crest and sag for stopping sight), plain circular curves. The D35 design's 50 km/h ramp
+ * has 95 m, its 40 km/h loop 55 m: above these minima. */
+export const RAMP_SPEED_NORMS: Record<number, SpeedNorms> = {
+  50: { ...LOCAL_SPEED_NORMS[50], norm: RAMP_NORM },
+  40: { ...LOCAL_SPEED_NORMS[40], norm: RAMP_NORM },
+};
+
 /** Norm table for a category: motorway, railway, local-road and track rows are separate (never borrowed). */
 function normTable(category?: CategoryId): Record<number, SpeedNorms> {
   const c = category ? CATEGORIES[category] : undefined;
+  if (c?.ramp) return RAMP_SPEED_NORMS;
   if (c?.minor) return c.minor === 'local' ? LOCAL_SPEED_NORMS : TRACK_SPEED_NORMS;
   const mode = c?.mode ?? 'road';
   return mode === 'motorway' ? MOTORWAY_SPEED_NORMS : mode === 'railway' ? RAIL_SPEED_NORMS : SPEED_NORMS;
@@ -192,7 +203,7 @@ export function horizontalRules(speed: number, category?: CategoryId): Horizonta
   // Local roads and tracks: plain circular curves, no straight required between opposite curves (ČSN 73
   // 6110 §9.3.1 only recommends room for the change of crossfall; ČSN 73 6109 gives none); compound ratio
   // as for roads (PROVISIONAL, research/42).
-  if (category && CATEGORIES[category].minor)
+  if (category && (CATEGORIES[category].minor || CATEGORIES[category].ramp))
     return { minRadius: n.minRadius, transition: 0, plainRadius: 0, compoundRatio: 2, reverseStraight: 0, speed };
   const h = HORIZONTAL_NORMS[speed];
   if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
