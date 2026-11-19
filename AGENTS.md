@@ -47,7 +47,9 @@ checks on it through a plain static server (the full gates do too: `smoke-dist`,
 built in; `list` shows the gates; `--no-browser`, `--only`, `--skip`, `--jobs`). Full runs drag-perf first and alone,
 then vitest alone, the other Node gates nproc/2 at a time, then smoke / playtest / toolbar together (all but drag-perf: 13.5 min serial → 10 min with the host at load ≈ 60 from other agents). A change meant to preserve behaviour
 (refactor, performance): `npx tsx scripts/exact.ts --out /tmp/before.json` on the base, then
-`scripts/gates.sh full --exact /tmp/before.json` (every whole result of every pack identical). Structure,
+`scripts/gates.sh full --exact /tmp/before.json` (every whole result of every pack identical). A render refactor: `node scripts/scene-exact.mjs
+--out /tmp/scene.json` on the base (`--root <checkout>`), `--compare` after it (every mesh of the scene after starts and
+edits identical). Structure,
 findings and the refactoring plan: `docs/architecture-review.md`.
 
 ## Workflow gotchas

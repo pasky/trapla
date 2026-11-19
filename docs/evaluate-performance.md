@@ -1,5 +1,31 @@
 # Evaluate performance regression
 
+## Whole-D3 drags after release: the main thread (no model version, 2026-11-19)
+
+Every drag on the whole D3 missed "no long task ≥ 50 ms after release" (bend on main: 3 of 3 runs). Traced
+(`drag-perf --trace`, `--alloc` for sampled allocations, `--profile`): a major GC pause of 33–47 ms (heap 700 → 300 MB)
+during the sliced 3D rebuild, the full result's message (decode on first read plus `showFull`, 17–55 ms), rebuild steps
+that did not yield for 25–41 ms, and route picks at a hover or press projecting every station of both directions.
+
+| per link drag + settle, whole D3 | main e5eda04 | now |
+|---|---|---|
+| allocated on the main thread | 1053 MB | 650 MB |
+| of it the 3D rebuild (ribbon) | 626 (410) MB | 400 (209) MB |
+| longest rebuild slice | 26–41 ms | 13–20 ms |
+| full result on the main thread (decode) | 17–55 ms | 14–19 (7–12) ms |
+| preview main-thread p95 | 14–25 ms | 5–11 ms |
+
+What changed: the earthwork ribbon and the collars are filled into typed buffers reused build after build
+(`render/mesh-buffers.ts`) instead of plain arrays of doubles (route-length arrays live in the old generation and their
+growth fed the major collections); the ribbon's normals are computed in steps with three.js's own operations; the
+collars, crossing keys and crossing sections yield every 8 stations / 4 keys / 16 sections; the centreline is built
+into typed arrays (every preview rebuilds it); a preview message carries no slope face samples (`faceL`/`faceR`, ten
+thousand small arrays, drawn from full results only) and no transport surface, a full result none for a road with a
+result (`worker.ts` `leanPreview` / `leanFull`); route picks cull 64-station boxes (`render/route-pick.ts`).
+Rendered scenes are hashed by `scripts/scene-exact.mjs` (25 scenes, starts and edits on five missions): identical.
+`drag-d3-full-bend`, `-road`, `-link` pass 12 of 12 at host load 2–4.
+
+
 ## A reroute's first drag on a whole route is a window (no model version, 2026-11-19)
 
 A reroute's drag (`drag-perf --mode link`) on the whole D3 took ≈ 170 ms from move to shown preview, the whole I/35's

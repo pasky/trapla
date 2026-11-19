@@ -2653,10 +2653,32 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   `drag-i35-full-link` (the last stage's link gate dropped). Full results unchanged (exact.ts).
 - **Known issues:** a reroute led to another road (`to` / `ends` changed) still previews the whole route; its end is
   only moved on release (no preview during the drag), so no drag waits for it.
-- **Whole D3: long tasks after release (not new; the next performance item).** Any drag on the whole D3 (bend on main
-  dfc5388: 3 of 3 runs; link here: ≈ 6 of 15) misses the "no long task ≥ 50 ms after release" budget, the preview
-  budgets met: a major GC pause of 33–47 ms during the 3D rebuild of both directions (≈ 630 MB allocated on the main
-  thread per settle: `route-scene` build, `view.ts` buildResult; ≈ 1 GB with the drag's previews, `drag-perf --alloc`),
-  and the full result's message, 17–55 ms on the main thread (a ≈ 4.6 MB structured clone of both directions' results,
-  deserialised on first access, plus `showFull` ≈ 20 ms). So no whole-D3 drag is gated yet (`drag-d3-full-link`
-  waits for this).
+- **Whole D3: long tasks after release (not new; fixed below, "Whole-D3 drags after release").** Any drag on the whole
+  D3 (bend on main dfc5388: 3 of 3 runs; link here: ≈ 6 of 15) missed the "no long task ≥ 50 ms after release" budget.
+
+## Whole-D3 drags after release (no model version, 2026-11-19)
+
+- **Bug:** every drag on the whole D3 (56 km, a paired motorway) left long tasks of 50–58 ms on the main thread after
+  release, and its previews' main-thread time was at its 25 ms budget: a major collection of 33–47 ms during the 3D
+  rebuild (≈ 630 MB allocated per settle, ≈ 1 GB with the drag), the full result's message 17–55 ms, indivisible
+  rebuild steps of 25–41 ms (the ribbon's normals, 32 stations of collars, crossing keys), and a hover or press that
+  projected every station of both directions (route picks, 20–50 ms).
+- **Fix** (render and messages only; results and the scene unchanged): the ribbon and collars are written into typed
+  buffers reused from build to build (`render/mesh-buffers.ts`; no route-length arrays of doubles in the old generation),
+  the ribbon's normals in steps (the same operations as three.js), shorter steps elsewhere; a preview is posted without
+  the slopes' face samples and the transport surface (drawn from the full result), a full result without the transport
+  surface of a road it has a result of (the worker keeps it whole; the two directions' shared arrays and objects already
+  go once: one structured clone dedupes them); the centreline into typed arrays; route picks pass over 64-station
+  stretches whose box projects farther than the pick distance (exact: tests/route-selection.test.ts against every
+  segment). Allocated per link drag and settle 1053 → 650 MB, no major collection in three traced runs; longest slice
+  26–41 → 13–20 ms; full result on the main thread 16–19 ms (decode 7–12); preview p95 10–25 → 5–11 ms. Gates
+  `drag-d3-full-bend`, `-road`, `-link`: 12 of 12 runs pass at load 2–4 (main: bend 0 of 3).
+- **Checked:** `scripts/scene-exact.mjs` hashes every mesh, line, attribute and data texture of the scene after the
+  missions' starts and edits (a bend moved, a bend added, a reroute shaped, back): 25 scenes identical to e5eda04;
+  `exact.ts` identical.
+- **Not done:** rebuilding only the changed stretch's meshes. The ribbon carries each station's chainage (the shader's
+  lanes and markings), so an edit that changes the length changes every vertex beyond it, and its normals are shared
+  across any seam; a rebuild costs ≈ 0.4–0.65 s of 13–20 ms slices after release, which the budgets allow.
+  Transferring the full result's typed arrays is not done either: the worker keeps the result (change lists, noise
+  bands, preview bases), and its typed arrays are the cheap part of the message (objects are most of its decode).
+

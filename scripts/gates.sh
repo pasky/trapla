@@ -32,8 +32,7 @@ log=${GATES_LOG:-/tmp/trapla-gates-$branch}
 
 # name | kind (node; alone: a Node gate on its own, its tests time out on a loaded host; timed; browser) | set (quick, full) | command
 # (the whole I/35's road drag is between bends 20 and 21: between the middle bends 19 and 20 the press lands on a crossed
-# road's works and selects that crossing. No whole-D3 drag is gated: its 3D rebuild and full result after release make
-# long tasks ≥ 50 ms in about 40 % of runs, any mode, PLAN.md "Reroute drags on whole routes")
+# road's works and selects that crossing)
 gates() {
   cat <<EOF
 tsc|node|quick|npx tsc --noEmit
@@ -64,6 +63,7 @@ start-screen|browser|full|DIST=dist PORT=\$((PORT + 70)) node scripts/release-sh
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 $(for m in road link; do echo "drag-d11-motorway-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d11 --preset d11-motorway --mode $m"; done)
 $(for m in bend road link; do echo "drag-i35-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-full --preset i35-full-road --mode $m$([ $m = road ] && echo ' --bend 20')"; done)
+$(for m in bend road link; do echo "drag-d3-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d3-full --mode $m"; done)
 EOF
 }
 
