@@ -2,7 +2,7 @@
 // tangent guide of the active bend, official line, DOM markers and labels, heightfield picking.
 
 import * as THREE from 'three';
-import { BufferPool, FloatBuffer, IndexBuffer } from './mesh-buffers';
+import { BufferPool, FloatBuffer, IndexBuffer, vertexNormalsSliced } from './mesh-buffers';
 import { Declutter } from './declutter';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -985,7 +985,8 @@ export class View {
     // wing walls out to the engine's daylight points
     const ground = groundStations(r, natural);
     for (let i = 0; i < n - 1; i++) {
-      if (i % 32 === 0) { flushGround(); yield; } // corridor-local frustum culling, not one route-wide mesh
+      if (i % 32 === 0) flushGround(); // corridor-local frustum culling, not one route-wide mesh
+      if (i % 8 === 0) yield; // (a wide stretch's 32 stations took up to 25 ms)
       const k0 = r.kind[i], k1 = r.kind[i + 1];
       if (k0 === KIND.tunnel || k1 === KIND.tunnel) continue;
       const a = sv[i], b = sv[i + 1];
@@ -1297,7 +1298,7 @@ export class View {
     out.push(ribbon); // owned (disposed on abort) before the next yield
     g.computeBoundingSphere();
     yield;
-    g.computeVertexNormals();
+    yield* vertexNormalsSliced(g);
     yield;
     if (portalIdx.length) {
       // (their own vertices: flat-shaded boxes, the ribbon's attributes per vertex)

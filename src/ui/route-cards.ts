@@ -232,7 +232,7 @@ export function proposalCard(deps: RouteCardDeps): void {
   h.append(title, close);
   const state = document.createElement('div'); state.className = 'ctx-state'; state.textContent = 'Proposed change · not checked yet';
   const note = document.createElement('p'); note.textContent = 'The old road stays until this change is checked.';
-  const length = route.alignment.kind === 'reference' ? route.alignment.path[route.alignment.path.length - 1].s : result?.surface?.points.at(-1)?.s;
+  const length = route.alignment.kind === 'reference' ? route.alignment.path[route.alignment.path.length - 1].s : result?.legacy?.length ?? result?.surface?.points.at(-1)?.s;
   const size = document.createElement('div'); size.className = 'sub'; size.textContent = length ? `${Math.round(length)} m` : '';
   const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route'; remove.textContent = 'Remove change';
   remove.onclick = () => {

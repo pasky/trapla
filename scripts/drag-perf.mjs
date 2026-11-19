@@ -45,13 +45,16 @@ await page.addInitScript(() => {
     set onmessage(fn) {
       super.onmessage = (ev) => {
         const t0 = performance.now();
+        // (the message is deserialised on its first read: timed apart, part of the handler's time as before)
+        void ev.data;
+        const tData = performance.now();
         fn(ev);
         const t1 = performance.now();
         const m = ev.data;
         const r = m?.type === 'project-preview' ? m.result?.legacy
           : m?.type === 'project-result' ? m.result?.routes[window.trapla?.activeRoute?.()]?.legacy : m?.type === 'result' ? m.result : null;
         const handled = !window.trapla?.handledRequest || window.trapla.handledRequest() === m?.id;
-        if (D.on && r && handled) D.results.push({ id: m.id, t0, t1, preview: m.type === 'project-preview' || !!(m.preview ?? r.preview), worker: r.timing?.total, timing: r.timing, parts: window.trapla?.handlerTiming?.() });
+        if (D.on && r && handled) D.results.push({ id: m.id, t0, t1, preview: m.type === 'project-preview' || !!(m.preview ?? r.preview), worker: r.timing?.total, timing: r.timing, parts: { ...window.trapla?.handlerTiming?.(), decode: tData - t0 } });
       };
     }
     get onmessage() { return super.onmessage; }

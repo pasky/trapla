@@ -53,6 +53,13 @@ function leanPreview(route: RouteResult): RouteResult {
     ...(route.drawn ? { drawn: route.drawn.map(p => ({ ...p, result: lean(p.result) })) } : {}) };
 }
 
+/** A full result as the main thread takes it: a road with a result of its own without its transport surface (drawn,
+ * picked and measured from its result there; a point per station, half a megabyte of small objects per whole-D3
+ * direction). The worker keeps it whole (`lastProject`). */
+function leanFull(result: ProjectResult): ProjectResult {
+  return { ...result, routes: Object.fromEntries(Object.entries(result.routes).map(([id, r]) => [id, r.legacy ? { ...r, surface: null } : r])) };
+}
+
 function runBand() {
   const job = band!;
   band = null;
@@ -88,7 +95,7 @@ function run() {
       const removedRouteIds = known ? Object.keys(known.routes).filter(id => !Object.prototype.hasOwnProperty.call(result.routes, id)) : [];
       lastProject = result; // One result only; never retain a history of typed arrays.
       basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [previewBase(r.legacy)] : []));
-      post({ type: 'project-result', id: job.id, result, baseIdentity,
+      post({ type: 'project-result', id: job.id, result: leanFull(result), baseIdentity,
         changedRouteIds, removedRouteIds, dependentRouteIds: [] });
     }
   } catch (e) {

@@ -56,3 +56,31 @@ export class BufferPool<T extends { clear(): void }> {
   take(): T { const b = this.free.pop() ?? this.make(); b.clear(); return b; }
   give(b: T) { if (this.free.length < 4) this.free.push(b); }
 }
+
+/** `geometry.computeVertexNormals()` of an indexed geometry in steps (a whole-D3 ribbon's took ≈ 25 ms in one go): the
+ * same operations in the same order, so the same normals. */
+export function* vertexNormalsSliced(geometry: THREE.BufferGeometry, step = 30000): Generator<void, void> {
+  const index = geometry.index, position = geometry.getAttribute('position');
+  if (!index || !position) { geometry.computeVertexNormals(); return; }
+  const normal = new THREE.BufferAttribute(new Float32Array(position.count * 3), 3);
+  geometry.setAttribute('normal', normal);
+  const pA = new THREE.Vector3(), pB = new THREE.Vector3(), pC = new THREE.Vector3();
+  const nA = new THREE.Vector3(), nB = new THREE.Vector3(), nC = new THREE.Vector3();
+  const cb = new THREE.Vector3(), ab = new THREE.Vector3();
+  for (let i = 0, il = index.count; i < il; i += 3) {
+    if (i % (3 * step) === 0 && i) yield;
+    const vA = index.getX(i), vB = index.getX(i + 1), vC = index.getX(i + 2);
+    pA.fromBufferAttribute(position, vA); pB.fromBufferAttribute(position, vB); pC.fromBufferAttribute(position, vC);
+    cb.subVectors(pC, pB); ab.subVectors(pA, pB); cb.cross(ab);
+    nA.fromBufferAttribute(normal, vA); nB.fromBufferAttribute(normal, vB); nC.fromBufferAttribute(normal, vC);
+    nA.add(cb); nB.add(cb); nC.add(cb);
+    normal.setXYZ(vA, nA.x, nA.y, nA.z); normal.setXYZ(vB, nB.x, nB.y, nB.z); normal.setXYZ(vC, nC.x, nC.y, nC.z);
+  }
+  yield;
+  const v = new THREE.Vector3();
+  for (let i = 0, il = normal.count; i < il; i++) {
+    if (i % (2 * step) === 0 && i) yield;
+    v.fromBufferAttribute(normal, i); v.normalize(); normal.setXYZ(i, v.x, v.y, v.z);
+  }
+  normal.needsUpdate = true;
+}
