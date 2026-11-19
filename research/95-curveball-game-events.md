@@ -138,9 +138,9 @@ reference (`scripts/twists-check.ts --survey`), kept within 400 m.
 | D11 motorway | Starý Rokytník copper shaft (real place), Poříčí slope (real place), Zlatá Olešnice slope (real place), soldiers' graves by Lampertice (game; the kind is real on the D11), stork's nest (game), the contract (real event, game cap) |
 | Královec railway | Libeč slope (real place), Křenov slope (real place), soldiers' graves by Bernartice (game), eagle owl (game), money (game) |
 | I/35 Turnov stage | Nudvojovice will not sell (the real revoked EIA and its tunnels round Turnov, research/89 §2; the refusal a game event: the homes our starter buys out, where the real line tunnels under Pelešany), CHKO zone III at Valdštejnsko (a real AOPK zone; the refused consent a game event), the Libuňka's floodplain and the Jizera's banks (real EIA conditions), money (game) |
-| I/35 Rovensko stage | the supra-regional biocorridor K31B (a real EIA condition on its real AOPK ÚSES polygon), the green bridges over the scarp cuts at km 11.5 and 15.8 (a real EIA condition; LOW on the starter's deep cuts nearest those km), graves by Václaví (game), money (game) |
+| I/35 Rovensko stage | the supra-regional biocorridor K31B (a real EIA condition on its real AOPK ÚSES polygon), the green bridges over the scarp cuts at km 11.5 and 15.8 (a real EIA condition; LOW on the starter's deep cuts nearest those km), graves by Václaví (game), a slope by Rovensko (ČGS register, real place) |
 | I/35 Jičín stage | a protected species' site by Dílce (the real return of the review's biology, 30 Jul 2026; the place a game event), a settlement by Jinolice (game), a gas main by road I/35 (game), Soběraz in a cutting (game), money (game) |
-| whole I/35 | Nudvojovice, zone III, the Jizera, K31B, both scarps, the species' site, money |
+| whole I/35 | Nudvojovice, zone III, the Jizera, both scarps, the species' site, money (K31B not: the stitched reference's frozen heights could not be lifted onto a bridge there) |
 
 ### A protected landscape's zone (rule NO_PIERS) — a real place
 - **Kind:** a class I road in a CHKO's zones III–IV needs the nature authority's consent (Act 114/1992 §44; research/75,

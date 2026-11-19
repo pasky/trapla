@@ -2608,7 +2608,9 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   near); the whole D3 (Earth balance, Hands off, Curveballs 6, From scratch, By hand); D35 stage 1 (Earth, Hands off, Curveballs 6, Spare the forest
   2 ha, Few bridges 400 m, Real price, …); the whole D35 (Earth, Hands off, Curveballs 8, From scratch, By hand); the D11
   motorway (Earth, Hands off, Curveballs 6, Few bridges 1,600 m, …); the Královec railway (Earth, Hands off, Curveballs 5,
-  Spare the forest 5 ha, Few bridges 1,600 m, …). The D11 class I road has none (its starter is the straight line and
+  Spare the forest 5 ha, Few bridges 1,600 m, …); Český ráj: the Turnov stage (Earth, Curveballs 5, From scratch, By hand;
+  no Hands off: every search kept within 200 m of the church of sv. Jan Křtitel at Turnov), Rovensko and Jičín (Earth,
+  Hands off, Curveballs 5, …), the whole I/35 (Earth, Curveballs 7, …). The D11 class I road has none (its starter is the straight line and
   brings in 9 % of its fill): its twist screen says so in one line. The whole routes' references are stitched from their
   sections' (`scripts/twists-stitch.ts`: each section's bends, pins and painted tunnels carried into the whole pack by their
   EPSG:5514 places, stations measured anew; `--freeze` takes the heights the whole line got by hand, where the whole-route
