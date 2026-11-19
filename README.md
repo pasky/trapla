@@ -249,6 +249,14 @@ only what you do. The town bypass comes last: the I/46 around Šternberk, planne
 [the starter](docs/screenshots/583-sternberk-overview.png), [its end on the road to Opava past the viaduct](docs/screenshots/584-sternberk-end-b.png),
 [the aerial photo](docs/screenshots/585-sternberk-photo.png)). It replaced Nová Paka, whose ground and photo were taken
 while the real bypass was being built ([the start screen now](docs/screenshots/580-start-screen.png)).
+The I/35 from Turnov to Úlibice through Český ráj ([its card](docs/screenshots/600-start-screen-cesky-raj.png); research/89) was
+the R35 "D35" and is now a class I road: a four-lane S 21.5 built like a motorway, which may cross the protected landscape
+area's outer zone with consent where a motorway may not enter it at all ([the note on that stretch](docs/screenshots/605-i35-chko-zone-iii-note.png)).
+Its three stages and the whole route: [the whole route](docs/screenshots/601-i35-whole-route.png),
+[Turnov → Valdštejnsko](docs/screenshots/602-i35-turnov-valdstejnsko.png), [Valdštejnsko → Čímyšl](docs/screenshots/603-i35-valdstejnsko-cimysl.png),
+[Čímyšl → Úlibice](docs/screenshots/604-i35-cimysl-ulibice.png); [its two carriageways on twin decks](docs/screenshots/606-i35-four-lane-body.png),
+[homes bought out for noise at Nudvojovice](docs/screenshots/607-i35-nudvojovice-noise.png), [end A at the Ohrazenice interchange](docs/screenshots/608-i35-end-a.png),
+[end B where the D35 goes on](docs/screenshots/609-i35-end-b.png), [the photo round Žernov](docs/screenshots/610-i35-rovensko-photo.png).
 Retired missions are never offered; a save of one
 is listed under [Your older saves](docs/screenshots/554-start-screen-older-saves.png). A picked mission's map
 loads with [a card that counts the megabytes](docs/screenshots/555-loading-card.png); the map is drawn

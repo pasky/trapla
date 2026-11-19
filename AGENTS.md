@@ -144,6 +144,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   tunnel under Pod skálou at ≤ 3.8 %; the real-portal line +5.4 %, research/73 §7). Not taken: T-8.0 tube width, rock cover,
   running costs (research/73 §5, /74). The town-bypass mission is the I/46 Šternberk bypass (planned, not built;
   research/88): Nová Paka is retired (its ground and photo hold the real bypass's works), its pack kept for old saves.
+- The I/35 Turnov – Úlibice through Český ráj (research/89, PLAN.md "The I/35 through Český ráj"): three stages and the
+  whole route on the four-lane class I road S 21.5 (the paired corridor at its own widths and SPK D 21.5 rows; the
+  corridor's category comes from its directions; the CHKO rule reads `motorwayByLaw`, so S 21.5 may cross zones III–IV
+  with a note where D 27.5 may not). Its 2+1 stretch is four-lane (one category per route); no pier in a pond.
 - A reroute's new piece can be led to another road by dragging its end (the square handle where it joins its road;
   `CrossingOverride.ends`, cost model 52, PLAN.md "A reroute led where the player drags its end"): built like Auto's
   own, a road that cannot take it leaves Auto's line and says why; a shaped side no longer builds the other side.

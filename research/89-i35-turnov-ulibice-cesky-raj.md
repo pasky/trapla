@@ -179,10 +179,34 @@ Cost model 57, S 21.5/110, Auto grade (`scripts/bench.ts`, SCENARIO=<pack>):
 | Čímyšl → Úlibice | 5.37 bn | 13.98 | 6 / 980 m | 5.51 bn |
 
 What ours builds differently: no tunnels (Auto takes the Pelešany stretch in cuts and on bridges, and buys out 33
-buildings and 7 homes for noise, 849 M, beside the Přepeře housing estate, where the real design covers the road
-and tunnels under the houses), no interchanges, the 2+1 stretch at four lanes, land and buildings in the bill. The
+buildings, and 7 homes for noise, 849 M, at Nudvojovice south-west of Turnov, where the real design tunnels
+under the houses of Pelešany and considers covering the road beside the Přepeřská estate), no interchanges, the 2+1 stretch at four lanes, land and buildings in the bill. The
 first stage's embankments buy 769 k m³ of fill (its cuts give 107 k). The real stages' figures are context for the
 player, not a target.
+
+The whole route: **15.18 bn**, 31.95 km, 17.4 min (the stages' sum 15.39 bn); its 1.5 km reference 15.50 bn. ŘSD's
+three road stages: 18.98 bn (CÚ 2022, construction), with the interchange stage 19.98 bn.
+
+On the line's CHKO corner: our starter's works stand in zone III at km 4.51–4.68 of the Turnov stage (earthworks, a
+bridge end and a pier; the mapped line km 5.17–5.50): the stretch card says "Building here needs the nature
+authority's consent". A D 27.5 on the same line is banned there ("No new motorway may be built anywhere in a protected
+landscape area"), and Auto takes it under the area instead (tests/motorway-mode.test.ts).
+
+### Known issues
+
+- The 2+1 S 15.25 stretch beyond km 12.4 (20.5 km) is built at four lanes: one category per route (§6).
+- No pier stands in a pond (a game rule for all water): the middle stage's line every 1.5 km crosses the pond near
+  Stebno lengthwise and is not valid; its reference is bends every 1.0 km.
+- A bridge running 400 m along a railway right under it (the last stage's line with bends every 1.0 km, km 7.7–8.1)
+  stands its piers on the track: no frame pier's columns miss a railway that close to the axis. Small drags of the
+  last stage's starter by up to 100 m: 1 of 72 invalid so (`scripts/small-drag-audit.ts --all --n 6 --radius 100`); by
+  up to 25 m none of 48; the middle stage by up to 50 m none of 78.
+- The real line tunnels under Pelešany (900 m) and Přepeře (150 m); our Auto finds cuts, bridges and buyouts cheaper
+  on the sampled line. Why the real design tunnels there (the houses, the EIA's condition on the landscape) is a cost
+  the game does not see.
+- The interchanges (eight on the real line) and the II/283 feeder to Semily are not built.
+- The ground is ČGS GEOCR50 with IG rajon fallbacks (no cell unmapped); Kozákov's and Trosky's volcanic rocks
+  (basanite, nephelinite, pyroclastics) have no GEOCR50 mapping of their own and take the IG rajon's (ig_Vl, ig_Vk).
 
 ## Sources (opened 2026-11-19)
 

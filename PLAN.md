@@ -2396,3 +2396,34 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   (it could not be: its end lies in our junction). Small drags of bend 1: 4 of 12 invalid → 0. No other pack's result
   changed (`scripts/exact.ts`); tests/endpoint-junction.test.ts.
 - **End cards:** "Joins …" says "It carries on as … here" (it said "Our motorway" on a road mission too).
+
+## The I/35 through Český ráj; the four-lane class I road S 21.5 (owner request, no model version, 2026-11-19)
+
+- **Why:** the owner asked for "the D35 through Český ráj". Research (research/89): since 2016 Turnov – Úlibice is no
+  longer the R35 / D35 but the class I road **I/35** (ŘSD: "Stavba silnice I/35 Turnov – Úlibice"), 33.0 km, the E1 line
+  of the 2021 EIA opinion (revoked 12/2025, a new EIA from 2026, works from about 2032), four-lane S 21.5/110 to MÚK
+  Žernov and 2+1 S 15.25/110 beyond; 19.98 bn (CÚ 2022). A motorway may not be built anywhere in a CHKO (zákon 114/1992
+  §26(1)f); the line crosses a corner of CHKO Český ráj zone III, legal for a class I road with the authority's consent.
+- **S 21.5** (`categories.ts` 'S21.5' / 'S21.5-1'): the paired corridor (both directions, split and rejoin, twin decks
+  and tubes) at VL 1 sheet 11-06 widths (lanes 3.50 + 3.25 m, 3.0 m median), SPK's D 21.5 rows (the same cross-section;
+  the ŘSD study prices its S 21.5 stretch with them), 110 / 100 / 90 km/h, 4.5 % (hilly) / 6 % (mountainous), 70,000
+  m³/km of cut in the price (every divided road). The corridor's category now comes from its directions' cross-section
+  (`corridorCategory`, `carriagewayCategory`, `carriagewayOffset`; it was the D 27.5 constant everywhere), the noise
+  sources and the terrain shader's lanes follow it (`setPairedSection`: one paired cross-section drawn at a time), and
+  the protected-area rule reads the category's `motorwayByLaw` (D 27.5 yes, S 21.5 no) instead of "motorway mode".
+  Bit-exact: every existing result identical (`scripts/exact.ts`, 191 of 191).
+- **Player words:** a four-lane road built like a motorway is "our road" ("Four-lane road" in the profile, route list,
+  card kind and goal; its crossings' Automatic says "This road has no junctions"; `lineOf`, `pairedName`,
+  `route-section.ts routeWord`).
+- **The missions** (one card, "Turnov → Úlibice through Český ráj": Turnov → Valdštejnsko, Valdštejnsko → Čímyšl,
+  Čímyšl → Úlibice, Whole route): S 21.5/110, the EIA's 2040 traffic by stretch, the mapped line + 10 % at 110 as the
+  time; ends on the mapped line at km 0.6 (past the D10 / I/35 interchange and the Liberec–Turnov railway), 6.4 (past
+  the Valdštejnsko interchange, the railway and I/35 the line bridges, and III/2835), 18.9 (Čímyšl) and 33.02 (where the
+  D35 Úlibice bypass starts). Starters: the mapped line's nodes every ≈ 0.6 km, VALID on Auto alone: 5.63 / 4.39 /
+  5.37 bn, the whole route 15.18 bn (31.95 km, 17.4 min). The whole route evaluates in ≈ 1.1 s (35 ms/km: dense
+  crossings, the town of Turnov); drag-perf bend / road / link pass (`drag-i35-full-*` gates).
+- **Known issues:** the 2+1 stretch (20.5 km) is built four-lane (one category per route); no pier is built in a pond
+  (the middle stage's 1.5 km reference crossed one lengthwise; its reference is 1.0 km); a bridge running 400 m along a
+  railway right under it stands its piers on the track where no frame pier's columns miss it (a 100 m drag on the last
+  stage, 1 of 72); Auto takes the Pelešany stretch in cuts and on bridges and buys out homes where the real design
+  tunnels under the houses; the interchanges are not built.

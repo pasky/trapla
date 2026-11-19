@@ -13,6 +13,7 @@ slot. Do not reuse a road preset's save slot for a future motorway mission on th
 | `d35` | Full Opatovec → Mohelnice preferred; explicitly named Opatovec → Staré Město only if measured budgets require it | research/26-d35-scenario.md |
 | `i16-nova-paka` | Genuine class-I southeast bypass; reference 8.479 km, S11.5/70 (retired: its ground holds the real works) | research/24-nova-paka-scenario.md |
 | `i46-sternberk` | I/46 Šternberk bypass, planned and not built; reference 4.229 km mapped (4.708 km published), S11.5/90 → 70 | research/88-town-bypass-candidates.md |
+| `i35-turnov`, `i35-rovensko`, `i35-jicin`, `i35-full` | I/35 Turnov – Úlibice through Český ráj (the former R35), its three road stages and the whole route; planned, a new EIA from 2026; reference 33.02 km mapped, S 21.5/110 (the real road's 2+1 beyond km 12.4 is four-lane here) | research/89-i35-turnov-ulibice-cesky-raj.md |
 
 These are road exercises, not claims that a two-lane road meets the actual D3/D35 motorway demand.
 `src/core/data/scenario.ts` owns catalogue values, `presetId`, fresh-design `initial` category/speed,
