@@ -637,6 +637,16 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     j.push({ routeId: hostRoute.id, x: legacy.x[i], y: legacy.y[i], r: host.cell.width[k] / 2 + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance });
     builtJunctions.add(`${route.id}:${end}`);
   }
+  // a slip road leaves or joins a motorway at one end, its other end on a road
+  for (const { route, legacy } of engineered) if (isSlipRoad(route)) {
+    const on = (['a', 'b'] as const).filter(e => { const x = route.endpoints[e].anchor; return x.kind === 'route' && design.routes.find(q => q.id === x.routeId)?.kind === 'motorway'; });
+    if (on.length === 1) continue;
+    legacy.violations.push({ kind: 'crossing', s0: 0, s1: legacy.length, basis: 'game',
+      title: on.length ? 'It leaves and joins the motorway' : 'It neither leaves nor joins a motorway',
+      fix: on.length ? 'Put one of its ends on a road' : 'Put its start beside a motorway to leave it, or its end to join it',
+      rule: 'Game rule: a slip road leaves or joins a motorway at one end; its other end joins a road.' });
+    legacy.valid = false;
+  }
   interchangeAllowance(start, gores);
   interchangeTerminals(start, gores);
   for (const [id, rep] of replacements) ownWorks.set(id, [...ownWorks.get(id) ?? [], ...rep.works]);

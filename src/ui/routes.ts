@@ -27,9 +27,10 @@ import type { ProfilePanel } from './profile';
 import type { ResultDisplay } from './result-display';
 import type { RoadLinks } from './road-links';
 import type { RouteBar } from './route-bar';
-import { buildInProject, registeredBuildKinds, type BuildKind, type EndContext } from './route-kinds';
+import { buildInProject, buildKindOf, registeredBuildKinds, type BuildKind, type EndContext } from './route-kinds';
 import { RoadEnds } from './road-ends';
 import type { PlacedEnd } from './road-edit';
+import { isSlipRoad } from '../core/slip-roads';
 import { followSource } from './source-editor';
 import type { Anchor, ProjectDesign, RouteDesign, RouteId } from '../core/project';
 import { activeSelection, qualifySelection } from './route-selection';
@@ -68,6 +69,13 @@ export function moveEnd(design: ProjectDesign, routeId: string, end: 'a' | 'b', 
   if (!sameRoad(route.endpoints[end].anchor, placed.anchor) && route.alignment.kind === 'pi' && route.alignment.controls.junctionForms?.[end]) {
     const forms = { ...route.alignment.controls.junctionForms }; delete forms[end];
     route.alignment.controls.junctionForms = forms;
+  }
+  // a slip road's end moved along its motorway takes the bend next to it along (the bend that leads it off the
+  // carriageway, else left behind on the motorway's side)
+  const was = route.endpoints[end], motorway = (a: Anchor) => a.kind === 'route' && design.routes.find(r => r.id === a.routeId)?.kind === 'motorway';
+  if (isSlipRoad(route) && motorway(was.anchor) && motorway(placed.anchor) && route.alignment.kind === 'pi' && route.alignment.pis.length) {
+    const k = end === 'a' ? 0 : route.alignment.pis.length - 1, p = route.alignment.pis[k];
+    route.alignment.pis[k] = { ...p, x: p.x + placed.position.x - was.position.x, y: p.y + placed.position.y - was.position.y };
   }
   route.endpoints[end] = { position: { ...placed.position }, anchor: structuredClone(placed.anchor), binding: 'resolved' };
 }
@@ -237,7 +245,7 @@ export function createRoutes(app: RoutesContext) {
   /** A built road's end dragged to the pointer: it keeps to the road it joins while the pointer is within
    * END_STICK px of it (along it, as far as that road goes), else it goes where a click while building would put it. */
   const placeEnd = (route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number): Placement | null => {
-    const kind = registeredBuildKinds().find(k => k.kind === route.kind);
+    const kind = buildKindOf(route);
     const g = app.view.pick(clientX, clientY);
     if (!kind || !g) return null;
     const anchor = route.endpoints[end].anchor, reach = END_STICK * app.view.metresPerPixel;

@@ -19,7 +19,7 @@ import { ROAD_CLASSES } from '../core/data/urban';
 import { KIND } from '../core/structures';
 import { CATEGORIES } from '../core/data/categories';
 import { moveStretchEnds, newRoad, newSlipRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
-import { carriagewayOf, gore, sideAt } from '../core/slip-roads';
+import { carriagewayOf, gore, isSlipRoad, sideAt } from '../core/slip-roads';
 import { mappedRoadName } from '../core/terms';
 import { stationIndex } from '../core/range';
 
@@ -49,6 +49,8 @@ export interface BuildKind {
   refuse?(a: PlacedEnd, b: PlacedEnd): string | null;
   /** What Build's card says about where its ends go (default: a click on a road joins it). */
   hint?: string;
+  /** Lines this kind built, where two kinds build the same kind of line (a slip road is a road): its own. */
+  owns?(route: RouteDesign): boolean;
   /** The new straight route between two placed ends (one route; dispatched as `create-route`). */
   create?(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids: RouteIds): RouteDesign;
   /** Or the whole project with what this kind builds (e.g. a motorway: a corridor and its two direction
@@ -70,6 +72,9 @@ const mappedKinds: MappedLineKind[] = [], buildKinds: BuildKind[] = [];
 export function registerMappedLineKind(kind: MappedLineKind) { mappedKinds.push(kind); }
 export function registerBuildKind(kind: BuildKind) { buildKinds.push(kind); }
 export const registeredBuildKinds = (): readonly BuildKind[] => buildKinds;
+/** The build kind whose rules a built line's ends follow (a dragged end goes where this kind's ends may go). */
+export const buildKindOf = (route: RouteDesign): BuildKind | undefined =>
+  buildKinds.find(k => k.owns?.(route)) ?? buildKinds.find(k => k.kind === route.kind && !k.owns);
 /** The kind that rebuilds this mapped source, with its verdict; a plain refusal when none does. */
 export function mappedLineKindFor(base: ProjectTransportIndex, sourceId: string): { kind: MappedLineKind; verdict: Verdict<{ becomes: string }> } | { kind: null; verdict: { ok: false; why: string } } {
   let refusal: { kind: MappedLineKind; verdict: Verdict<{ becomes: string }> } | null = null;
@@ -151,6 +156,7 @@ export const SLIP_BUILD: BuildKind = {
     return null;
   },
   create: (project, a, b, ids) => newSlipRoad(project, a, b, ids),
+  owns: route => isSlipRoad(route),
 };
 registerMappedLineKind(ROAD_LINE);
 registerBuildKind(ROAD_BUILD);

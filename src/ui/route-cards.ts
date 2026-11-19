@@ -172,7 +172,9 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
   const junctions = document.createElement('div'); junctions.className = 'route-junctions';
   if (!rail && !route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
     const anchor: Anchor = route.endpoints[end].anchor;
-    const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : anchor.kind === 'route' ? 'designed' : undefined;
+    // (an end on a motorway is a slip road's gore: no junction to choose)
+    const host: RouteDesign | undefined = anchor.kind === 'route' ? deps.design().routes.find(q => q.id === (anchor as { routeId: string }).routeId) : undefined;
+    const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : host && host.kind !== 'motorway' ? 'designed' : undefined;
     if (!cls || ROAD_CLASSES[cls]?.noAtGrade) continue;
     const row = document.createElement('div'); row.className = 'ctx-row';
     const label = document.createElement('span'); label.textContent = end === 'a' ? 'Start junction' : 'End junction';

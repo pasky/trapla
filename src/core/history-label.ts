@@ -25,6 +25,8 @@ function crossingChange(a: Crossings, b: Crossings): string {
 function routeChange(a: RouteDesign, b: RouteDesign): string | null {
   // (a route's revision counts edits and undos alike: not a change of its own)
   if (same({ ...a, revision: 0 }, { ...b, revision: 0 })) return null;
+  // (a built road's end dragged: a slip road's next bend goes with it)
+  if (!a.source && !same(a.endpoints, b.endpoints)) return same(a.endpoints.a, b.endpoints.a) ? 'moving the end' : same(a.endpoints.b, b.endpoints.b) ? 'moving the start' : 'moving the ends';
   const pa = a.alignment.kind === 'pi' ? a.alignment : null, pb = b.alignment.kind === 'pi' ? b.alignment : null;
   if (pa && pb) {
     const x = pa.pis, y = pb.pis;

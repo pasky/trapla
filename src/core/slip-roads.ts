@@ -165,10 +165,14 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
   let inside = 0, credit = 0, overlap = 0;
   const zones: { x: number; y: number; r: number }[] = [], goreZones: typeof zones = [];
   const clashes: { s0: number; s1: number; need: number }[] = [];
+  let across: number | null = null;
   for (let step = 0; step < ramp.n; step++) {
     const q = end === 'a' ? step : ramp.n - 1 - step;
     let kk = 0, dd = Infinity;
     for (let j = 0; j < line.n; j++) { const e = Math.hypot(line.x[j] - ramp.x[q], line.y[j] - ramp.y[q]); if (e < dd) { dd = e; kk = j; } }
+    // over to the other side of the motorway's line: it crosses the motorway (a slip road keeps to its carriageway's side)
+    const side = -(ramp.x[q] - line.x[kk]) * line.ty[kk] + (ramp.y[q] - line.y[kk]) * line.tx[kk];
+    if (across === null && kk > 0 && kk < line.n - 1 && dd < 2 * wm && Math.sign(side) === direction) across = ramp.s[q];
     const mine = Math.max(Math.abs(ramp.dayL[q]), Math.abs(ramp.dayR[q]), ramp.cell.width[q] / 2);
     const theirs = Math.max(Math.abs(line.dayL[kk]), Math.abs(line.dayR[kk]), line.cell.width[kk] / 2);
     if (dd - mine - theirs > clearance) continue;
@@ -205,6 +209,9 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
       else clashes.push({ s0: s, s1: s, need: worst });
     }
   }
+  if (across !== null) violations.push({ kind: 'crossing', s0: Math.max(0, across - 20), s1: Math.min(ramp.length, across + 20), basis: 'engine',
+    title: 'It crosses the motorway', fix: 'Keep it on the side of the carriageway it leaves or joins',
+    rule: 'Engine limit: a slip road crossing its own motorway needs a bridge, which the game does not build for it yet.' });
   for (const c of clashes) violations.push({ kind: 'footprint', basis: 'engine', s0: c.s0, s1: c.s1,
     title: 'Its slope and the motorway\'s clash',
     fix: `Move it at least ${Math.ceil(c.need)} m further from the motorway here, or give it the motorway's height`,
