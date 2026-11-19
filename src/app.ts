@@ -1,5 +1,6 @@
 // The game itself, loaded while the start screen is up (src/main.ts): the pack, the 3D view, the workers, the
 // panels and every event between them.
+import { CATEGORIES, lineOf } from './core/data/categories';
 import { scenarioParams } from './core/data/scenario';
 import { missionProject } from './core/project-mission';
 import { RouteExtras } from './render/extras';
@@ -151,7 +152,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   installToolbarFit(document.getElementById('view')!);
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
-  const intro = new Intro(document.getElementById('view')!, scenario.mode ?? 'road');
+  const intro = new Intro(document.getElementById('view')!, scenario.mode === 'motorway' ? lineOf(CATEGORIES[scenario.initial?.category ?? 'D27.5']) : scenario.mode ?? 'road');
   // The start view frames A and B in what the toolbar, legend and attribution leave, clear of the intro.
   view.frameSafe = () => {
     const host = document.getElementById('view')!.getBoundingClientRect();
@@ -294,7 +295,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const { switchRoute, placeAt, bendLabel, joinStretch, directionsState } = createRoutes({
     session, store, projectStore, pack, scenario, view, profile, hud, inspector, extras, routeBar, editBar, buildTool, curveEdit, linkEdit, works,
     links, results, select, selectRoad, deselect, showRoadSelected: () => selection.showRoadSelected(), selectedPi, projectScore, frameRoute, activeEndpoints, routeCard,
-    routeAt: (clientX, clientY, radius) => routeAt(clientX, clientY, radius), sourceAt: (clientX, clientY) => sourceAt(clientX, clientY),
+    routeAt: (clientX, clientY, radius, exclude) => routeAt(clientX, clientY, radius, exclude), sourceAt: (clientX, clientY) => sourceAt(clientX, clientY),
   });
 
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----

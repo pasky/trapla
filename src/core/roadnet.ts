@@ -183,14 +183,16 @@ export class RoadNet {
   /** The network as the player edited it: rebuilt stretches cut out and designed roads added as ways of
    * their class. Numbering is stable whatever else is edited: every pack way keeps its index (a cut way:
    * its part before the first cut); `extra[k]` is way `wayCount + k`; what follows cut `i` on its way (up
-   * to the next cut) is way `wayCount + extra.length + (cuts[i].slot ?? i)`. */
-  edited(cuts: readonly { way: number; d0: number; d1: number; slot?: number }[], extra: readonly { cls: string; xy: readonly number[] }[]): RoadNet {
+   * to the next cut) is way `wayCount + extra.length + (cuts[i].slot ?? i)`; `ground[k]` (ways another road of the
+   * project built on the ground: its relocations) follows the last of those. */
+  edited(cuts: readonly { way: number; d0: number; d1: number; slot?: number }[], extra: readonly { cls: string; xy: readonly number[] }[],
+    ground: readonly { cls: string; xy: readonly number[] }[] = []): RoadNet {
     const cls = this.clsNames.slice();
     const clsIndex = (name: string) => { let i = cls.indexOf(name); if (i < 0) { i = cls.length; cls.push(name); } return i; };
     const remnants = this.ways.length + extra.length;
     const slots = cuts.reduce((n, c, i) => Math.max(n, (c.slot ?? i) + 1), 0);
-    const ways = [...this.ways, ...extra.map(e => [clsIndex(e.cls), ...e.xy]), ...Array.from({ length: slots }, () => [0])];
-    const changed = extra.map((_, k) => this.ways.length + k);
+    const ways = [...this.ways, ...extra.map(e => [clsIndex(e.cls), ...e.xy]), ...Array.from({ length: slots }, () => [0]), ...ground.map(e => [clsIndex(e.cls), ...e.xy])];
+    const changed = [...extra.map((_, k) => this.ways.length + k), ...ground.map((_, k) => remnants + slots + k)];
     // Several cuts of one way: what is left between them; the part before the first cut keeps the way's index.
     const byWay = new Map<number, [number, number, number][]>();
     cuts.forEach((cut, i) => {
@@ -220,7 +222,7 @@ export class RoadNet {
     (net as { structures: ReadonlyMap<number, MappedStructure> }).structures = this.structures;
     if (extra.length) {
       net.designedWays = { from: this.ways.length, to: this.ways.length + extra.length };
-      net.makeGround = () => this.edited(cuts, extra.map(e => ({ cls: e.cls, xy: [] })));
+      net.makeGround = () => this.edited(cuts, extra.map(e => ({ cls: e.cls, xy: [] })), ground);
     }
     return net;
   }

@@ -11,7 +11,7 @@ let memo: { r: Result; hits: NatureHit[]; motorway: boolean } | null = null;
 export function natureNotes(terrain: Terrain, r: Result, d: Design, s0: number, s1: number): string[] {
   if (!terrain.protectedAreas) return [];
   if (memo?.r !== r) {
-    const cat = CATEGORIES[d.category], motorway = cat.mode === 'motorway';
+    const cat = CATEGORIES[d.category], motorway = !!cat.motorwayByLaw;
     const cutMethod = new Uint8Array(r.n);
     for (const run of r.runs) if (run.kind === KIND.tunnel && run.method === 'cut') cutMethod.fill(1, run.i0, run.i1 + 1);
     const h = Float64Array.from(r.grade, (g, i) => g - r.ground[i]);

@@ -51,6 +51,8 @@ describe('picker cards', () => {
     const d3 = fresh.cards.find(c => c.group === 'Středočeská D3')!, d35 = fresh.cards.find(c => c.group === 'D35')!;
     expect(ids(d3.presets)).toEqual(['d3-0301-motorway', 'd3-0302-motorway', 'd3-0303-motorway', 'd3-0304-motorway', 'd3-0305-motorway', 'd3-full-motorway']);
     expect(ids(d35.presets)).toEqual(['d35-stage1-motorway', 'd35-full-motorway']);
+    // the I/35 through Český ráj: its three stages, the whole route last
+    expect(ids(fresh.cards.find(c => c.group === 'Český ráj')!.presets)).toEqual(['i35-turnov-road', 'i35-rovensko-road', 'i35-jicin-road', 'i35-full-road']);
     // Trutnov: the D11 motorway (the real project) first, the class I road beside it as the simpler job
     expect(ids(fresh.cards.find(c => c.group === 'Trutnov')!.presets)).toEqual(['d11-motorway', 'd11']);
     expect(fresh.startHere?.presetId).toBe('d3-0302-motorway');

@@ -10,15 +10,15 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { resolveCrossings, type CrossingResult } from '../src/core/crossings';
 import { noiseSource } from '../src/core/road-noise';
 import { KIND } from '../src/core/structures';
-import { syntheticTerrain } from '../src/core/terrain';
+import { syntheticTerrain, Terrain } from '../src/core/terrain';
 
 const motorway: Design = { category: 'D27.5', speed: 130, pis: [], profileMode: 'auto', vpis: [] };
-function fixture(aadt = 30000, length = 2200) {
-  const legacy = { terrain: syntheticTerrain((length + 300) / 5, 120, 5, (x) => 100 + x * 0.01), scenario: D11_SCENARIO,
+function fixture(aadt = 30000, length = 2200, { category = 'D27.5', speed = 130, terrain }: { category?: 'D27.5' | 'S21.5'; speed?: number; terrain?: Terrain } = {}) {
+  const legacy = { terrain: terrain ?? syntheticTerrain((length + 300) / 5, 120, 5, (x) => 100 + x * 0.01), scenario: D11_SCENARIO,
     a: { x: 100, y: 250 }, b: { x: 100 + length, y: 250 } };
   const context = makeLegacyProjectContext(legacy, { presetId: 'motorway', packId: 'd11', objectData: 'objects', transportData: null });
   const road = projectFromLegacyDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }, context);
-  const design = createMotorwayProject(road, motorway, { aadt, heavyShare: 0.2256 });
+  const design = createMotorwayProject(road, { ...motorway, category, speed }, { aadt, heavyShare: 0.2256 });
   const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'objects', transportData: null,
     terrainData: 'terrain', pricingData: 'pricing', waterData: 'water', terrainClass: 'hilly' } };
   return { ctx, snapshot: { epoch: 'test', revision: 1, design }, legacy, context };
@@ -357,5 +357,42 @@ describe('a motorway is signed at its design speed', () => {
     const slower = replaceRouteFromLegacy(old, old.routes[0].id, { ...legacyDesignForRoute(old, old.routes[0].id), speed: 120 });
     expect(slower.routes.filter(r => r.kind === 'motorway').map(r => r.kind === 'motorway' && [r.specification.operations.speed, r.specification.operations.speedPolicy]))
       .toEqual([[120, 'design'], [120, 'design']]);
+  });
+});
+
+describe('a four-lane class I road (S 21.5) on the paired corridor', () => {
+  it('is built and split like the motorway at its own width, and may cross a landscape area a motorway may not', async () => {
+    const { splitCorridor } = await import('../src/core/project-motorway');
+    // flat ground at 100 m, a landscape area (zone III) across the line at x 1000–1200
+    const nx = 500, ny = 120, terrain = new Terrain({ nx, ny, cell: 5, base: 0, scale: 0.01, q: new Uint16Array(nx * ny).fill(10000), lc: new Uint8Array(nx * ny),
+      protectedAreas: { version: 1, source: 't', sites: [{ kind: 'CHKO', zone: 'III', name: 'Land', rings: [[1000, 0, 1200, 0, 1200, 600, 1000, 600]] }] } });
+    const law = (category: 'D27.5' | 'S21.5') => {
+      const { ctx, snapshot } = fixture(15000, 2200, { category, speed: 110, terrain });
+      return { ctx, snapshot, result: evaluateProject(ctx, snapshot) };
+    };
+    const d = law('D27.5'), s = law('S21.5');
+    // Auto keeps the motorway's works out of it (under it here); the class I road needs only consent there
+    const runs = (x: typeof d) => x.result.routes[x.snapshot.design.routes[0].id].legacy!.runs;
+    expect(runs(d).some(r => r.kind === KIND.tunnel && r.s0 <= 900 && r.s1 >= 1100)).toBe(true);
+    expect(runs(s)).toEqual([]);
+    expect(d.result.valid && s.result.valid).toBe(true);
+    // a motorway mission's corridor is a motorway: the same project in a D 27.5 mission does not score
+    const motorwayMission = { ...s.ctx, legacy: { ...s.ctx.legacy, scenario: { ...s.ctx.legacy.scenario, initial: { category: 'D27.5' as const, speed: 110 } } } };
+    expect(evaluateProject(motorwayMission, s.snapshot).complete).toBe(false);
+    const [f] = s.snapshot.design.routes, spine = s.result.routes[f.id].legacy!;
+    expect(legacyDesignForRoute(s.snapshot.design, f.id).category).toBe('S21.5');
+    // its narrower body and its own price rows: cheaper than the motorway on the same line
+    expect(s.result.cost.total!).toBeLessThan(d.result.cost.total!);
+    const width = (r: typeof spine) => r.cell.width.reduce((a, b) => a + b, 0);
+    expect(width(spine)).toBeLessThan(width(d.result.routes[d.snapshot.design.routes[0].id].legacy!));
+    // split: each direction is one half of the formation (10.75 m), its axis a quarter of 21.5 m off the spine
+    const split = splitCorridor(s.snapshot.design, 'corridor:motorway', spine);
+    assertProjectDesign(split);
+    expect(legacyDesignForRoute(split, f.id).category).toBe('S21.5-1');
+    const end = split.routes[0].endpoints.a.position;
+    expect(Math.hypot(end.x - 100, end.y - 250)).toBeCloseTo(21.5 / 4, 6);
+    const apart = evaluateProject(s.ctx, { ...s.snapshot, revision: 2, design: split });
+    expect(apart.complete).toBe(true);
+    expect(Math.abs(apart.cost.total! / s.result.cost.total! - 1)).toBeLessThan(0.01);
   });
 });

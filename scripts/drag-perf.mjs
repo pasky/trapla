@@ -180,16 +180,27 @@ if (mode === 'bend') {
     const link = c.geometry.links.find(l => l.length > 6), q = link[Math.floor(link.length / 2)];
     // (a reroute is shaped once its crossing is selected, as a click on it would)
     window.trapla.select({ kind: 'crossing', roadId: c.roadId }); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
-    return { x: q.x, y: q.y, z: q.z };
+    return { link: [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map(f => link[Math.floor(link.length * f)]) };
   });
   await page.waitForTimeout(1500);
+  // its middle, else the nearest point along it clear on screen of a culvert's symbol on our road (a press there
+  // selects the culvert instead)
+  const q = await T((pts) => {
+    const r = window.trapla.result(), screen = (x, y, z) => window.trapla.project(x, y, z);
+    const marks = r.waterCrossings.map(w => { const i = Math.round(w.s / r.ds); return screen(r.x[i], r.y[i], r.grade[i]); });
+    return pts.find(p => { const s = screen(p.x, p.y, p.z); return marks.every(m => Math.hypot(s.sx - m.sx, s.sy - m.sy) > 40); }) ?? pts[0];
+  }, at.link);
   grab = async () => {
-    return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, at);
+    return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, q);
   };
   // after the warm-up drag: back to the automatic path, so the measured drag starts on it too
   beforeMeasure = async () => {
     await T(() => { const d = window.trapla.getDesign(); for (const o of d.crossingOverrides ?? []) { delete o.via; delete o.to; } window.trapla.setDesign(d); });
     await T(() => window.trapla.whenIdle());
+    // (the link drawn again where it was, and still selected, before the measured drag grabs it: on a loaded host the
+    // scene of a long route catches up after the evaluation)
+    await T(() => new Promise((resolve) => { const tick = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? tick() : resolve())); tick(); }));
+    await page.waitForTimeout(300);
   };
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
 } else throw new Error(`unknown --mode ${mode}`);

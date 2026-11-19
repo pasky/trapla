@@ -7,9 +7,9 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingEnds, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, END_AUTO_TEXT, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine, type RoadNamer } from '../core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, END_AUTO_TEXT, endCard, FOUR_LANE_AUTOMATIC, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine, type RoadNamer } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
-import { CATEGORIES } from '../core/data/categories';
+import { CATEGORIES, lineOf } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, horizontalRules, speedNorms } from '../core/data/norms';
 import { autoRadius } from '../core/horizontal';
 import { BRIDGE_STYLES } from '../core/data/bridges';
@@ -97,8 +97,8 @@ const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT as unknown as [string, string, str
 /** A local road or track meets every road it may at its level, without junction spacing. */
 const MINOR_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.map(([v, label, why]) =>
   [v, label, v === '' ? MINOR_CROSSING_TEXT.automatic : v === 'junction' ? MINOR_CROSSING_TEXT.junction : why]);
-const crossingOptions = (line: OurLine, minor = false): [string, string, string][] => line === 'road' ? (minor ? MINOR_CROSSING_OPTIONS : CROSSING_OPTIONS)
-  : CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => [v, label, v === '' ? (line === 'railway' ? RAILWAY_AUTOMATIC : MOTORWAY_AUTOMATIC) : ourWords(why, line)]);
+const crossingOptions = (line: OurLine, minor = false, separated = line !== 'road'): [string, string, string][] => !separated ? (minor ? MINOR_CROSSING_OPTIONS : CROSSING_OPTIONS)
+  : CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => [v, label, v === '' ? (line === 'railway' ? RAILWAY_AUTOMATIC : line === 'road' ? FOUR_LANE_AUTOMATIC : MOTORWAY_AUTOMATIC) : ourWords(why, line)]);
 /** a tunnel's method: the tunnel card's choice */
 /** why no arch fits a bridge (support-layout archFor), in a few words */
 const ARCH_MISS: Record<NonNullable<Result['runs'][number]['archMiss']>, string> = {
@@ -315,7 +315,7 @@ export class Inspector {
   }
 
   /** what a rebuilt stretch replaces: "old road", "old track" */
-  private get oldLine() { return oldLineWords(this.d ? CATEGORIES[this.d.category].mode as OurLine : 'road'); }
+  private get oldLine() { return oldLineWords(this.d ? lineOf(CATEGORIES[this.d.category]) : 'road'); }
   // ---- nothing selected: where the money goes ----
   private money(r: Result) {
     const top = topPieces(r, 5);
@@ -323,7 +323,7 @@ export class Inspector {
     if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. ${this.roadSelected ? 'Drag it' : 'Click it, then drag it'} to change its line.</div>`;
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
-      <div class="sub hint">${(this.roadSelected ? SELECT_TEXT.selected : SELECT_TEXT.howTo)(this.d ? CATEGORIES[this.d.category].mode : 'road')} Click anything to inspect it.</div>`;
+      <div class="sub hint">${(this.roadSelected ? SELECT_TEXT.selected : SELECT_TEXT.howTo)(this.d ? lineOf(CATEGORIES[this.d.category]) : 'road')} Click anything to inspect it.</div>`;
   }
 
   // ---- a piece of road / a dragged stretch ----
@@ -576,7 +576,7 @@ export class Inspector {
   private end(r: Result, end: 'a' | 'b') {
     const info = this.ends?.[end];
     if (!info) return '';
-    const card = endCard(info, end);
+    const card = endCard(info, end, this.d ? lineOf(CATEGORIES[this.d.category]) : 'motorway');
     return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
       <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
   }
@@ -586,14 +586,14 @@ export class Inspector {
     const c = culvertAt(r, id, s);
     if (!c?.size || c.size.type === 'bridge') return '';
     const card = culvertCard({ ...c, size: { ...c.size, type: c.size.type }, ...(c.size.buried ? { frameCover: CULVERT_RULES.maxFrameCover,
-      vaultSpan: culvertSection(c.size).width } : {}) }, CATEGORIES[d.category].mode as OurLine);
+      vaultSpan: culvertSection(c.size).width } : {}) }, lineOf(CATEGORIES[d.category]));
     // the alternative: a bridge over the stream and its banks (the span the game would need, as in the problem's fix)
     const half = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, c.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine) / 2 + r.ds;
     const s0 = Math.max(0, c.s - half), s1 = Math.min(r.length, c.s + half);
     return `${this.head(card.title, `km ${km(c.s)}`)}
       <div class="ctx-state"><b>${esc(card.state)} · ${czk(c.cost)}</b>${card.why.map(t => `<div class="why">${esc(t)}</div>`).join('')}</div>
       <div class="more-box">${card.more.map(t => `<div class="sub">${esc(t)}</div>`).join('')}</div>
-      <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${CATEGORIES[d.category].mode} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
+      <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${lineOf(CATEGORIES[d.category])} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
   }
 
   // ---- height point (By hand) ----
@@ -622,7 +622,7 @@ export class Inspector {
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
     // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
-    const line = CATEGORIES[d.category].mode;
+    const line = lineOf(CATEGORIES[d.category]);
     // (a new road of the project is not there today: the ground where it crosses)
     const level = c.designed ? 'the ground where they cross' : c.mapped === 'bridge' ? 'its bridge today' : c.mapped === 'tunnel' ? 'its road in the tunnel' : 'the crossed road’s level today';
     // (a way cut at our road is not at any height to ours: no level line)
@@ -632,7 +632,7 @@ export class Inspector {
     // (a part led where the player dragged it says "your choice" on its own line)
     const relLine = rel ? `${rel}${choice ? ' · your choice' : ''}` : choice && !crossingEnds(c.roadId, d.crossingOverrides ?? []) ? 'Your choice' : '';
     // a new road of the project is bridged, carried over us or met, never cut and rerouted
-    const options = crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road', !!CATEGORIES[d.category].minor).filter(([v]) => !c.designed || v !== 'reconnection');
+    const options = crossingOptions(line, !!CATEGORIES[d.category].minor, !!CATEGORIES[d.category].gradeSeparated).filter(([v]) => !c.designed || v !== 'reconnection');
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our ${line} ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
     const body = `
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}${relLine ? `<div class="why">${relLine}</div>` : ''}${c.raised && c.raised.cost > 0
@@ -701,7 +701,7 @@ export class Inspector {
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
       why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is bought out, km ${km(r.s[removed.i])}, and goes with it.`
-        : removed.in === 'access' ? `The way to it is cut at km ${km(r.s[removed.i])}: buying it out costs less than keeping that way across our ${CATEGORIES[d.category].mode}.`
+        : removed.in === 'access' ? `The way to it is cut at km ${km(r.s[removed.i])}: buying it out costs less than keeping that way across our ${lineOf(CATEGORIES[d.category])}.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}, or within ${BUILDING_RULES.clearance} m of it.`
         : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}, or within ${BUILDING_RULES.clearance} m of them.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`

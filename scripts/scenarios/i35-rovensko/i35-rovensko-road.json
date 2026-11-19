@@ -1,0 +1,94 @@
+{
+  "scenario": "i35-rovensko",
+  "purpose": "Fresh four-lane road mission (starter, S 21.5/110): mapped-line bends every ~0.6 km, as the game opens it",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 3000,
+        "y": 9527.5,
+        "r": null
+      },
+      {
+        "x": 3787.6,
+        "y": 9708.7,
+        "r": null
+      },
+      {
+        "x": 4568.1,
+        "y": 9652.5,
+        "r": null
+      },
+      {
+        "x": 5148.6,
+        "y": 9119,
+        "r": null
+      },
+      {
+        "x": 5796.7,
+        "y": 8658,
+        "r": null
+      },
+      {
+        "x": 6082.5,
+        "y": 8070.1,
+        "r": null
+      },
+      {
+        "x": 6366.1,
+        "y": 7476.4,
+        "r": null
+      },
+      {
+        "x": 6919.5,
+        "y": 7149.7,
+        "r": null
+      },
+      {
+        "x": 7599.9,
+        "y": 6941.6,
+        "r": null
+      },
+      {
+        "x": 8042.8,
+        "y": 6491.3,
+        "r": null
+      },
+      {
+        "x": 8031.3,
+        "y": 5518.6,
+        "r": null
+      },
+      {
+        "x": 8037.8,
+        "y": 4804.6,
+        "r": null
+      },
+      {
+        "x": 7548.3,
+        "y": 4205.1,
+        "r": null
+      },
+      {
+        "x": 7054,
+        "y": 3758.4,
+        "r": null
+      },
+      {
+        "x": 6855.9,
+        "y": 3195.2,
+        "r": null
+      },
+      {
+        "x": 6983.2,
+        "y": 2614.9,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  },
+  "preset": "i35-rovensko-road"
+}

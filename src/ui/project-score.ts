@@ -3,6 +3,7 @@
 // original exercise applies. Moved out of main.ts verbatim.
 import type { RouteId } from '../core/project';
 import { corridorOfRoute } from '../core/project-motorway';
+import { routeWord } from '../core/route-section';
 import type { ProjectStore } from '../project-store';
 import type { Session } from '../session';
 import type { ActiveRouteStore } from './active-route-store';
@@ -44,7 +45,7 @@ export function createProjectScore(app: ProjectScoreContext) {
     for (const r of app.projectStore.snapshot.design.routes) if (!groups[r.id] && r.source?.intervals.length)
       lines[r.id] = `source:${r.source.intervals.map(i => `${i.sourceId}:${Math.round(i.s0)}-${Math.round(i.s1)}`).join('+')}`;
     // "Our road only" / "This railway only": what the price shown is for, in the active line's own word
-    const word = (id: RouteId | null | undefined) => { const k = app.projectStore.snapshot.design.routes.find(r => r.id === id)?.kind; return k === 'railway' ? 'railway' : k === 'motorway' ? 'motorway' : 'road'; };
+    const word = (id: RouteId | null | undefined) => { const r = app.projectStore.snapshot.design.routes.find(r => r.id === id); return r ? routeWord(r) : 'road'; };
     const only = (id: RouteId | null | undefined) => `${id && ours.has(id) ? 'Our' : 'This'} ${word(id)} only`;
     const own = app.session.activePreviewPrice !== null ? { total: app.session.activePreviewPrice, approx: true, label: only(active), routeId: active ?? undefined }
       : active && active in alone ? { total: alone[active], approx: false, label: only(active), routeId: active }

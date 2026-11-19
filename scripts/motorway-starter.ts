@@ -42,7 +42,7 @@ function mappedBends(stepKm: number): PI[] {
 
 const pis: PI[] = process.argv.some(a => a.startsWith('--mapped')) ? mappedBends(opt('mapped', 1.5))
   : pisJson ? JSON.parse(pisJson) : structuredClone(scenario.initial?.pis ?? []);
-const start: Design = { category: 'D27.5', speed: opt('speed', scenario.initial!.speed), pis, profileMode: 'auto', vpis: [], structureOverrides: [] };
+const start: Design = { category: scenario.initial!.category, speed: opt('speed', scenario.initial!.speed), pis, profileMode: 'auto', vpis: [], structureOverrides: [] };
 let revision = 0;
 const run = (d: Design): { p: ProjectResult; r: Result } => {
   const design = replaceCorridorFromDesign(project0, corridorId, d);

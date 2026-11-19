@@ -243,8 +243,12 @@
  * junction made impossible: "no room for it beside our earthworks"). Every frozen D11 bill, starter and saved design of
  * every pack unchanged (scripts/exact.ts: 186 of 191 results identical, the other 5 the new Šternberk starter); a
  * player's design with such a fork is valid now, or cheaper where the mouth was moved aside. PLAN.md "The Šternberk
- * bypass replaces Nová Paka". */
-export const COST_MODEL_VERSION = 57;
+ * bypass replaces Nová Paka".
+ * Model 58: slip roads (Build → Slip road, core/slip-roads.ts): a new cross-section and its lanes, credits and checks on
+ * the motorway; the independence screen takes a new road's junction with a road to change that road only within its own
+ * works (it changed the whole road, so a junction near another road's change of the same road left the project unpriced:
+ * such player projects are priced now). Every frozen bill unchanged (eval-regression). PLAN.md "Hand-built interchanges". */
+export const COST_MODEL_VERSION = 58;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -371,7 +375,8 @@ export const NORM_EARTHWORK_ALLOWANCE = {
   // Field tracks: 6,000 m³/km (SPK 2026 report p. 7, "polní cesty"). Local roads: the report states no volume,
   // only "běžné zemní práce … bez výrazných výkopů či násypů"; PROVISIONAL the field-track 6,000, the smallest
   // volume it gives for any road (research/42).
-  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000, local: 6_000, track: 6_000 } as Record<string, number>,
+  // A four-lane divided class I road (S 21.5): the same 70,000 m³/km the report gives every divided road (research/00 §3.1).
+  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, divided: 70_000, 'divided-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000, local: 6_000, track: 6_000 } as Record<string, number>,
   fillShareOfCut: 0.85,
   /** share of cut that is unsuitable: hauled to a tip ≤ 10 km and replaced from a borrow pit (norm
    * assumption; applied identically to the allowance and to the player's design) */

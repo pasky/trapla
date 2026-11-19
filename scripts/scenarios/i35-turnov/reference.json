@@ -1,0 +1,28 @@
+{
+  "scenario": "i35-turnov",
+  "purpose": "Motorway near the mapped reference, not the official motorway design or surveyed profile",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 2971.7,
+        "y": 3439.1,
+        "r": null
+      },
+      {
+        "x": 4051.9,
+        "y": 2395,
+        "r": null
+      },
+      {
+        "x": 5423.9,
+        "y": 1810.5,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

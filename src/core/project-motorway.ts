@@ -6,7 +6,7 @@ import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
 import type { VPI } from './vertical';
 import { GRADE_PIN_TOLERANCE, type GradePin } from './grade-pins';
 import { evaluate } from './evaluate';
-import { CATEGORIES } from './data/categories';
+import { CATEGORIES, pairedCategoryOf, pairedName, type CategoryId, type PairedCategoryId } from './data/categories';
 import { designSpeeds } from './data/norms';
 import { modeCapability } from './mode-policy';
 import type { CorridorDesign, DrawnPart, ProjectDesign, RouteDesign, RoadOperations, SeparateStretch, XYZ } from './project';
@@ -25,9 +25,23 @@ import { CONE, coneSurface } from './abutment-cone';
 import type { Violation } from './checks';
 import { stationIndex } from './range';
 
-/** Policy of a paired D 27.5 corridor priced as one whole-category SPK body (research/22, /33). */
+/** Policy of a paired corridor priced as one whole-category SPK body (research/22, /33). The id names the
+ * first one (D 27.5) and is kept for saves: a four-lane class I road (S 21.5) is priced the same way. */
 export const MOTORWAY_POLICY = 'paired-d27.5';
+/** The motorway the Build tool adds; a mission's corridor has its own category (its directions' cross-section). */
 export const MOTORWAY_CATEGORY = 'D27.5' as const;
+/** One direction of a split corridor of a category (data/categories.ts 'D27.5-1', 'S21.5-1'). */
+export const carriagewayCategory = (c: PairedCategoryId): CategoryId => CATEGORIES[c].carriagewayOf!;
+/** Each direction's axis lies in the middle of its half of the shared formation, so two of them side
+ * by side rebuild the paired formation exactly (median halves meet on the spine). */
+export const carriagewayOffset = (c: PairedCategoryId) => CATEGORIES[c].crownWidth / 4;
+/** The corridor's category: its directions' cross-section (the corridor's, or one direction's when split). */
+export function corridorCategory(project: ProjectDesign, corridor: CorridorDesign): PairedCategoryId {
+  const forward = project.routes.find(r => r.id === corridor.children.forward);
+  const c = forward?.kind === 'motorway' && forward.specification.crossSection in CATEGORIES
+    ? pairedCategoryOf(forward.specification.crossSection as CategoryId) : undefined;
+  return c ?? MOTORWAY_CATEGORY;
+}
 
 export type MotorwayRoute = Extract<RouteDesign, { kind: 'motorway' }>;
 
@@ -61,7 +75,7 @@ function rawCorridorDesign(project: ProjectDesign, corridor: CorridorDesign): De
   const v = spine.vertical;
   const { crossings, ...controls } = spine.controls;
   const crossingOverrides = crossings && crossingOverridesOf(project, crossings);
-  return structuredClone({ ...controls, category: MOTORWAY_CATEGORY, speed: spec.designSpeed,
+  return structuredClone({ ...controls, category: corridorCategory(project, corridor), speed: spec.designSpeed,
     pis: spine.pis, profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [],
     gradePins: v.kind === 'auto' ? v.pins : v.autoPins, crossingOverrides, buildingOverrides: project.buildingOverrides,
     objectData: project.objectData });
@@ -100,7 +114,8 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
 function replaceRawCorridorFromDesign(project: ProjectDesign, corridorId: string, d: Design): ProjectDesign {
   const next = structuredClone(project), corridor = next.corridors.find(c => c.id === corridorId);
   if (!corridor || corridor.mode !== 'paired') throw new Error('Unknown paired corridor');
-  if (d.category !== MOTORWAY_CATEGORY || !designSpeeds(d.category).includes(d.speed)) throw new Error('Motorway design needs a motorway category and speed');
+  const category = corridorCategory(project, corridor);
+  if (d.category !== category || !designSpeeds(d.category).includes(d.speed)) throw new Error('Motorway design needs a motorway category and speed');
   if (d.objectData && d.objectData !== project.objectData) throw new Error('Foreign object binding needs repair');
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
   const before = corridor.spine.kind === 'pi' ? corridor.spine.pis : [], oldSpeed = corridorSpeed(next, corridor);
@@ -121,7 +136,7 @@ function replaceRawCorridorFromDesign(project: ProjectDesign, corridorId: string
     // Both directions moved: where the shared line changed next to a separate stretch, they follow it
     // there again; elsewhere the own lines stay (a new design speed changes the shared line everywhere).
     const carried = speed === oldSpeed ? carryStretches(before, pis, corridor.stretches) : { kept: [], after: [], dropped: corridor.stretches.length };
-    const rules = horizontalRules(speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
+    const rules = horizontalRules(speed, category), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
     const dL = buildAlignment(A, B, pis, rules).length - buildAlignment(A, B, before, rules).length;
     carried.kept.forEach((t, j) => { if (carried.after[j] && dL) shiftStretch(t, dL); });
     const located = locateStretches(A, B, pis, carried.kept, rules);
@@ -166,9 +181,9 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
   const corridor = autoFollowingCorridor(project, saved);
   if (!modeCapability('motorway').scoring) return { status: 'incomplete', reason: 'unsupported-mode' };
   const kids = [corridor.children.forward, corridor.children.reverse].map(id => project.routes.find(r => r.id === id)) as MotorwayRoute[];
-  const category = corridor.mode === 'paired' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY;
+  const paired = corridorCategory(project, corridor), category = corridor.mode === 'paired' ? paired : carriagewayCategory(paired);
   if (kids.some(k => k.specification.policy !== MOTORWAY_POLICY || k.specification.crossSection !== category
-    || !designSpeeds(MOTORWAY_CATEGORY).includes(k.specification.designSpeed) || k.specification.designSpeed !== kids[0].specification.designSpeed))
+    || !designSpeeds(paired).includes(k.specification.designSpeed) || k.specification.designSpeed !== kids[0].specification.designSpeed))
     return { status: 'incomplete', reason: 'unsupported-policy' };
   const alignments = corridor.mode === 'paired' ? [corridor.spine] : kids.map(k => k.alignment);
   if (alignments.some(a => a.kind !== 'pi' || !['auto', 'manual'].includes(a.vertical.kind))) return { status: 'incomplete', reason: 'unsupported-alignment' };
@@ -194,12 +209,16 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     if (!port || Math.hypot(e.position.x - port.position.x, e.position.y - port.position.y, e.position.z - port.position.z) > 1e-6)
       return { status: 'incomplete', reason: 'unresolved-binding' };
   }
+  // the mission's corridor is built to the mission's category (a saved or loaded project cannot swap the motorway for
+  // a four-lane road, or back, and keep its mission's score)
+  const asked = ctx.scenario.initial?.category;
+  if (goal && asked && CATEGORIES[asked].paired && asked !== paired) return { status: 'incomplete', reason: 'unsupported-policy' };
   const unpriced = goal ? undefined : ['motorway-needs-interchange' as const];
   if (corridor.mode === 'independent') {
     // Each direction ends at its own lanes' continuation beside the port, at the port's height.
     const ports = [corridor.endpoints.a.position, corridor.endpoints.b.position];
     for (const [k, kid] of kids.entries()) for (const [e, port] of [[kid.endpoints.a, ports[k]], [kid.endpoints.b, ports[1 - k]]] as const)
-      if (e.binding !== 'resolved' || Math.abs(Math.hypot(e.position.x - port.x, e.position.y - port.y) - CARRIAGEWAY_OFFSET) > 1e-3 || Math.abs(e.position.z - port.z) > 1e-6)
+      if (e.binding !== 'resolved' || Math.abs(Math.hypot(e.position.x - port.x, e.position.y - port.y) - carriagewayOffset(paired)) > 1e-3 || Math.abs(e.position.z - port.z) > 1e-6)
         return { status: 'incomplete', reason: 'unresolved-binding' };
     // Crossed roads where the directions run joined: the forward direction builds one crossing for both,
     // the reverse direction reuses it (evaluated after it). A drag preview of the reverse alone prices its own.
@@ -209,14 +228,14 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     if (!only || only === kids[1].id) results[kids[1].id] = evaluateCarriageway(ctx, project, kids[1].id,
       { ...evalOptions, ...(results[kids[0].id] ? { sharedCrossings: { own: false, from: results[kids[0].id].crossings } } : {}) });
     const [f, r] = kids.map(k => results[k.id]);
-    return { status: 'split', results, ledger: f && r && !options.preview ? splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y)) : null, ...(unpriced ? { unpriced } : {}) };
+    return { status: 'split', results, ledger: f && r && !options.preview ? splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y), false, carriagewayOffset(paired)) : null, ...(unpriced ? { unpriced } : {}) };
   }
   const { only: _only, ...spineOptions } = options;
   if (corridor.stretches?.length) return { ...evaluateSeparated(ctx, project, corridor, kids, goal, options), ...(unpriced ? { unpriced } : {}) };
   return { status: 'evaluated', result: evaluateSpine(ctx, project, corridor, goal, spineOptions), ...(unpriced ? { unpriced } : {}) };
 }
 type Goal = ProjectDesign['mission']['connections'][number] | undefined;
-/** ONE kernel evaluation of the paired corridor's common spine (D 27.5). */
+/** ONE kernel evaluation of the paired corridor's common spine (D 27.5 or S 21.5). */
 function evaluateSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, goal: Goal,
   options: Pick<EvalOptions, 'preview' | 'materialValue' | 'keepClear'>): Result {
   const ops = corridorOperations(project, corridor), a = corridor.endpoints.a.position, b = corridor.endpoints.b.position;
@@ -236,7 +255,7 @@ export function createMotorwayProject(base: ProjectDesign, d: Design, operations
   const port = (e: typeof a) => base.mission.ports.find(p => p.id === (e.anchor as { portId?: string }).portId)?.name ?? '';
   return addMotorwayCorridor({ ...structuredClone(base), routes: [], connections: [], corridors: [], mission: motorwayMission(base.mission) },
     { a, b }, d, operations, { corridorId: 'corridor:motorway', forward: 'route:motorway-forward', reverse: 'route:motorway-reverse',
-      acoustic: id => `acoustic:${id}` }, 'mission', { forward: `Motorway towards ${port(b)}`, reverse: `Motorway towards ${port(a)}` });
+      acoustic: id => `acoustic:${id}` }, 'mission', { forward: `${pairedName(d.category as PairedCategoryId)} towards ${port(b)}`, reverse: `${pairedName(d.category as PairedCategoryId)} towards ${port(a)}` });
 }
 
 /** A paired motorway corridor between two ends added to a project: the corridor plus its two direction
@@ -244,9 +263,9 @@ export function createMotorwayProject(base: ProjectDesign, d: Design, operations
 export function addMotorwayCorridor(project: ProjectDesign, ends: Pick<RouteDesign['endpoints'], 'a' | 'b'>, d: Design,
   operations: { aadt: number; heavyShare: number }, ids: { corridorId: string; forward: string; reverse: string; acoustic: (routeId: string) => string },
   role: RouteDesign['role'], names: { forward: string; reverse: string }): ProjectDesign {
-  if (d.category !== MOTORWAY_CATEGORY) throw new Error('Motorway needs the D 27.5 category');
+  if (!CATEGORIES[d.category].paired) throw new Error('Motorway needs a paired category (D 27.5, S 21.5)');
   const { a, b } = ends;
-  const spec = (aadt: number) => ({ kind: 'motorway' as const, policy: MOTORWAY_POLICY, crossSection: MOTORWAY_CATEGORY, designSpeed: d.speed,
+  const spec = (aadt: number) => ({ kind: 'motorway' as const, policy: MOTORWAY_POLICY, crossSection: d.category, designSpeed: d.speed,
     operations: { aadt, heavyShare: operations.heavyShare, speed: d.speed, speedPolicy: 'design' as const } });
   const half = operations.aadt / 2;
   const child = (id: string, name: string, reverse: boolean): MotorwayRoute => ({ id, name, role, revision: 0, kind: 'motorway',
@@ -266,11 +285,8 @@ export function motorwayMission(mission: ProjectDesign['mission']): ProjectDesig
 
 // ---- Separate carriageways (split / rejoin) --------------------------------------------------------
 
-/** One direction of a split corridor (data/categories.ts 'D27.5-1'). */
+/** One direction of a split D 27.5 (data/categories.ts 'D27.5-1'): carriagewayCategory for any corridor. */
 export const CARRIAGEWAY_CATEGORY = 'D27.5-1' as const;
-/** Each direction's axis lies in the middle of its half of the shared formation, so two of them side
- * by side rebuild the paired formation exactly (median halves meet on the spine). */
-export const CARRIAGEWAY_OFFSET = CATEGORIES[MOTORWAY_CATEGORY].crownWidth / 4;
 
 /** Bends of the offset tangent polygon: the same arcs' centres, radius R − dir·offset (offset > 0 = left
  * of travel). Straights and arcs of the offset path are exactly those of the spine offset; the result is
@@ -301,14 +317,15 @@ export function splitCorridor(project: ProjectDesign, corridorId: string, spine:
   const A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   const al = buildAlignment(A, B, d.pis, rules);
   if (Math.abs(al.length - spine.length) > 1e-3) throw new Error('Stale corridor result');
-  const minR = horizontalRules(d.speed, CARRIAGEWAY_CATEGORY).minRadius;
+  const paired = corridorCategory(project, corridor), one = carriagewayCategory(paired), W = carriagewayOffset(paired);
+  const minR = horizontalRules(d.speed, one).minRadius;
   for (const direction of ['forward', 'reverse'] as const) {
     const id = corridor.children[direction], route = next.routes.find(r => r.id === id) as MotorwayRoute;
-    const offset = direction === 'forward' ? -CARRIAGEWAY_OFFSET : CARRIAGEWAY_OFFSET, sign = direction === 'forward' ? 1 : -1;
+    const offset = direction === 'forward' ? -W : W, sign = direction === 'forward' ? 1 : -1;
     const bends = offsetBends(A, B, d.pis, al, offset);
     // The inside direction's radius is the shared one less the offset: never below what this
     // direction's own norm and easing curves need (its own Auto radius), else keep the exact offset.
-    const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(d.speed, CARRIAGEWAY_CATEGORY));
+    const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(d.speed, one));
     bends.pis.forEach((p, i) => { if (p.r !== null) p.r = Math.max(minR, auto.curves[i]?.rEff ?? 0, Math.round(p.r * 100) / 100); });
     const axis = offsetCurvePath(al, offset, sign);
     // Heights: every shared height point at its own chainage; By hand keeps exactly this line.
@@ -323,7 +340,7 @@ export function splitCorridor(project: ProjectDesign, corridorId: string, spine:
     // Each direction ends where its own lanes continue the motorway beyond the map, at the port's height.
     route.endpoints = { a: { position: { ...ends[0], z: zs[0] }, anchor: { kind: 'free' }, binding: 'resolved' },
       b: { position: { ...ends[1], z: zs[1] }, anchor: { kind: 'free' }, binding: 'resolved' } };
-    route.specification = { ...route.specification, crossSection: CARRIAGEWAY_CATEGORY };
+    route.specification = { ...route.specification, crossSection: one };
   }
   const { spine: retainedSpine, ...base } = corridor;
   next.corridors = next.corridors.map(c => c.id === corridorId ? { ...base, mode: 'independent' as const, retainedSpine } : c);
@@ -335,12 +352,13 @@ export function splitCorridor(project: ProjectDesign, corridorId: string, spine:
 export function rejoinCorridor(project: ProjectDesign, corridorId: string): ProjectDesign {
   const next = structuredClone(project), corridor = next.corridors.find(c => c.id === corridorId);
   if (!corridor || corridor.mode !== 'independent') throw new Error('Only separate directions can be joined');
+  const paired = corridorCategory(project, corridor);
   for (const direction of ['forward', 'reverse'] as const) {
     const route = next.routes.find(r => r.id === corridor.children[direction]) as MotorwayRoute;
     const { a, b } = corridor.endpoints;
     route.alignment = { kind: 'corridor', corridorId, direction };
     route.endpoints = structuredClone(direction === 'forward' ? { a, b } : { a: b, b: a });
-    route.specification = { ...route.specification, crossSection: MOTORWAY_CATEGORY };
+    route.specification = { ...route.specification, crossSection: paired };
   }
   const { retainedSpine: spine, ...base } = corridor;
   next.corridors = next.corridors.map(c => c.id === corridorId ? { ...base, mode: 'paired' as const, spine } : c);
@@ -354,14 +372,14 @@ export function carriagewayDesign(project: ProjectDesign, route: RouteDesign): D
   if (v.kind !== 'auto' && v.kind !== 'manual') throw new Error('Unsupported vertical authority');
   const { crossings, ...controls } = a.controls;
   const crossingOverrides = crossings && crossingOverridesOf(project, crossings);
-  return structuredClone({ ...controls, category: CARRIAGEWAY_CATEGORY, speed: route.specification.designSpeed, pis: a.pis,
+  return structuredClone({ ...controls, category: route.specification.crossSection as CategoryId, speed: route.specification.designSpeed, pis: a.pis,
     profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [], gradePins: v.kind === 'auto' ? v.pins : v.autoPins,
     crossingOverrides, buildingOverrides: project.buildingOverrides, objectData: project.objectData });
 }
 export function replaceCarriagewayFromDesign(project: ProjectDesign, routeId: string, d: Design): ProjectDesign {
   const next = structuredClone(project), route = next.routes.find(r => r.id === routeId);
   if (!route || route.kind !== 'motorway' || route.alignment.kind !== 'pi') throw new Error('Not a separate motorway direction');
-  if (d.category !== CARRIAGEWAY_CATEGORY || !designSpeeds(d.category).includes(d.speed)) throw new Error('Wrong category for a motorway direction');
+  if (d.category !== route.specification.crossSection || !designSpeeds(d.category).includes(d.speed)) throw new Error('Wrong category for a motorway direction');
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
   route.alignment = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
     : { crossings: crossingTargetsOf(project, crossingOverrides) }) },
@@ -385,14 +403,14 @@ interface Line { n: number; s: ArrayLike<number>; x: ArrayLike<number>; y: Array
 export const pairStations = pair;
 /** Plan-only: where the other direction runs alongside on the left as one formation (crowns touch). */
 export const JOINED_TOLERANCE = 0.5;
-export function joinedRanges(a: Line, b: Line, side: 'L' | 'R' = 'L', same = false): { s0: number; s1: number }[] {
-  return joinedOn(a, b, 2 * CARRIAGEWAY_OFFSET, JOINED_TOLERANCE, side, same);
+export function joinedRanges(a: Line, b: Line, offset: number, side: 'L' | 'R' = 'L', same = false): { s0: number; s1: number }[] {
+  return joinedOn(a, b, 2 * offset, JOINED_TOLERANCE, side, same);
 }
 
 const carriagewayLine = (route: MotorwayRoute) => {
   const a = route.alignment as Extract<MotorwayRoute['alignment'], { kind: 'pi' }>;
   return station(buildAlignment(route.endpoints.a.position, route.endpoints.b.position, a.pis,
-    horizontalRules(route.specification.designSpeed, CARRIAGEWAY_CATEGORY)), 10);
+    horizontalRules(route.specification.designSpeed, route.specification.crossSection as CategoryId)), 10);
 };
 
 /** One direction of a split corridor through the kernel. Noise: the WHOLE corridor's traffic on its own
@@ -408,7 +426,7 @@ export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, ro
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, carriagewayDesign(project, route),
   { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: ops.speed,
-    leftJoined: joinedRanges(carriagewayLine(route), carriagewayLine(other)),
+    leftJoined: joinedRanges(carriagewayLine(route), carriagewayLine(other), carriagewayOffset(corridorCategory(project, corridor))),
     goals: { time: goal?.maxTravelMin !== undefined, capacity: false } });
 }
 
@@ -426,11 +444,11 @@ export interface SplitLedger {
  * joined, the formation is one D 27.5 body (SPK: 50 % of the whole-category norm each, not 60 %).
  * A slope of one direction must not land on the other's carriageway. Station-wise transverse check on
  * the forward direction's normal (linear slope faces; benches ignored). */
-export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: number) => number, same = false): SplitLedger {
+export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: number) => number, same = false, w = carriagewayOffset(MOTORWAY_CATEGORY)): SplitLedger {
   // `same`: both run A→B (a separate stretch), so r's right side faces f; else r runs B→A, its left faces f
   const facing = same ? { day: r.dayR, z: r.zDayR, farDay: r.dayL, farZ: r.zDayL } : { day: r.dayL, z: r.zDayL, farDay: r.dayR, farZ: r.zDayR };
   const along = (dot: number, limit: number) => same ? dot > limit : dot < -limit;
-  const w = CARRIAGEWAY_OFFSET, p = pairStations(f, r), out: SplitLedger = { credit: 0, parts: { joinedBase: 0, overlapEarth: 0, overlapLand: 0, buildings: 0 }, joinedLength: 0, overlapFill: 0, overlapCut: 0, violations: [] };
+  const p = pairStations(f, r), out: SplitLedger = { credit: 0, parts: { joinedBase: 0, overlapEarth: 0, overlapLand: 0, buildings: 0 }, joinedLength: 0, overlapFill: 0, overlapCut: 0, violations: [] };
   const rate = (res: Result) => ({
     fill: res.quantities.fill > 0 ? (res.cost.earthDetail.fillPlacing + res.cost.earthDetail.borrow) / res.quantities.fill : 0,
     cut: res.quantities.cut > 0 ? (res.cost.earthDetail.excavation + res.cost.earthDetail.surplusHaul + res.cost.earthDetail.unsuitable) / res.quantities.cut : 0,
@@ -557,7 +575,7 @@ const within = (ranges: readonly (readonly [number, number])[], s0: number, s1 =
 export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDesign, only?: ReadonlySet<string>): CorridorDesign {
   if (saved.mode !== 'paired' || !saved.stretches?.length || saved.spine.kind !== 'pi' || saved.spine.vertical.kind !== 'auto') return saved;
   let corridor = saved;
-  const rules = horizontalRules(corridorSpeed(project, saved), MOTORWAY_CATEGORY);
+  const rules = horizontalRules(corridorSpeed(project, saved), corridorCategory(project, saved));
   const A = saved.endpoints.a.position, B = saved.endpoints.b.position;
   for (const id of saved.stretches.map(t => t.id)) {
     if (only && !only.has(id)) continue;
@@ -689,7 +707,7 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   const spine = rawCorridorDesign(project, corridor);
   // one design speed for the motorway: a new one changes the shared line (both directions)
   if (d.speed !== shown.speed) return replaceCorridorFromDesign(project, corridor.id, { ...corridorDesign(project, corridor), speed: d.speed });
-  const rules = horizontalRules(spine.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
+  const rules = horizontalRules(spine.speed, spine.category), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   let stretches = structuredClone(corridor.stretches ?? []);
   const followed = autoFollowingCorridor(project, corridor);
   const remaining = new Set(followed.mode === 'paired' ? followed.stretches?.map(t => t.id) : []);
@@ -808,7 +826,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
   if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
   const spine = memoSpine(ctx, project, corridor, goal, options);
   const sd = rawCorridorDesign(project, corridor), stretches = corridor.stretches ?? [];
-  const rules = horizontalRules(sd.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
+  const rules = horizontalRules(sd.speed, sd.category), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   const spineAl = buildAlignment(A, B, sd.pis, rules), ok = joinStations(spine, spineAl, rules);
   // joins: the last allowed station at or before each stretch, the first at or after it; stretches whose
   // joins meet are one
@@ -825,7 +843,8 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
     const last = groups[groups.length - 1];
     if (last && i0 <= last.i1) { last.i1 = Math.max(last.i1, i1); last.members.push(t); } else groups.push({ i0, i1, members: [t] });
   }
-  const ops = corridorOperations(project, corridor), W = CARRIAGEWAY_OFFSET, minR = horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY).minRadius;
+  const paired = corridorCategory(project, corridor), one = carriagewayCategory(paired);
+  const ops = corridorOperations(project, corridor), W = carriagewayOffset(paired), minR = horizontalRules(sd.speed, one).minRadius;
   const firstBendAfter = (s: number) => { const k = spineAl.curves.findIndex(c => c.sStart >= s); return k < 0 ? sd.pis.length : k; };
   const { only, ...evalOptions } = options;
   const dirs = (['forward', 'reverse'] as const).filter(dir => !only || corridor.children[dir] === only);
@@ -844,9 +863,9 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
       const bends = offsetBends(J0, J1, pis, vAl, offset);
       // an automatic radius stays automatic for the carriageway (never below what its own norm and easing
       // need); the player's radius is kept exactly, offset (its checks then say what is wrong)
-      const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
+      const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(sd.speed, one));
       bends.pis.forEach((p, i) => { if (p.r !== null && shownPis[i].r === null) p.r = Math.max(minR, auto.curves[i]?.rEff ?? 0, Math.round(p.r * 100) / 100); });
-      const al = buildAlignment(bends.a, bends.b, bends.pis, horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
+      const al = buildAlignment(bends.a, bends.b, bends.pis, horizontalRules(sd.speed, one));
       return [dir, { bends, al, vAl, offset, bend0: c0, line: station(al, 10), own: g.members.some(t => t[dir]) }];
     })) as Record<Direction, { bends: ReturnType<typeof offsetBends>; al: Alignment; vAl: Alignment; offset: number; bend0: number; line: ReturnType<typeof station>; own: boolean }>;
   };
@@ -902,7 +921,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
         // than one minimum-radius curve fits before (after) it without touching the shared line's roundings
         const curves = spine.vcurves.filter(c => c.s > s0 && c.s < s1 && c.len > 0).map(c => [map(c.s) - c.len / 2, map(c.s) + c.len / 2] as const);
         // (at least the curve of one 1 m step of the search's grade grid over a knot spacing)
-        const norms = speedNorms(sd.speed, CARRIAGEWAY_CATEGORY), rMax = Math.max(norms.minCrestRadius, norms.minSagRadius), ROOM = rMax / KNOT / 2 + 10;
+        const norms = speedNorms(sd.speed, one), rMax = Math.max(norms.minCrestRadius, norms.minSagRadius), ROOM = rMax / KNOT / 2 + 10;
         const take = (x: number, forward: boolean): [number, number] => {
           for (let guard = 0; guard < 50; guard++) {
             const inCurve = curves.find(([lo, hi]) => x > lo - ROOM && x < hi + ROOM);
@@ -931,7 +950,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
       }
       const clip = <T extends { s0: number; s1: number }>(list: readonly T[] | undefined) => (list ?? []).filter(o => inside(o.s0, o.s1))
         .map(o => ({ ...o, s0: toPiece(Math.max(s0, o.s0)), s1: toPiece(Math.min(s1, o.s1)) }));
-      const design: Design = { ...sd, category: CARRIAGEWAY_CATEGORY, pis: bends.pis, ...vertical,
+      const design: Design = { ...sd, category: one, pis: bends.pis, ...vertical,
         structureOverrides: clip(shown.structureOverrides), wallOverrides: clip(shown.wallOverrides) };
       // (heights taken from the shared line of an Auto direction are not the player's pins)
       const heightsGiven = design.profileMode === 'manual' && shown.profileMode !== 'manual';
@@ -943,7 +962,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
     const result = evaluate({ ...ctx, a: p.a, b: p.b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare } }, p.design,
       { ...evalOptions, endpointElevations: { a: p.a.z, b: p.b.z }, operatingSpeed: ops.speed,
         ...(p.fixedProfile ? { fixedProfile: p.fixedProfile } : {}), ...(p.heightsGiven ? { heightsGiven: true } : {}),
-        leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side,
+        leftJoined: joinedRanges(p.line, other.line, W, side, true), joinedSide: side,
         ...(dir === 'forward' ? { sharedCrossings: { own: true } } : from ? { sharedCrossings: { own: false, from: from.crossings } } : {}),
         goals: { time: false, capacity: false } });
     for (const q of p.sideBySidePins) {
@@ -963,7 +982,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
   groups.forEach((_, g) => {
     const f = dirs.includes('forward') ? runPiece(g, 'forward') : undefined;
     const r = dirs.includes('reverse') ? runPiece(g, 'reverse', f) : undefined;
-    if (f && r && !options.preview) ledgers.push(splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y), true));
+    if (f && r && !options.preview) ledgers.push(splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y), true, W));
   });
   const results: Record<string, Result> = {};
   for (const dir of dirs) {

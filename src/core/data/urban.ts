@@ -118,10 +118,15 @@ export const URBAN_NORM_PER_KM: Record<CategoryId, { hilly: number; mountainous:
   // Track: SPK has no built-up row; its rural row is used.
   'P4': { hilly: 13_985_684.5, mountainous: 13_985_684.5, codes: ['A.1.P4.NE', 'A.1.P4.NE'] },
   'D27.5': { hilly: 187_632_000, mountainous: 214_512_000, codes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NEH'] },
+  // Slip road: the S 7.5 class II rows, as outside (data/categories.ts)
+  'V7.25': { hilly: 42_883_000, mountainous: 48_046_000, codes: ['A.1.S2.7,5.NIR', 'A.1.S2.7,5.NIH'] },
   // Railway: SPOŽES has no built-up row for track; its dense-area utility relocations (I01) apply instead.
   'R1': { hilly: railRouteBasePerKm(1, true), mountainous: railRouteBasePerKm(1, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
   'R2': { hilly: railRouteBasePerKm(2, true), mountainous: railRouteBasePerKm(2, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
   'D27.5-1': { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000, codes: ['60 % × A.1.D.27,5.NER', '60 % × A.1.D.27,5.NEH'] },
+  // The four-lane class I road: SPK has no built-up S 21.5 row; its rural D 21.5 row is used, as for the motorway.
+  'S21.5': { hilly: 146_694_000, mountainous: 167_028_000, codes: ['A.1.D.21,5.NER', 'A.1.D.21,5.NEH'] },
+  'S21.5-1': { hilly: 0.6 * 146_694_000, mountainous: 0.6 * 167_028_000, codes: ['60 % × A.1.D.21,5.NER', '60 % × A.1.D.21,5.NEH'] },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -273,6 +278,9 @@ const LOCAL_ROAD = {
 /** keyed by OSM highway class (the pack's `net.cls` list); order = rank, most important first */
 export const ROAD_CLASSES: Record<string, RoadClassRow> = {
   motorway: { label: 'motorway', minRadius: 0, width: 27.5, rampGradient: 0.04, rampSteepest: 0.04, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, noAtGrade: true, roadPerKm: [187_632_000, 187_632_000], roadCodes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NER'] },
+  /** a slip road of the project's interchange, where another designed road crosses it: never at the same level
+   * (data/categories.ts V7.25, its own rows) */
+  ramp: { label: 'slip road', minRadius: 0, width: 7.25, rampGradient: 0.06, rampSteepest: 0.06, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, noAtGrade: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },
   trunk: { label: 'expressway', minRadius: 0, width: 11.5, rampGradient: 0.05, rampSteepest: 0.05, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, noAtGrade: true, roadPerKm: [68_894_000, 82_035_000], roadCodes: ['A.1.S1.11,5.NER', 'A.1.S1.11,5.NIR'] },
   primary: { label: 'class I road', minRadius: 90, width: 9.5, rampGradient: 0.06, rampSteepest: 0.07, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, junction: true, roadPerKm: [56_912_000, 67_852_000], roadCodes: ['A.1.S1.9,5.NER', 'A.1.S1.9,5.NIR'] },
   secondary: { label: 'class II road', minRadius: 90, width: 7.5, rampGradient: 0.06, rampSteepest: 0.07, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, junction: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },

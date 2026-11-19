@@ -46,7 +46,7 @@ try {
     const { context, page, errors } = await fresh(browser, { width: 1440, height: 1500 });
     await page.goto(site.url); await pickerReady(page); await page.waitForTimeout(300);
     const titles = await page.locator('.scenario-picker-card h3').allTextContents();
-    ok(titles.length === 6, `six cards, one per corridor or mission (${titles.join(' | ')})`);
+    ok(titles.length === 7, `seven cards, one per corridor or mission (${titles.join(' | ')})`);
     ok(!(await page.locator('.scenario-picker').textContent()).match(/earlier map|Your older saves/), 'no retired mission and no older saves on a fresh visit');
     const first = page.locator('[data-start-here]');
     ok(await first.count() === 1 && /Jílové → Hostěradice/.test(await first.textContent()), 'one mission is marked Start here: Jílové → Hostěradice');
@@ -54,6 +54,11 @@ try {
     const chips = await d3.locator('.scenario-picker-section').allTextContents();
     ok(chips.length === 6 && /^Praha → Jílové/.test(chips[0]) && /^Whole route/.test(chips[5]) && chips.every((c) => /km · [\d.]+ MB$/.test(c)),
       `the D3 card has its sections by place names with length and size, the whole route last (${chips.join(' | ')})`);
+    const raj = page.locator('.scenario-picker-card', { hasText: 'Turnov → Úlibice through Český ráj' });
+    const stages = await raj.locator('.scenario-picker-section').allTextContents();
+    ok(stages.length === 4 && /^Turnov → Valdštejnsko/.test(stages[0]) && /^Whole route/.test(stages[3]) && /Four-lane road/.test(await raj.textContent())
+      && /Not a motorway/.test(await raj.locator('.scenario-picker-note').textContent()),
+      `the I/35 card has its three stages and the whole route, a four-lane road, its note (${stages.join(' | ')})`);
     const town = page.locator('.scenario-picker-card').last();
     ok(/Šternberk bypass/.test(await town.textContent()) && !(await town.locator('.scenario-picker-note').count())
       && await town.getByRole('button', { name: 'Start' }).isEnabled(), 'the Šternberk bypass is last, with no warning, its map on the site');

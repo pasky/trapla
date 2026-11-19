@@ -3,13 +3,13 @@
 // cards, the decorations of the other roads and the score. Also when the game counts as settled / idle, and
 // the provisional profile shown while the worker lags behind a drag. Moved out of main.ts verbatim; what
 // is asked of the workers and which replies count is the EvalClient's (eval-client.ts).
-import { CATEGORIES } from '../core/data/categories';
+import { CATEGORIES, lineOf, pairedName } from '../core/data/categories';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId, RouteResult } from '../core/project';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY } from '../core/project-motorway';
+import { carriagewayCategory, corridorOfRoute } from '../core/project-motorway';
 import type { ProjectWorkerOut } from '../core/project-protocol';
-import { routeCrownWidth } from '../core/route-section';
+import { motorwayCategory, routeCrownWidth } from '../core/route-section';
 import { DIRECTIONS_TEXT } from '../core/terms';
 import { EvalClient, type EvalRequest } from '../eval-client';
 import type { ProjectStore } from '../project-store';
@@ -19,6 +19,8 @@ import type { NoiseLayer } from '../render/noise';
 import type { RouteScene } from '../render/route-scene';
 import { runSliced, type SlicedJob, type Staged } from '../render/slices';
 import type { RenderEndpoints, View } from '../render/view';
+import { isSlipRoad, SLIP_ROAD } from '../core/slip-roads';
+import { mergeSlipRoads } from '../render/slip-merge';
 import type { Pack } from '../scenario';
 import type { Session } from '../session';
 import type { ActiveRouteStore } from './active-route-store';
@@ -132,7 +134,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
       // a paired motorway is one body, drawn once under its forward direction: its walls and culverts too
       const paired = route.kind === 'motorway' && route.alignment.kind === 'corridor' ? corridorOfRoute(design, route.id) : undefined;
-      if (paired) crown = CATEGORIES[MOTORWAY_CATEGORY].crownWidth;
+      if (paired && route.kind === 'motorway') crown = CATEGORIES[motorwayCategory(route)].crownWidth;
       if (!r || (paired && (paired.mode !== 'paired' || paired.children.forward !== route.id))
         || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection && !paired)) { otherExtras.get(route.id)?.overlay.setVisible(false); continue; }
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
@@ -176,14 +178,14 @@ export function createResultDisplay(app: ResultDisplayContext) {
     app.session.last = app.session.lastFull = r ?? null;
     app.hud.setRouteState(!!rd, !!r && !!rd);
     const together = !!app.store.route && !app.store.oneDirection && app.projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.forward === app.store.route!.id);
-    document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = app.store.route ? `Profile · ${together ? `${app.store.route.kind === 'motorway' ? 'Motorway' : app.store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : app.store.route.name}` : 'Profile';
+    document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = app.store.route ? `Profile · ${together ? `${app.store.route.kind === 'motorway' ? pairedName(motorwayCategory(app.store.route)) : app.store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : app.store.route.name}` : 'Profile';
     if (!r || !rd) {
       app.profile.clear(app.store.route && !app.store.read() ? 'No heights yet: this change is not checked.' : ''); if (!app.links.editor?.selected) app.routeCard();
       app.view.clearDesign(app.activeEndpoints()); return;
     }
     app.revalidate(r, rd);
     const cat = CATEGORIES[rd.category];
-    app.profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[app.scenario.terrainClass] ?? app.scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
+    app.profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[app.scenario.terrainClass] ?? app.scenario.maxGradient, perMille: cat.mode === 'railway', line: lineOf(cat) });
     app.profile.setResult(r, r.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
     syncApart(r);
     app.profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
@@ -256,16 +258,17 @@ export function createResultDisplay(app: ResultDisplayContext) {
       if (route.kind === 'motorway') {
         // separate stretches: the shared body's parts and each direction's own carriageway
         const parts = result.routes[route.id]?.drawn;
-        if (parts) return parts.map(p => ({ id: p.id, result: p.result, crownWidth: CATEGORIES[p.section === 'paired' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth,
+        if (parts) return parts.map(p => ({ id: p.id, result: p.result, crownWidth: CATEGORIES[p.section === 'paired' ? motorwayCategory(route) : carriagewayCategory(motorwayCategory(route))].crownWidth,
           buildingMarkers: result.complete, ...(p.mirrored ? { mirrored: true } : {}) }));
         // split: each direction is its own body
         if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
         const corridor = app.projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
-        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth }] : [];
+        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[motorwayCategory(route)].crownWidth }] : [];
       }
       if (route.kind !== 'road') return [];
       return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
     });
+    mergeSlips(inputs);
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
@@ -281,6 +284,8 @@ export function createResultDisplay(app: ResultDisplayContext) {
     })(), ([geometry, sources]) => {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
       app.links.picker?.setAccepted(result.acceptedRenderReplacements);
+      // a slip road's speed-change lane: its lines on the motorway (the dashed one first, then its taper's edge)
+      app.view.setLaneMarks(result.works.items.filter(w => w.id.includes(':lane:')).flatMap(w => w.surfaces.map((q, k) => ({ points: q.points, dashed: k === 0, width: SLIP_ROAD.marking.width }))));
       syncDecorations(result);
       app.session.displayedProject = result; heavy = null;
       app.projectStore.offerBest(result); app.projectScore(false);
@@ -296,6 +301,24 @@ export function createResultDisplay(app: ResultDisplayContext) {
     app.setStatus(''); settle();
   };
 
+  /** Slip roads beside their motorway drawn as one body of earthworks (render/slip-merge.ts): the drawn copies, kept
+   * while the results are the same (an unchanged body keeps its meshes). */
+  let merged: { key: Result[]; out: Result[] } | null = null;
+  const mergeSlips = (inputs: { id: string; result: Result }[]) => {
+    const design = app.projectStore.snapshot.design;
+    for (const c of design.corridors) {
+      const host = inputs.find(i => i.id === c.children.forward);
+      const slips = inputs.filter(i => { const r = design.routes.find(q => q.id === i.id);
+        return !!r && isSlipRoad(r) && [r.endpoints.a.anchor, r.endpoints.b.anchor].some(a => a.kind === 'route' && (a.routeId === c.children.forward || a.routeId === c.children.reverse)); });
+      if (!host || !slips.length || c.mode !== 'paired') continue;
+      const key = [host.result, ...slips.map(s => s.result)];
+      if (!merged || merged.key.length !== key.length || merged.key.some((r, k) => r !== key[k])) {
+        const m = mergeSlipRoads(host.result, slips.map(s => s.result), (x, y) => app.pack.terrain.heightAt(x, y));
+        merged = { key, out: [m.motorway, ...m.slips] };
+      }
+      host.result = merged.out[0]; slips.forEach((s, k) => { s.result = merged!.out[k + 1]; });
+    }
+  };
   return {
     evals, requestEval, settled, sceneIdle, syncDecorations, activeLegacy, frameLine, showActiveResult,
     /** the last full result's sliced 3D rebuild (drag-perf probe); who waits for the idle scene (automation) */

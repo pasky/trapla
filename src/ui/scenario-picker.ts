@@ -100,7 +100,8 @@ export function pickerLayout(presets: readonly ScenarioParams[], isSaved: (scena
 }
 
 /** what each corridor card is called */
-const CORRIDOR: Record<string, string> = { 'Středočeská D3': 'The D3 south of Prague', D35: 'The D35 to Mohelnice', Trutnov: 'Trutnov → Polish border' };
+const CORRIDOR: Record<string, string> = { 'Středočeská D3': 'The D3 south of Prague', D35: 'The D35 to Mohelnice', Trutnov: 'Trutnov → Polish border',
+  'Český ráj': 'Turnov → Úlibice through Český ráj' };
 
 /** Root shows the catalogue. A valid direct link bypasses it, including reproducible D11 scripts.
  * Missing packs stay here with a build instruction instead of starting a broken terrain view.
@@ -198,7 +199,7 @@ function missionCard(presets: ScenarioParams[], isSaved: (s: ScenarioParams) => 
   const chips = sectioned ? element('div', '', 'scenario-picker-sections') : null;
   if (chips) { chips.setAttribute('role', 'radiogroup'); chips.setAttribute('aria-label', 'Section'); card.append(chips); }
   card.append(goal);
-  const aside = presets[0].picker?.aside;
+  const aside = presets[0].picker?.aside ?? presets[0].picker?.note;
   if (aside) card.append(element('p', aside, 'scenario-picker-note'));
   const note = element('p', '', 'scenario-picker-state');
   note.setAttribute('role', 'status');

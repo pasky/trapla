@@ -1,0 +1,84 @@
+{
+  "scenario": "i35-jicin",
+  "purpose": "Fresh four-lane road mission (starter, S 21.5/110): mapped-line bends every ~0.6 km, as the game opens it",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 2998.4,
+        "y": 9284.6,
+        "r": null
+      },
+      {
+        "x": 3589.5,
+        "y": 8941.6,
+        "r": null
+      },
+      {
+        "x": 3941.6,
+        "y": 8395.2,
+        "r": null
+      },
+      {
+        "x": 3957.3,
+        "y": 7777.3,
+        "r": null
+      },
+      {
+        "x": 4370.5,
+        "y": 7171.4,
+        "r": null
+      },
+      {
+        "x": 5196.1,
+        "y": 6828.1,
+        "r": null
+      },
+      {
+        "x": 5842.7,
+        "y": 6197.2,
+        "r": null
+      },
+      {
+        "x": 6492,
+        "y": 5636.4,
+        "r": null
+      },
+      {
+        "x": 7117.3,
+        "y": 5264.6,
+        "r": null
+      },
+      {
+        "x": 7660.7,
+        "y": 4750.2,
+        "r": null
+      },
+      {
+        "x": 8146.2,
+        "y": 4203.7,
+        "r": null
+      },
+      {
+        "x": 8944.6,
+        "y": 3804.3,
+        "r": null
+      },
+      {
+        "x": 10314.8,
+        "y": 3298.9,
+        "r": null
+      },
+      {
+        "x": 11160.5,
+        "y": 2910.6,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  },
+  "preset": "i35-jicin-road"
+}

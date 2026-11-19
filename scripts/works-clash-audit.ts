@@ -3,7 +3,7 @@
 // as our road's), on a mapped railway, on one of our bridge's piers or up into our deck — with no billed remedy?
 // Also the turning areas at cut roads' ends and roads moved aside against houses, with the strip. What is screened is what the renderer draws
 // (render/crossing-surface.ts crossingSurfaces: the 1:1.5 slopes, cut short by priced walls).
-// npx tsx scripts/works-clash-audit.ts [--all] [design.json …]   (--all: every pack's starters and saved designs)
+// npx tsx scripts/works-clash-audit.ts [--all] [design.json …]   (--all: every pack's starters and saved designs; ONLY=<pack ids>)
 import { existsSync, readFileSync } from 'node:fs';
 import { evaluate, type EvalContext, type Result } from '../src/core/evaluate';
 import { loadPack, evalContext, projectContext } from './loadpack';
@@ -164,8 +164,11 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
 
 /** Every pack's starters (each preset's opening project), evaluated as the browser does: each route's clashes. */
 export function* starterClashes(): Generator<{ name: string; result: Result; clashes: WorksClash[] }> {
+  // ONLY=<pack ids, comma-separated>: only those packs' starters
+  const only = process.env.ONLY?.split(',');
   for (const preset of PRESETS) {
     const id = preset.id, dir = `public/scenarios/${id}`;
+    if (only && !only.includes(id)) continue;
     if (!existsSync(`${dir}/meta.json`)) continue;
     const pack = loadPack(dir), sc = scenarioParams(id, preset.presetId);
     const { initial } = projectContext(pack, sc, dir), design = initial();

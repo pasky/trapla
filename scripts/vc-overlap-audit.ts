@@ -36,6 +36,8 @@ const SUITES: Record<string, { scenario: string; designs: string[]; n?: number; 
   'd3-full': { scenario: 'd3-full', designs: ['scripts/scenarios/d3-full/d3-full-motorway.json'], n: 4 },
   'd35-full': { scenario: 'd35-full', designs: ['scripts/scenarios/d35-full/d35-full-motorway.json'], n: 4 },
   ...Object.fromEntries(['d3-0301', 'd3-0302', 'd3-0303', 'd3-0304', 'd3-0305'].map(id => [id, { scenario: id, designs: pack(id, `scripts/scenarios/${id}/${id}-motorway.json`), n: 6 }])),
+  ...Object.fromEntries(['i35-turnov', 'i35-rovensko', 'i35-jicin'].map(id => [id, { scenario: id, designs: pack(id, `scripts/scenarios/${id}/${id}-road.json`), n: 6 }])),
+  'i35-full': { scenario: 'i35-full', designs: ['scripts/scenarios/i35-full/i35-full-road.json'], n: 4 },
 };
 
 const here = fileURLToPath(import.meta.url);
