@@ -180,7 +180,7 @@ export class CrossingRenderer {
     // Keys hash every collar point: computed once per surface (neighbours include the own ones) and
     // a few surfaces per slice (a long route has hundreds).
     const keys = new Map<CrossingSurface, string>();
-    for (const s of [...surfaces, ...neighbours]) if (!keys.has(s)) { keys.set(s, surfaceKey(s)); if (keys.size % 16 === 0) yield; }
+    for (const s of [...surfaces, ...neighbours]) if (!keys.has(s)) { keys.set(s, surfaceKey(s)); if (keys.size % 4 === 0) yield; }
     const own = surfaces.map(s => keys.get(s)!), neighbourKeys = neighbours.map(s => keys.get(s)!);
     const sample = surfaces.map(s => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -311,7 +311,7 @@ export class CrossingRenderer {
     const stripRows = new Map<object, { casing: CrossingPoint[]; crown: CrossingPoint[] }>();
     const natural = (x: number, y: number) => this.view.groundHeight(x,y);
     for (let i = 0; i + 1 < s.sections.length; i++) {
-      if (i && i % 64 === 0) yield;
+      if (i && i % 16 === 0) yield;
       const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
       // Tracks retain the billed formation width, but only the wheel strips are bare earth.
       // A solid four-metre brown slab made parallel diversions look like footprint outlines.

@@ -59,7 +59,7 @@ export class BufferPool<T extends { clear(): void }> {
 
 /** `geometry.computeVertexNormals()` of an indexed geometry in steps (a whole-D3 ribbon's took ≈ 25 ms in one go): the
  * same operations in the same order, so the same normals. */
-export function* vertexNormalsSliced(geometry: THREE.BufferGeometry, step = 30000): Generator<void, void> {
+export function* vertexNormalsSliced(geometry: THREE.BufferGeometry, step = 10000): Generator<void, void> {
   const index = geometry.index, position = geometry.getAttribute('position');
   if (!index || !position) { geometry.computeVertexNormals(); return; }
   const normal = new THREE.BufferAttribute(new Float32Array(position.count * 3), 3);
