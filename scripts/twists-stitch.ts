@@ -2,7 +2,7 @@
 // bends, height pins and painted structures carried over into the whole pack (EPSG:5514 places, stations re-measured on
 // the stitched line); the rest of the line stays the starter's. A starting point for `twists-check.ts --find --from`.
 //
-//   npx tsx scripts/twists-stitch.ts <whole preset> <section fixture.json>… [--manual] [--repair N] [--painted none|tunnels] --out f.json
+//   npx tsx scripts/twists-stitch.ts <whole preset> <section fixture.json>… [--manual] [--repair N] [--painted none|tunnels] [--freeze] --out f.json
 import { readFileSync, writeFileSync } from 'node:fs';
 import { check, evalDesign, mission, nearestS, type Fixture } from './twists-check';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
@@ -38,7 +38,7 @@ const pis = [
   ...sections.flatMap(q => q.d.pis.map(p => ({ ...p, ...q.conv(p) }))),
 ].map(p => ({ p, s: nearestS(L0, p.x, p.y) })).sort((a, b) => a.s - b.s)
   // (two sections' bends meeting at their boundary closer than 800 m would merge into one curve: the later one goes)
-  .filter((q, k, a) => k === 0 || q.s - a[k - 1].s > 800 || !sections.some(sec => a[k - 1].s < sec.s0 && q.s >= sec.s0 - 1)).map(q => q.p);
+  .filter((q, k, a) => k === 0 || q.s - a[k - 1].s > Number(process.env.STITCH_GAP ?? 800) || !sections.some(sec => a[k - 1].s < sec.s0 && q.s >= sec.s0 - 1)).map(q => q.p);
 const stage1: Design = { ...structuredClone(base), pis, gradePins: [], structureOverrides: [] };
 let design = replaceRouteFromLegacy(whole.starter, wr, stage1);
 const L1 = evalDesign(whole, design).routes[wr]!.legacy!;
@@ -63,7 +63,13 @@ if (args.includes('--boundary')) {
 }
 design = replaceRouteFromLegacy(whole.starter, wr, args.includes('--manual') ? { ...stage1, profileMode: 'manual', vpis, structureOverrides } : { ...stage1, gradePins, structureOverrides });
 let r = evalDesign(whole, design);
-// --repair N: the fixes the issues spell out, applied N rounds (a height point raised or lowered by what they say, a bridge
+// --freeze: the heights the whole line got (its pins as the sections set them, met or not) taken by hand, as By hand takes them
+if (args.includes('--freeze')) {
+  const d = legacyDesignForRoute(design, wr);
+  design = replaceRouteFromLegacy(whole.starter, wr, { ...d, profileMode: 'manual', vpis: r.routes[wr]!.legacy!.vpis.map(v => ({ ...v })), gradePins: [] });
+  r = evalDesign(whole, design);
+}
+// --repair N: the fixes the issues spell out, applied N rounds (a pin moved to where the road passes, or unpinned, one of two bends that merge dropped, a height point raised or lowered by what they say, a bridge
 // where they say, our road lowered under a bridge whose ramps would be too long)
 for (let round = 0; round < Number(args[args.indexOf('--repair') + 1] ?? 0) && args.includes('--repair') && !r.valid; round++) {
   const d = legacyDesignForRoute(design, wr), L = r.routes[wr]!.legacy!;
@@ -71,7 +77,12 @@ for (let round = 0; round < Number(args[args.indexOf('--repair') + 1] ?? 0) && a
   for (const i of r.issues) {
     const why = i.violation?.fix ?? '', loc = i.locations?.[0] as { s0?: number; s1?: number; pi?: number } | undefined;
     let m: RegExpMatchArray | null;
-    if (d.profileMode === 'manual' && (m = why.match(/(Raise|Lower) your height pin at km ([\d.]+) by ([\d.]+) m/))) {
+    if (d.profileMode === 'auto' && /^Move bends \d+ and \d+ about/.test(why) && loc?.pi !== undefined) d.pis = d.pis.filter((_, k) => k !== loc.pi! + Number(process.env.STITCH_PI_OFFSET ?? 0));
+    else if (d.profileMode === 'auto' && (m = why.match(/Set it to ([\d.]+) m, or unpin/)) && loc?.s0 !== undefined)
+      // (the road already passes there: the pin where it is)
+      d.gradePins = (d.gradePins ?? []).map(p => Math.abs(p.s - loc.s0!) > 1 ? p : { ...p, z: Number(m![1]) });
+    else if (d.profileMode === 'auto' && /or unpin/.test(why) && loc?.s0 !== undefined) d.gradePins = (d.gradePins ?? []).filter(p => Math.abs(p.s - loc.s0!) > 1);
+    else if (d.profileMode === 'manual' && (m = why.match(/(Raise|Lower) your height pin at km ([\d.]+) by ([\d.]+) m/))) {
       const k = near(Number(m[2]) * 1000); d.vpis[k] = { ...d.vpis[k], z: d.vpis[k].z + (m[1] === 'Raise' ? 1 : -1) * (Number(m[3]) + 0.05) };
     } else if (d.profileMode === 'manual' && (m = why.match(/Move your height pin at km ([\d.]+) at least/))) d.vpis.splice(near(Number(m[1]) * 1000), 1);
     else if (d.profileMode === 'manual' && (m = why.match(/Raise the bridge at km ([\d.]+) by at least ([\d.]+) m/))) {

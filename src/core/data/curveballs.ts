@@ -340,7 +340,7 @@ export const CURVEBALLS: Record<string, Curveball> = {
     id: 'd3-0305-mastnik', headline: 'Leave the Mastník open for otters',
     story: 'The Mastník is a stream fish and otters travel along. The nature office wants its banks left free under a wider bridge.',
     ask: 'No cutting or embankment on the Mastník’s banks',
-    cite: { text: 'AOPK register of migration-significant streams', url: 'https://gis.nature.cz/arcgis/rest/services/AplikovanaOchrana/MigracneVyznamneToky/MapServer' },
+    cite: { text: 'A game event of a kind real projects meet, on a place in the AOPK register of migration-significant streams', url: 'https://gis.nature.cz/arcgis/rest/services/AplikovanaOchrana/MigracneVyznamneToky/MapServer' },
     zone: { label: 'Mastník banks', forbid: SPAN, shape: { kind: 'polygon', pts: [[-740983, -1094062], [-740969, -1094067], [-740965, -1094016], [-740970, -1094018], [-740964, -1094012], [-740962, -1093988], [-740943, -1093994], [-740923, -1093991], [-740901, -1093976], [-740873, -1093969], [-740842, -1093967], [-740806, -1093974], [-740781, -1093986], [-740768, -1094000], [-740746, -1094056], [-740729, -1094080], [-740727, -1094095], [-740730, -1094118], [-740801, -1094108], [-740799, -1094113], [-740785, -1094125], [-740804, -1094117], [-740818, -1094100], [-740834, -1094050], [-740879, -1094057], [-740893, -1094066], [-740908, -1094069], [-740924, -1094080], [-740942, -1094084], [-740957, -1094083], [-740982, -1094071], [-740992, -1094059], [-740997, -1094043]] } },
   },
   // ---- end d3-0305-motorway ----
