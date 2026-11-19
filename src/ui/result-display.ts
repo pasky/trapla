@@ -310,7 +310,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       if (!host || !slips.length || c.mode !== 'paired') continue;
       const key = [host.result, ...slips.map(s => s.result)];
       if (!merged || merged.key.length !== key.length || merged.key.some((r, k) => r !== key[k])) {
-        const m = mergeSlipRoads(host.result, slips.map(s => s.result));
+        const m = mergeSlipRoads(host.result, slips.map(s => s.result), (x, y) => app.pack.terrain.heightAt(x, y));
         merged = { key, out: [m.motorway, ...m.slips] };
       }
       host.result = merged.out[0]; slips.forEach((s, k) => { s.result = merged!.out[k + 1]; });

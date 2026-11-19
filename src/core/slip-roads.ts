@@ -136,6 +136,96 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
   return { kind, s0, s1, length, area, cost, lines, violations };
 }
 
+/** A step between the two pavements this small is one body (the height a slip road is held at, MERGE_TOLERANCE), m. */
+export const STEP_TOLERANCE = GRADE_PIN_TOLERANCE + 0.05;
+/** Two cuttings side by side whose tops come within this of each other leave a narrow ridge of ground between them:
+ * designers dig it out, the two one cutting with one slope from crown edge to crown edge, m. PROVISIONAL: the
+ * screen's clearance between two roads' works (project-ledger.ts INDEPENDENCE_SCREEN), what the game calls too narrow
+ * a strip to leave. */
+export const RIDGE_REACH = 10;
+/** Where the motorway's cutting (crown edge at `w` from its line, height `z`, its face to the ground at `day`, `zDay`)
+ * and a slip road's beside it (its line `d` from the motorway's, the same measured from its own line) leave a ridge too
+ * narrow to keep (their tops within RIDGE_REACH, or their faces meeting): the crown edges' offsets and the common
+ * slope's middle (across from the motorway's line, its height); null where they are not both cuttings that close. */
+export function dugRidge(m: { z: number; zDay: number; day: number; w: number }, r: { z: number; zDay: number; day: number; w: number }, d: number) {
+  if (!(m.zDay > m.z && r.zDay > r.z && m.day > m.w && r.day > r.w)) return null;
+  const x0 = m.w, x1 = d - r.w;
+  if (!(x1 > x0 + 1e-6) || (d - r.day) - m.day >= RIDGE_REACH) return null;
+  return { x0, x1, x: (x0 + x1) / 2, z: (m.z + r.z) / 2 };
+}
+/** Where a dug-out ridge ends, what is left of it is cut down to it along the road at a cutting's slope (1 : 1.75,
+ * data/prices.ts side slopes in cuts over 2 m deep, research/48 §1): its nose, not a cliff. */
+export const RIDGE_NOSE = 1.75;
+/** The ridge between a slip road's cutting and its motorway's dug out (dugRidge), and its nose where that ends (RIDGE_NOSE),
+ * per station q of the slip road (`ramp`): the motorway's station beside it (`k`), across from the motorway's line
+ * where the two faces end (`x`, NaN: nowhere), the height there (`z`), which side of each faces the other, how far
+ * across from the motorway's line it is (`d`) and how square the slip road's cross-section runs to the motorway's
+ * (`cos`: a distance across the motorway is that much longer across the slip road), and the ground
+ * taken out beyond what the two cuttings dig, m² of cross-section (`area`). Billed (slipRoadAtMotorway) and drawn
+ * (render/slip-merge.ts) from this one answer. `heightAt`: the ground. */
+export function dugRidges(ramp: Result, line: Result, heightAt: (x: number, y: number) => number) {
+  const n = ramp.n, wm = CATEGORIES['D27.5'].crownWidth / 2, wr = CATEGORIES['V7.25'].crownWidth / 2;
+  const out = { k: new Int32Array(n).fill(-1), x: new Float64Array(n).fill(NaN), z: new Float64Array(n).fill(NaN), area: new Float64Array(n),
+    mLeft: new Uint8Array(n), rLeft: new Uint8Array(n), d: new Float64Array(n).fill(NaN), cos: new Float64Array(n).fill(1) };
+  type At = { kk: number; d: number; nx: number; ny: number; zm: number; zDayM: number; dayM: number; zr: number; zDayR: number; dayR: number; x0: number; x1: number };
+  const at: (At | null)[] = [];
+  const face = (z: number, zDay: number, u: number, w: number, day: number) => u <= w ? z : u <= day ? z + (zDay - z) * (u - w) / Math.max(1e-6, day - w) : NaN;
+  const dug: number[] = [];
+  for (let q = 0; q < n; q++) {
+    at.push(null);
+    if (ramp.kind[q] !== KIND.earth) continue;
+    let kk = 0, dd = Infinity;
+    for (let j = 0; j < line.n; j++) { const e = Math.hypot(line.x[j] - ramp.x[q], line.y[j] - ramp.y[q]); if (e < dd) { dd = e; kk = j; } }
+    if (line.kind[kk] !== KIND.earth || !(dd > 1e-6) || dd > wm + wr + 2 * RIDGE_REACH + 80) continue;
+    // (across the motorway's line at its station: square to it, not the slant distance to that station)
+    const across = -(ramp.x[q] - line.x[kk]) * line.ty[kk] + (ramp.y[q] - line.y[kk]) * line.tx[kk];
+    if (!(Math.abs(across) > 1e-6)) continue;
+    const nx = -line.ty[kk] * Math.sign(across), ny = line.tx[kk] * Math.sign(across);
+    dd = Math.abs(across);
+    const mLeft = -line.ty[kk] * nx + line.tx[kk] * ny > 0, rLeft = -ramp.ty[q] * -nx + ramp.tx[q] * -ny > 0;
+    const a: At = { kk, d: dd, nx, ny, zm: line.grade[kk], zDayM: (mLeft ? line.zDayL : line.zDayR)[kk], dayM: (mLeft ? line.dayL : line.dayR)[kk],
+      zr: ramp.grade[q], zDayR: (rLeft ? ramp.zDayL : ramp.zDayR)[q], dayR: (rLeft ? ramp.dayL : ramp.dayR)[q], x0: wm, x1: dd - wr };
+    // (both cuttings, their crowns apart)
+    if (!(a.zDayM > a.zm && a.zDayR > a.zr && a.dayM > wm && a.dayR > wr && a.x1 > a.x0 + 1e-6)) continue;
+    at[q] = a; out.k[q] = kk; out.mLeft[q] = mLeft ? 1 : 0; out.rLeft[q] = rLeft ? 1 : 0; out.d[q] = dd;
+    out.cos[q] = Math.max(0.2, Math.abs(-ramp.ty[q] * nx + ramp.tx[q] * ny));
+    const r = dugRidge({ z: a.zm, zDay: a.zDayM, day: a.dayM, w: wm }, { z: a.zr, zDay: a.zDayR, day: a.dayR, w: wr }, dd);
+    if (r) { out.x[q] = r.x; out.z[q] = r.z; dug.push(q); }
+  }
+  // the ground between the crown edges at station q above the bottom from crown edge to (x, z) to crown edge, m²
+  // (NaN: that bottom would stand above the cuttings' faces or the ground somewhere)
+  const taken = (q: number, x: number, z: number) => {
+    const a = at[q]!, steps = Math.max(4, Math.ceil((a.x1 - a.x0) / 0.5)), dx = (a.x1 - a.x0) / steps;
+    let area = 0;
+    for (let m = 0; m < steps; m++) {
+      const u = a.x0 + (m + 0.5) * dx, gz = heightAt(line.x[a.kk] + a.nx * u, line.y[a.kk] + a.ny * u);
+      const fm = face(a.zm, a.zDayM, u, wm, a.dayM), fr = face(a.zr, a.zDayR, a.d - u, wr, a.dayR);
+      const top = Math.min(gz, Number.isNaN(fm) ? gz : fm, Number.isNaN(fr) ? gz : fr);
+      const bottom = u <= x ? a.zm + (z - a.zm) * (u - a.x0) / Math.max(1e-6, x - a.x0) : z + (a.zr - z) * (u - x) / Math.max(1e-6, a.x1 - x);
+      if (bottom > top + 0.05 && dug.indexOf(q) < 0) return NaN;
+      area += Math.max(0, top - bottom) * dx;
+    }
+    return area;
+  };
+  for (const q of dug) out.area[q] = taken(q, out.x[q], out.z[q]);
+  // the nose: beside the dug stretch, what stands of the ridge is cut down to the slope rising from it along the road
+  if (dug.length) for (let q = 0; q < n; q++) {
+    const a = at[q];
+    if (!a || Number.isFinite(out.x[q])) continue;
+    let near = -1, best = Infinity;
+    for (const p of dug) { const e = Math.abs(ramp.s[p] - ramp.s[q]); if (e < best) { best = e; near = p; } }
+    const x = (a.x0 + a.x1) / 2, z = out.z[near] + best / RIDGE_NOSE;
+    const g = heightAt(line.x[a.kk] + a.nx * x, line.y[a.kk] + a.ny * x);
+    const fm = face(a.zm, a.zDayM, x, wm, a.dayM), fr = face(a.zr, a.zDayR, a.d - x, wr, a.dayR);
+    const top = Math.min(g, Number.isNaN(fm) ? g : fm, Number.isNaN(fr) ? g : fr);
+    if (!(z < top - 0.1)) continue;
+    const area = taken(q, x, z);
+    if (!Number.isFinite(area)) continue;
+    out.x[q] = x; out.z[q] = z; out.area[q] = area;
+  }
+  return out;
+}
+
 /** What a slip road builds where it meets the motorway (`end` on carriageway `direction` of the paired body `line`):
  * the speed-change lane (a work of the slip road, drawn and billed); what the two bodies build once where they
  * meet (a credit: its first metres on the motorway's formation, `shared(q)` its cost there, and where their slopes
@@ -144,22 +234,6 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
  * two bodies' works are one (`zones`: wherever its works and the motorway's come within `clearance` of each other,
  * the interchange's own earthworks, not land two roads share; `goreZones`: those of its first metres on the
  * motorway's formation, where the slip roads of the other carriageway reach too). `heightAt`: the ground. */
-const STEP_TOLERANCE = GRADE_PIN_TOLERANCE + 0.05;
-/** Two cuttings side by side whose tops come within this of each other leave a narrow ridge of ground between them:
- * designers dig it out, the two one cutting with one slope from crown edge to crown edge, m. PROVISIONAL: the
- * screen's clearance between two roads' works (project-ledger.ts INDEPENDENCE_SCREEN), what the game calls too narrow
- * a strip to leave. */
-export const RIDGE_REACH = 10;
-/** Where the motorway's cutting (crown edge at `wm` from its line, height `zm`, its face to the ground at `dayM`,
- * `zDayM`) and a slip road's beside it (its line `d` from the motorway's, the same measured from its own line) leave
- * a ridge too narrow to keep (their tops within RIDGE_REACH, or their faces meeting): the common slope's middle
- * (across from the motorway's line, its height); null where they are not both cuttings that close. */
-export function dugRidge(m: { z: number; zDay: number; day: number; w: number }, r: { z: number; zDay: number; day: number; w: number }, d: number) {
-  if (!(m.zDay > m.z && r.zDay > r.z && m.day > m.w && r.day > r.w)) return null;
-  const x0 = m.w, x1 = d - r.w;
-  if (!(x1 > x0 + 1e-6) || (d - r.day) - m.day >= RIDGE_REACH) return null;
-  return { x0, x1, x: (x0 + x1) / 2, z: (m.z + r.z) / 2 };
-}
 export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, direction: 1 | -1, speed: number, terrain: TerrainClass,
   shared: (q: number) => number, clearance: number, heightAt: (x: number, y: number) => number) {
   const i = end === 'a' ? 0 : ramp.n - 1, kind = end === 'a' ? 'exit' as const : 'entry' as const;
@@ -217,20 +291,6 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     const dayR = rampLeft ? ramp.dayL[q] : ramp.dayR[q], zDayR = rampLeft ? ramp.zDayL[q] : ramp.zDayR[q], zr = ramp.grade[q];
     const face = (z: number, zDay: number, u: number, w: number, day: number) => u <= w ? z : u <= day ? z + (zDay - z) * (u - w) / Math.max(1e-6, day - w) : NaN;
     const lo = d - dayR, hi = dayM, fillM = zDayM <= zm, fillR = zDayR <= zr;
-    // a ridge too narrow to keep between two cuttings: dug out to one slope from crown edge to crown edge (what
-    // stands above it, under neither face nor dug by either, is cut too)
-    const ridge = dugRidge({ z: zm, zDay: zDayM, day: dayM, w: wm }, { z: zr, zDay: zDayR, day: dayR, w: wr }, d);
-    if (ridge) {
-      const steps = Math.max(2, Math.ceil((ridge.x1 - ridge.x0) / 0.5)), dx = (ridge.x1 - ridge.x0) / steps;
-      let area = 0;
-      for (let m = 0; m < steps; m++) {
-        const x = ridge.x0 + (m + 0.5) * dx, gz = heightAt(line.x[kk] + nx * x, line.y[kk] + ny * x);
-        const a = face(zm, zDayM, x, wm, dayM), b = face(zr, zDayR, d - x, wr, dayR);
-        const top = Math.min(gz, Number.isNaN(a) ? gz : a, Number.isNaN(b) ? gz : b), common = zm + (zr - zm) * (x - ridge.x0) / (ridge.x1 - ridge.x0);
-        area += Math.max(0, top - common) * dx;
-      }
-      dug += area * ramp.ds; dugCost += area * ramp.ds * (rate.cut + rate.haul);
-    }
     if (!(hi - lo > 1e-6)) continue;
     const steps = Math.max(2, Math.ceil((hi - lo) / 0.5)), dx = (hi - lo) / steps, len = ramp.ds;
     let fill = 0, cut = 0, worst = 0;
@@ -261,6 +321,9 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     fix: `Move it at least ${Math.ceil(c.need)} m further from the motorway here, or give it the motorway's height`,
     detail: 'Beside the motorway at another height, the slope of one would stand on the other. Walls between them are not built by the game.',
     rule: 'Engine limit: a slip road shares the motorway\'s earthworks only at its height; otherwise each needs room for its own slopes.' });
+  // the ridge between two cuttings dug out (and its nose), at what the slip road pays for a m³ of its cut
+  const ridge = dugRidges(ramp, line, heightAt);
+  for (let q = 0; q < ramp.n; q++) if (ridge.area[q] > 0) { dug += ridge.area[q] * ramp.ds; dugCost += ridge.area[q] * ramp.ds * (rate.cut + rate.haul); }
   const insideM = Math.min(ramp.length, inside * ramp.ds);
   return { kind, lane, violations, zones, goreZones, credit, insideM, overlap: Math.max(0, overlap), dug, dugCost, gore: g, sGore: line.s[k] };
 }
