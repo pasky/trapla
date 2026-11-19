@@ -2,6 +2,10 @@
 
 Build the cheapest norm-abiding road from A to B on real Czech terrain, within a travel-time target
 and for a given traffic. Scenario #1: Trutnov → Polish border (the D11 corridor).
+
+**Play it:** <https://pasky.github.io/trapla/> (desktop browser with WebGL 2). Code: MIT licence (`LICENSE`);
+the map data keep their own licences (see *Data attribution* below and the in-game *About Trapla and its data*).
+
 Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`, `research/07`–`11` (prices, geology and noise).
 
 ![design](docs/screenshots/02-design.png)
