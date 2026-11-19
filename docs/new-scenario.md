@@ -11,7 +11,8 @@ slot. Do not reuse a road preset's save slot for a future motorway mission on th
 | `d11` | Trutnov → Polish border; original challenge/default/save semantics unchanged | PLAN.md; research/01–20 |
 | `d3` | Jílové → Václavice, **including the Sázava crossing in 0302**, plus 0303 | research/25-d3-scenario.md |
 | `d35` | Full Opatovec → Mohelnice preferred; explicitly named Opatovec → Staré Město only if measured budgets require it | research/26-d35-scenario.md |
-| `i16-nova-paka` | Genuine class-I southeast bypass; reference 8.479 km, S11.5/70 | research/24-nova-paka-scenario.md |
+| `i16-nova-paka` | Genuine class-I southeast bypass; reference 8.479 km, S11.5/70 (retired: its ground holds the real works) | research/24-nova-paka-scenario.md |
+| `i46-sternberk` | I/46 Šternberk bypass, planned and not built; reference 4.229 km mapped (4.708 km published), S11.5/90 → 70 | research/88-town-bypass-candidates.md |
 
 These are road exercises, not claims that a two-lane road meets the actual D3/D35 motorway demand.
 `src/core/data/scenario.ts` owns catalogue values, `presetId`, fresh-design `initial` category/speed,

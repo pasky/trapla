@@ -240,7 +240,12 @@ The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/sc
 Hostěradice across the Sázava (the smallest map, 3.9 MB, a 4.5 km motorway). Below it one card per corridor or
 mission: what it is and how long, one line of what you do, the download size; the D3 and the D35 each have one card
 with their sections as choices, the whole route last ([the D3 card](docs/screenshots/553-start-screen-d3-whole-route.png)).
-Nová Paka comes last: the real bypass is already in its ground. Retired missions are never offered; a save of one
+The sections are named by their places ([the D3 card](docs/screenshots/581-start-screen-d3-card.png)), and a card's line says
+only what you do. The town bypass comes last: the I/46 around Šternberk, planned and not built (research/88;
+[the starter](docs/screenshots/583-sternberk-overview.png), [its end on the road to Opava past the viaduct](docs/screenshots/584-sternberk-end-b.png),
+[the aerial photo](docs/screenshots/585-sternberk-photo.png)). It replaced Nová Paka, whose ground and photo were taken
+while the real bypass was being built ([the start screen now](docs/screenshots/580-start-screen.png)).
+Retired missions are never offered; a save of one
 is listed under [Your older saves](docs/screenshots/554-start-screen-older-saves.png). A picked mission's map
 loads with [a card that counts the megabytes](docs/screenshots/555-loading-card.png); the map is drawn
 [before its first price](docs/screenshots/556-map-before-its-first-price.png); then [the first run](docs/screenshots/557-first-run.png)

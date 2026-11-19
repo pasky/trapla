@@ -142,11 +142,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   cost model 47); Auto bridges over them (no supports inside) or mines under them; no tunnel over 500 m steeper than 5 %
   to its ends, 3–5 % a note (no price for the safety measures, research/76). The real D35 layout is Auto's kind (a 2.9 km
   tunnel under Pod skálou at ≤ 3.8 %; the real-portal line +5.4 %, research/73 §7). Not taken: T-8.0 tube width, rock cover,
-  running costs (research/73 §5, /74). The Nová Paka
-  starter follows the mapped bypass. Since cost model 37, most side roads no longer break its small drags: dead ends
-  are cut back to their junction, and the separation retry runs on every category. One street still does, where its
-  junction lies at our slope's toe. What mostly breaks them is the hand-set radii at the norm's limit (S-bends 4–6,
-  bend 9; PLAN.md, model 37).
+  running costs (research/73 §5, /74). The town-bypass mission is the I/46 Šternberk bypass (planned, not built;
+  research/88): Nová Paka is retired (its ground and photo hold the real bypass's works), its pack kept for old saves.
 - A reroute's new piece can be led to another road by dragging its end (the square handle where it joins its road;
   `CrossingOverride.ends`, cost model 52, PLAN.md "A reroute led where the player drags its end"): built like Auto's
   own, a road that cannot take it leaves Auto's line and says why; a shaped side no longer builds the other side.

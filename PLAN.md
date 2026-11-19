@@ -2372,3 +2372,21 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   window (both kinds, as before).
 - Shots 570–575 (`scripts/d11-motorway-shots.mjs --docs 570`; 575 the frame piers of a line with a bend every 2.5 km).
 
+
+## The Šternberk bypass replaces Nová Paka; the start screen's words (owner request, no model version, 2026-11-19)
+
+- **Why:** Nová Paka's ground (DMR 5G) and aerial photo were taken while its real bypass was being built: the real
+  cuts are in the terrain (earthworks come cheap) and the photo shows the site. Research: research/88 (five planned,
+  unstarted class I bypasses compared; the owner picked I/46 Šternberk).
+- **The mission** (`i46-sternberk`, preset `i46-sternberk-road`): the OSM planned line (4.23 km) from the I/46 from
+  Olomouc south of the town to the I/46 to Opava past the Domašov turn; S 11.5 at 90 km/h, its last three bends at
+  70 as the real project past km 2.0; traffic 10,453 a day, the length-weighted ŘSD 2025 count through the town (a
+  town count, not a forecast); 3.6 min. Both ends are declared merges with the I/46 way they lie on (without them
+  Auto bridged the I/46 over our own end). Starter VALID on its own: 870 M (ŘSD's estimate 2.04 bn builds two
+  interchanges, six more bridges, climbing lanes and walls the game does not; research/88).
+- **Nová Paka** is retired (`retired: true`): offered only under "Your older saves" to a player with a save; its pack
+  and fixtures stay, and its gate still runs.
+- **Start screen:** "Design roads and railways on real terrain"; the line under it names roads, motorways and
+  railways; the D3 section chips are place names (Praha → Jílové …), the D35's first section too; a card's
+  description is its goal alone (no "title: …" prefix). `scripts/release-shots.mjs` checks all four.
+- **End cards:** "Joins …" says "It carries on as … here" (it said "Our motorway" on a road mission too).

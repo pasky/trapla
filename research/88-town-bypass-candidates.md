@@ -73,9 +73,47 @@ https://letaky.rsd.cz/Upload/Stavby/625/infoletak_s57-vrchy-obchvat-A5.pdf, EIA 
 Runner-up: I/57 Valašské Meziříčí – Jarcová (busier town, bigger story, but a floodplain line of 2.7 km of bridges at
 3.1 bn, and its category is half of a four-lane road).
 
-Mission sketch (to be confirmed when the pack is built): category S 11.5 at 90 km/h, as the real project to km 2.0
-(its last 2.7 km at 70: our per-bend design speed lets the player and Auto drop to it, cost model 31); A = the
-start of the proposed line at the end of the four-lane from Olomouc (the real start is a split of the interchange
-branches), B = where it rejoins the I/46 toward Opava past the Domašov turn; traffic goal from CSD 2025 (UNVERIFIED:
-no published forecast for the bypass found yet; the through-town counts fall from 16,731 to 5,241 up the hill, so most
-of the town's traffic is its own).
+## The mission as built (pack `i46-sternberk`, preset `i46-sternberk-road`, 2026-11-19)
+
+- **Pack:** EPSG:5514 [-545500, -1113000, -538500, -1104500], 7.0 × 8.5 km at 5 m (1,400 × 1,700 = 2.38 M cells),
+  ground 219–632 m, no DMR gaps; 6,964 buildings; 4.0 MB built (`pipeline/scenarios/i46-sternberk.json`). No
+  protected area lies in it (AOPK: CHKO / EVL / PO Litovelské Pomoraví and PP Chomoutovské jezero only within
+  2 km outside it). The streams the line crosses are not cut off by the map's edge (Sprchový potok 3.2 km² at the
+  viaduct, Aleš 5.0 km²).
+- **Planned line:** OSM ways 939310911 … 939310904 (13, `highway=proposed`, ref 46), 4,229 m, from node
+  2929004274 on the existing I/46 south of the town to node 26401008 on the I/46 towards Opava. The leaflet's
+  4,708 m includes the interchange split at the start (km 0.047) and the works at both ends.
+- **Ends:** A and B are those two nodes, each declared a *merge* with the I/46 way it lies on (OSM 289348606 at A,
+  4337741 at B; `ENDPOINT_JUNCTIONS.merge`, PROVISIONAL): our earthworks over it near the end are the junction's.
+  Without the declaration Auto bridged the I/46 over our own end (62 M at A, 541 M at B). The real start is an
+  interchange split (the old road becomes its branch); the game builds neither interchange.
+- **Category and speed:** S 11.5 at 90 km/h, the real project's; its last three bends (past km 2.0) at 70 km/h, as the
+  real project past its interchange at km 2.0.
+- **Traffic: the town count, not a forecast.** No forecast for the bypass was found. The mission takes ŘSD CSD 2025 on
+  the I/46 through Šternberk, the stretch the bypass replaces, from the town sign to the Domašov turn: sections
+  7-1096 (16,731 vehicles a day, 1,299 heavy, 957 m), 7-1091 (12,816 / 707, 651 m), 7-2182 (9,671 / 866, 753 m) and
+  7-2196 (5,241 / 723, 1,335 m), averaged over their lengths: **10,453 a day, 898 heavy (8.6 %)**. (The busiest
+  section alone, 16,731, is over what a two-lane road carries at level of service C, 11,650, and would call for a
+  four-lane road; the real project is a two-lane S 11.5 with climbing lanes, and much of the town's traffic is its
+  own: the count falls to 5,241 on the road out to Opava.) The 8.6 % census heavy share is the noise model's heavy
+  share.
+- **Time target:** a mission choice, the mapped line + 10 % at the real project's speeds: 2.0 km at 90 and 2.23 km at
+  70 → 3.57 → **3.6 min**.
+- **Starter:** the mapped line's five curves as bends at its tangent intersections, radii near the mapped ones
+  (R 1,500 / 1,000 / 800 / 360 / 340 m; the last two at the norm's limit for their spacing), bend 1 moved 10 m east
+  so that our earthworks clear the I/46 the road leaves at A (a 13° fork). VALID on its own, Auto grade.
+
+### Our bill of the starter against the ŘSD estimate (context, not a target)
+
+Cost model 56, S 11.5, Auto grade (`scripts/scenarios/i46-sternberk/default.json`): **870 M CZK**, 4.23 km, 206 M/km,
+3.2 min: road base 219, earthworks 49, bridges 178 (one 240 m viaduct over the Sprchový potok valley, km 3.89–4.13),
+crossings 118 (2 tracks over us, 1 under, 6 moved), other objects 156, buildings 87 (38, most of them sheds of the
+allotments the real line goes through too), land 43, noise walls 17 (634 m), forest 3. The mapped line sampled every
+1.5 km with Auto's radii (`reference.json`): 1,266 M (a 480 m bridge).
+
+ŘSD's estimate is **2,037 M** (07/2025). What the real project builds that ours does not: two interchanges with
+2,620 m of branches (the split at the start and Olomoucká street at km 2.056), six more bridges (520 m in all: the
+branch crossing 83 m, the Aleš stream and the chalet road 56 m, a ravine 42 m, …), climbing lanes, 1,560 m of noise
+walls, 1,186 m of retaining walls, temporary connections at both ends and 85 objects in all (utilities, field
+roads). Our line keeps close to the ground (cuts up to 6.6 m, fills up to 8.2 m, 11 m at the viaduct's end) and fills the ravine at km
+3.2 that the real one bridges. So ours is −57 % on a project with much more in it; the card shows only our bill.
