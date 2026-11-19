@@ -122,6 +122,9 @@ export const URBAN_NORM_PER_KM: Record<CategoryId, { hilly: number; mountainous:
   'R1': { hilly: railRouteBasePerKm(1, true), mountainous: railRouteBasePerKm(1, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
   'R2': { hilly: railRouteBasePerKm(2, true), mountainous: railRouteBasePerKm(2, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
   'D27.5-1': { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000, codes: ['60 % × A.1.D.27,5.NER', '60 % × A.1.D.27,5.NEH'] },
+  // The four-lane class I road: SPK has no built-up S 21.5 row; its rural D 21.5 row is used, as for the motorway.
+  'S21.5': { hilly: 146_694_000, mountainous: 167_028_000, codes: ['A.1.D.21,5.NER', 'A.1.D.21,5.NEH'] },
+  'S21.5-1': { hilly: 0.6 * 146_694_000, mountainous: 0.6 * 167_028_000, codes: ['60 % × A.1.D.21,5.NER', '60 % × A.1.D.21,5.NEH'] },
 };
 
 // ---------------------------------------------------------------------------------------------

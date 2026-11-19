@@ -25,14 +25,14 @@ import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, slopeKnee, groundStations } from './earthwork-surface';
 import { FACE_AT } from '../core/sections';
-import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
-import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
+import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, setPairedSection, terrainUniforms } from './terrainMaterial';
+import { MOTORWAY_MARKINGS, PAIRED_SECTIONS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
 import { ARCH_DECK_DEPTH, ARCH_RIB_DEPTH, archColumns, archRib, frameColumns } from '../core/bridge';
 import { FRAME_PIER } from '../core/data/bridges';
-import { CATEGORIES } from '../core/data/categories';
+import { CATEGORIES, pairedCategoryOf } from '../core/data/categories';
 import { natureLayers } from './nature';
 
 export interface ViewEvents {
@@ -120,11 +120,18 @@ const PORTAL_LID = 7.5, PORTAL_LID_BLEND = 3;
  * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
 const SECTIONS = [undefined, ...Object.values(CATEGORIES).map((c) => c.section).filter((s) => s)];
 function sectionIndex(crownWidth: number) {
-  const cat = Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth);
+  const cat = categoryOfCrown(crownWidth);
   if (cat?.paired) return PAIRED_SECTION;
   if (cat?.carriageway) return CARRIAGEWAY_SECTION;
   if (cat?.mode === 'railway') return cat.tracks === 2 ? RAIL2_SECTION : RAIL_SECTION;
   return Math.max(0, SECTIONS.indexOf(cat?.section));
+}
+
+const categoryOfCrown = (crownWidth: number) => Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth);
+/** The paired corridor (D 27.5, S 21.5) a paired or one-direction crown width belongs to. */
+function pairedSectionOf(crownWidth: number) {
+  const cat = categoryOfCrown(crownWidth), paired = cat && pairedCategoryOf(cat.id);
+  return paired ? { id: paired, section: PAIRED_SECTIONS[paired] } : undefined;
 }
 
 /** stations within a (non-goal) violation, drawn red */
@@ -206,8 +213,7 @@ export class View {
     SECTIONS.forEach((s, k) => { if (s) u.roadSections.value[k].set(s.lane, s.lane + s.hardShoulder, s.edgeLine, s.centreLine); });
     const dash = SECTIONS[1];
     if (dash) u.roadDash.value.set(dash.dash, dash.gap);
-    u.roadPaired.value.set(D275_SECTION.median / 2, D275_SECTION.innerPavedShoulder, D275_SECTION.laneWidth, D275_SECTION.outerPavedShoulder);
-    u.roadCarriageway.value = CATEGORIES['D27.5-1'].crownWidth / 2;
+    setPairedSection(u, 'D27.5');
     u.roadRail.value.set(1, TRACK_CENTRES_M, RAILWAY_EVIDENCE.ballastTopHalfWidthM, (RAILWAY_EVIDENCE.standardGaugeMm + 72) / 2000);
     u.roadPairedLines.value.set(MOTORWAY_MARKINGS.edgeLine, MOTORWAY_MARKINGS.laneLine, MOTORWAY_MARKINGS.dash, MOTORWAY_MARKINGS.gap);
     return u;
@@ -867,7 +873,9 @@ export class View {
     const context = sharedContext ?? routeSurfaceContext(surfaces, surfaces, natural, (x, y) => this.drape(x, y));
     yield;
     const n = r.n, w = crownWidth / 2;
-    const bad = badStations(r), section = sectionIndex(crownWidth);
+    const bad = badStations(r), section = sectionIndex(crownWidth), paired = pairedSectionOf(crownWidth);
+    // the terrain shader draws the lanes of one paired cross-section: this road's (a mission has one)
+    if (paired) setPairedSection(this.terrainU, paired.id);
     // one direction of a separate motorway stretch run against its travel (the reverse direction, A→B):
     // its median side is on the right
     const side = mirrored && section === CARRIAGEWAY_SECTION ? -1 : 1;
@@ -1120,7 +1128,7 @@ export class View {
     const shade = (c: THREE.Color, f: number) => c.clone().multiplyScalar(f);
     const supports = structureFootprints({ ...r, crownWidth });
     // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
-    const gap = section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION ? D275_SECTION.median / 2 : 0;
+    const gap = (section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION) && paired ? paired.section.median / 2 : 0;
     // one direction of a split motorway: its half of the median (on its left) is open on a bridge
     const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [side > 0 ? [-w, w - gap] : [-w + gap, w]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;

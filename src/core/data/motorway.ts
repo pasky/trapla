@@ -1,28 +1,53 @@
 import type { PairedCrossSection } from '../paired-carriageways';
 
+import type { PairedCategoryId } from './categories';
+
+/** One divided road's cross-section per direction, from the spine out: half the median, inner paved
+ * shoulder, inner lane, outer lane, outer paved shoulder, unpaved verge (counted in the category width). */
+export interface PairedSection {
+  innerLane: number; outerLane: number;
+  lanesPerDirection: 2;
+  outerPavedShoulder: number; innerPavedShoulder: number; includedSoftShoulder: number;
+  median: number; normalCrossfall: number;
+}
+
 /**
  * MD VL1 01/2022 sheet 11-02, personally inspected dimensioned drawing.
  * research/22-motorway-evidence.md. Category width includes soft shoulders; optional
  * delineator/barrier shoulders OUTSIDE category width are not silently included here.
  */
-export const D275_SECTION = {
-  laneWidth: 3.75,
+export const D275_SECTION: PairedSection = {
+  innerLane: 3.75, outerLane: 3.75,
   lanesPerDirection: 2,
   outerPavedShoulder: 3.5,
   innerPavedShoulder: 0.5,
   includedSoftShoulder: 0.5,
   median: 3.5,
   normalCrossfall: 0.025,
-} as const;
+};
+/** Four-lane divided class I road: MD VL 1 (2022) sheet 11-06 "D a S 21,5": NK 0.50 + ZK 1.50 + JP 3.50 +
+ * JP 3.25 + ZK 0.50 + SDP 3.00 + … = 21.50 m (the 2018 revision counts the guide strip in the paved shoulder;
+ * research/89 §6). The normal crossfall is taken as the motorway's (not on the sheet as read). */
+export const S215_SECTION: PairedSection = {
+  innerLane: 3.25, outerLane: 3.5,
+  lanesPerDirection: 2,
+  outerPavedShoulder: 1.5,
+  innerPavedShoulder: 0.5,
+  includedSoftShoulder: 0.5,
+  median: 3.0,
+  normalCrossfall: 0.025,
+};
+export const PAIRED_SECTIONS: Record<PairedCategoryId, PairedSection> = { 'D27.5': D275_SECTION, 'S21.5': S215_SECTION };
 
 /** Physical paved bands (not nominal half-category widths); representative axis = lane-pair centre. */
-export function d275CrossSection(): PairedCrossSection {
-  const d = D275_SECTION, inside = d.median / 2;
-  const pavedWidth = d.innerPavedShoulder + d.lanesPerDirection * d.laneWidth + d.outerPavedShoulder;
-  const outside = inside + pavedWidth, axis = inside + d.innerPavedShoulder + d.lanesPerDirection * d.laneWidth / 2;
+export function pairedCrossSection(category: PairedCategoryId): PairedCrossSection {
+  const d = PAIRED_SECTIONS[category], inside = d.median / 2, lanes = d.innerLane + d.outerLane;
+  const pavedWidth = d.innerPavedShoulder + lanes + d.outerPavedShoulder;
+  const outside = inside + pavedWidth, axis = inside + d.innerPavedShoulder + lanes / 2;
   return { right: { min: -outside, max: -inside, axis: -axis }, left: { min: inside, max: outside, axis },
     formation: { min: -outside - d.includedSoftShoulder, max: outside + d.includedSoftShoulder } };
 }
+export const d275CrossSection = (): PairedCrossSection => pairedCrossSection('D27.5');
 
 /** Radimský 2019 slides 4/6/15, ČSN 73 6101:2018 revision; research/21 and /22.
  * Radius requires 6% superelevation AND stopping sight distance, not an unconditional curve approval.

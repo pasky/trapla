@@ -112,6 +112,29 @@ Query box EPSG:5514 [-688000, -1014500, -664000, -991500]. On the OSM line:
   kraje", 2.1 km off the line), Valdštejn and Hrubá Skála castles, the Podtrosecká údolí ponds; Kost and Humprecht
   lie on the old southern variant, not here.
 
+## 6. The game's S 21.5 category (the four-lane class I road, cost model unchanged)
+
+The owner's decision (2026-11-19): build the mission as the real road, S 21.5 (not D 27.5, 6 m wider than S 21.5
+and 12 m wider than the 2+1). Its rows, all sourced, none scaled:
+
+| What | Value | Source |
+|---|---|---|
+| Cross-section | per direction from the spine: ½ median 1.50 + inner paved shoulder 0.50 + lanes 3.25 (inner) and 3.50 (outer) + outer paved shoulder 1.50 + verge 0.50 = 10.75 m; 21.50 m in all | MD VL 1 (2022) sheet 11-06 "D a S 21,5" (NK 0,50 + ZK 1,50 + JP 3,50 + JP 3,25 + ZK 0,50 + SDP 3,00 + …), https://upload.wikimedia.org/wikipedia/commons/5/59/VL_1_2022_Vozovky_a_krajnice.pdf ; the 2018 revision counts the guide strip in the paved shoulder (Radimský 2019: "Šířka vodicího proužku byla přičtena k šířce zpevněné krajnice") |
+| Design speed | 110 km/h, lowered by 10 or 20 in justified cases: 110 / 100 / 90 | Radimský 2019, https://konference-projektovani.cz/wp-content/uploads/2022/03/9.pdf : "D a S 21,5 … 110"; "Návrhovou rychlost vn lze v odůvodněných případech snížit o 10 nebo 20 km/h" |
+| Radii, vertical radii | by speed, as for every category: 110 the motorway row (560 / 1,740 m; crest 8,300, sag 4,000), 100: 470 / 1,440 m, crest 7,900, sag 3,400; 90 the road row; at 100 a straight of ≥ 2·vn = 200 m between opposite plain arcs | research/00 §4.1 (Radimský slide 6), research/48 §3; VUT "Aplikace ČSN 73 6101" p. 18 ("mezipřímá, alespoň v délce 2Vn") |
+| Max gradient | 4 % flat, **4.5 % (up to 6 %) hilly, 6 % mountainous** (the game: 4.5 / 6) | ČSN 73 6101:2018 tab. as transcribed in Zavadil, UTB diploma thesis 2023, tab. 12, https://digilib.k.utb.cz/bitstream/handle/10563/53338/zavadil_2023_dp.pdf : "S 21,5; S 20,75; S 15,25 — 4 — 4,5 (až 6) — 6" (its S 11.5 row matches our sourced 4.5 / 6 / 7.5) |
+| Road price | SPK CN 2026 **A.1.D.21,5.NER 146,694,000 / NEH 167,028,000 CZK per km** (no S 21.5 row; D and S 21.5 are one VL 1 cross-section) | research/data/spk-cn-2026-oceneni.csv; the ŘSD study of this road prices its S 21.5 stretch with the same row: "A.1.D.21,5.NER - DÁLNICE (D 21,5), EXTRAVILÁN, NOVOSTAVBA" [C3] |
+| Bridge price | A.2.D.21,5.N 1,194,135,000 CZK per km | the same CSV |
+| Earthworks in the price | 70,000 m³ of cut per km, as for every divided road | SPK report (research/00 §3.1: "70,000 m³ of cut per km for divided roads") |
+| Built-up row | none: the rural row, as for the motorway | — |
+| Tunnels | one 2-lane tube per direction (the study: Pelešany two one-way tubes, T-8.0) | [TST] §6.3 |
+| One direction (split) | 10.75 m, 60 % of the norm, as D 27.5's one direction (SPK p. 7) | categories.ts 'D27.5-1' |
+| In law | a class I road: a CHKO's zones III–IV need consent (a note), zones I–II and reserves ban works as for any road; a motorway (D 27.5) is banned anywhere in a CHKO | zákon 114/1992 §26 (research/75); the category flag `motorwayByLaw` |
+
+Known difference: the real line is S 21.5 only to MÚK Žernov (km 12.4) and the 2+1 S 15.25/110 beyond (20.5 km; SPK has
+its rows, A.1.S1.15,25.NER 91,359,000 CZK/km, and VL 1 sheet 12-01 its widths). The game builds one category per
+route, so the mission is S 21.5 throughout: ≈ 6 m wider than the real road for 20.5 km.
+
 ## Sources (opened 2026-11-19)
 
 - [P] ŘSD project portal: https://kraje.rsd.cz/s35/

@@ -1,4 +1,6 @@
 // Terrain surface shader: everything is computed per pixel from the height texture and the land-cover
+import { CATEGORIES, type PairedCategoryId } from '../core/data/categories';
+import { PAIRED_SECTIONS } from '../core/data/motorway';
 // clip levels — multi-directional relief shading, hypsometric tint, optional contour lines and slope
 // tint, out-of-bounds hatching — so close-ups are as crisp as the overview.
 
@@ -88,9 +90,11 @@ export interface TerrainUniforms {
   roadSections: { value: THREE.Vector4[] };
   /** centre-line dash and gap (m) */
   roadDash: { value: THREE.Vector2 };
-  /** paired motorway (section index PAIRED_SECTION): median half-width, inner paved shoulder, lane
+  /** paired motorway (section index PAIRED_SECTION): median half-width, inner paved shoulder, inner lane
    * width, outer paved shoulder (m); lines: edge width, lane-line width, dash, gap (m) */
   roadPaired: { value: THREE.Vector4 };
+  /** the paired section's outer lane width, m (S 21.5: 3.50 beside a 3.25 inner lane) */
+  roadPairedOuter: { value: number };
   roadPairedLines: { value: THREE.Vector4 };
   /** half-width of one direction's own formation (split motorway), m */
   roadCarriageway: { value: number };
@@ -103,6 +107,14 @@ export const PAIRED_SECTION = ROAD_SECTIONS - 1;
 export const RAIL_SECTION = ROAD_SECTIONS - 3, RAIL2_SECTION = ROAD_SECTIONS - 4;
 /** Slot of one direction of a split motorway: the same paint, the median on its left (travel inside). */
 export const CARRIAGEWAY_SECTION = ROAD_SECTIONS - 2;
+
+/** Point the shader's paired cross-section at a corridor category's lanes (one paired section is drawn at a time). */
+export function setPairedSection(u: TerrainUniforms, category: PairedCategoryId): void {
+  const d = PAIRED_SECTIONS[category];
+  u.roadPaired.value.set(d.median / 2, d.innerPavedShoulder, d.innerLane, d.outerPavedShoulder);
+  u.roadPairedOuter.value = d.outerLane;
+  u.roadCarriageway.value = CATEGORIES[CATEGORIES[category].carriagewayOf!].crownWidth / 2;
+}
 
 export function terrainUniforms(): TerrainUniforms {
   return {
@@ -125,6 +137,7 @@ export function terrainUniforms(): TerrainUniforms {
     roadDash: { value: new THREE.Vector2(3, 6) },
     roadPaired: { value: new THREE.Vector4(0, 0, 0, 0) },
     roadPairedLines: { value: new THREE.Vector4(0, 0, 1, 1) },
+    roadPairedOuter: { value: 0 },
     roadCarriageway: { value: 0 },
     roadRail: { value: new THREE.Vector4(0, 0, 0, 0) },
   };
@@ -363,6 +376,7 @@ uniform vec4 roadSections[${ROAD_SECTIONS}];
 uniform vec2 roadDash;
 uniform vec4 roadPaired;
 uniform vec4 roadPairedLines;
+uniform float roadPairedOuter;
 uniform float roadCarriageway;
 uniform vec4 roadRail;
 // offset from the motorway's centre line: paired sections are symmetric about it, a split direction's
@@ -408,9 +422,9 @@ vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
   } else if (k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0) {
     // two carriageways about the spine: median (grass, concrete barrier), inner shoulder, two lanes, hard shoulder, verge
     x = rdSpine(k, geo.x);
-    float m = roadPaired.x, l0 = m + roadPaired.y, l1 = l0 + 2.0 * roadPaired.z, paved = l1 + roadPaired.w;
+    float m = roadPaired.x, l0 = m + roadPaired.y, l1 = l0 + roadPaired.z + roadPairedOuter, paved = l1 + roadPaired.w;
     float u = x - l0 - roadPaired.z; // offset from the line between the two lanes
-    float track = 1.0 - smoothstep(0.15, 0.45, abs(abs(u) - 0.5 * roadPaired.z) - 0.9);
+    float track = 1.0 - smoothstep(0.15, 0.45, abs(abs(u) - 0.5 * (u < 0.0 ? roadPaired.z : roadPairedOuter)) - 0.9);
     col *= 1.0 - 0.06 * track * (1.0 - smoothstep(0.3, 0.8, fx));
     vec3 grass = mix(vec3(0.40, 0.55, 0.28), vec3(0.52, 0.60, 0.33), smoothstep(-0.3, 0.3, big + mid)) * (1.0 + 0.15 * fine);
     vec3 concrete = vec3(0.72, 0.71, 0.68) * (1.0 + 0.05 * mid);
@@ -457,6 +471,7 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
     shader.uniforms.roadDash = u.roadDash;
     shader.uniforms.roadPaired = u.roadPaired;
     shader.uniforms.roadPairedLines = u.roadPairedLines;
+    shader.uniforms.roadPairedOuter = u.roadPairedOuter;
     shader.uniforms.roadCarriageway = u.roadCarriageway;
     shader.uniforms.roadRail = u.roadRail;
     shader.vertexShader = shader.vertexShader

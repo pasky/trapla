@@ -5,7 +5,9 @@ import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railEverywherePerKm, railRouteBase
 // Sources: SFDI SPK CN 2026 (research/data/spk-cn-2026-oceneni.csv), "defined standard" column, CZK
 // excl. VAT, 2026 price level. ČSN 73 6101 (2018) design speeds per research/00 §4.1.
 
-export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'M7.5' | 'P4' | 'D27.5' | 'D27.5-1' | 'R1' | 'R2';
+export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'M7.5' | 'P4' | 'D27.5' | 'D27.5-1' | 'S21.5' | 'S21.5-1' | 'R1' | 'R2';
+/** A divided road built as a paired corridor (mode 'motorway'): the corridor's category; `carriagewayOf` its one direction. */
+export type PairedCategoryId = 'D27.5' | 'S21.5';
 /** Legal class of a road (who owns it; the cross-section is chosen separately). */
 export type LegalClass = 'I' | 'II' | 'III' | 'local' | 'service' | 'track';
 export type TerrainClass = 'hilly' | 'mountainous';
@@ -46,7 +48,7 @@ export interface Category {
   /** design speeds the player may pick, km/h (base speed lowered by 10 or 20 where justified) */
   speeds: number[];
   /** road class used for the earthworks allowance included in the norm */
-  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway' | 'rail' | 'local' | 'track';
+  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway' | 'divided' | 'divided-carriageway' | 'rail' | 'local' | 'track';
   /** Built under the local-road norm ČSN 73 6110 ('local') or the field-track norm ČSN 73 6109 ('track')
    * instead of ČSN 73 6101: own speed rows (data/norms.ts), no junction spacing (research/42). */
   minor?: 'local' | 'track';
@@ -63,7 +65,7 @@ export interface Category {
   tunnelTubes: number;
   /** lanes and markings of a single carriageway */
   section?: CrossSection;
-  /** two carriageways about the spine (motorway): see data/motorway.ts D275_SECTION */
+  /** two carriageways about the spine (motorway): see data/motorway.ts PAIRED_SECTIONS */
   paired?: boolean;
   /** A share of another category's norm (one direction of a split motorway: 60 % of D 27.5); its
    * earthwork allowance is the same share of that category's allowance. */
@@ -80,6 +82,12 @@ export interface Category {
   /** one carriageway of a split motorway; its axis is the middle of its half of the formation, the
    * median lies on its left (the travel direction's inside) */
   carriageway?: boolean;
+  /** A paired corridor's one direction (its category when split), and back from a direction to its corridor. */
+  carriagewayOf?: CategoryId;
+  pairedOf?: PairedCategoryId;
+  /** A motorway in law (dálnice), not only in build: a protected landscape area takes none (zákon 114/1992
+   * §26(1)(f), research/75). A divided class I road (S 21.5) is built the same way but is not one. */
+  motorwayByLaw?: boolean;
 }
 
 export const CATEGORIES: Record<CategoryId, Category> = {
@@ -139,6 +147,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   // D27.5 bridge row per km of the average of the two parallel bridges, one 2-lane tube per direction.
   'D27.5': {
     id: 'D27.5', mode: 'motorway', label: 'D 27.5 (motorway)', enabled: false, crownWidth: 27.5, paired: true, gradeSeparated: true,
+    carriagewayOf: 'D27.5-1', motorwayByLaw: true,
     // ČSN 73 6101:2018 D 27.5: 4 % hilly, 4.5 % mountainous (exceeding needs the road authority's consent)
     maxGradient: { hilly: 0.04, mountainous: 0.045 },
     speeds: [130, 120, 110], roadClass: 'motorway',
@@ -154,12 +163,39 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   // one 2-lane tube.
   'D27.5-1': {
     id: 'D27.5-1', mode: 'motorway', label: 'D 27.5 (one direction)', enabled: false, crownWidth: 13.75, carriageway: true, gradeSeparated: true,
+    pairedOf: 'D27.5', motorwayByLaw: true,
     normShareOf: { category: 'D27.5', share: 0.6 },
     maxGradient: { hilly: 0.04, mountainous: 0.045 },
     speeds: [130, 120, 110], roadClass: 'motorway-carriageway',
     normPerKm: { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000 },
     normCodes: { hilly: '60 % × A.1.D.27,5.NER', mountainous: '60 % × A.1.D.27,5.NEH' },
     bridgePerKm: 1_495_178_000 / 2, bridgeCode: '½ × A.2.D.27,5.N', tunnelTubes: 1,
+  },
+  // Four-lane divided class I road (silnice I. třídy), built as a paired corridor like the motorway but not a
+  // motorway in law (research/89 §6). Widths: MD VL 1 (2022) sheet 11-06 "D a S 21,5" (data/motorway.ts
+  // S215_SECTION). Design speed 110, lowered by 10 or 20 in justified cases (Radimský 2019 slide 4); radii and
+  // vertical radii by speed as for every category (data/norms.ts). Max gradient ČSN 73 6101:2018 (Zavadil, UTB
+  // thesis 2023, tab. 12): S 21.5 4 % flat, 4.5 % (up to 6 %) hilly, 6 % mountainous. Price: SPK 2026 has no
+  // S 21.5 row; its D 21.5 rows (the same VL 1 cross-section; the ŘSD study of the I/35 prices its S 21.5 stretch
+  // with "A.1.D.21,5.NER - DÁLNICE (D 21,5)", research/89 §6), the D 21.5 bridge row, one 2-lane tube per direction.
+  'S21.5': {
+    id: 'S21.5', mode: 'motorway', label: 'S 21.5 (four-lane road)', enabled: false, crownWidth: 21.5, paired: true, gradeSeparated: true,
+    carriagewayOf: 'S21.5-1',
+    maxGradient: { hilly: 0.045, mountainous: 0.06 },
+    speeds: [110, 100, 90], roadClass: 'divided',
+    normPerKm: { hilly: 146_694_000, mountainous: 167_028_000 },
+    normCodes: { hilly: 'A.1.D.21,5.NER', mountainous: 'A.1.D.21,5.NEH' },
+    bridgePerKm: 1_194_135_000, bridgeCode: 'A.2.D.21,5.N', tunnelTubes: 2,
+  },
+  // One direction of a split S 21.5: half its formation (10.75 m), 60 % of its norm as for 'D27.5-1'.
+  'S21.5-1': {
+    id: 'S21.5-1', mode: 'motorway', label: 'S 21.5 (one direction)', enabled: false, crownWidth: 10.75, carriageway: true, gradeSeparated: true,
+    pairedOf: 'S21.5', normShareOf: { category: 'S21.5', share: 0.6 },
+    maxGradient: { hilly: 0.045, mountainous: 0.06 },
+    speeds: [110, 100, 90], roadClass: 'divided-carriageway',
+    normPerKm: { hilly: 0.6 * 146_694_000, mountainous: 0.6 * 167_028_000 },
+    normCodes: { hilly: '60 % × A.1.D.21,5.NER', mountainous: '60 % × A.1.D.21,5.NEH' },
+    bridgePerKm: 1_194_135_000 / 2, bridgeCode: '½ × A.2.D.21,5.N', tunnelTubes: 1,
   },
   // New electrified (25 kV) conventional line, mixed traffic, ≤ 160 km/h. Formation: SŽDC S3 X fig. 4
   // uncanted single-track half-width 3.1 m (research/23); double track adds the PROVISIONAL 4.0 m track
@@ -184,6 +220,12 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     markup: { base: 0, earth: SPOZES.markup.substructure, bridge: SPOZES.markup.bridges, tunnel: SPOZES.markup.tunnels },
   },
 };
+
+/** The paired corridor a category belongs to (itself, or the corridor of one direction); none for other roads. */
+export function pairedCategoryOf(id: CategoryId): PairedCategoryId | undefined {
+  const c = CATEGORIES[id];
+  return c.paired ? id as PairedCategoryId : c.pairedOf;
+}
 
 /** Single-carriageway road cross-sections a road (RoadSpec.crossSection) may have. */
 export const ROAD_CROSS_SECTIONS = (Object.keys(CATEGORIES) as CategoryId[]).filter((k) => CATEGORIES[k].legalClasses);

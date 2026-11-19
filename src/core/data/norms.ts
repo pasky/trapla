@@ -39,6 +39,16 @@ export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
   110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 8300, minSagRadius: 4000 },
 };
 
+/** Four-lane divided class I road (S 21.5): 110 km/h, lowered by 10 or 20 in justified cases (Radimský 2019
+ * slide 4). The ČSN 73 6101:2018 radii and vertical radii are by design speed, whatever the category: 110 is the
+ * motorway row, 90 the road row; 100: radius 470 m at 6 % superelevation, 1,440 m with none (Radimský slide 6,
+ * research/00 §4.1), crest 7,900 m and sag 3,400 m (ČVUT FD 12SDK 2023, research/48 §3). */
+export const DIVIDED_SPEED_NORMS: Record<number, SpeedNorms> = {
+  110: MOTORWAY_SPEED_NORMS[110],
+  100: { speed: 100, minRadius: 470, noSuperelevationRadius: 1440, minTransition: 100, minCrestRadius: 7900, minSagRadius: 3400 },
+  90: SPEED_NORMS[90],
+};
+
 /** Railway (new conventional mixed line, ≤ 160 km/h), PROVISIONAL older teaching values (research/23, /34;
  * current ČSN 73 6360-1 tables not public):
  * - min radius from the cant envelope: R ≥ 11.8·V² / (D + I) with ordinary cant D 150 mm and deficiency
@@ -86,6 +96,7 @@ function normTable(category?: CategoryId): Record<number, SpeedNorms> {
   const c = category ? CATEGORIES[category] : undefined;
   if (c?.minor) return c.minor === 'local' ? LOCAL_SPEED_NORMS : TRACK_SPEED_NORMS;
   const mode = c?.mode ?? 'road';
+  if (c?.roadClass === 'divided' || c?.roadClass === 'divided-carriageway') return DIVIDED_SPEED_NORMS;
   return mode === 'motorway' ? MOTORWAY_SPEED_NORMS : mode === 'railway' ? RAIL_SPEED_NORMS : SPEED_NORMS;
 }
 export function speedNorms(speed: number, category?: CategoryId): SpeedNorms {
@@ -120,6 +131,8 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
   130: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 260 },
   120: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 240 },
   110: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 220 },
+  // 100 km/h (S 21.5 lowered by 10): the same rules, a straight of at least 2·vn between opposite plain arcs (VUT p. 18)
+  100: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 200 },
   90: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 180 },
   80: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 160 },
   70: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 140 },

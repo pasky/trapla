@@ -23,7 +23,7 @@ import { WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_R
 import { buildCrossingGeometry, crossingBridgeMask, ownHomes, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingIssue, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
 import { buildCrossings, type KeptCrossings } from './crossings-kept';
 export type { CrossingResult } from './crossings';
-import { CATEGORIES, type CategoryId } from './data/categories';
+import { CATEGORIES, pairedCategoryOf, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
 import { geometryPis, heightSpeeds, searchSpeeds, hairpinFixes, hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
@@ -40,7 +40,7 @@ import {
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
 import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TRACK_CENTRES_M, TURNOUT_ANGLE_RAD } from './data/railway';
-import { d275CrossSection } from './data/motorway';
+import { pairedCrossSection } from './data/motorway';
 import { sourceReach, type SourceLane } from './noise-field';
 import { crossingWallGaps } from './crossing-walls';
 import { natureCells, protectedRasterCells, railwayNear } from './protected-raster';
@@ -851,7 +851,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   if (terrain.protectedAreas) for (let i = 0; i < n; i++) {
     const cell = { i, s: st.s[i], x: st.x[i], y: st.y[i], tx: st.tx[i], ty: st.ty[i], along: ds / 2, left: pitReach, right: pitReach };
     let crown = false, near = false;
-    natureCells(terrain, cell, cat.mode === 'motorway', c => {
+    natureCells(terrain, cell, !!cat.motorwayByLaw, c => {
       if (c.level !== 'ban') return;
       near = true;
       if (Math.abs(-(c.x - cell.x) * cell.ty + (c.y - cell.y) * cell.tx) <= cat.crownWidth / 2 + terrain.cell / 2) crown = true;
@@ -952,7 +952,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const endJunctions = (ctx.junctions ?? []).flatMap(j => {
     // (one direction of a split motorway ends a quarter of the formation beside the mission's port: project-motorway.ts)
-    const near = (p: { x: number; y: number }) => Math.hypot(j.x - p.x, j.y - p.y) < CATEGORIES['D27.5'].crownWidth / 4 + 1e-3;
+    const near = (p: { x: number; y: number }) => Math.hypot(j.x - p.x, j.y - p.y) < CATEGORIES[pairedCategoryOf(d.category) ?? 'D27.5'].crownWidth / 4 + 1e-3;
     const end = near(ctx.a) ? 'a' as const : near(ctx.b) ? 'b' as const : null;
     return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
   });
@@ -1649,7 +1649,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   const retention: RetainingPlan = preview ? {
     walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
     wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [], walledBuildings: [],
-  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits }, opts.keepClear?.filter(c => c.wall));
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b, motorway: !!cat.motorwayByLaw }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits }, opts.keepClear?.filter(c => c.wall));
   work('retaining', retainingStart);
   lap('sections');
 
@@ -1963,7 +1963,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     return out;
   });
   const withCones = preview ? {} : { coneReachAt, ...(coneHouses ? { coneHouses } : {}) };
-  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: !!cat.motorwayByLaw }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
   work('support', supportStart);
   // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
   // within the limit reaches past them) is no option there: choose again without it.
@@ -1978,7 +1978,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     settled = settle(); selection = settled.selection;
     work('selection', again);
     supportStart = performance.now();
-    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: cat.mode === 'motorway' }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: !!cat.motorwayByLaw }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
   // Between two bridges, a fill the support layout closed off with a wall at an end (the structure choice weighed a
@@ -2618,7 +2618,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
-    motorway: cat.mode === 'motorway', cutCover,
+    motorway: !!cat.motorwayByLaw, cutCover,
     ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}), ...(retiredAt ? { railRetired: retiredAt } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   // houses a road moved aside (its new pieces and the turning area at a cut end) stands on are bought out with it, as
@@ -3101,13 +3101,13 @@ const SEPARATION_REACH = 50;
 /** Support targets this close together are lifted as one stretch; a lift reaches this far, m. */
 const LIFT_CLUSTER = 2400;
 /** A motorway's noise as its two directional sources, half the corridor's traffic each on its lane-pair axis
- * (D 27.5: ±6.0 m, data/motorway.ts d275CrossSection; screening from the axis, Manuál §1.11 a). One
+ * (D 27.5: ±6.0 m, S 21.5: ±5.375 m, data/motorway.ts pairedCrossSection; screening from the axis, Manuál §1.11 a). One
  * direction on its own (a separate stretch or a split) cannot hear the other yet: the whole corridor's
  * traffic on its own lane-pair axis (its carriageway's axis displaced towards its median), an upper bound
  * (≤ +3 dB where only one direction is near) until a project decides houses heard by two sources. */
 function motorwayLanes(cat: (typeof CATEGORIES)[CategoryId], medianRight: boolean): SourceLane[] | null {
   if (cat.mode !== 'motorway') return null;
-  const axis = d275CrossSection().left.axis!;
+  const axis = pairedCrossSection(pairedCategoryOf(cat.id)!).left.axis!;
   if (cat.paired) return [{ pos: axis, share: 0.5 }, { pos: -axis, share: 0.5 }];
   return [{ pos: (cat.crownWidth / 2 - axis) * (medianRight ? -1 : 1), share: 1 }];
 }

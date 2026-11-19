@@ -371,7 +371,8 @@ export const NORM_EARTHWORK_ALLOWANCE = {
   // Field tracks: 6,000 m³/km (SPK 2026 report p. 7, "polní cesty"). Local roads: the report states no volume,
   // only "běžné zemní práce … bez výrazných výkopů či násypů"; PROVISIONAL the field-track 6,000, the smallest
   // volume it gives for any road (research/42).
-  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000, local: 6_000, track: 6_000 } as Record<string, number>,
+  // A four-lane divided class I road (S 21.5): the same 70,000 m³/km the report gives every divided road (research/00 §3.1).
+  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, divided: 70_000, 'divided-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000, local: 6_000, track: 6_000 } as Record<string, number>,
   fillShareOfCut: 0.85,
   /** share of cut that is unsuitable: hauled to a tip ≤ 10 km and replaced from a borrow pit (norm
    * assumption; applied identically to the allowance and to the player's design) */

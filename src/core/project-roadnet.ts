@@ -10,7 +10,7 @@
 import { buildAlignment, station, type PI } from './horizontal';
 import { horizontalRules } from './data/norms';
 import type { ProjectDesign, RouteDesign } from './project';
-import type { CategoryId } from './data/categories';
+import { CATEGORIES, pairedCategoryOf, type CategoryId } from './data/categories';
 import type { CrossingOverride, LinkEnd } from './crossings';
 import type { RoadNet } from './roadnet';
 import { lineAsDrawn, plannedKept, type OldPaths } from './project-kept';
@@ -92,7 +92,8 @@ export function planLine(route: RouteDesign, ends?: ResolvedEnds, step = LINE_ST
   };
   if (corridor) {
     if (corridor.mode !== 'paired' || corridor.spine.kind !== 'pi' || route.specification.kind !== 'motorway') return [];
-    al = buildAlignment(corridor.endpoints.a.position, corridor.endpoints.b.position, corridor.spine.pis, horizontalRules(route.specification.designSpeed, 'D27.5'));
+    al = buildAlignment(corridor.endpoints.a.position, corridor.endpoints.b.position, corridor.spine.pis, horizontalRules(route.specification.designSpeed,
+      (route.specification.crossSection in CATEGORIES ? pairedCategoryOf(route.specification.crossSection as CategoryId) : undefined) ?? 'D27.5'));
   } else if (route.kind === 'railway' && route.alignment.kind === 'pi' && route.specification.kind === 'railway') {
     const category = route.specification.tracks === 2 ? 'R2' : 'R1';
     al = plan(route.endpoints.a.position, route.endpoints.b.position, route.alignment.pis, route.specification.designSpeed, category);

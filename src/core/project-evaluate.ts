@@ -1,7 +1,7 @@
 // Project publication boundary. Legacy single-road semantics remain exact; unimplemented interactions
 // expose proposed geometry with null project total, never a sum of independently completed road bills.
 import { ourWords, type OurLine } from './terms';
-import { CATEGORIES } from './data/categories';
+import { CATEGORIES, type CategoryId } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
 import { KIND } from './structures';
 import type { EvalContext, EvalOptions, Result } from './evaluate';
@@ -14,7 +14,7 @@ import { designedTieIn } from './tie-in';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
 import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvaluation } from './project-railway';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
+import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign, RoadOperations } from './project';
 import * as dm from './detmath';
 import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, type OldLineOf, type ResolvedEnds } from './project-roadnet';
@@ -148,7 +148,7 @@ const ROUTE_KINDS: Record<RouteDesign['kind'], {
     crown: own('road', r => r.specification.crossSection !== 'existing' ? CATEGORIES[r.specification.crossSection].crownWidth : 0),
     endsFollow: true, endsNowhere: true, operations: own('road', r => r.specification.operations) },
   motorway: {
-    crown: r => CATEGORIES[r.alignment.kind === 'corridor' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth,
+    crown: r => CATEGORIES[routeCategory(r) as CategoryId].crownWidth,
     endsFollow: false, endsNowhere: false, operations: () => ({ aadt: Infinity, speed: Infinity, heavyShare: 1 }),
     // both directions of a corridor in one evaluation; a motorway route outside a corridor has no evaluator
     // of its own (the road kernel reports it as not supported)

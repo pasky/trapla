@@ -7,9 +7,9 @@ import { CATEGORIES } from '../core/data/categories';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId, RouteResult } from '../core/project';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY } from '../core/project-motorway';
+import { carriagewayCategory, corridorOfRoute } from '../core/project-motorway';
 import type { ProjectWorkerOut } from '../core/project-protocol';
-import { routeCrownWidth } from '../core/route-section';
+import { motorwayCategory, routeCrownWidth } from '../core/route-section';
 import { DIRECTIONS_TEXT } from '../core/terms';
 import { EvalClient, type EvalRequest } from '../eval-client';
 import type { ProjectStore } from '../project-store';
@@ -130,7 +130,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
       // a paired motorway is one body, drawn once under its forward direction: its walls and culverts too
       const paired = route.kind === 'motorway' && route.alignment.kind === 'corridor' ? corridorOfRoute(design, route.id) : undefined;
-      if (paired) crown = CATEGORIES[MOTORWAY_CATEGORY].crownWidth;
+      if (paired && route.kind === 'motorway') crown = CATEGORIES[motorwayCategory(route)].crownWidth;
       if (!r || (paired && (paired.mode !== 'paired' || paired.children.forward !== route.id))
         || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection && !paired)) { otherExtras.get(route.id)?.overlay.setVisible(false); continue; }
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
@@ -254,12 +254,12 @@ export function createResultDisplay(app: ResultDisplayContext) {
       if (route.kind === 'motorway') {
         // separate stretches: the shared body's parts and each direction's own carriageway
         const parts = result.routes[route.id]?.drawn;
-        if (parts) return parts.map(p => ({ id: p.id, result: p.result, crownWidth: CATEGORIES[p.section === 'paired' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth,
+        if (parts) return parts.map(p => ({ id: p.id, result: p.result, crownWidth: CATEGORIES[p.section === 'paired' ? motorwayCategory(route) : carriagewayCategory(motorwayCategory(route))].crownWidth,
           buildingMarkers: result.complete, ...(p.mirrored ? { mirrored: true } : {}) }));
         // split: each direction is its own body
         if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
         const corridor = app.projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
-        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth }] : [];
+        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[motorwayCategory(route)].crownWidth }] : [];
       }
       if (route.kind !== 'road') return [];
       return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
