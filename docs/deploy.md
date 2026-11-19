@@ -23,7 +23,7 @@ checks `dist/` itself: relative URLs only, every asset of each page present, not
 (`/@fs`, `/@vite`, `localhost`), every ready pack in under its content hash with all its files, no file over
 25 MiB, the whole under 1 GB. Any browser script runs on a build the same way: `DIST=dist node scripts/smoke.mjs`.
 
-What is in `dist/` (2026-11-19, all 12 packs): 180 MB in 169 files, the largest file 13.5 MB
+What is in `dist/` (2026-11-19, all 16 packs, with the four I/35 packs): 245 MB in 221 files, the largest file 13.5 MB
 (`d3-full`'s heights).
 
 | | |
