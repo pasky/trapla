@@ -15,6 +15,9 @@ import type { RoadNetData } from '../core/roadnet';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { MappedRoadCard } from './mapped-road';
 import type { MappedLineKind } from './route-kinds';
+import { buildAlignment, nearestLeg, station, type PI } from '../core/horizontal';
+import { bendRules, horizontalRules } from '../core/data/norms';
+import type { CategoryId } from '../core/data/categories';
 
 type XY = { x: number; y: number };
 /** A press on the works further than this from the crossed way's own line (a side road regraded to meet it, a turning
@@ -111,14 +114,15 @@ export function createCrossingDrag(app: CrossingDragContext) {
 }
 export type CrossingDrag = ReturnType<typeof createCrossingDrag>;
 
+type Axis = { x: number[]; y: number[]; s: number[] };
 /** Our road's line around station s (± SLIDE_REACH), with its stations: what a slid ring follows. */
-export function slideAxis(r: Result, s: number): { x: number[]; y: number[]; s: number[] } {
-  const out = { x: [] as number[], y: [] as number[], s: [] as number[] };
+export function slideAxis(r: Result, s: number): Axis {
+  const out: Axis = { x: [], y: [], s: [] };
   for (let i = 0; i < r.n; i++) if (Math.abs(r.s[i] - s) <= SLIDE_REACH) { out.x.push(r.x[i]); out.y.push(r.y[i]); out.s.push(r.s[i]); }
   return out;
 }
 /** The station on the axis nearest p. */
-export function axisStation(a: { x: number[]; y: number[]; s: number[] }, p: XY): number {
+export function axisStation(a: Axis, p: XY): number {
   let best = Infinity, at = a.s[0] ?? 0;
   for (let k = 1; k < a.s.length; k++) {
     const ax = a.x[k - 1], ay = a.y[k - 1], dx = a.x[k] - ax, dy = a.y[k] - ay;
@@ -129,7 +133,7 @@ export function axisStation(a: { x: number[]; y: number[]; s: number[] }, p: XY)
   return at;
 }
 /** The axis point at station s (held at its ends). */
-export function axisPoint(a: { x: number[]; y: number[]; s: number[] }, s: number): XY {
+export function axisPoint(a: Axis, s: number): XY {
   const n = a.s.length;
   if (!n) return { x: 0, y: 0 };
   if (s <= a.s[0]) return { x: a.x[0], y: a.y[0] };
@@ -137,4 +141,72 @@ export function axisPoint(a: { x: number[]; y: number[]; s: number[] }, s: numbe
   let k = 1; while (k < n - 1 && a.s[k] < s) k++;
   const t = (s - a.s[k - 1]) / ((a.s[k] - a.s[k - 1]) || 1);
   return { x: a.x[k - 1] + t * (a.x[k] - a.x[k - 1]), y: a.y[k - 1] + t * (a.y[k] - a.y[k - 1]) };
+}
+
+/** UI choices of the slide, m (no design rule: where the crossed road is re-routed locally, the norm then checks it):
+ * the crossed road's bends whose curve comes within SLIDE_WINDOW of the crossing move with it; on a straight, two
+ * new bends this far either side of the crossing (at least EDGE_ROOM clear of other curves and of the road's ends)
+ * carry the piece between them across. */
+const SLIDE_WINDOW = 60, EDGE_ROOM = 20;
+
+/** The crossed road's piece a slid ring moves: its bends (`moving`, the road's bends with new ones put in), all moved
+ * by the same step across the crossed road's direction there (`n`), so that it keeps its angle to ours. `held`: the
+ * bend the drag holds (the one the view's drag follows). */
+export interface SlideSection { line: { a: XY; b: XY; speed: number; category: CategoryId }; pis: PI[]; moving: number[]; n: XY; held: number; from: XY }
+
+export function slideSection(a: XY, b: XY, pis0: readonly PI[], speed: number, category: CategoryId, p: XY): SlideSection {
+  const al = (pis: PI[]) => buildAlignment(a, b, pis, horizontalRules(speed, category), bendRules(pis, speed, category));
+  let pis = pis0.map(q => ({ ...q }));
+  const line = al(pis), st = station(line, 2);
+  let k0 = 0, best = Infinity;
+  for (let k = 0; k < st.n; k++) { const d = Math.hypot(st.x[k] - p.x, st.y[k] - p.y); if (d < best) { best = d; k0 = k; } }
+  const sc = st.s[k0], n = { x: -st.ty[k0], y: st.tx[k0] }, from = { x: st.x[k0], y: st.y[k0] };
+  const curves = line.curves.filter(c => pis[c.index] && !c.ignored && c.sEnd > c.sStart);
+  const pad = (c: (typeof curves)[number]) => Math.max(0, c.tTransition - c.t);
+  const core = curves.filter(c => c.sEnd + pad(c) >= sc - SLIDE_WINDOW && c.sStart - pad(c) <= sc + SLIDE_WINDOW).map(c => c.index);
+  const base = { line: { a, b, speed, category }, n, from };
+  if (core.length) return { ...base, pis, moving: core, held: core[0] };
+  // on a straight: a new bend either side, as far out as the straight leaves room (none: one at the crossing)
+  const room = (s: number) => s > EDGE_ROOM && s < line.length - EDGE_ROOM && curves.every(c => s < c.sStart - pad(c) - EDGE_ROOM || s > c.sEnd + pad(c) + EDGE_ROOM);
+  const at = (s: number) => { let k = 0; while (k < st.n - 1 && st.s[k] < s) k++; return { x: st.x[k], y: st.y[k] }; };
+  const edges: XY[] = [];
+  for (const sign of [-1, 1]) for (let d = SLIDE_WINDOW; d >= EDGE_ROOM; d -= 10) if (room(sc + sign * d)) { edges.push(at(sc + sign * d)); break; }
+  const put = (q: XY) => { const k = nearestLeg(a, b, pis, q); pis = [...pis.slice(0, k), { x: q.x, y: q.y, r: null }, ...pis.slice(k)]; return k; };
+  if (edges.length < 2) { const k = put(from); return { ...base, pis, moving: [k], held: k }; }
+  const k1 = put(edges[0]), k2 = put(edges[1]);
+  const moving = k2 <= k1 ? [k2, k1 + 1] : [k1, k2];
+  return { ...base, pis, moving, held: moving[0] };
+}
+/** Where the crossed road's line (its bends `pis`) crosses our axis, nearest the point `near`; null: it does not. */
+function crossingOf(sec: SlideSection, pis: PI[], axis: Axis, near: XY): XY | null {
+  const { a, b, speed, category } = sec.line;
+  const st = station(buildAlignment(a, b, pis, horizontalRules(speed, category), bendRules(pis, speed, category)), 4);
+  let hit: XY | null = null, best = Infinity;
+  for (let k = 1; k < st.n; k++) {
+    const px = st.x[k - 1], py = st.y[k - 1], rx = st.x[k] - px, ry = st.y[k] - py;
+    if (Math.hypot(px - near.x, py - near.y) > SLIDE_REACH) continue;
+    for (let j = 1; j < axis.s.length; j++) {
+      const qx = axis.x[j - 1], qy = axis.y[j - 1], sx = axis.x[j] - qx, sy = axis.y[j] - qy, den = rx * sy - ry * sx;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((qx - px) * sy - (qy - py) * sx) / den, u = ((qx - px) * ry - (qy - py) * rx) / den;
+      if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+      const x = px + t * rx, y = py + t * ry, d = Math.hypot(x - near.x, y - near.y);
+      if (d < best) { best = d; hit = { x, y }; }
+    }
+  }
+  return hit;
+}
+/** The section's bends moved so that the crossed road crosses our axis at `target` (on the axis): a step across the
+ * crossed road's direction, corrected a few times where its curves make the first guess miss. */
+export function slideTo(sec: SlideSection, axis: Axis, target: XY): PI[] {
+  const move = (alpha: number) => sec.pis.map((q, k) => sec.moving.includes(k) ? { ...q, x: q.x + alpha * sec.n.x, y: q.y + alpha * sec.n.y } : q);
+  let alpha = (target.x - sec.from.x) * sec.n.x + (target.y - sec.from.y) * sec.n.y, near = target;
+  for (let round = 0; round < 3; round++) {
+    const x = crossingOf(sec, move(alpha), axis, near);
+    if (!x) break;
+    const miss = (target.x - x.x) * sec.n.x + (target.y - x.y) * sec.n.y;
+    if (Math.abs(miss) < 0.5) break;
+    alpha += miss; near = x;
+  }
+  return move(alpha);
 }

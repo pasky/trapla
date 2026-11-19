@@ -25,7 +25,7 @@ import type { MapPicks } from './map-picks';
 import type { MappedRoadCard } from './mapped-road';
 import { radiusNotes } from './radius-notes';
 import type { Result } from '../core/evaluate';
-import { axisPoint, axisStation, CROSSING_DRAG_TEXT, slideAxis, type CrossingDrag, type CrossingDragPlan } from './crossing-drag';
+import { axisPoint, axisStation, CROSSING_DRAG_TEXT, slideAxis, slideSection, slideTo, type CrossingDrag, type CrossingDragPlan, type SlideSection } from './crossing-drag';
 import { bendAt } from './road-edit';
 import { toast } from './toast';
 
@@ -70,20 +70,25 @@ export function createMapGestures(app: MapGestureContext) {
     const g = app.view.pick(clientX, clientY);
     return g && app.sourceEditor!.covers(g.x, g.y, Math.max(6, 8 * app.view.metresPerPixel)) ? { ...interval } : null;
   };
-  /** The first drag of a mapped road: its stretch becomes a project road (line converted to bends that
-   * follow the old road) and the drag bends it, all ONE undo step (committed when the drag ends). */
-  const rebuildByDrag = (interval: SourceInterval, x: number, y: number, lineKind = app.sourceEditor?.lineKind): number | null => {
-    if (!app.transportIndex || !lineKind) return null;
+  /** A mapped road's stretch becomes a project road (its line converted to bends that follow the old road), the
+   * active one, in a step left open for the drag that follows (ONE undo step, committed when it ends). */
+  const rebuild = (interval: SourceInterval, lineKind = app.sourceEditor?.lineKind): boolean => {
+    if (!app.transportIndex || !lineKind) return false;
     let command;
     try { command = lineKind.rebuild(app.transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
-    catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
+    catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return false; }
     const id = command.routes[0].id;
     app.intro.hide(); app.sourceEditor?.clear();
     if (app.projectStore.inTransaction) app.projectStore.commit();
     app.projectStore.begin();
     try { app.projectStore.dispatch(command); }
-    catch (error) { app.projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
+    catch (error) { app.projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return false; }
     app.switchRoute(id, true);
+    return true;
+  };
+  /** The first drag of a mapped road: it is rebuilt and the drag bends it, all one undo step. */
+  const rebuildByDrag = (interval: SourceInterval, x: number, y: number, lineKind = app.sourceEditor?.lineKind): number | null => {
+    if (!rebuild(interval, lineKind)) return null;
     const k = bendByDrag(x, y);
     // (the bend this first drag places, or one of the old line's it takes along, is fitted where its curve has
     // room on release: the drag is the conversion's, not yet the player's own placing of a bend)
@@ -130,26 +135,28 @@ export function createMapGestures(app: MapGestureContext) {
     if (!w || w.crossing.roadId !== sel.roadId || w.link !== undefined) return null;
     return app.crossingDrag.plan(w.crossing, 'works', { x: w.x, y: w.y });
   };
-  /** A ring being slid: the bend that follows the pointer along our road (`axis`), the stations of the press and of
-   * the crossing on it, the bend's offset from that axis point, and the crossed road's name (the undo step's) */
-  let slide: { i: number; axis: ReturnType<typeof slideAxis>; press: number; at: number; dx: number; dy: number; name: string } | null = null;
+  /** A ring being slid: the crossed road's piece that moves (ui/crossing-drag.ts), our road's line it slides along,
+   * the stations of the press and of the crossing on it, and the crossed road's name (the undo step's) */
+  let slide: { section: SlideSection; axis: ReturnType<typeof slideAxis>; press: number; at: number; name: string } | null = null;
   const dragCrossing = (p: Extract<CrossingDragPlan, { ok: true }>, x: number, y: number): number | null => {
-    const c = p.crossing, axis = p.part === 'ring' && app.last ? slideAxis(app.last, c.s) : null;
-    // (a slid ring's bend starts where the roads cross)
-    const from = axis ? { x: c.x, y: c.y } : { x, y };
+    const c = p.crossing;
     app.intro.hide();
-    let k: number | null;
-    if (p.target.kind === 'mapped') k = rebuildByDrag(p.target.interval, from.x, from.y, p.target.lineKind);
-    else {
+    if (p.part === 'works') {
+      if (p.target.kind === 'mapped') return rebuildByDrag(p.target.interval, x, y, p.target.lineKind);
       if (!app.switchRoute(p.target.routeId) || !app.store.read()) return null;
-      k = bendByDrag(from.x, from.y);
+      return bendByDrag(x, y);
     }
-    if (k === null || !axis) return k;
-    // (where the player slides it is where it crosses: not fitted elsewhere on release)
-    placedByDrag = null; grabOffset = null;
-    const bend = app.store.design.pis[k], at = axisStation(axis, c), on = axisPoint(axis, at);
-    slide = { i: k, axis, press: axisStation(axis, { x, y }), at, dx: bend.x - on.x, dy: bend.y - on.y, name: p.name };
-    return k;
+    const axis = app.last ? slideAxis(app.last, c.s) : null;
+    if (!axis || axis.s.length < 2) return null;
+    if (p.target.kind === 'mapped') { if (!rebuild(p.target.interval, p.target.lineKind)) return null; }
+    else if (!app.switchRoute(p.target.routeId) || !app.store.read()) return null;
+    const d = app.store.design, section = slideSection(app.A, app.B, d.pis, d.speed, d.category, c);
+    // (the bends the slide puts in are in the step it leaves open)
+    app.store.update(draft => { draft.pis = section.pis.map(q => ({ ...q })); }, false);
+    grabOffset = null; placedByDrag = null;
+    slide = { section, axis, press: axisStation(axis, { x, y }), at: axisStation(axis, c), name: p.name };
+    app.select({ kind: 'bend', i: section.held });
+    return section.held;
   };
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(app.A, app.B, app.store.design.pis, { x, y });
@@ -216,10 +223,12 @@ export function createMapGestures(app: MapGestureContext) {
     onPiSelect: (i) => { grabOffset = null; placedByDrag = null; held = null; slide = null; app.select(i === null ? null : { kind: 'bend', i }); },
     onPiDrag: (dragged, x, y) => {
       const o = grabOffset?.i === dragged ? grabOffset : null, route = app.store.activeRouteId;
-      // a slid ring: the bend follows the pointer along our road, as far as the pointer moved along it
-      if (slide?.i === dragged) {
-        const s = slide.at + axisStation(slide.axis, { x, y }) - slide.press, on = axisPoint(slide.axis, s);
-        x = on.x + slide.dx; y = on.y + slide.dy;
+      // a slid ring: the crossed road's piece moves so that it crosses our road as far along it as the pointer moved
+      if (slide && dragged === slide.section.held) {
+        const sl = slide, target = axisPoint(sl.axis, sl.at + axisStation(sl.axis, { x, y }) - sl.press);
+        app.store.update(d => { d.pis = slideTo(sl.section, sl.axis, target); }, false);
+        held = dragged;
+        return dragged;
       }
       let i = dragged;
       app.store.update((d) => {
@@ -231,7 +240,6 @@ export function createMapGestures(app: MapGestureContext) {
           const from = i; i = passed.i;
           d.pis = [...passed.pis];
           if (o) o.i = i;
-          if (slide?.i === from) slide.i = i;
           if (placedByDrag?.i === from) placedByDrag.i = i;
           if (dragWanted?.i === from) { const [r] = dragWanted.r.splice(from, 1); dragWanted.r.splice(i, 0, r); dragWanted.i = i; }
           radiusNotes.move(route, from, i);
