@@ -2431,7 +2431,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   1. *D3 0303 km 3.06 was unpriced* ("two roads change the same old road"): the motorway moves tracks 1029 / 1031
      aside, and the north-east slip road's own crossing engine diverted / bridged their old line. Cause: the slip road
      was engineered against the pack's ground, not the ground its motorway leaves. Now a slip road is built against
-     its motorway's footprint relocations within 1.5 km of its gore (those stretches cut out of its network, the moved
+     its motorway's footprint relocations (those stretches cut out of its network, the moved
      pieces added as ground ways: `RoadNet.edited(cuts, extra, ground)`, `editedNetwork(…, moved)`,
      `project-evaluate.ts movedByMotorway`; all of the motorway's, in its order, so every slip road numbers them
      alike), and its changes of what is left of those ways near each relocation are one design with the motorway
