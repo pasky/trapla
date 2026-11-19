@@ -26,11 +26,15 @@ export class BuildRoadTool {
   private note = '';
   active = false;
   onDone?: (a: PlacedEnd, b: PlacedEnd) => void;
+  /** why these two ends make no line of the kind built (null: they do): said, the start kept */
+  refuse?: (a: PlacedEnd, b: PlacedEnd) => string | null;
   onClose?: () => void;
   constructor(private root: () => HTMLElement, private overlay: HTMLElement, private view: View) {
     view.addRenderListener(() => this.position());
   }
-  begin(label = 'Road') { this.cancel(false); this.label = label; this.active = true; this.render(); this.view.renderer.domElement.classList.add('placing'); }
+  /** what the card says about where ends go (the kind's own words, else the default) */
+  private hintText: string | undefined;
+  begin(label = 'Road', hint?: string) { this.cancel(false); this.label = label; this.hintText = hint; this.active = true; this.render(); this.view.renderer.domElement.classList.add('placing'); }
   cancel(notify = true) {
     const was = this.active;
     this.active = false; this.start = null; this.note = '';
@@ -70,9 +74,10 @@ export class BuildRoadTool {
     const a = this.start.position, b = p.end.position;
     const apart = Math.hypot(a.x - b.x, a.y - b.y);
     if (apart < MIN_NEW_ROAD) { this.note = `Too short: that is ${Math.round(apart)} m from the start. Put the end at least ${MIN_NEW_ROAD} m away.`; this.render(); return; }
-    const start = this.start;
+    const start = this.start, refused = this.refuse?.(start, p.end);
+    if (refused) { this.note = refused; this.render(); return; }
     this.cancel(false);
-    this.onDone?.({ position: start.position, anchor: start.anchor }, p.end);
+    this.onDone?.({ position: start.position, anchor: start.anchor, ...(start.travel ? { travel: start.travel } : {}), ...(start.along ? { along: start.along } : {}) }, p.end);
   }
   private render() {
     if (!this.active) return;
@@ -83,8 +88,8 @@ export class BuildRoadTool {
     close.onclick = () => this.cancel();
     header.append(el('b', `New ${this.label.toLowerCase()}`), close);
     const step = el('p', this.start ? 'Click where it ends.' : 'Click where it starts.'); step.className = 'build-step';
-    const hint = el('div', this.label === 'Railway' ? 'A click on a railway joins it there.'
-      : this.label === 'Motorway' ? 'Its ends go on open ground: interchanges are not in the game yet.' : 'A click on a road joins it there.'); hint.className = 'sub';
+    const hint = el('div', this.hintText ?? (this.label === 'Railway' ? 'A click on a railway joins it there.'
+      : this.label === 'Motorway' ? 'Its ends go on open ground. Roads join it by slip roads (Build → Slip road).' : 'A click on a road joins it there.')); hint.className = 'sub';
     root.append(header, step);
     if (this.start) root.append(el('div', `Start: ${this.start.label}`));
     root.append(hint);

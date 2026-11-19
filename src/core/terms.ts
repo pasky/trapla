@@ -11,7 +11,8 @@
 // class I–III road, motorway, junction, bridge, tunnel, cutting, embankment, slope, earthworks, ramp,
 // retaining wall, culvert, stream, underpass, rerouted, reconnected, moved aside, closed, turning area,
 // height pin (By hand: a ◆ point the player drags; on Auto the points are the game's and never named), pin, bend,
-// km, m, %; nature reserve, nature monument, protection zone, Natura 2000 site, national park, protected landscape
+// km, m, %; slip road (one way, of an interchange; never "ramp", which is a bridge's), exit lane, entry lane, interchange,
+// carriageway, hard shoulder; nature reserve, nature monument, protection zone, Natura 2000 site, national park, protected landscape
 // area (research/75). Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
 // where a requirement or a price cites its source: a violation's `rule` line and the bill's pricing
 // tooltips.
@@ -431,7 +432,7 @@ export function togetherHouseText(rec: ProjectReceiver, name: (routeId: string) 
 
 /** What a mission end meets (scenario data), for the card shown when the end is clicked. */
 export interface EndConnection {
-  /** 'interchange': an interchange with a road, its ramps not built here; 'joins': the motorway carries on
+  /** 'interchange': an interchange with a road, its slip roads not built here; 'joins': the motorway carries on
    * as an open road here; 'continues': the planned road goes on as another section; 'roundabout': our road
    * gets its own arm into an existing roundabout */
   kind: 'interchange' | 'joins' | 'continues' | 'roundabout';
@@ -446,7 +447,11 @@ export function endCard(info: EndConnection, end: 'a' | 'b', line: OurLine = 'mo
   if (info.kind === 'roundabout') return { title: `Joins the roundabout on ${info.with}`,
     lines: ['Our road gets its own arm into it here, with a splitter island, priced as a junction; the roundabout itself stays as it is.'] };
   if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`It carries on as ${info.with} here; that road is not part of this job.`] };
-  return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
+  // (shown, not built: its slip roads are not engineered or billed; the SPK price per km of a divided road from S 20.75 up
+  // includes earth-built slip roads of one interchange every 7 km, research/90 §7b, research/33 §3, which slip roads built
+  // by hand are credited)
+  return { title: `Interchange with ${info.with}`, lines: ['Shown only: its slip roads are not built or billed here.',
+    `The ${line}’s price per km already includes earth-built slip roads of one interchange every 7 km.`,
     ...(info.section ? [end === 'b' ? `The ${line} goes on as ${info.section}.` : `The ${line} comes from ${info.section}.`] : [])] };
 }
 

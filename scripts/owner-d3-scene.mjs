@@ -199,7 +199,7 @@ try {
 
   // 8. Build → Road: our motorway refuses in plain words; the pointer shows where an end would go
   await page.locator('#build-route').click();
-  await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
+  await page.locator('.route-build-choices button', { hasText: /^Road$/ }).click();
   const sm = await page.evaluate(id => { const r = window.trapla.projectResult().routes[id].legacy;
     for (const f of [0.5, 0.45, 0.55, 0.4, 0.6, 0.35, 0.65]) { const i = Math.round(r.n * f);
       if ([-40, -20, 0, 20, 40].every(d => r.kind[Math.max(0, Math.min(r.n - 1, i + Math.round(d / r.ds)))] === 0)) return { s: r.s[i], x: r.x[i], y: r.y[i] }; }

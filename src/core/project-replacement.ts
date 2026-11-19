@@ -29,7 +29,7 @@ const UNDER = 1;
 
 export interface ReplacementWork {
   /** `kept`: where the old road stays as it is, what the road's own bill charged there (a credit) */
-  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout' | 'kept';
+  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout' | 'kept' | 'lane';
   /** where along the new road, for display */
   s: number; x: number; y: number;
   /** removed old road length, or link length (0: the side road meets the new road where it is), m */
@@ -39,6 +39,8 @@ export interface ReplacementWork {
   cls?: string;
   /** buildings this work removes (a roundabout's ring) */
   removes?: number[];
+  /** what it paints on another road (a slip road's speed-change lane on the motorway: its lines), drawn */
+  lines?: { x: number; y: number; z: number }[][];
 }
 export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
   /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,

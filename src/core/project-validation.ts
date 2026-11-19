@@ -95,7 +95,7 @@ function spec(v: unknown, kind: unknown): boolean {
     if (!number(o.aadt) || o.aadt < 0 || !number(o.heavyShare) || o.heavyShare < 0 || o.heavyShare > 1 || !number(o.speed) || o.speed <= 0
       || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])
       || o.trafficUnknown !== undefined && (o.trafficUnknown !== true || o.aadt !== 0)) return false;
-    return kind === 'motorway' ? text(v.crossSection) : choice(v.legalClass, ['I', 'II', 'III', 'local', 'service', 'track'])
+    return kind === 'motorway' ? text(v.crossSection) : choice(v.legalClass, ['I', 'II', 'III', 'local', 'service', 'track', 'ramp'])
       && choice(v.crossSection, [...ROAD_CROSS_SECTIONS, 'existing'])
       && (v.crossSection !== 'existing' || number(v.existingWidth) && v.existingWidth > 0);
   }

@@ -119,6 +119,9 @@ export interface Result {
   faceL?: (number[] | undefined)[]; faceR?: (number[] | undefined)[];
   /** a hairpin's widened lanes: extra crown width on each side per station, m (absent: none anywhere) */
   widen?: Float32Array;
+  /** display only, never set by the kernel: where a cutting's face meets another road's beside it, the ridge's height
+   * (render/slip-merge.ts; NaN: the face ends on the ground) */
+  apexL?: Float32Array; apexR?: Float32Array;
   oob: Uint8Array;
   runs: Run[];
   vpis: VPI[];
@@ -406,6 +409,9 @@ export const OLD_ROAD_KNOTS = 125;
  * (MINOR_CROSSROADS_BAND) and follows the ground closely. Still one vertical curve of its largest minimum
  * radius (crest 1 000 m at 50 km/h, ČSN 73 6110) for a 6 % change of grade per point. */
 export const MINOR_KNOTS = 60;
+/** PROVISIONAL, m: the same on a slip road (a few hundred metres, held at the motorway's level near its gore and
+ * at the road's at its junction: core/slip-roads.ts mergeBands), at its 50 km/h radii (the same ČSN 73 6110 rows). */
+export const RAMP_KNOTS = MINOR_KNOTS;
 /** the auto-profile's mass-balance search measures candidates on every n-th station's cross-section */
 const BALANCE_STRIDE = 2;
 
@@ -1406,7 +1412,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       // clear rivers, railways and roads rather than pay it.
       ...(penaltyAt ? { clearancePenaltyAt: penaltyAt } : {}), ...(nature ? { hardClearance: nature } : {}),
       costClass: profileCostClass, costClassCount: costClasses.length,
-      ...(cat.minor ? { knotSpacing: MINOR_KNOTS } : onOld ? { knotSpacing: OLD_ROAD_KNOTS } : {}),
+      ...(cat.minor ? { knotSpacing: MINOR_KNOTS } : cat.ramp ? { knotSpacing: RAMP_KNOTS } : onOld ? { knotSpacing: OLD_ROAD_KNOTS } : {}),
       ...(blocks ? { blocks, points: profilePoints, pointWeight: STEP, clearanceS,
         groundAt: (x: number) => { const p = atS(x); return terrain.heightAt(p.x, p.y); },
         classAt: (x: number) => { const p = atS(x), g = groundClasses.get(terrain.groundIdAt(p.x, p.y)); return g === undefined ? -1 : g + G * builtUp(p.x, p.y); } } : {}),

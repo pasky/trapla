@@ -9,6 +9,7 @@ import type { ProjectStore } from '../project-store';
 import type { View } from '../render/view';
 import type { Session } from '../session';
 import type { ActiveRouteStore } from './active-route-store';
+import { movableEnds } from './road-ends';
 
 export interface ActiveLineContext {
   readonly session: Session;
@@ -18,7 +19,7 @@ export interface ActiveLineContext {
 }
 
 export function createActiveLine(app: ActiveLineContext) {
-  // a rebuilt stretch's ends carry their own drag handles (labelled), so the tick stays unlabelled
+  // a rebuilt stretch's and a built road's ends carry their own drag handles (labelled), so the tick stays unlabelled
   /** a side road's end on another road follows that road: its drawn end is where it was built */
   const endAt = (end: 'a' | 'b') => {
     const route = app.store.route, r = route && app.session.projectFull?.routes[route.id]?.legacy;
@@ -33,8 +34,8 @@ export function createActiveLine(app: ActiveLineContext) {
   /** what the active road's ends meet (the mission's interchanges), in its own direction */
   const endInfo = (end: 'a' | 'b') => app.store.route?.role === 'mission' ? app.scenario.ends?.[reversed() ? (end === 'a' ? 'b' : 'a') : end] : undefined;
   const activeEndpoints = () => ({
-    a: { ...(endAt('a') ?? app.positionA), label: app.store.route?.role === 'mission' ? (reversed() ? app.scenario.labels.b : app.scenario.labels.a) : app.store.route?.source ? '' : 'Start', sign: endInfo('a')?.kind },
-    b: { ...(endAt('b') ?? app.positionB), label: app.store.route?.role === 'mission' ? (reversed() ? app.scenario.labels.a : app.scenario.labels.b) : app.store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
+    a: { ...(endAt('a') ?? app.positionA), label: app.store.route?.role === 'mission' ? (reversed() ? app.scenario.labels.b : app.scenario.labels.a) : app.store.route?.source || movableEnds(app.store.route) ? '' : 'Start', sign: endInfo('a')?.kind },
+    b: { ...(endAt('b') ?? app.positionB), label: app.store.route?.role === 'mission' ? (reversed() ? app.scenario.labels.a : app.scenario.labels.b) : app.store.route?.source || movableEnds(app.store.route) ? '' : 'End', sign: endInfo('b')?.kind },
     plain: !!app.store.route && app.store.route.role !== 'mission',
   });
   /** the active route as built (else its ends and bends) in view */

@@ -179,6 +179,8 @@ export class View {
   private officialLabel: HTMLElement | null = null;
   private officialLine: Line2 | null = null;
   private proposalLines = new Map<string, { key: string; line: Line2 }>();
+  private laneMarks: THREE.Mesh | null = null;
+  private laneKey = '';
   get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
   private labelRoom = new Declutter();
@@ -754,6 +756,44 @@ export class View {
     this.dirty = true;
   }
 
+  /** Lines a slip road's speed-change lane paints on the motorway (core/slip-roads.ts): flat white strips on the
+   * carriageway, `dashed` 1.5 m dash / 1.5 m gap (VL 3 V 2b), else solid; `width` m. */
+  setLaneMarks(lines: readonly { points: readonly { x: number; y: number; z: number }[]; dashed: boolean; width: number }[]) {
+    const key = JSON.stringify(lines.map(l => [l.dashed, l.width, l.points.length, l.points[0]?.x, l.points[0]?.y, l.points.at(-1)?.x, l.points.at(-1)?.z]));
+    if (key === this.laneKey) return;
+    this.laneKey = key;
+    if (this.laneMarks) { this.world.remove(this.laneMarks); this.laneMarks.geometry.dispose(); (this.laneMarks.material as THREE.Material).dispose(); this.laneMarks = null; }
+    // (0.15 m over the carriageway, drawn at +0.35: closer, the depth buffer loses them at a distance)
+    const pos: number[] = [], col: number[] = [], v = new THREE.Vector3(), lift = 0.5;
+    const white = new THREE.Color(0xf2f2ee), asphalt = new THREE.Color(0x3b3b42);
+    const quad = (p: { x: number; y: number; z: number }, q: { x: number; y: number; z: number }, half: number, colour = white) => {
+      const dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy); if (!(len > 1e-6)) return;
+      const nx = -dy / len * half, ny = dx / len * half;
+      const c = [[p.x + nx, p.y + ny, p.z], [p.x - nx, p.y - ny, p.z], [q.x + nx, q.y + ny, q.z], [q.x - nx, q.y - ny, q.z]].map(([x, y, z]) => { this.local(x, y, z + lift, v); return [v.x, v.y, v.z]; });
+      pos.push(...c[0], ...c[1], ...c[2], ...c[1], ...c[3], ...c[2]);
+      for (let k = 0; k < 6; k++) col.push(colour.r, colour.g, colour.b);
+    };
+    const at = (pts: readonly { x: number; y: number; z: number }[], d: number[], u: number) => {
+      let k = 1; while (k < pts.length - 1 && d[k] < u) k++;
+      const t = Math.max(0, Math.min(1, (u - d[k - 1]) / ((d[k] - d[k - 1]) || 1))), p = pts[k - 1], q = pts[k];
+      return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t };
+    };
+    for (const line of lines) {
+      const pts = line.points; if (pts.length < 2) continue;
+      const d = [0]; for (let k = 1; k < pts.length; k++) d.push(d[k - 1] + Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y));
+      if (!line.dashed) { for (let k = 1; k < pts.length; k++) quad(pts[k - 1], pts[k], line.width / 2); continue; }
+      // (the gaps in asphalt: the carriageway's solid edge line under it is broken there)
+      for (let u = 0; u + 1.5 <= d[d.length - 1]; u += 3) { quad(at(pts, d, u), at(pts, d, u + 1.5), line.width / 2); quad(at(pts, d, u + 1.5), at(pts, d, Math.min(d[d.length - 1], u + 3)), line.width / 2 + 0.05, asphalt); }
+    }
+    if (pos.length) {
+      const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geometry.computeBoundingSphere();
+      this.laneMarks = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+      this.laneMarks.name = 'lane-marks'; this.laneMarks.renderOrder = 2; this.world.add(this.laneMarks);
+    }
+    this.dirty = true;
+  }
+
   private sourceSelectionLine: Line2 | null = null;
   /** the base-road stretch chosen with the Change road handles (display only) */
   setSourceSelection(points: readonly { x: number; y: number }[] | null) {
@@ -910,14 +950,14 @@ export class View {
       const wi = w + (r.widen?.[i] ?? 0); // a hairpin's widened lanes
       const xel = x + nx * wi, yel = y + ny * wi, xer = x - nx * wi, yer = y - ny * wi;
       sv.push({
-        dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        dl: push(xl, yl, (Number.isFinite(r.apexL?.[i]) ? r.apexL![i] : natural(xl, yl)) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
         cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
-        dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
+        dr: push(xr, yr, (Number.isFinite(r.apexR?.[i]) ? r.apexR![i] : natural(xr, yr)) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
       });
     }

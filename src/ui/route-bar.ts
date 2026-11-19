@@ -22,7 +22,8 @@ export class RouteBar {
   private build = document.createElement('button');
   private choices = document.createElement('div');
   onSelect?: (id: RouteId) => void;
-  onBuild?: (kind: RouteKind) => void;
+  /** `label`: which build kind (two may build the same kind of line: a road and a slip road) */
+  onBuild?: (kind: RouteKind, label: string) => void;
   /** Build menu entries: the registered build kinds (ui/route-kinds.ts), in order. */
   constructor(parent: HTMLElement, private kinds: readonly { kind: RouteKind; label: string }[]) {
     this.root.className = 'route-bar'; this.select.setAttribute('aria-label', 'Road to edit');
@@ -33,7 +34,7 @@ export class RouteBar {
     this.build.onclick = () => { this.choices.hidden = !this.choices.hidden; this.build.setAttribute('aria-expanded', String(!this.choices.hidden)); };
     for (const { kind, label } of this.kinds) {
       const button = document.createElement('button'); button.textContent = label; button.type = 'button'; button.dataset.kind = kind;
-      button.onclick = () => { this.choices.hidden = true; this.build.setAttribute('aria-expanded', 'false'); this.onBuild?.(kind); };
+      button.onclick = () => { this.choices.hidden = true; this.build.setAttribute('aria-expanded', 'false'); this.onBuild?.(kind, label); };
       this.choices.append(button);
     }
     this.root.append(this.select, this.build, this.choices); parent.append(this.root);

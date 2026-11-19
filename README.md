@@ -303,7 +303,7 @@ previews re-solve only the edited stretch (`docs/evaluate-performance.md`). Repr
 `node scripts/scenarios/screenshots.mjs <id> --docs-overview|--docs-A|--docs-B <name>`.
 The start view [frames A and B](docs/screenshots/146-whole-d3-start-framed.png) (the whole D3 looked at across);
 an end that meets an interchange or a road has a sign and [a card](docs/screenshots/147-interchange-card-i18.png)
-("Interchange with road I/18 — its ramps are not part of this job"); the total
+("Interchange with road I/18 — shown only: its slip roads are not built or billed here"); the total
 [follows a drag live](docs/screenshots/148-whole-d3-live-price-drag.png) (≈); the D35 first section
 [joins the open D35 and goes on as the next section](docs/screenshots/149-d35-first-section-ends.png).
 Trutnov offers the real D11 as a motorway, first in its card ([start screen](docs/screenshots/570-d11-motorway-picker.png), research/87),
@@ -349,8 +349,8 @@ the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11
 [the viaduct over the old line's valley](docs/screenshots/138-railway-bridge.png), [joining the old line at Královec](docs/screenshots/139-railway-kralovec.png)
 (`node scripts/railway-shots.mjs --docs 136`; played end to end with `node scripts/mode-play.mjs --gpu`).
 
-Build → Motorway makes both directions of a D 27.5 between two points of open ground (shown, not priced: the
-game has no interchanges). Build → Railway ends on a mapped railway or open ground. A mapped railway can be
+Build → Motorway makes both directions of a D 27.5 between two points of open ground (shown, not priced: its
+ends meet no road). Build → Railway ends on a mapped railway or open ground. A mapped railway can be
 rebuilt by dragging it like a road (no need to select it first): the dragged stretch becomes an editable
 single-track railway at the old line's own speed (its mapped limit) and steepness that takes up its old track
 (taking it up is not priced yet).
@@ -363,6 +363,35 @@ old road, the old road is kept as it is (drawn on the ground, not billed, no nor
 road is built and the old one removed. Its traffic is filled in from the ŘSD traffic census 2025 (or the
 average of its class, labelled). **Build → Road** places a new road from a click to a click; an end on a road
 joins it with a junction (Auto: a T, or a roundabout). See [docs/any-road-editing.md](docs/any-road-editing.md).
+A built road's **Start** and **End** are handles while it is selected: drag one along the road it joins (it
+stays on it), off it onto open ground, or onto another road.
+
+### A hand-built interchange: slip roads
+
+**Build → Slip road** builds one-way slip roads of an interchange on a motorway of the game (ours, or one built
+with Build → Motorway). Traffic runs from its start to its end: start it beside the motorway to leave it (an
+exit), end it there to join it (an entry); the side clicked picks the carriageway, the other end joins a road
+(a junction or a roundabout, as Build → Road's). It leaves along the traffic through one bend and meets the
+road square through another; the motorway gets its exit or entry lane (234 / 295 m on the hard shoulder, drawn and
+priced), the slip road keeps the motorway's level by its gore and a low slope's fall from it beside it, where
+their slopes overlap that earth is billed once, and a narrow ridge between their cuttings is dug out (billed).
+Put a slip road's end on another's and the two share one crossroads, billed once. Where the motorway moves a
+track aside, its slip roads are built against the moved track. Four of them make a diamond (D3 0304 at road
+II/114: valid, +200 M CZK, `tests/fixtures/interchange/d3-0304-diamond.json`; D3 0303 at road II/105, where the
+motorway moves tracks aside: `d3-0303-diamond.json`). Its gore slides along the motorway like any end (its bend
+goes with it). Slip roads already in the motorway's price (earth-built ones of one interchange every 7 km, SPK)
+are credited. Not yet: a slip road over or under its own motorway (a trumpet's or cloverleaf's loop),
+interchange spacing (research/90). Real-mouse check: `node scripts/interchange-scene.mjs [--docs]` (screenshots
+620–633).
+
+| The diamond, valid and priced | Slip roads and motorway in one cutting by their gores |
+|---|---|
+| ![Diamond](docs/screenshots/625-diamond-valid-overview.png) | ![Gore](docs/screenshots/627-exit-lane-and-gore.png) |
+
+Also: [the diamond from the south-west](docs/screenshots/626-diamond-oblique.png), [an exit and an entry at one
+crossroads on road II/114](docs/screenshots/628-slip-road-junction-on-road-ii-114.png), [the D3 0303
+diamond](docs/screenshots/632-d3-0303-diamond-overview.png), [its slip road past the tracks the motorway
+moves aside](docs/screenshots/633-d3-0303-slip-road-over-moved-track.png).
 
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|

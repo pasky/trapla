@@ -5,11 +5,12 @@ import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railEverywherePerKm, railRouteBase
 // Sources: SFDI SPK CN 2026 (research/data/spk-cn-2026-oceneni.csv), "defined standard" column, CZK
 // excl. VAT, 2026 price level. ČSN 73 6101 (2018) design speeds per research/00 §4.1.
 
-export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'M7.5' | 'P4' | 'D27.5' | 'D27.5-1' | 'S21.5' | 'S21.5-1' | 'R1' | 'R2';
+export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'M7.5' | 'P4' | 'V7.25' | 'D27.5' | 'D27.5-1' | 'S21.5' | 'S21.5-1' | 'R1' | 'R2';
 /** A divided road built as a paired corridor (mode 'motorway'): the corridor's category; `carriagewayOf` its one direction. */
 export type PairedCategoryId = 'D27.5' | 'S21.5';
 /** Legal class of a road (who owns it; the cross-section is chosen separately). */
-export type LegalClass = 'I' | 'II' | 'III' | 'local' | 'service' | 'track';
+/** `ramp`: a slip road of a motorway interchange (part of the motorway, built with Build → Slip road). */
+export type LegalClass = 'I' | 'II' | 'III' | 'local' | 'service' | 'track' | 'ramp';
 export type TerrainClass = 'hilly' | 'mountainous';
 
 /**
@@ -52,6 +53,9 @@ export interface Category {
   /** Built under the local-road norm ČSN 73 6110 ('local') or the field-track norm ČSN 73 6109 ('track')
    * instead of ČSN 73 6101: own speed rows (data/norms.ts), no junction spacing (research/42). */
   minor?: 'local' | 'track';
+  /** A one-way slip road of a motorway interchange: its own speed rows (data/norms.ts RAMP_SPEED_NORMS), plain
+   * circular curves, a speed-change lane where it meets the motorway (core/slip-roads.ts; research/90). */
+  ramp?: true;
   /** Single-carriageway roads: the legal classes this cross-section may carry, the first when a road is
    * switched to it (S 7.5: class II/III, S 9.5: I/II, S 11.5: I; research/42 for the minor rows). */
   legalClasses?: LegalClass[];
@@ -141,6 +145,21 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     normCodes: { hilly: 'A.1.P4.NE', mountainous: 'A.1.P4.NE' },
     bridgePerKm: 304_735_878.7401868, bridgeCode: 'A.2.P.4.N', tunnelTubes: 1,
     section: { lane: 1.5, hardShoulder: 0, edgeLine: 0, centreLine: 0, dash: 3, gap: 6 },
+  },
+  // One-lane slip road of a motorway interchange (jednopruhová větev MÚK), research/90 §1: a D35 interchange
+  // design (VUT thesis Mohelnice – jih, p. 10) gives one 3.50 m lane, 0.25 m guide strips, a 2.00 m and a
+  // 0.25 m paved shoulder and 0.50 m verges: 7.25 m between the barriers (medium confidence; no ČSN table read).
+  // Drawn symmetric (the two shoulders averaged). One way, no junction or access along it (gradeSeparated).
+  // Price: SPK has no slip-road row; PROVISIONAL the S 7.5 class II rows, the standard road nearest its width
+  // (6.25 m paved vs 6.5 m) and bridge row. Steepest grade: the ramp table of ČSN 73 6102 was not found;
+  // PROVISIONAL the class I value (S 9.5, 6 %; the design above uses +5.0 / −4.5 %).
+  'V7.25': {
+    id: 'V7.25', mode: 'road', label: 'Slip road, one lane (7.25 m)', enabled: false, crownWidth: 7.25, ramp: true, gradeSeparated: true,
+    speeds: [50, 40], roadClass: 'II', legalClasses: ['ramp'], maxGradient: { hilly: 0.06, mountainous: 0.06 },
+    normPerKm: { hilly: 36_142_000, mountainous: 41_448_000 },
+    normCodes: { hilly: 'A.1.S2.7,5.NER', mountainous: 'A.1.S2.7,5.NEH' },
+    bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', tunnelTubes: 1,
+    section: { lane: 1.75, hardShoulder: 1.375, edgeLine: 0.25, centreLine: 0, dash: 3, gap: 6 },
   },
   // Paired motorway corridor: VL 1 sheet 11-02 widths (data/motorway.ts), whole-category SPK norm
   // (both carriageways, earth-built interchange branches at 1 per 7 km included, research/33 §3),

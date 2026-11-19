@@ -14,7 +14,9 @@ import { DIRECTIONS_TEXT, mappedRoadName } from '../core/terms';
 import { ROUNDABOUT_HOSTS } from '../core/tie-in';
 import { classTraffic } from '../core/traffic-census';
 import { fillDirections, type DirectionsState } from './hud';
-import { DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './road-edit';
+import { DEFAULT_SPEED, isTraffic, SLIP_ROAD_TRAFFIC, startSpeed, strayDistance } from './road-edit';
+import { isSlipRoad } from '../core/slip-roads';
+import { pieceDepth, topPieces } from './pieces';
 import { toast } from './toast';
 
 export interface RouteCardDeps {
@@ -96,10 +98,11 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
   } else {
     const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
       : e.anchor.kind === 'route' ? (() => { const host = deps.design().routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
-        return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
+        return !host ? 'a road' : host.kind === 'motorway' ? (host.role === 'mission' ? 'our motorway' : 'the motorway')
+          : host.role === 'mission' ? 'our road' : host.name; })()
       : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
         : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
-    what.textContent = `New ${rail ? 'railway' : 'road'} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
+    what.textContent = `${isSlipRoad(route) ? 'Slip road, one way,' : `New ${rail ? 'railway' : 'road'}`} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.${isSlipRoad(route) ? costNote(r) : ''}`;
   }
   const form = document.createElement('form'); form.className = 'source-operations route-traffic';
   const fields: HTMLInputElement[] = [];
@@ -127,14 +130,15 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
     if (!filled || Math.round(traffic) !== filled.aadt || Math.abs(heavy / 100 - filled.heavyShare) > 1e-9) basis.remove();
   };
   // where the numbers come from, while they are still the ones the game filled in
-  const cls = route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
+  // (a slip road starts as the average class II road, as a new road does)
+  const cls = route.specification.legalClass === 'ramp' ? SLIP_ROAD_TRAFFIC : route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
   const uncounted = UNCOUNTED_TRAFFIC[cls as keyof typeof UNCOUNTED_TRAFFIC];
   const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
   const basis = document.createElement('small'); basis.className = 'traffic-basis';
   if (filled && isTraffic(op, filled)) {
     basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
       : uncounted ? `Not counted: a guess for ${uncounted.what}. Change it to what you expect.`
-      : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
+      : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new ${isSlipRoad(route) ? 'slip road' : 'road'}: the average class ${averaged} road is assumed.`;
     basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
       : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'
       : `The traffic census (ŘSD) counts class I–III roads only. For ${uncounted?.what ?? 'this road'} the game guesses low (a residential zone is recommended up to 500 vehicles a day, TP 132). Change it to what you expect.`;
@@ -169,7 +173,9 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
   const junctions = document.createElement('div'); junctions.className = 'route-junctions';
   if (!rail && !route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
     const anchor: Anchor = route.endpoints[end].anchor;
-    const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : anchor.kind === 'route' ? 'designed' : undefined;
+    // (an end on a motorway is a slip road's gore: no junction to choose)
+    const host: RouteDesign | undefined = anchor.kind === 'route' ? deps.design().routes.find(q => q.id === (anchor as { routeId: string }).routeId) : undefined;
+    const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : host && host.kind !== 'motorway' ? 'designed' : undefined;
     if (!cls || ROAD_CLASSES[cls]?.noAtGrade) continue;
     const row = document.createElement('div'); row.className = 'ctx-row';
     const label = document.createElement('span'); label.textContent = end === 'a' ? 'Start junction' : 'End junction';
@@ -245,4 +251,17 @@ export function noLinksCard(host: () => HTMLElement, onClose: () => void): void 
   close.onclick = onClose; h.append(title, close);
   const p = document.createElement('p'); p.textContent = 'This map’s roads cannot be changed yet: its road links are missing.';
   root.append(h, p);
+}
+
+/** What makes a slip road dear, where one piece of earthworks over 6 m high or deep is its largest (≥ 40 % of its
+ * cost; a slip road on level ground costs a few tens of millions): that piece in a sentence, else nothing. */
+export function costNote(r: Result): string {
+  const [top] = topPieces(r, 1);
+  if (!top || (top.kind !== 'fill' && top.kind !== 'cut') || top.cost < 0.4 * r.cost.total) return '';
+  const depth = pieceDepth(r, top.i0, top.i1);
+  if (depth < 6) return '';
+  const streams = r.waterCrossings.filter(c => c.i >= top.i0 && c.i <= top.i1 && (c.structure === 'pipe' || c.structure === 'box')).length;
+  return top.kind === 'fill'
+    ? ` Its largest cost: an embankment up to ${Math.round(depth)} m high over lower ground${streams ? `, ${streams === 1 ? 'a stream under it in a culvert' : `${streams} streams under it in culverts`}` : ''}.`
+    : ` Its largest cost: a cutting up to ${Math.round(depth)} m deep.`;
 }

@@ -46,9 +46,11 @@ export function createMapPicks(app: MapPickContext) {
     surfacePicks.set(route.routeId, { key: route.engineeringRevision, result: result as unknown as PickRoute['result'] });
     return surfacePicks.get(route.routeId)!.result;
   };
-  const routeAt = (clientX: number, clientY: number, px: number) => {
+  /** `exclude`: a road never picked (a road's own end dragged over it) */
+  const routeAt = (clientX: number, clientY: number, px: number, exclude?: RouteId) => {
     const box = canvasBox();
     const routes = Object.values(app.projectFull?.routes ?? {}).flatMap(route => {
+      if (route.routeId === exclude) return [];
       const r = route.routeId === app.activeRouteId && app.last ? app.last : route.legacy ?? surfacePick(route);
       return r ? [{ id: route.routeId, result: r }] : [];
     });

@@ -53,7 +53,8 @@ export function oobTexture(lc: Uint8Array, nx: number, ny: number, oobBit: numbe
 
 export const LC_LEVELS = 4;
 /** size of the `roadSections` table */
-export const ROAD_SECTIONS = 10;
+// (slots 1–6: the single-carriageway sections in category order, then the railway, one-direction and paired slots: disjoint)
+export const ROAD_SECTIONS = 13;
 
 export interface TerrainUniforms {
   [name: string]: THREE.IUniform;
@@ -104,12 +105,14 @@ export interface TerrainUniforms {
 /** The paired cross-sections the shader draws, each with its own slots (two may be on the map together: a motorway
  * built in a four-lane road's mission). */
 export const PAIRED_VARIANTS: readonly PairedCategoryId[] = ['D27.5', 'S21.5'];
-/** `roadSections` slots of a paired corridor (two carriageways and a median), per variant: 9 D 27.5, 7 S 21.5. */
+/** `roadSections` slots of a paired corridor (two carriageways and a median), per variant: 12 D 27.5, 10 S 21.5. */
 export const pairedSlot = (c: PairedCategoryId) => ROAD_SECTIONS - 1 - 2 * PAIRED_VARIANTS.indexOf(c);
-/** …and of one direction of it split: the same paint, the median on its left (travel inside): 8, 6. */
+/** …and of one direction of it split: the same paint, the median on its left (travel inside): 11, 9. */
 export const carriagewaySlot = (c: PairedCategoryId) => pairedSlot(c) - 1;
 /** Slots of a railway formation (single / double track): ballast beds, sleepers and rails (`roadRail`). */
-export const RAIL_SECTION = 5, RAIL2_SECTION = 4;
+export const RAIL_SECTION = 8, RAIL2_SECTION = 7;
+/** the D 27.5 motorway's slots */
+export const PAIRED_SECTION = pairedSlot('D27.5'), CARRIAGEWAY_SECTION = carriagewaySlot('D27.5');
 /** a slot of a paired corridor or of one of its directions */
 export const isPairedSlot = (k: number) => k >= ROAD_SECTIONS - 2 * PAIRED_VARIANTS.length;
 export const isCarriagewaySlot = (k: number) => isPairedSlot(k) && (ROAD_SECTIONS - 1 - k) % 2 === 1;

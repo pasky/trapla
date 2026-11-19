@@ -56,6 +56,7 @@ pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m un
 smoke|browser|full|PORT=\$((PORT + 10)) node scripts/smoke.mjs
 playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/playtest.mjs
 toolbar|browser|full|PORT=\$((PORT + 30)) node scripts/toolbar-layout.mjs --out $log/toolbar-shots
+interchange|browser|full|PORT=\$((PORT + 80)) node scripts/interchange-scene.mjs
 smoke-dist|browser|full|DIST=dist PORT=\$((PORT + 40)) node scripts/smoke.mjs
 playtest-dist|browser|full|DIST=dist PORT=\$((PORT + 50)) OUT=$log/playtest-dist-shots node scripts/playtest.mjs
 toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-layout.mjs --out $log/toolbar-dist-shots

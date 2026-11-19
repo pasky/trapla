@@ -19,6 +19,8 @@ import type { NoiseLayer } from '../render/noise';
 import type { RouteScene } from '../render/route-scene';
 import { runSliced, type SlicedJob, type Staged } from '../render/slices';
 import type { RenderEndpoints, View } from '../render/view';
+import { isSlipRoad, SLIP_ROAD } from '../core/slip-roads';
+import { mergeSlipRoads } from '../render/slip-merge';
 import type { Pack } from '../scenario';
 import type { Session } from '../session';
 import type { ActiveRouteStore } from './active-route-store';
@@ -266,6 +268,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       if (route.kind !== 'road') return [];
       return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
     });
+    mergeSlips(inputs);
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
@@ -281,6 +284,8 @@ export function createResultDisplay(app: ResultDisplayContext) {
     })(), ([geometry, sources]) => {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
       app.links.picker?.setAccepted(result.acceptedRenderReplacements);
+      // a slip road's speed-change lane: its lines on the motorway (the dashed one first, then its taper's edge)
+      app.view.setLaneMarks(result.works.items.filter(w => w.id.includes(':lane:')).flatMap(w => w.surfaces.map((q, k) => ({ points: q.points, dashed: k === 0, width: SLIP_ROAD.marking.width }))));
       syncDecorations(result);
       app.session.displayedProject = result; heavy = null;
       app.projectStore.offerBest(result); app.projectScore(false);
@@ -296,6 +301,24 @@ export function createResultDisplay(app: ResultDisplayContext) {
     app.setStatus(''); settle();
   };
 
+  /** Slip roads beside their motorway drawn as one body of earthworks (render/slip-merge.ts): the drawn copies, kept
+   * while the results are the same (an unchanged body keeps its meshes). */
+  let merged: { key: Result[]; out: Result[] } | null = null;
+  const mergeSlips = (inputs: { id: string; result: Result }[]) => {
+    const design = app.projectStore.snapshot.design;
+    for (const c of design.corridors) {
+      const host = inputs.find(i => i.id === c.children.forward);
+      const slips = inputs.filter(i => { const r = design.routes.find(q => q.id === i.id);
+        return !!r && isSlipRoad(r) && [r.endpoints.a.anchor, r.endpoints.b.anchor].some(a => a.kind === 'route' && (a.routeId === c.children.forward || a.routeId === c.children.reverse)); });
+      if (!host || !slips.length || c.mode !== 'paired') continue;
+      const key = [host.result, ...slips.map(s => s.result)];
+      if (!merged || merged.key.length !== key.length || merged.key.some((r, k) => r !== key[k])) {
+        const m = mergeSlipRoads(host.result, slips.map(s => s.result), (x, y) => app.pack.terrain.heightAt(x, y));
+        merged = { key, out: [m.motorway, ...m.slips] };
+      }
+      host.result = merged.out[0]; slips.forEach((s, k) => { s.result = merged!.out[k + 1]; });
+    }
+  };
   return {
     evals, requestEval, settled, sceneIdle, syncDecorations, activeLegacy, frameLine, showActiveResult,
     /** the last full result's sliced 3D rebuild (drag-perf probe); who waits for the idle scene (automation) */

@@ -13,6 +13,7 @@ import { groundRoadSourceInfo, promoteGroundRoad } from '../core/project-promoti
 import { ROAD_CLASSES } from '../core/data/urban';
 import { classTraffic, type TrafficDefault } from '../core/traffic-census';
 import { freeSpan } from './source-editor';
+import { leavingBend } from '../core/slip-roads';
 
 /** A grab this close to a junction does not stop there (no 20 m stubs): it extends to the next one, m. */
 export const STRETCH_PAST_JUNCTION = 150;
@@ -63,7 +64,7 @@ export function rebuildable(base: ProjectTransportIndex, sourceId: string): Rebu
  * two-lane local road M 7.5 (ČSN 73 6110 group C), a track as a paved one-lane P 4.0 (ČSN 73 6109), and a
  * service road (a farm or works access, mostly one lane) as P 4.0 too: ČSN 73 6110 §8.1.4 lets such roads be
  * designed as field roads (research/42). The player can change the cross-section. */
-const REBUILT_AS: Record<LegalClass, RoadCategoryId> = { I: 'S9.5', II: 'S7.5', III: 'S7.5', local: 'M7.5', service: 'P4', track: 'P4' };
+const REBUILT_AS: Record<LegalClass, RoadCategoryId> = { I: 'S9.5', II: 'S7.5', III: 'S7.5', local: 'M7.5', service: 'P4', track: 'P4', ramp: 'V7.25' };
 
 /** The stretch a drag at station s rebuilds: to the nearest junction on either side (passing those
  * closer than STRETCH_PAST_JUNCTION), never into a stretch another project road already rebuilds. */
@@ -420,7 +421,11 @@ export function rebuildCommand(base: ProjectTransportIndex, interval: SourceInte
   return command;
 }
 
-export interface PlacedEnd { position: XYZ; anchor: Anchor }
+/** `travel`: an end on a motorway's carriageway (a slip road's gore), the traffic's direction there (not saved: the
+ * new slip road's first bend is put along it) */
+export interface PlacedEnd { position: XYZ; anchor: Anchor; travel?: { x: number; y: number };
+  /** an end on a mapped road: that road's direction there (not saved: a new slip road meets it square) */
+  along?: { x: number; y: number } }
 /** The class a road built with Build → Road starts as. */
 export const NEW_ROAD_CLASS = 'II';
 /** A new straight class II road between two placed ends; bent afterwards like any road. Its traffic
@@ -434,6 +439,56 @@ export function newRoad(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids:
   return { id: ids.routeId, acousticSourceId: ids.acousticSourceId, name, revision: 0, role: 'auxiliary', kind: 'road',
     endpoints: { a: end(a), b: end(b) }, specification: spec,
     alignment: { kind: 'pi', pis: [], vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } } };
+}
+
+/** The class a slip road's traffic starts as: the average class II road, as a new road's (an estimate the card labels). */
+export const SLIP_ROAD_TRAFFIC = 'II';
+/** A new one-way slip road (Build → Slip road, core/slip-roads.ts) between two placed ends, one on a motorway's
+ * carriageway: it leaves (joins) the carriageway along the traffic through one bend put 150 m (at most 45 % of the
+ * way) along it from the gore; where its other end joins a mapped road, a second bend there turns it to meet that
+ * road square (a diamond's slip road, research/90 §6: its terminal a junction on the crossing road), else it runs
+ * straight to its other end. 50 km/h, one lane. */
+export function newSlipRoad(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids: { routeId: string; acousticSourceId: string }): RouteDesign {
+  const used = new Set(project.routes.map(r => r.name));
+  let name = 'Slip road';
+  for (let n = 2; used.has(name); n++) name = `Slip road ${n}`;
+  const end = (e: PlacedEnd): EndpointConstraint => ({ position: { ...e.position }, anchor: structuredClone(e.anchor), binding: 'resolved' });
+  const speed = 50, spec: RoadSpec = { kind: 'road', policy: 'legacy-road', legalClass: 'ramp', crossSection: 'V7.25', designSpeed: speed,
+    operations: startTraffic(classTraffic(SLIP_ROAD_TRAFFIC), speed) };
+  const exit = !!a.travel, g = exit ? a : b, other = exit ? b : a;
+  const reach = Math.min(150, 0.45 * Math.hypot(other.position.x - g.position.x, other.position.y - g.position.y));
+  const pis = g.travel ? [leavingBend({ ...g.position, travel: g.travel }, exit ? 'exit' : 'entry', reach)] : [];
+  const square = pis.length && other.along && g.travel ? squareBend(other.position, other.along, pis[0], { ...g.position, travel: g.travel }) : null;
+  if (square) { if (exit) pis.push(square); else pis.unshift(square); }
+  return { id: ids.routeId, acousticSourceId: ids.acousticSourceId, name, revision: 0, role: 'auxiliary', kind: 'road',
+    endpoints: { a: end(a), b: end(b) }, specification: spec,
+    alignment: { kind: 'pi', pis, vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } } };
+}
+
+/** The bend before a slip road's end on a road (at `t`, the road running along `along`) that makes its last leg
+ * square to the road: on the road's normal towards the slip road's gore `g`, a quarter of the way to the leaving
+ * bend `first` (40–90 m: room for the bend and a straight junction mouth). Where the road crosses the motorway
+ * askew, the normal leads back towards the motorway on one side and away from it on the other: the bend is kept at
+ * least halfway out from the leaving bend to the end there (clear of the motorway's slopes), and at most 20 m
+ * further out than the end on the other side. PROVISIONAL: a game default the player drags. Null where that leaves
+ * under 30 m, the road runs nearly towards the gore, or too little room is left before the leaving bend. */
+export function squareBend(t: { x: number; y: number }, along: { x: number; y: number }, first: { x: number; y: number },
+  g: { x: number; y: number; travel: { x: number; y: number } }) {
+  const l = Math.hypot(along.x, along.y) || 1;
+  let nx = -along.y / l, ny = along.x / l;
+  const fx = first.x - t.x, fy = first.y - t.y, reach = Math.hypot(fx, fy);
+  if (nx * fx + ny * fy < 0) { nx = -nx; ny = -ny; }
+  // (the leaving bend well off the road's normal: the slip road would run back along the road)
+  if ((nx * fx + ny * fy) / (reach || 1) < 0.35 || Math.hypot(g.x - t.x, g.y - t.y) < 150) return null;
+  // out: away from the motorway, on the slip road's side; o(p): how far out p is from the gore
+  let ox = -g.travel.y, oy = g.travel.x;
+  if (ox * (first.x - g.x) + oy * (first.y - g.y) < 0) { ox = -ox; oy = -oy; }
+  const o = (p: { x: number; y: number }) => ox * (p.x - g.x) + oy * (p.y - g.y), out = nx * ox + ny * oy;
+  let d = Math.min(90, Math.max(40, reach / 4));
+  if (out < -1e-6) d = Math.min(d, (o(t) - (o(first) + o(t)) / 2) / -out);
+  else if (out > 1e-6) d = Math.min(d, 20 / out);
+  if (!(d >= 30) || reach - d < 60) return null;
+  return { x: t.x + nx * d, y: t.y + ny * d, r: null };
 }
 
 const nearestStation = nearestOn;
