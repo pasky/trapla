@@ -2478,3 +2478,9 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   goal, and the villa news on top of it (its bridge ends in the garden); *Long spans over it* from the card; the reveal; the
   butterflies at their pace; By hand turned on mid-game; From scratch (the straight line is VALID here, 2.41 bn, through
   three tunnels).
+- **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
+  mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
+  counts the shared body once per direction in Earth balance; the "From scratch" mark survives an Undo of the restart and a
+  loaded best; Hands off is offered where landmarks are near the line, not only where the starter breaks it (it rules out
+  what a cheaper line would take); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
+  slip between two.
