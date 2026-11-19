@@ -153,3 +153,7 @@ No 2–4 real Czech awarded contracts were verified in this pass to isolate one 
 | Price per km | the S 7.5 class II SPK rows (no slip-road row) | PROVISIONAL |
 | Already in the motorway's price | ≤ L / 7 km interchanges, each ≤ A.4.N and ≤ its slip roads' earth-built cost | §7b, PROVISIONAL proxy |
 | Interchange spacing (4 km) | not checked | §5, medium-low |
+| Shape of a new slip road | one bend 150 m off the gore, 8 m out; a second before a road end that meets the road square (40–90 m before it) | game default (the player bends it), PROVISIONAL |
+| Height beside the motorway | within 0.5 m (a grade pin's tolerance) while the crowns are within 4 m, then within a 1 : 2.5 slope's fall across the gap, out to 30 m | MODELLING ASSUMPTION (VL 1 32-01 low-fill slope, research/48 §1) |
+| Terminals of an exit and an entry on one side | one crossroads on the crossing road, priced as one junction | the diamond's usual layout (§1 examples); price PROVISIONAL (no crossroads row) |
+| Ridge between the motorway's cutting and a slip road's | dug out where its top is under 10 m wide, to one slope crown edge to crown edge, its end at 1 : 1.75; billed at the slip road's cut rate | game rule (the screen's 10 m clearance); slopes research/48 §1 |

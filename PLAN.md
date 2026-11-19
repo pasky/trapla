@@ -2418,21 +2418,52 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
      crossing's works, are one interchange (`designedJunctions` zones, `ScreenRoute.sharedWays`); a new road's
      junction changes the road it joins only within its own works (was: the whole road);
   5. slopes: the slip road's grade is held at the motorway's by its gore while their crowns are within 4 m
-     (MODELLING ASSUMPTION); overlapping earth and land billed once (as `splitLedger`); a slope standing on the
-     other's carriageway is a problem; drawn as one body (`render/slip-merge.ts`: no slope under the other's
-     pavement, two cuttings' faces end at their ridge);
+     (MODELLING ASSUMPTION; widened in the second round, below); overlapping earth and land billed once (as
+     `splitLedger`); a slope standing on the other's carriageway is a problem; drawn as one body
+     (`render/slip-merge.ts`: no slope under the other's pavement at one height);
   6. double billing: the D norm includes earth-built slip roads of one interchange per 7 km (SPK report p. 7) →
      credited up to L / 7 interchanges, each ≤ A.4.N 76.7 M and ≤ what its slip roads build on earth (PROVISIONAL);
   7. a junction on the crossing road's ramp to its bridge → a problem (move it to where the road is on its ground);
   8. leaving against the traffic, crossing the motorway, no or two motorway ends → problems;
   9. the mission ends' interchange card: "Shown only: its slip roads are not built or billed here. The motorway's
      price per km already includes earth-built slip roads of one interchange every 7 km."
-- **Result:** the D3 0304 diamond (four slip roads, two terminals each side ≥ 70 m apart): 10.3362 bn, valid
-  (+306 M: slip roads 62–147 M each incl. their 25 M junctions, lanes 0.6–0.9 M, less the 77 M allowance and what
-  the two bodies share); `tests/slip-roads.test.ts`, `scripts/interchange-scene.mjs` (a full gate). D3 0303 km 3.06:
-  valid except one slip road crossing tracks the motorway moves aside ("two roads change the same old road").
-- **Known gaps:** a loop over or under its own motorway (trumpet, cloverleaf) is not engineered (a problem); two
-  slip roads cannot share one junction (each is its own T, ≥ 70 m apart); interchange spacing (4 km, medium-low
-  source) not checked; a narrow ridge of ground between two cuttings stays (not excavated); one small spike where
-  a merged cutting face meets a separate one; slip-road traffic starts as the average class II road (labelled);
+- **Second round (owner, same day):**
+  1. *D3 0303 km 3.06 was unpriced* ("two roads change the same old road"): the motorway moves tracks 1029 / 1031
+     aside, and the north-east slip road's own crossing engine diverted / bridged their old line. Cause: the slip road
+     was engineered against the pack's ground, not the ground its motorway leaves. Now a slip road is built against
+     its motorway's footprint relocations within 1.5 km of its gore (those stretches cut out of its network, the moved
+     pieces added as ground ways: `RoadNet.edited(cuts, extra, ground)`, `editedNetwork(…, moved)`,
+     `project-evaluate.ts movedByMotorway`), and its changes of what is left of those ways are one design with the
+     motorway (`sharedWays`). Slip roads on the two carriageways meet in the motorway's body wherever they come
+     near it (was: only by the gores). The D3 0303 diamond: 5.7349 bn valid (the north terminal moved to road station
+     ≈ 1270 for the sight triangle, as a player would), `tests/fixtures/interchange/d3-0303-diamond.json`.
+  2. *Two slip roads share one junction*: Build → Slip road puts an end within 30 m of another slip road's end on the
+     same road onto its junction (a click on that slip road's end too); two ends at one point are one crossroads,
+     built and billed by the first (the second's lump credited: "Shares its junction with Slip road …"), their works
+     there one design (`sharedJunctions`).
+  3. *Shape*: Build → Slip road adds a second bend before a road end that meets the road square (on the road's
+     normal, a quarter of the way to the leaving bend, 40–90 m; where the road crosses askew, kept at least halfway
+     out from the motorway, at most 20 m beyond the end on the obtuse side; `road-edit.ts squareBend`, PROVISIONAL).
+  4. *Grade by the gore*: the merge holds were ±0.25 m, narrower than the grade search's 1 m height grid can hold,
+     and a road under 400 m was solved as one straight (its holds ignored): slip roads now get knots every 60 m
+     (`RAMP_KNOTS`), are held within a grade pin's tolerance (0.5 m) while the crowns are within 4 m, then within a
+     1 : 2.5 slope's fall across the gap out to 30 m (`MERGE_SLOPE`, `MERGE_REACH`): their slopes no longer clash.
+  5. *Two cuttings*: a ridge whose top is under 10 m wide between the motorway's cutting and a slip road's is dug out
+     to one slope from crown edge to crown edge, its end cut down along the road at 1 : 1.75 (a nose), billed as a
+     work of the slip road at its cut rate (`dugRidges`), drawn so (the slip road's face to the motorway's crown edge,
+     the nose as face samples). The blades of ground ("spikes") between the two were the engine's face samples drawn
+     on faces the merge had ended; dropped there.
+  6. *The tall green slab* in 626 was Slip road 4's 12 m embankment straight up the stream valley at a narrow angle
+     (also why it cost +121 M): the new shape curves it round; a slip road whose biggest piece is an embankment or
+     cutting over 6 m and most of its cost says so on its card ("Most of its cost: an embankment up to 11 m high
+     over lower ground, 2 streams under it in culverts").
+- **Result:** the D3 0304 diamond (gores 450 m either side of the bridge, crossroads 140 m either side on road
+  II/114): 10.2330 bn valid (+200 M: slip roads 63–120 M alone incl. two 25 M junctions, lanes, dug ridges 1.5–2.6
+  M, less the 77 M allowance and what the bodies share); `tests/slip-roads.test.ts`, `scripts/interchange-scene.mjs`
+  (a full gate, screenshots 620–633).
+- **Known gaps:** a loop over or under its own motorway (trumpet, cloverleaf) is not engineered (a problem); the
+  shared junction is priced as one T allowance (no crossroads price of its own) and cannot be a roundabout for both;
+  interchange spacing (4 km, medium-low source) not checked; only the motorway's footprint relocations are seen by
+  its slip roads (not its crossings' reroutes); a narrow valley between two embankments is not filled; a small
+  light speck can remain at a dug ridge's nose; slip-road traffic starts as the average class II road (labelled);
   the A.4.N proxy for what the motorway's norm includes.

@@ -346,18 +346,27 @@ stays on it), off it onto open ground, or onto another road.
 **Build → Slip road** builds one-way slip roads of an interchange on a motorway of the game (ours, or one built
 with Build → Motorway). Traffic runs from its start to its end: start it beside the motorway to leave it (an
 exit), end it there to join it (an entry); the side clicked picks the carriageway, the other end joins a road
-(a junction or a roundabout, as Build → Road's). It leaves along the traffic through one bend; the motorway
-gets its exit or entry lane (234 / 295 m on the hard shoulder, drawn and priced), the slip road keeps the
-motorway's level by its gore, and where their slopes overlap that earth is billed once. Four of them make a
-diamond (D3 0304 at road II/114: valid, +306 M CZK, `tests/fixtures/interchange/d3-0304-diamond.json`). Its
-gore slides along the motorway like any end (its bend goes with it). Slip roads already in the motorway's price
-(earth-built ones of one interchange every 7 km, SPK) are credited. Not yet: a slip road over or under its own
-motorway (a trumpet's or cloverleaf's loop), two slip roads sharing one junction, interchange spacing
-(research/90). Real-mouse check: `node scripts/interchange-scene.mjs [--docs]` (screenshots 620–631).
+(a junction or a roundabout, as Build → Road's). It leaves along the traffic through one bend and meets the
+road square through another; the motorway gets its exit or entry lane (234 / 295 m on the hard shoulder, drawn and
+priced), the slip road keeps the motorway's level by its gore and a low slope's fall from it beside it, where
+their slopes overlap that earth is billed once, and a narrow ridge between their cuttings is dug out (billed).
+Put a slip road's end on another's and the two share one crossroads, billed once. Where the motorway moves a
+track aside, its slip roads are built against the moved track. Four of them make a diamond (D3 0304 at road
+II/114: valid, +200 M CZK, `tests/fixtures/interchange/d3-0304-diamond.json`; D3 0303 at road II/105, where the
+motorway moves tracks aside: `d3-0303-diamond.json`). Its gore slides along the motorway like any end (its bend
+goes with it). Slip roads already in the motorway's price (earth-built ones of one interchange every 7 km, SPK)
+are credited. Not yet: a slip road over or under its own motorway (a trumpet's or cloverleaf's loop),
+interchange spacing (research/90). Real-mouse check: `node scripts/interchange-scene.mjs [--docs]` (screenshots
+620–633).
 
 | The diamond, valid and priced | Slip roads and motorway in one cutting by their gores |
 |---|---|
 | ![Diamond](docs/screenshots/625-diamond-valid-overview.png) | ![Gore](docs/screenshots/627-exit-lane-and-gore.png) |
+
+Also: [the diamond from the south-west](docs/screenshots/626-diamond-oblique.png), [an exit and an entry at one
+crossroads on road II/114](docs/screenshots/628-slip-road-junction-on-road-ii-114.png), [the D3 0303
+diamond](docs/screenshots/632-d3-0303-diamond-overview.png), [its slip road past the tracks the motorway
+moves aside](docs/screenshots/633-d3-0303-slip-road-over-moved-track.png).
 
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
