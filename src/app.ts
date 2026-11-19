@@ -277,7 +277,7 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   const { switchRoute, placeAt, bendLabel, joinStretch, directionsState } = createRoutes({
     session, store, projectStore, pack, scenario, view, profile, hud, inspector, extras, routeBar, editBar, buildTool, curveEdit, linkEdit, works,
     links, results, select, selectRoad, deselect, showRoadSelected: () => selection.showRoadSelected(), selectedPi, projectScore, frameRoute, activeEndpoints, routeCard,
-    routeAt: (clientX, clientY, radius) => routeAt(clientX, clientY, radius), sourceAt: (clientX, clientY) => sourceAt(clientX, clientY),
+    routeAt: (clientX, clientY, radius, exclude) => routeAt(clientX, clientY, radius, exclude), sourceAt: (clientX, clientY) => sourceAt(clientX, clientY),
   });
 
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----

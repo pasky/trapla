@@ -2,16 +2,16 @@
 // it joins (it stays on it), off it onto open ground, or onto another road to join that one instead. The road
 // follows live; letting go applies one undoable edit ("moving the start"). Where an end cannot go the handle
 // says why, and letting go there leaves the end where it was. A rebuilt stretch's ends are stretch-ends.ts's.
-import type { RouteDesign } from '../core/project';
+import type { Anchor, RouteDesign } from '../core/project';
 import type { View } from '../render/view';
 import type { Placement } from './build-road';
 import { MIN_NEW_ROAD } from './build-road';
 import type { PlacedEnd } from './road-edit';
 
 export interface RoadEndsContext {
-  /** where this end would go with the pointer at the client point (it keeps to the road it joins while near it);
-   * null: the pointer is off the map */
-  place(route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number): Placement | null;
+  /** where this end would go with the pointer at the client point (it keeps to the road it joined when the drag
+   * began, `held`, while near it); null: the pointer is off the map */
+  place(route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number, held: Anchor): Placement | null;
   /** the end as drawn now (an end on another road follows that road as built) */
   drawnAt(route: RouteDesign, end: 'a' | 'b'): { x: number; y: number; z: number };
   /** a drag starts / the end moves (a live, uncommitted change) / it ends (`keep`: commit, else take it back) */
@@ -61,13 +61,14 @@ export class RoadEnds {
     const enabled = this.view.controls.enabled; this.view.controls.enabled = false;
     this.ctx.begin();
     let changed = false;
+    const held = structuredClone(route.endpoints[end].anchor);
     this.moving = { end, at: this.ctx.drawnAt(route, end), placement: null };
     // the end itself follows the pointer: the handle is drawn above it, where it was grabbed stays with the pointer
     const box = this.view.renderer.domElement.getBoundingClientRect(), at = this.view.project(this.moving.at.x, this.moving.at.y, this.moving.at.z);
     const grab = { dx: event.clientX - box.left - at.sx, dy: event.clientY - box.top - at.sy };
     const move = (e: PointerEvent) => {
       const now = this.route, moving = this.moving; if (!now || !moving) return;
-      let p = this.ctx.place(now, end, e.clientX - grab.dx, e.clientY - grab.dy);
+      let p = this.ctx.place(now, end, e.clientX - grab.dx, e.clientY - grab.dy, held);
       // (never closer to its other end than a new road may be)
       const other = this.ctx.drawnAt(now, end === 'a' ? 'b' : 'a');
       if (p?.ok) {

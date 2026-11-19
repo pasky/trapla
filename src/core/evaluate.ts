@@ -119,6 +119,9 @@ export interface Result {
   faceL?: (number[] | undefined)[]; faceR?: (number[] | undefined)[];
   /** a hairpin's widened lanes: extra crown width on each side per station, m (absent: none anywhere) */
   widen?: Float32Array;
+  /** display only, never set by the kernel: where a cutting's face meets another road's beside it, the ridge's height
+   * (render/slip-merge.ts; NaN: the face ends on the ground) */
+  apexL?: Float32Array; apexR?: Float32Array;
   oob: Uint8Array;
   runs: Run[];
   vpis: VPI[];

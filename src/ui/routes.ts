@@ -87,7 +87,7 @@ export function createRoutes(app: RoutesContext) {
   const ends = app.session.ends;
   /** a built road's end handles (ui/road-ends.ts), next to a rebuilt stretch's (ui/stretch-ends.ts) */
   const roadEnds = new RoadEnds(document.getElementById('overlay')!, app.view, {
-    place: (route, end, clientX, clientY) => placeEnd(route, end, clientX, clientY),
+    place: (route, end, clientX, clientY, held) => placeEnd(route, end, clientX, clientY, held),
     drawnAt: (route, end) => drawnEnd(route, end),
     begin: () => { if (app.projectStore.inTransaction) app.projectStore.commit(); app.projectStore.begin(); },
     move: (routeId, end, placed) => { if (app.projectStore.inTransaction) app.projectStore.update(d => moveEnd(d, routeId, end, placed)); },
@@ -242,13 +242,17 @@ export function createRoutes(app: RoutesContext) {
     if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: app.pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
-  /** A built road's end dragged to the pointer: it keeps to the road it joins while the pointer is within
-   * END_STICK px of it (along it, as far as that road goes), else it goes where a click while building would put it. */
-  const placeEnd = (route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number): Placement | null => {
+  /** A built road's end dragged to the pointer: it keeps to the road it joined when the drag began (`held`) while the
+   * pointer is within END_STICK px of it (along it, as far as that road goes), else it goes where a click while
+   * building would put it (another road it passes over takes it only within a click's reach). */
+  const placeEnd = (route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number, held: Anchor): Placement | null => {
     const kind = buildKindOf(route);
     const g = app.view.pick(clientX, clientY);
     if (!kind || !g) return null;
-    const anchor = route.endpoints[end].anchor, reach = END_STICK * app.view.metresPerPixel;
+    // (the road it was on, and where along it it is now if still on it)
+    const now = route.endpoints[end].anchor, same = now.kind === held.kind && (now.kind === 'route' ? now.routeId === (held as typeof now).routeId
+      : now.kind === 'source' && now.location.sourceId === (held as typeof now).location.sourceId);
+    const anchor = same ? now : held, reach = END_STICK * app.view.metresPerPixel;
     if (anchor.kind === 'route') {
       const host = app.projectStore.snapshot.design.routes.find(r => r.id === anchor.routeId), rr = host && app.session.projectFull?.routes[host.id], r = rr?.legacy;
       if (host && rr && r) {
