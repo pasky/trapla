@@ -243,8 +243,12 @@
  * junction made impossible: "no room for it beside our earthworks"). Every frozen D11 bill, starter and saved design of
  * every pack unchanged (scripts/exact.ts: 186 of 191 results identical, the other 5 the new Šternberk starter); a
  * player's design with such a fork is valid now, or cheaper where the mouth was moved aside. PLAN.md "The Šternberk
- * bypass replaces Nová Paka". */
-export const COST_MODEL_VERSION = 57;
+ * bypass replaces Nová Paka".
+ * Model 58: slip roads (Build → Slip road, core/slip-roads.ts): a new cross-section and its lanes, credits and checks on
+ * the motorway; the independence screen takes a new road's junction with a road to change that road only within its own
+ * works (it changed the whole road, so a junction near another road's change of the same road left the project unpriced:
+ * such player projects are priced now). Every frozen bill unchanged (eval-regression). PLAN.md "Hand-built interchanges". */
+export const COST_MODEL_VERSION = 58;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

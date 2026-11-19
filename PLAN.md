@@ -2396,3 +2396,43 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   (it could not be: its end lies in our junction). Small drags of bend 1: 4 of 12 invalid → 0. No other pack's result
   changed (`scripts/exact.ts`); tests/endpoint-junction.test.ts.
 - **End cards:** "Joins …" says "It carries on as … here" (it said "Our motorway" on a road mission too).
+
+## Hand-built interchanges: slip roads; a built road's ends (owner request, cost model 58, 2026-11-19)
+
+- **Bug (owner):** a road built with Build → Road could not have its junction points moved. A built road or railway
+  now has Start / End handles while selected (`ui/road-ends.ts`; hidden while it is idle, as a rebuilt stretch's):
+  a drag keeps the end on the road it joined when the drag began while the pointer is within 36 px of it (UI
+  choice), leaves it onto open ground, or joins another road by the build kind's own rules (a road it passes
+  over takes it only within a click's 10 px). Live (one transaction), the handle says what it joins or why not,
+  letting go where it cannot go keeps the end, undo says "moving the start". `app.ts` lost the 4th argument of
+  `routeAt` (the road excluded from its own end's picks) on the way.
+- **Gaps met building a diamond by hand** (D3 0303 km 3.06 road II/105 first, then D3 0304 km 4.49 II/114):
+  1. no way to join a motorway at all ("interchanges are not in the game yet") → **Build → Slip road**;
+  2. no slip-road cross-section or rules → `V7.25` (legal class `ramp`): 7.25 m one lane, 50 / 40 km/h on the
+     ČSN 73 6110 rows (ramp table not found), 6 %, S 7.5 SPK rows (research/90, PROVISIONAL where marked);
+  3. no merge / diverge → the gore on the carriageway of the side clicked and an exit / entry lane (234 / 295 m,
+     on the hard shoulder, paved 0.5 m wider; VL 3 400.11–12, a D35 design), priced per m² of the D 27.5 row,
+     drawn (V 2b dashes, `View.setLaneMarks`); off the motorway's end or into a tunnel: a problem;
+  4. the screen flagged the slip roads' land beside the motorway, and their junctions on the road it crosses, as
+     "not checked" → where the two bodies' works meet, and the crossing road between the junction and the
+     crossing's works, are one interchange (`designedJunctions` zones, `ScreenRoute.sharedWays`); a new road's
+     junction changes the road it joins only within its own works (was: the whole road);
+  5. slopes: the slip road's grade is held at the motorway's by its gore while their crowns are within 4 m
+     (MODELLING ASSUMPTION); overlapping earth and land billed once (as `splitLedger`); a slope standing on the
+     other's carriageway is a problem; drawn as one body (`render/slip-merge.ts`: no slope under the other's
+     pavement, two cuttings' faces end at their ridge);
+  6. double billing: the D norm includes earth-built slip roads of one interchange per 7 km (SPK report p. 7) →
+     credited up to L / 7 interchanges, each ≤ A.4.N 76.7 M and ≤ what its slip roads build on earth (PROVISIONAL);
+  7. a junction on the crossing road's ramp to its bridge → a problem (move it to where the road is on its ground);
+  8. leaving against the traffic, crossing the motorway, no or two motorway ends → problems;
+  9. the mission ends' interchange card: "Shown only: its slip roads are not built or billed here. The motorway's
+     price per km already includes earth-built slip roads of one interchange every 7 km."
+- **Result:** the D3 0304 diamond (four slip roads, two terminals each side ≥ 70 m apart): 10.3192 bn, valid
+  (+289 M: slip roads 66–127 M each incl. their 25 M junctions, lanes 0.6–0.9 M, credits −77 M allowance and
+  −46 M overlap); `tests/slip-roads.test.ts`, `scripts/interchange-scene.mjs` (a full gate). D3 0303 km 3.06:
+  valid except one slip road crossing tracks the motorway moves aside ("two roads change the same old road").
+- **Known gaps:** a loop over or under its own motorway (trumpet, cloverleaf) is not engineered (a problem); two
+  slip roads cannot share one junction (each is its own T, ≥ 70 m apart); interchange spacing (4 km, medium-low
+  source) not checked; a narrow ridge of ground between two cuttings stays (not excavated); one small spike where
+  a merged cutting face meets a separate one; slip-road traffic starts as the average class II road (labelled);
+  the A.4.N proxy for what the motorway's norm includes.
