@@ -5,6 +5,8 @@
 // being edited live in the Session, the kind being built here.
 import type { RouteId } from '../core/project';
 import { autoFollowingCorridor, corridorOfRoute, rejoinStretch } from '../core/project-motorway';
+import { CATEGORIES, lineOf } from '../core/data/categories';
+import { routeWord } from '../core/route-section';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Result } from '../core/evaluate';
 import { DIRECTIONS_TEXT, placeName } from '../core/terms';
@@ -66,7 +68,7 @@ export function createRoutes(app: RoutesContext) {
     app.inspector.oneDirection = corridor?.mode === 'independent';
     document.getElementById('profile')!.classList.toggle('one-direction', !!corridor && app.store.oneDirection);
     // the legend names the line being edited (a motorway built in a railway mission is a motorway)
-    const kind = route?.kind ?? app.scenario.mode ?? 'road';
+    const kind = route ? routeWord(route) : app.scenario.mode === 'motorway' ? lineOf(CATEGORIES[app.scenario.initial?.category ?? 'D27.5']) : app.scenario.mode ?? 'road';
     document.getElementById('legend-route')!.textContent = kind;
     document.getElementById('legend-height')!.textContent = kind === 'railway' ? 'track height' : 'road height';
     app.profile.setLine(kind); app.hud.setLine(kind);

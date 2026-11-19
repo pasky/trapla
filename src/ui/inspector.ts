@@ -323,7 +323,7 @@ export class Inspector {
     if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. ${this.roadSelected ? 'Drag it' : 'Click it, then drag it'} to change its line.</div>`;
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
-      <div class="sub hint">${(this.roadSelected ? SELECT_TEXT.selected : SELECT_TEXT.howTo)(this.d ? CATEGORIES[this.d.category].mode : 'road')} Click anything to inspect it.</div>`;
+      <div class="sub hint">${(this.roadSelected ? SELECT_TEXT.selected : SELECT_TEXT.howTo)(this.d ? lineOf(CATEGORIES[this.d.category]) : 'road')} Click anything to inspect it.</div>`;
   }
 
   // ---- a piece of road / a dragged stretch ----

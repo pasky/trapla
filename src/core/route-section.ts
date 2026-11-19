@@ -1,6 +1,6 @@
 // The cross-section a designed line is built to, from its specification: one answer for the evaluator's
 // screens, the 3D bodies and the noise band (each used to work it out for itself).
-import { CATEGORIES, pairedCategoryOf, type CategoryId, type PairedCategoryId } from './data/categories';
+import { CATEGORIES, lineOf, pairedCategoryOf, type CategoryId, type PairedCategoryId } from './data/categories';
 import type { RouteDesign } from './project';
 import { carriagewayCategory, MOTORWAY_CATEGORY } from './project-motorway';
 
@@ -22,6 +22,11 @@ export function routeCategory(route: RouteDesign): CategoryId | 'existing' {
 export function motorwayCategory(route: Extract<RouteDesign, { kind: 'motorway' }>): PairedCategoryId {
   const cs = route.specification.crossSection;
   return (cs in CATEGORIES ? pairedCategoryOf(cs as CategoryId) : undefined) ?? MOTORWAY_CATEGORY;
+}
+
+/** What a route is in the player's words: a four-lane class I road on the paired corridor is a "road". */
+export function routeWord(route: RouteDesign): 'road' | 'railway' | 'motorway' {
+  return route.kind === 'motorway' ? lineOf(CATEGORIES[motorwayCategory(route)]) : route.kind === 'railway' ? 'railway' : 'road';
 }
 
 /** Crown (formation) width of a designed line, m; an existing road's own mapped width. */

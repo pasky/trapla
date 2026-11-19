@@ -3,7 +3,7 @@
 // cards, the decorations of the other roads and the score. Also when the game counts as settled / idle, and
 // the provisional profile shown while the worker lags behind a drag. Moved out of main.ts verbatim; what
 // is asked of the workers and which replies count is the EvalClient's (eval-client.ts).
-import { CATEGORIES, lineOf } from '../core/data/categories';
+import { CATEGORIES, lineOf, pairedName } from '../core/data/categories';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId, RouteResult } from '../core/project';
@@ -174,7 +174,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
     app.session.last = app.session.lastFull = r ?? null;
     app.hud.setRouteState(!!rd, !!r && !!rd);
     const together = !!app.store.route && !app.store.oneDirection && app.projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.forward === app.store.route!.id);
-    document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = app.store.route ? `Profile · ${together ? `${app.store.route.kind === 'motorway' ? 'Motorway' : app.store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : app.store.route.name}` : 'Profile';
+    document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = app.store.route ? `Profile · ${together ? `${app.store.route.kind === 'motorway' ? pairedName(motorwayCategory(app.store.route)) : app.store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : app.store.route.name}` : 'Profile';
     if (!r || !rd) {
       app.profile.clear(app.store.route && !app.store.read() ? 'No heights yet: this change is not checked.' : ''); if (!app.links.editor?.selected) app.routeCard();
       app.view.clearDesign(app.activeEndpoints()); return;
