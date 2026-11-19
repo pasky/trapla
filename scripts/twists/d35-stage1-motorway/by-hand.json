@@ -1,0 +1,464 @@
+{
+ "preset": "d35-stage1-motorway",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d35",
+  "presetId": "d35-stage1-motorway",
+  "packId": "d35",
+  "objectData": "381074:3514847598:3242263682",
+  "transportData": "23c4f0b2420a30876a1d96b4b20796af394b3494132bec40c1209dbfbb1743e7",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Staré Město",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2393.8,
+       "y": 3212,
+       "z": 457.95079999999996
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 18222.3,
+       "y": 2459.4,
+       "z": 428.66352
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Opatovec",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 18222.3,
+       "y": 2459.4,
+       "z": 428.66352
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2393.8,
+       "y": 3212,
+       "z": 457.95079999999996
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2393.8,
+       "y": 3212,
+       "z": 457.95079999999996
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 18222.3,
+       "y": 2459.4,
+       "z": 428.66352
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 3911.6,
+       "y": 4138.6,
+       "r": null
+      },
+      {
+       "x": 5364.7,
+       "y": 4523.8,
+       "r": null
+      },
+      {
+       "x": 7639.4,
+       "y": 4311.8,
+       "r": null
+      },
+      {
+       "x": 9356.7,
+       "y": 4036.3,
+       "r": null
+      },
+      {
+       "x": 11092.7,
+       "y": 3524,
+       "r": null
+      },
+      {
+       "x": 12724.6,
+       "y": 3498.3,
+       "r": null
+      },
+      {
+       "x": 14565.1,
+       "y": 3794.8,
+       "r": null
+      },
+      {
+       "x": 16198,
+       "y": 3345,
+       "r": null
+      },
+      {
+       "x": 17709.9,
+       "y": 2719.1,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 457.95079999999996,
+        "r": null
+       },
+       {
+        "s": 262.42227082037806,
+        "z": 462.95079999999996,
+        "r": null
+       },
+       {
+        "s": 524.8445416407561,
+        "z": 463.95079999999996,
+        "r": null
+       },
+       {
+        "s": 1049.6890832815122,
+        "z": 460.58784899865884,
+        "r": null
+       },
+       {
+        "s": 2361.8004373834024,
+        "z": 513.0723031627344,
+        "r": null
+       },
+       {
+        "s": 2624.2227082037807,
+        "z": 520.7511647559897,
+        "r": null
+       },
+       {
+        "s": 2886.6449790241586,
+        "z": 523.1985692851108,
+        "r": null
+       },
+       {
+        "s": 3673.9117914852927,
+        "z": 547.9572583197993,
+        "r": null
+       },
+       {
+        "s": 3936.334062305671,
+        "z": 553.9508,
+        "r": null
+       },
+       {
+        "s": 4198.756333126049,
+        "z": 555.9508,
+        "r": null
+       },
+       {
+        "s": 4461.178603946427,
+        "z": 553.9508,
+        "r": null
+       },
+       {
+        "s": 4726.860622623785,
+        "z": 547.9508,
+        "r": null
+       },
+       {
+        "s": 7649.362828074723,
+        "z": 437.95079999999996,
+        "r": null
+       },
+       {
+        "s": 7915.044846752082,
+        "z": 431.95079999999996,
+        "r": null
+       },
+       {
+        "s": 8180.72686542944,
+        "z": 421.95079999999996,
+        "r": null
+       },
+       {
+        "s": 8974.028369893918,
+        "z": 391.95079999999996,
+        "r": null
+       },
+       {
+        "s": 9238.46220471541,
+        "z": 391.95079999999996,
+        "r": null
+       },
+       {
+        "s": 9502.896039536903,
+        "z": 396.95079999999996,
+        "r": null
+       },
+       {
+        "s": 9767.329874358395,
+        "z": 397.95079999999996,
+        "r": null
+       },
+       {
+        "s": 10031.763709179888,
+        "z": 394.95079999999996,
+        "r": null
+       },
+       {
+        "s": 10296.19754400138,
+        "z": 387.95079999999996,
+        "r": null
+       },
+       {
+        "s": 10560.631378822873,
+        "z": 390.95079999999996,
+        "r": null
+       },
+       {
+        "s": 10825.065213644364,
+        "z": 390.95079999999996,
+        "r": null
+       },
+       {
+        "s": 11089.499048465857,
+        "z": 387.95079999999996,
+        "r": null
+       },
+       {
+        "s": 11353.93288328735,
+        "z": 395.95079999999996,
+        "r": null
+       },
+       {
+        "s": 11618.366718108842,
+        "z": 399.95079999999996,
+        "r": null
+       },
+       {
+        "s": 11887.041437743383,
+        "z": 399.95079999999996,
+        "r": null
+       },
+       {
+        "s": 12424.390877012462,
+        "z": 391.95079999999996,
+        "r": null
+       },
+       {
+        "s": 12693.065596647002,
+        "z": 399.95079999999996,
+        "r": null
+       },
+       {
+        "s": 12961.740316281543,
+        "z": 403.95079999999996,
+        "r": null
+       },
+       {
+        "s": 13230.415035916083,
+        "z": 403.95079999999996,
+        "r": null
+       },
+       {
+        "s": 13767.764475185162,
+        "z": 395.95079999999996,
+        "r": null
+       },
+       {
+        "s": 14036.439194819703,
+        "z": 397.95079999999996,
+        "r": null
+       },
+       {
+        "s": 14305.113914454243,
+        "z": 397.95079999999996,
+        "r": null
+       },
+       {
+        "s": 14842.463353723324,
+        "z": 389.95079999999996,
+        "r": null
+       },
+       {
+        "s": 15111.138073357863,
+        "z": 389.95079999999996,
+        "r": null
+       },
+       {
+        "s": 15343.21436472583,
+        "z": 389.90291999999994,
+        "r": null
+       },
+       {
+        "s": 15575.290656093797,
+        "z": 397.85504,
+        "r": null
+       },
+       {
+        "s": 16039.443238829734,
+        "z": 415.75928,
+        "r": null
+       },
+       {
+        "s": 16271.5195301977,
+        "z": 423.7114,
+        "r": null
+       },
+       {
+        "s": 16503.59582156567,
+        "z": 428.66352,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d35:d35-stage1-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Opatovec",
+     "position": {
+      "x": 2393.8,
+      "y": 3212,
+      "z": 457.95079999999996
+     }
+    },
+    {
+     "id": "b",
+     "name": "Staré Město",
+     "position": {
+      "x": 18222.3,
+      "y": 2459.4,
+      "z": 428.66352
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.3,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

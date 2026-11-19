@@ -31,7 +31,7 @@ const money = (v: number) => v >= 1e9 ? `${num(v / 1e9, 2)} bn` : `${num(v / 1e6
 /** The twists' one-line descriptions (the twist screen and the card). */
 export function twistLine(id: TwistId, t: TwistTerms): string {
   switch (id) {
-    case 'earth': return `What you dig fills your embankments: at most ${Math.round((t.earthShare ?? 0.1) * 100)} % of the fill trucked away or brought in.`;
+    case 'earth': return `What you dig fills your embankments: at most ${Math.round((t.earthShare ?? 0.1) * 100)} % of the fill brought in, or of the dug earth trucked away.`;
     case 'landmarks': return 'Keep clear of the castles, churches, chapels and viewpoints near the line (their rings on the map).';
     case 'curveballs': return 'News from the site arrives as you play: a place to keep out of, a new demand, less money.';
     case 'homes': return 'Nobody loses their home: no house bought out.';
@@ -46,6 +46,6 @@ export function twistLine(id: TwistId, t: TwistTerms): string {
 }
 export const TWIST_NAMES: Record<TwistId, string> = {
   earth: 'Earth balance', landmarks: 'Hands off the castle', curveballs: 'Curveballs', homes: 'Nobody moves', forest: 'Spare the forest',
-  bridges: 'Few bridges', tunnels: 'No tunnels', faster: 'Faster', budget: 'Real budget', scratch: 'From scratch', byHand: 'By hand',
+  bridges: 'Few bridges', tunnels: 'No tunnels', faster: 'Faster', budget: 'Real price', scratch: 'From scratch', byHand: 'By hand',
 };
 

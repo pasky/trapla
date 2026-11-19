@@ -9,3 +9,4 @@
 .twist-picker-list small { grid-column: 2; color: #50645a; font-size: 14px; line-height: 1.35; }
 .twist-picker-list li.on b { color: #315b46; }
 .twist-picker .scenario-picker-actions { padding-top: 14px; }
+.twist-picker-goal { margin: 0 0 8px; font-weight: 600; color: #a35f12; }

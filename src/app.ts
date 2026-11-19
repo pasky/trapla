@@ -379,7 +379,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     setByHand: (on) => { if (on) { byHandWanted = true; applyByHand(session.projectFull ?? undefined); } twists?.syncAutoButton(); },
     showStretch: (routeId, s0, s1) => { if (routeId === store.activeRouteId || twists === null) selectPiece((s0 + s1) / 2, true); else switchRoute(routeId); },
     showPlace: (x, y) => view.flyTo(x, y, 900),
-    bridge: (routeId, s0, s1) => { if (routeId === store.activeRouteId) setStructure(KIND.bridge, s0, s1); },
+    build: (kind, routeId, s0, s1, style) => { if (routeId === store.activeRouteId) setStructure(kind === 'bridge' ? KIND.bridge : KIND.tunnel, s0, s1, style); },
   }, twistChoice);
   // Start over with From scratch on goes to the straight line; without it the design began from the starter
   { const reset = store.reset.bind(store); store.reset = () => { reset(); twists?.noteScratch(!!twists?.scratchOn); }; }

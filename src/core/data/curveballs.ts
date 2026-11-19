@@ -22,11 +22,13 @@ export interface Curveball {
 }
 
 /** keep out: nothing of ours there, on the ground or over it on a bridge; a mined tunnel deep under it is fine */
-export const KEEP_OUT: readonly Use[] = ['cut', 'fill', 'bridge'];
+export const KEEP_OUT: readonly Use[] = ['cut', 'fill', 'bridge', 'cover'];
+/** no open cut: a tunnel through it (or a bridge, or an embankment) */
+export const NO_CUT: readonly Use[] = ['cut'];
 /** nothing of ours on the ground there: a bridge may pass over it, its piers outside */
-export const NO_PIERS: readonly Use[] = ['cut', 'fill', 'pier'];
+export const NO_PIERS: readonly Use[] = ['cut', 'fill', 'cover', 'pier'];
 /** leave the ground as it is: a bridge over it or a mined tunnel under it, no cutting or filling */
-export const SPAN: readonly Use[] = ['cut', 'fill'];
+export const SPAN: readonly Use[] = ['cut', 'fill', 'cover'];
 
 export const CURVEBALLS: Record<string, Curveball> = {
   // ---- I/46 Šternberk bypass (research/91) ----
@@ -44,13 +46,14 @@ export const CURVEBALLS: Record<string, Curveball> = {
       [-540909, -1107570], [-540917, -1107552], [-540929, -1107548], [-540929, -1107545], [-540925, -1107541], [-540927, -1107539], [-540923, -1107533]] } },
   },
   // The SFDI budget for 2026 left the bypass out (zdopravy.cz 21 Dec 2025; ŘSD 28 Jan 2026: one of the very few works
-  // moved to the next year). The cap is the game's: 85 % of the starting bill (the goal is 90 %).
+  // moved to the next year). The cap is the game's: 88 % of the starting bill (the goal is 90 %); it comes last, after
+  // the news that costs money.
   'sternberk-money': {
     id: 'sternberk-money', headline: 'No money for the bypass this year',
-    story: 'The 2026 state budget left the bypass out. To get in next year, it must cost less.',
-    ask: 'Keep the bill under 85 % of the planned line’s',
+    story: 'The state’s road money for 2026 left the bypass out. To get in next year, it must cost less.',
+    ask: 'Keep the bill under 88 % of the planned line’s',
     cite: { text: 'zdopravy.cz, 21 Dec 2025', url: 'https://zdopravy.cz/stavba-obchvatu-sternberka-se-zpozdi-v-rozpoctu-na-nej-nejsou-penize-269148/' },
-    budget: 0.85,
+    budget: 0.88,
   },
   // Protected butterflies found in the works' area (reported to the region 9/2026; ŘSD asked for an exemption in 8/2026;
   // the permit suspended until 9/2027 at the latest). Neither the species nor the place is published: the game puts
@@ -74,16 +77,5 @@ export const CURVEBALLS: Record<string, Curveball> = {
     cite: { text: 'ŘSD leaflet, 07/2025', url: 'https://apdos.roadmedia.cz/Upload/Stavby/329/infoletak_s46-sternberk-obchvat.pdf' },
     zone: { label: 'Aleš stream', forbid: SPAN, shape: { kind: 'polygon', pts: [[-542694, -1109750], [-542742, -1109765], [-542837, -1109821], [-542961, -1109877],
       [-542978, -1109841], [-542856, -1109786], [-542755, -1109727], [-542705, -1109712]] } },
-  },
-  // The real design crosses the Sprchový potok valley on a 287 m viaduct (ŘSD leaflet 07/2025: "hustého lesa ve strmém
-  // svahu Sprchového potoka … trasa překračuje údolí estakádou délky 287 m"). The place: the stream's mapped reach (OSM
-  // 389408307) by the starter's crossing, 45 m either side: no embankment across the valley floor.
-  'sternberk-valley': {
-    id: 'sternberk-valley', headline: 'The Sprchový valley stays open',
-    story: 'The forest and the stream in the Sprchový valley must stay connected under the road.',
-    ask: 'Bridge the Sprchový valley floor',
-    cite: { text: 'ŘSD leaflet, 07/2025', url: 'https://apdos.roadmedia.cz/Upload/Stavby/329/infoletak_s46-sternberk-obchvat.pdf' },
-    zone: { label: 'Sprchový valley', forbid: SPAN, shape: { kind: 'polygon', pts: [[-540874, -1107680], [-540922, -1107665], [-541001, -1107655],
-      [-540990, -1107566], [-540908, -1107576], [-540855, -1107589], [-540811, -1107613], [-540859, -1107690]] } },
   },
 };

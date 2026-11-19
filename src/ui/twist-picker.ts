@@ -4,7 +4,7 @@
 import './scenario-picker.css';
 import './twist-picker.css';
 import type { ScenarioParams } from '../core/data/scenario';
-import { missionTwists } from '../core/data/twists';
+import { baselineWords, GOAL_SHARE, missionTwists } from '../core/data/twists';
 import { twistLine, TWIST_NAMES, TWIST_ORDER, type TwistId } from '../core/twist-words';
 import { loadTwistState } from './twist-state';
 
@@ -22,9 +22,12 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
   root.innerHTML = `<div class="scenario-picker-content"><p class="scenario-picker-brand">Trapla</p>
     <h1 id="twist-picker-heading" tabindex="-1"></h1>
     <p class="scenario-picker-lead">Pick your twists: the challenges on top of a valid design. You can change them later.</p>
-    <div class="twist-picker-card"><ul class="twist-picker-list"></ul>
+    <div class="twist-picker-card"><p class="twist-picker-goal"></p><ul class="twist-picker-list"></ul>
       <div class="scenario-picker-actions"><button type="button" class="twist-start"></button><button type="button" class="scenario-picker-retry twist-all">All on</button><button type="button" class="scenario-picker-retry twist-none">None</button></div></div></div>`;
   root.querySelector('h1')!.textContent = scenario.title;
+  // the goal the twists come on top of (the reveal waits for it)
+  const goal = (1 - GOAL_SHARE) * mission.startBill, bn = goal >= 1e9;
+  root.querySelector('.twist-picker-goal')!.textContent = `Goal: a valid design under ${(goal / (bn ? 1e9 : 1e6)).toLocaleString('en-US', { maximumFractionDigits: bn ? 2 : 0 })} ${bn ? 'bn' : 'M'} CZK, ${Math.round(GOAL_SHARE * 100)} % under ${baselineWords(mission)}.`;
   const list = root.querySelector('ul')!, start = root.querySelector<HTMLButtonElement>('.twist-start')!;
   const draw = () => {
     list.innerHTML = '';

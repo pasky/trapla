@@ -298,6 +298,7 @@ export class Hud {
           <li><b>Road height:</b> drag the black line in the profile up or down to pin it.</li>
           <li><b>Map:</b> drag pans, right-drag rotates, wheel or pinch zooms. <kbd>C</kbd> contours, <kbd>S</kbd> slope, <kbd>R</kbd> relief, <kbd>O</kbd> photo, <kbd>N</kbd> noise.</li>
           <li><b>Keys:</b> <kbd>Esc</kbd> deselect, <kbd>Del</kbd> delete a bend, <kbd>Ctrl+Z</kbd> undo; on a stretch <kbd>A</kbd> <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> = Auto / Bridge / Tunnel / Earthwork.</li>
+          <li><b>Twists:</b> the challenges you picked for this place (the chip by the score). News from the site may change what is asked. The goal: 10 % under the price of the line you start from.</li>
           <li><b>The model:</b> real terrain, Czech prices and norms; noise and some crossings are rough estimates.</li>
         </ul>
         <div class="btns"><button type="button" id="show-intro">Show the intro</button> <a href="about.html" target="_blank" rel="noopener">About Trapla and its data</a></div>`)}`;

@@ -19,7 +19,7 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
 import { corridorOfRoute } from '../src/core/project-motorway';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { checkTwists, twistFacts, DEFAULT_TWISTS, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
+import { checkTwists, earthShare, twistFacts, DEFAULT_TWISTS, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
 import { GOAL_SHARE, MISSION_TWISTS } from '../src/core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
 import { CATEGORIES } from '../src/core/data/categories';
@@ -74,7 +74,7 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     let p = r.cost.total ?? 10 * bill;
     p += r.issues.length * 0.3 * bill;
     for (const c of checks) if (!c.met) {
-      if (c.id === 'earth') p += 3 * bill * Math.max(0.02, (f.surplus + f.deficit) / Math.max(1, f.fill) - (m.setup.terms.earthShare ?? 0.1));
+      if (c.id === 'earth') p += 3 * bill * Math.max(0.02, earthShare(f) - (m.setup.terms.earthShare ?? 0.1));
       else p += 0.15 * bill * Math.max(1, c.issues.reduce((a, i) => a + Math.max(1, ((i.s1 ?? 0) - (i.s0 ?? 0)) / 20), 0));
     }
     if (goal && r.cost.total !== null && r.cost.total > target) p += 0.5 * (r.cost.total - target);
@@ -93,7 +93,8 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     const broken = curS.checks.flatMap(c => c.issues.filter(i => Number.isFinite(i.x) && i.routeId === routeId));
     if (rand() < 0.3 && broken.length) {
       const i = broken[Math.floor(rand() * broken.length)];
-      if (i.bridge) d.structureOverrides = paintOverride(d.structureOverrides ?? [], Math.max(0, i.bridge.s0 - rand() * 40), Math.min(L.length, i.bridge.s1 + rand() * 40), KIND.bridge, rand() < 0.5 ? 'long' : undefined);
+      if (i.fix) d.structureOverrides = paintOverride(d.structureOverrides ?? [], Math.max(0, i.fix.s0 - rand() * 40), Math.min(L.length, i.fix.s1 + rand() * 40),
+        i.fix.kind === 'bridge' ? KIND.bridge : KIND.tunnel, i.fix.style ?? (i.fix.kind === 'bridge' && rand() < 0.5 ? 'long' : undefined));
       else if (d.pis.length) {
         const c = placeOf(m, i.ref) ?? { x: i.x, y: i.y }, s = i.s0 ?? nearestS(L, i.x, i.y);
         const near = d.pis.map((p, k2) => ({ k2, d: Math.abs(nearestS(L, p.x, p.y) - s) })).sort((a, b) => a.d - b.d)[Math.floor(rand() * Math.min(2, d.pis.length))].k2;
@@ -154,10 +155,13 @@ function nearestS(L: { n: number; x: Float64Array; y: Float64Array; s: Float64Ar
 }
 
 // ---- check -----------------------------------------------------------------------------------------
-function checkMission(preset: string): boolean {
+/** Everything this script checks for one mission; `log`: what it prints. tests/twists.test.ts runs it too. */
+export function checkMission(preset: string, log: (line: string) => void = console.log): { ok: boolean; failures: string[] } {
   const m = mission(preset), { mission: mt } = m.setup;
   let ok = true;
-  const fail = (why: string) => { ok = false; console.log(`  ✗ ${why}`); };
+  const failures: string[] = [];
+  const fail = (why: string) => { ok = false; failures.push(why); log(`  ✗ ${why}`); };
+  const console = { log };
   const r0 = evalDesign(m, m.starter), cost0 = r0.cost.total ?? NaN;
   console.log(`${preset}: starter ${(cost0 / 1e6).toFixed(1)} M (data ${(mt.startBill / 1e6).toFixed(0)} M), ${m.setup.terms.landmarks.length} landmarks, ${m.setup.curveballs.length} curveballs`);
   if (!(Math.abs(cost0 - mt.startBill) <= 0.01 * mt.startBill)) fail(`starting bill ${cost0} is not data/twists.ts startBill ${mt.startBill} (±1 %)`);
@@ -191,11 +195,12 @@ function checkMission(preset: string): boolean {
   for (const t of mt.offer) if (!claimed.has(t)) fail(`${t}: offered, no reference design meets it`);
   if (!reveal) fail(`no reference design meets ${defaults.join(' + ')} and the goal (the reveal)`);
   console.log(ok ? `  ✓ ${preset}` : `  ✗ ${preset}`);
-  return ok;
+  return { ok, failures };
 }
 
 const args = process.argv.slice(2), opt = (k: string) => { const i = args.indexOf(k); return i < 0 ? undefined : args[i + 1]; };
-if (args[0] === '--show') {
+if (import.meta.url !== `file://${process.argv[1]}`) { /* imported (tests/twists.test.ts) */ }
+else if (args[0] === '--show') {
   // one design: its verdict and every twist of the mission with what breaks it
   const fx = JSON.parse(readFileSync(args[1], 'utf8')) as Fixture, m = mission(fx.preset), r = evalDesign(m, fx.design);
   console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(1)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).join('; '));
@@ -218,6 +223,6 @@ if (args[0] === '--show') {
 } else {
   const presets = args.length ? args : Object.keys(MISSION_TWISTS);
   let ok = true;
-  for (const p of presets) ok = checkMission(p) && ok;
+  for (const p of presets) ok = checkMission(p).ok && ok;
   if (!ok) process.exitCode = 1;
 }

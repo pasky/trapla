@@ -12,21 +12,22 @@ export * from './twist-words';
 
 /** A place on the map: a circle or a polygon (pack metres). */
 export type Shape = { kind: 'circle'; x: number; y: number; r: number } | { kind: 'polygon'; pts: readonly (readonly [number, number])[] };
-/** What our line does at a station: digs (a cut, or a tunnel dug from the surface), fills, bridges or tunnels deep;
- * `pier`: a pier of our bridge stands there (a bridge's deck may pass over a place its piers keep out of). */
-export type Use = 'cut' | 'fill' | 'bridge' | 'tunnel' | 'pier';
-export const ALL_USES: readonly Use[] = ['cut', 'fill', 'bridge', 'tunnel'];
+/** What our line does at a station: cuts, fills, bridges, tunnels deep (mined) or near the surface (`cover`: a tunnel dug
+ * from the surface and covered again); `pier`: a pier of our bridge stands there (a deck may pass over a place its piers
+ * keep out of). */
+export type Use = 'cut' | 'fill' | 'bridge' | 'tunnel' | 'cover' | 'pier';
+export const ALL_USES: readonly Use[] = ['cut', 'fill', 'bridge', 'tunnel', 'cover'];
 
 /** Where our line breaks a place's rule: a run of stations. */
 export interface ZoneRun { routeId: RouteId; s0: number; s1: number; use: Use; x: number; y: number }
 
 const MINED = STRUCTURE_RULES.tunnelMinDepth;
 /** What our line does at station i. A tunnel with less ground over it than a mined one needs is dug from the
- * surface (cut and cover): it digs the place like a cut. */
+ * surface (cut and cover): it digs the place up, though it is no open cut. */
 export function useAt(r: Result, i: number): Use {
   const k = r.kind[i];
   if (k === KIND.bridge) return 'bridge';
-  if (k === KIND.tunnel) return r.ground[i] - r.grade[i] >= MINED ? 'tunnel' : 'cut';
+  if (k === KIND.tunnel) return r.ground[i] - r.grade[i] >= MINED ? 'tunnel' : 'cover';
   return r.grade[i] >= r.ground[i] ? 'fill' : 'cut';
 }
 
@@ -75,7 +76,7 @@ export function zoneRuns(r: Result, routeId: RouteId, shape: Shape, forbid: read
       if (forbid.includes(use)) {
         // across the body: left of travel is (−ty, tx)
         // (a bridge's deck, not the ground's slopes under it)
-        const nx = -r.ty[i], ny = r.tx[i], deck = use === 'bridge' || use === 'tunnel', l = deck ? deckHalf : r.dayL[i] || 0, rr = deck ? deckHalf : r.dayR[i] || 0;
+        const nx = -r.ty[i], ny = r.tx[i], deck = use === 'bridge' || use === 'tunnel' || use === 'cover', l = deck ? deckHalf : r.dayL[i] || 0, rr = deck ? deckHalf : r.dayR[i] || 0;
         hit = segmentTouches(shape, x + nx * l, y + ny * l, x - nx * rr, y - ny * rr);
       }
     }
@@ -140,8 +141,8 @@ export function twistFacts(project: ProjectResult, ours: readonly RouteId[], hom
 
 // ---- the checks ---------------------------------------------------------------------------------
 
-/** One thing that breaks a twist, where it is (the card flies there); `bridge`: the stretch a bridge would clear it. */
-export interface TwistIssue { text: string; x: number; y: number; routeId?: RouteId; s0?: number; s1?: number; bridge?: { routeId: RouteId; s0: number; s1: number };
+/** One thing that breaks a twist, where it is (the card flies there); `fix`: the stretch a bridge or a tunnel would clear it. */
+export interface TwistIssue { text: string; x: number; y: number; routeId?: RouteId; s0?: number; s1?: number; fix?: { kind: 'bridge' | 'tunnel'; routeId: RouteId; s0: number; s1: number; style?: 'long' };
   /** what it is about: `landmark:<index in terms.landmarks>`, `curveball:<id>` */
   ref?: string }
 export interface TwistCheck { id: TwistId; met: boolean; name: string; status: string; issues: TwistIssue[] }
@@ -152,7 +153,7 @@ const num = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDig
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const kmText = (s: number) => `km ${num(s / 1000, 2)}`;
 const money = (v: number) => v >= 1e9 ? `${num(v / 1e9, 2)} bn` : `${num(v / 1e6)} M`;
-const USE_WORDS: Record<Use, string> = { cut: 'our cutting', fill: 'our embankment', bridge: 'our bridge', tunnel: 'our tunnel', pier: 'a pier of our bridge' };
+const USE_WORDS: Record<Use, string> = { cut: 'our cutting', fill: 'our embankment', bridge: 'our bridge', tunnel: 'our tunnel', cover: 'our tunnel dug from the surface', pier: 'a pier of our bridge' };
 const KIND_WORDS: Record<Landmark['kind'], string> = { castle: 'Castle', church: 'Church', chapel: 'Chapel', monument: 'Monument', viewpoint: 'Viewpoint' };
 /** a landmark's name as the map shows it: its own name, with what it is where the name does not say */
 export function landmarkName(l: Pick<Landmark, 'name' | 'kind'>): string {
@@ -172,10 +173,11 @@ export function checkTwists(on: readonly TwistId[], f: TwistFacts, t: TwistTerms
     const push = (met: boolean, status: string, issues: TwistIssue[] = []) => out.push({ id, met, name, status, issues });
     switch (id) {
       case 'earth': {
-        const limit = t.earthShare ?? 0.1, share = (f.surplus + f.deficit) / Math.max(1, f.fill);
-        const what = f.deficit >= f.surplus ? 'brought in' : 'trucked away';
-        push(share <= limit, share <= limit ? `Balanced: ${Math.round(share * 100)} % (at most ${Math.round(limit * 100)} %)` : `${Math.round(share * 100)} % of the fill ${what} (at most ${Math.round(limit * 100)} %)`,
-          share <= limit ? [] : [{ text: f.deficit >= f.surplus ? 'Lower the road where it runs high, or bridge the biggest embankments' : 'Raise the road where it cuts deep, or tunnel', x: NaN, y: NaN }]);
+        // fill brought in, as a share of the fill; dug earth trucked away, as a share of what is dug
+        const limit = t.earthShare ?? 0.1, share = earthShare(f), pct = `${Math.round(share * 100)} %`, max = `at most ${Math.round(limit * 100)} %`;
+        const what = f.deficit / Math.max(1, f.fill) >= f.surplus / Math.max(1, f.cut) ? 'of the fill brought in' : 'of the dug earth trucked away';
+        push(share <= limit, share <= limit ? `Balanced: ${pct} (${max})` : `${pct} ${what} (${max})`,
+          share <= limit ? [] : [{ text: /brought/.test(what) ? 'Lower the road where it runs high, or bridge the biggest embankments' : 'Raise the road where it cuts deep, or tunnel', x: NaN, y: NaN }]);
         break;
       }
       case 'landmarks': {
@@ -197,9 +199,17 @@ export function checkTwists(on: readonly TwistId[], f: TwistFacts, t: TwistTerms
           if (c.budget !== undefined && f.cost !== null && f.cost > c.budget * extra.startBill)
             issues.push({ text: `${c.ask}: ${money(f.cost)} is over ${money(c.budget * extra.startBill)}`, x: NaN, y: NaN, ref: `curveball:${c.id}` });
           if (c.zone) for (const { id: rid, r } of f.results) for (const run of zoneRuns(r, rid, c.zone.shape, c.zone.forbid, extra.deckHalf)) {
-            const bridgeFixes = !c.zone.forbid.includes('bridge') && !c.zone.forbid.includes('pier') && run.use !== 'tunnel';
+            // the structure that clears it: a bridge where neither deck nor piers are kept out (over earthworks), else a tunnel
+            const fix = run.use === 'tunnel' || run.use === 'cover' ? undefined : !c.zone.forbid.includes('bridge') && !c.zone.forbid.includes('pier') && run.use !== 'bridge' ? 'bridge' as const
+              : !c.zone.forbid.includes('tunnel') && !c.zone.forbid.includes('cover') && run.use === 'cut' ? 'tunnel' as const : undefined;
+            // piers kept out, the deck allowed: our bridge over it on long spans, from where the bridge next to it starts
+            const near = c.zone.forbid.includes('pier') && !c.zone.forbid.includes('bridge') && run.use !== 'tunnel' && run.use !== 'cover'
+              ? r.runs.find(u => u.kind === KIND.bridge && u.s0 < run.s1 + 60 && u.s1 > run.s0 - 60) : undefined;
             issues.push({ text: `${c.ask}: ${USE_WORDS[run.use]} at ${kmText(run.s0)}`, ...at(run), ref: `curveball:${c.id}`,
-              ...(bridgeFixes ? { bridge: { routeId: rid, s0: Math.max(0, run.s0 - 20), s1: run.s1 + 20 } } : {}) });
+              ...(fix ? { fix: { kind: fix, routeId: rid, s0: Math.max(0, run.s0 - 20), s1: run.s1 + 20 } }
+                // (earthworks at its end: the deck on over them; a pier in it: the end moved on, so the spans fall anew)
+                : near ? { fix: { kind: 'bridge' as const, style: 'long' as const, routeId: rid, s0: Math.min(near.s0, run.s0 - 10),
+                  s1: run.use === 'pier' ? near.s1 + 15 : Math.max(near.s1, run.s1 + 10) } } : {}) });
           }
           if (issues.length > before) broken.add(c.id);
         }
@@ -230,6 +240,9 @@ export function checkTwists(on: readonly TwistId[], f: TwistFacts, t: TwistTerms
   }
   return out;
 }
+
+/** Earth balance: the larger of the fill brought in (a share of the fill) and the dug earth trucked away (a share of the cut). */
+export const earthShare = (f: Pick<TwistFacts, 'cut' | 'fill' | 'surplus' | 'deficit'>) => Math.max(f.deficit / Math.max(1, f.fill), f.surplus / Math.max(1, f.cut));
 
 /** A shape in EPSG:5514 in a pack's own metres (its origin: meta.origin). */
 export function packShape(shape: { kind: 'circle'; x: number; y: number; r: number } | { kind: 'polygon'; pts: readonly (readonly [number, number])[] }, origin: readonly [number, number]): Shape {

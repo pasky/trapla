@@ -1,0 +1,434 @@
+{
+ "preset": "d3-0303-motorway",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0303",
+  "presetId": "d3-0303-motorway",
+  "packId": "d3-0303",
+  "objectData": "940998:245096016:1360424674",
+  "transportData": "4de3028910010b172b47ab3908fe693a0a56268c26a144ddb443fc37466ff9c6",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Václavice (on to 0304)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2602,
+       "y": 10703.8,
+       "z": 320.12800000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9438.8,
+       "y": 2713.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Hostěradice (from 0302)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 9438.8,
+       "y": 2713.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2602,
+       "y": 10703.8,
+       "z": 320.12800000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2602,
+       "y": 10703.8,
+       "z": 320.12800000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9438.8,
+       "y": 2713.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2849.5,
+       "y": 9185.1,
+       "r": null
+      },
+      {
+       "x": 3544.1,
+       "y": 7644.6,
+       "r": null
+      },
+      {
+       "x": 5073.2,
+       "y": 6920.3,
+       "r": null
+      },
+      {
+       "x": 6490.3,
+       "y": 5261.7,
+       "r": null
+      },
+      {
+       "x": 8308.2,
+       "y": 4162.2,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 320.12800000000004,
+        "r": null
+       },
+       {
+        "s": 255.6893614733553,
+        "z": 330.12800000000004,
+        "r": null
+       },
+       {
+        "s": 511.3787229467106,
+        "z": 339.12800000000004,
+        "r": null
+       },
+       {
+        "s": 767.0680844200658,
+        "z": 343.12800000000004,
+        "r": null
+       },
+       {
+        "s": 1022.7574458934212,
+        "z": 342.12800000000004,
+        "r": null
+       },
+       {
+        "s": 1278.4468073667765,
+        "z": 336.12800000000004,
+        "r": null
+       },
+       {
+        "s": 1534.1361688401316,
+        "z": 341.12800000000004,
+        "r": null
+       },
+       {
+        "s": 1789.825530313487,
+        "z": 351.12800000000004,
+        "r": null
+       },
+       {
+        "s": 2045.5148917868423,
+        "z": 358.12800000000004,
+        "r": null
+       },
+       {
+        "s": 2301.2042532601977,
+        "z": 360.12800000000004,
+        "r": null
+       },
+       {
+        "s": 2565.608546149595,
+        "z": 358.12800000000004,
+        "r": null
+       },
+       {
+        "s": 2830.0128390389923,
+        "z": 350.12800000000004,
+        "r": null
+       },
+       {
+        "s": 3094.4171319283896,
+        "z": 346.12800000000004,
+        "r": null
+       },
+       {
+        "s": 3358.8214248177874,
+        "z": 347.88733851893693,
+        "r": null
+       },
+       {
+        "s": 3887.630010596582,
+        "z": 368.8025556049288,
+        "r": null
+       },
+       {
+        "s": 4152.03430348598,
+        "z": 372.62793312330984,
+        "r": null
+       },
+       {
+        "s": 4416.438596375377,
+        "z": 371.12800000000004,
+        "r": null
+       },
+       {
+        "s": 4680.8428892647735,
+        "z": 364.12800000000004,
+        "r": null
+       },
+       {
+        "s": 5209.651475043569,
+        "z": 344.12800000000004,
+        "r": null
+       },
+       {
+        "s": 5474.055767932967,
+        "z": 337.12800000000004,
+        "r": null
+       },
+       {
+        "s": 5738.460060822364,
+        "z": 342.12800000000004,
+        "r": null
+       },
+       {
+        "s": 6002.8643537117605,
+        "z": 344.12800000000004,
+        "r": null
+       },
+       {
+        "s": 6268.506250896666,
+        "z": 345.5244569125447,
+        "r": null
+       },
+       {
+        "s": 6534.148148081572,
+        "z": 343.12148512450074,
+        "r": null
+       },
+       {
+        "s": 6799.790045266477,
+        "z": 336.7930273892878,
+        "r": null
+       },
+       {
+        "s": 7065.431942451383,
+        "z": 330.5241775539401,
+        "r": null
+       },
+       {
+        "s": 7331.0738396362885,
+        "z": 326.213209712359,
+        "r": null
+       },
+       {
+        "s": 7596.715736821194,
+        "z": 326.12800000000004,
+        "r": null
+       },
+       {
+        "s": 7862.357634006099,
+        "z": 334.12800000000004,
+        "r": null
+       },
+       {
+        "s": 8127.999531191005,
+        "z": 338.12800000000004,
+        "r": null
+       },
+       {
+        "s": 8335.480968061374,
+        "z": 338.11005428571434,
+        "r": null
+       },
+       {
+        "s": 8957.92527867248,
+        "z": 335.0562171428572,
+        "r": null
+       },
+       {
+        "s": 9165.40671554285,
+        "z": 331.0382714285715,
+        "r": null
+       },
+       {
+        "s": 9372.888152413218,
+        "z": 324.0203257142858,
+        "r": null
+       },
+       {
+        "s": 9787.851026153956,
+        "z": 307.98443428571437,
+        "r": null
+       },
+       {
+        "s": 9995.332463024324,
+        "z": 302.96648857142867,
+        "r": null
+       },
+       {
+        "s": 10202.813899894692,
+        "z": 295.94854285714297,
+        "r": null
+       },
+       {
+        "s": 10410.29533676506,
+        "z": 295.9305971428572,
+        "r": null
+       },
+       {
+        "s": 11032.739647376167,
+        "z": 319.8767600000001,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0303:d3-0303-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Hostěradice (from 0302)",
+     "position": {
+      "x": 2602,
+      "y": 10703.8,
+      "z": 320.12800000000004
+     }
+    },
+    {
+     "id": "b",
+     "name": "Václavice (on to 0304)",
+     "position": {
+      "x": 9438.8,
+      "y": 2713.8,
+      "z": 319.8767600000001
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 6.3,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

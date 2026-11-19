@@ -6,7 +6,7 @@ import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import type { ScenarioParams } from '../core/data/scenario';
 import { CATEGORIES } from '../core/data/categories';
 import { checkTwists, landmarkName, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
-import { GOAL_SHARE } from '../core/data/twists';
+import { baselineWords, GOAL_SHARE } from '../core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup, type PackFrame } from '../core/mission-twists';
 import { corridorOfRoute } from '../core/project-motorway';
 import { legacyDesignForRoute } from '../core/project-legacy';
@@ -40,11 +40,12 @@ export interface TwistsContext {
   /** show a stretch of our road (select it), or a place */
   showStretch: (routeId: RouteId, s0: number, s1: number) => void;
   showPlace: (x: number, y: number) => void;
-  /** paint a bridge over a stretch of our road */
-  bridge: (routeId: RouteId, s0: number, s1: number) => void;
+  /** paint a bridge or a tunnel over a stretch of our road */
+  build: (kind: 'bridge' | 'tunnel', routeId: RouteId, s0: number, s1: number, style?: 'long') => void;
 }
 
 const money = (v: number) => czk(v);
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function createTwists(app: TwistsContext, choice: { on: TwistId[]; started: boolean } | null) {
@@ -119,11 +120,11 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     else { app.chip.textContent = `${met === checks.length ? '✓' : '✗'} Twists ${met}/${checks.length}`; app.chip.className = `chip twists ${met === checks.length ? 'ok' : 'bad'}`; }
     app.chip.title = 'Your twists: the challenges you picked';
     const total = last?.result.cost.total ?? null;
-    const goalLine = `<p class="tw-goal">Goal: a valid design under <b>${money(goal)}</b> <small>(the planned line less ${Math.round(GOAL_SHARE * 100)} %)</small>${total !== null && last?.result.valid ? ` · yours ${money(total)}` : ''}</p>`;
+    const goalLine = `<p class="tw-goal">Goal: a valid design under <b>${money(goal)}</b> <small>(${baselineWords(setup!.mission)} less ${Math.round(GOAL_SHARE * 100)} %)</small>${total !== null && last?.result.valid ? ` · yours ${money(total)}` : ''}</p>`;
     const rows = changing ? '' : checks.map(c => `<li class="${c.met ? 'ok' : 'bad'}" data-id="${c.id}"><span class="tw-mark">${c.met ? '✓' : '✗'}</span><div><b>${esc(c.name)}</b> <span class="tw-status">${esc(c.status)}</span>
       ${c.id === 'curveballs' ? newsList() : ''}
-      ${c.issues.filter(i => Number.isFinite(i.x) || i.bridge).slice(0, 6).map((i, k) => `<div class="tw-issue">${esc(i.text)} ${Number.isFinite(i.x) ? `<button type="button" class="link" data-show="${c.id}:${k}">Show</button>` : ''}${i.bridge ? ` <button type="button" class="link" data-bridge="${c.id}:${k}">Bridge it</button>` : ''}</div>`).join('')}
-      ${c.issues.filter(i => !Number.isFinite(i.x) && !i.bridge).slice(0, 2).map(i => `<div class="tw-issue">${esc(i.text)}</div>`).join('')}
+      ${c.issues.filter(i => Number.isFinite(i.x) || i.fix).slice(0, 6).map((i, k) => `<div class="tw-issue">${esc(i.text)} ${Number.isFinite(i.x) ? `<button type="button" class="link" data-show="${c.id}:${k}">Show</button>` : ''}${i.fix ? ` <button type="button" class="link" data-fix="${c.id}:${k}">${i.fix.style === 'long' ? 'Long spans over it' : i.fix.kind === 'bridge' ? 'Bridge it' : 'Tunnel it'}</button>` : ''}</div>`).join('')}
+      ${c.issues.filter(i => !Number.isFinite(i.x) && !i.fix).slice(0, 2).map(i => `<div class="tw-issue">${esc(i.text)}</div>`).join('')}
       ${!c.met && c.id === 'scratch' ? '<button type="button" class="tw-act" data-act="scratch">Start from the straight line</button>' : ''}</div></li>`).join('');
     const choose = changing ? `<ul class="tw-choose">${TWIST_ORDER.filter(t => offer.includes(t)).map(t => `<li><label><input type="checkbox" data-t="${t}"${state.on.includes(t) ? ' checked' : ''}> <b>${esc(TWIST_NAMES[t])}</b><small>${esc(twistLine(t, setup!.terms))}</small></label></li>`).join('')}</ul>` : '';
     app.card.innerHTML = `${goalLine}${on.length || changing ? '' : '<p class="tw-none">No twists: just the cheapest valid design.</p>'}<ul class="tw-list">${rows}</ul>${choose}
@@ -133,12 +134,12 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const f = fired();
     return f.length ? `<div class="tw-news">${f.map(c => `<div>News: ${esc(c.headline)} <button type="button" class="link" data-news="${c.id}">Show</button></div>`).join('')}</div>` : '';
   }
-  const issueAt = (ref: string): TwistIssue | undefined => { const [id, k] = ref.split(':'); return last?.checks.find(c => c.id === id)?.issues.filter(i => Number.isFinite(i.x) || i.bridge)[Number(k)]; };
+  const issueAt = (ref: string): TwistIssue | undefined => { const [id, k] = ref.split(':'); return last?.checks.find(c => c.id === id)?.issues.filter(i => Number.isFinite(i.x) || i.fix)[Number(k)]; };
   app.card.addEventListener('click', (e) => {
     const t = e.target as HTMLElement, b = t.closest('button') as HTMLButtonElement | null;
     if (!b) return;
     if (b.dataset.show) { const i = issueAt(b.dataset.show); if (i) show(i); }
-    else if (b.dataset.bridge) { const i = issueAt(b.dataset.bridge); if (i?.bridge) app.bridge(i.bridge.routeId, i.bridge.s0, i.bridge.s1); }
+    else if (b.dataset.fix) { const i = issueAt(b.dataset.fix); if (i?.fix) app.build(i.fix.kind, i.fix.routeId, i.fix.s0, i.fix.s1, i.fix.style); }
     else if (b.dataset.news) { const c = setup!.curveballs.find(x => x.id === b.dataset.news); if (c) newsCard(c, false); }
     else if (b.dataset.act === 'change') { changing = !changing; render(); }
     else if (b.dataset.act === 'reveal') reveal(true);
@@ -212,10 +213,10 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const under = setup!.mission.startBill - shown.cost;
     const metList = TWIST_ORDER.filter(t => shown.on.includes(t)).map(t => `<li>✓ ${esc(TWIST_NAMES[t])}${t === 'curveballs' ? ` <small>(${fired().length} news)</small>` : ''}</li>`).join('');
     el.innerHTML = `<div class="reveal-card">
-      <div class="reveal-kicker">${again ? 'Your design and the real one' : 'You beat the planned line'}</div>
+      <div class="reveal-kicker">${again ? 'Your design and the real one' : `You beat ${baselineWords(setup!.mission)}`}</div>
       <div class="reveal-cols">
-        <div class="reveal-col yours"><small>Yours</small><b>${money(shown.cost)}</b><span>${under > 0 ? `${money(under)} under the planned line` : ''}</span></div>
-        <div class="reveal-col planned"><small>The planned line, priced the same way</small><b>${money(setup!.mission.startBill)}</b><span>the dashed line on the map</span></div>
+        <div class="reveal-col yours"><small>Yours</small><b>${money(shown.cost)}</b><span>${under > 0 ? `${money(under)} under ${baselineWords(setup!.mission)}` : ''}</span></div>
+        <div class="reveal-col planned"><small>${cap(baselineWords(setup!.mission))}, priced the same way</small><b>${money(setup!.mission.startBill)}</b><span>${setup!.mission.baseline ? 'where you started' : 'the dashed line on the map'}</span></div>
       </div>
       ${real.price ? `<p class="reveal-real">The real project: <b>${money(real.price)}</b> <small>${esc(real.priceText)}</small></p>` : `<p class="reveal-real"><small>${esc(real.priceText)}</small></p>`}
       <p class="reveal-story">${esc(real.story)}</p>
