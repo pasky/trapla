@@ -8,10 +8,10 @@ import { baselineWords, GOAL_SHARE, missionTwists } from '../core/data/twists';
 import { twistLine, TWIST_NAMES, TWIST_ORDER, type TwistId } from '../core/twist-words';
 import { loadTwistState } from './twist-state';
 
-/** The twists to start with, or null when the mission offers none. */
-export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> | null {
+/** The twists to start with (none where the mission offers none: the screen says so). */
+export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> {
   const presetId = scenario.presetId ?? scenario.id, mission = missionTwists(presetId);
-  if (!mission) return null;
+  if (!mission) return noTwists(scenario, saved);
   const offer = TWIST_ORDER.filter(t => mission.offer.includes(t));
   const state = loadTwistState(scenario.id, presetId, offer);
   const terms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: [] };
@@ -50,4 +50,21 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
     root.querySelector<HTMLButtonElement>('.twist-all')!.addEventListener('click', () => { for (const t of offer) on.add(t); draw(); });
     root.querySelector<HTMLButtonElement>('.twist-none')!.addEventListener('click', () => { on.clear(); draw(); });
   });
+}
+
+/** A mission without twists: one plain line and Start, so the screen is never empty. */
+function noTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> {
+  const root = document.createElement('main');
+  root.className = 'scenario-picker twist-picker';
+  root.setAttribute('aria-labelledby', 'twist-picker-heading');
+  root.innerHTML = `<div class="scenario-picker-content"><p class="scenario-picker-brand">Trapla</p>
+    <h1 id="twist-picker-heading" tabindex="-1"></h1>
+    <div class="twist-picker-card"><p class="twist-picker-goal">No twists on this mission yet: build a valid design, as cheap as you can.</p>
+      <div class="scenario-picker-actions"><button type="button" class="twist-start"></button></div></div></div>`;
+  root.querySelector('h1')!.textContent = scenario.title;
+  const start = root.querySelector<HTMLButtonElement>('.twist-start')!;
+  start.textContent = saved ? 'Continue' : 'Start';
+  document.body.append(root);
+  root.querySelector<HTMLElement>('h1')!.focus();
+  return new Promise((resolve) => start.addEventListener('click', () => { root.remove(); resolve({ on: [], started: true }); }));
 }

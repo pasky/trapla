@@ -1,8 +1,9 @@
 {
  "preset": "d3-0305-motorway",
- "purpose": "Earth balance, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 9)",
+ "purpose": "Earth balance, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 9); also at most 900 m of bridges (Few bridges)",
  "meets": [
-  "earth"
+  "earth",
+  "bridges"
  ],
  "goal": true,
  "design": {

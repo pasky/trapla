@@ -1,9 +1,10 @@
 {
  "preset": "d11-rail-kralovec",
- "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 1)",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 1); also at most 1600 m of bridges (Few bridges)",
  "meets": [
   "earth",
-  "landmarks"
+  "landmarks",
+  "bridges"
  ],
  "goal": true,
  "design": {
