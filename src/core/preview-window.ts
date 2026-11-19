@@ -60,15 +60,17 @@ const CROSSINGS_AT = 7;
 function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
   // (the bends' own settings in order, not how many bends there are: a drag on the road between two bends adds one,
   // and its previews are windows on the full result before it, as a bend drag's; the plan comparison finds the stretch)
-  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.pis.flatMap(p => p.speed != null || p.hairpin ? [[p.speed ?? null, p.hairpin ?? null]] : []), d.profileMode, d.structureOverrides ?? [], shapeless(d.crossingOverrides),
+  const parts: unknown[] = [ctx.a, ctx.b, d.category, d.speed, d.pis.flatMap(p => p.speed != null || p.hairpin ? [[p.speed ?? null, p.hairpin ?? null]] : []), d.profileMode, d.structureOverrides ?? [],
     d.buildingOverrides ?? [], d.wallOverrides ?? [], d.objectData ?? null, opts.endpointElevations ?? null, opts.goals ?? null,
-    opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null]);
+    opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null];
+  parts.splice(CROSSINGS_AT, 0, shapeless(d.crossingOverrides));
+  return JSON.stringify(parts);
   // Not keyed: a split direction's joined ranges follow its plan, and its preview prices crossings the
   // full evaluation shares with the other direction (window only).
 }
-/** The key without the crossing choices: a full result of another choice on a crossing stands in for a window around
- * that crossing when none of the same choices is kept (the first drag of a reroute makes Auto's own choice the
- * player's: `changedRange`). */
+/** The key without the crossing choices: a full result of Auto's own choice on a crossing stands in for a window
+ * around it when the player's first drag of its reroute made that choice theirs and no full result of it is kept yet
+ * (`changedRange` checks that the choice is that one). */
 function looseKey(key: string): string {
   const parts = JSON.parse(key) as unknown[];
   parts.splice(CROSSINGS_AT, 1);
@@ -128,7 +130,8 @@ function quietNoise(r: Result): Result['noise'] {
 
 /** Whether the lineage's last full result fell back to its slowed stretches' own curves (evaluate.ts). */
 export function keptOwnHeights(ctx: EvalContext, d: Design, opts: EvalOptions): boolean {
-  return !!fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts))?.result.ownHeights;
+  // (the base a window would be cut from: its line and the window's on the same curves)
+  return !!baseOf(ctx, d, opts)?.result.ownHeights;
 }
 
 /** A full result evaluated elsewhere (the full worker) becomes a base for windowed previews here. */
@@ -184,22 +187,36 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
       a = before.length ? before[before.length - 1].s : 0; b = after.length ? after[0].s : length;
     }
   }
-  // A crossing's choice or its reroute's shape changed: the stretch from that crossing to the one it leads to.
-  // (one led to another crossing or road, `to` / `ends`: the whole route, its new target may lie anywhere; a reroute
-  // shaped for the first time records the crossing it already leads to, `to` (design-edits.ts setVia): no new target)
+  // A reshaped reroute: the stretch from its crossing to the one it leads to. (A reroute led to another crossing or
+  // road, `to` / `ends`: the whole route, its new target may lie anywhere. A reroute shaped for the first time records
+  // the crossing it already leads to, `to` (design-edits.ts setVia): the same target where that one is unambiguous.)
   const overrides = (list: Design['crossingOverrides']) => new Map((list ?? []).map(o => [o.roadId, o]));
   const now = overrides(d.crossingOverrides), then = overrides(base.design.crossingOverrides);
-  const ledTo = (id: number) => {
-    const c = r.crossings.find(x => x.roadId === id && (x.type === 'reconnection' || x.type === 'diversion') && !x.moved);
-    return c ? JSON.stringify(c.targetRoadId ?? (c.targetS === 0 ? -1 : -2)) : 'null';
+  /** the full result's one reroute of a way, if it leads to a crossing or route end `to` (CrossingOverride.to) names
+   * alone (crossings.ts resolveCrossings `kept`) */
+  const reroute = (id: number) => {
+    const at = r.crossings.filter(c => c.roadId === id), c = at[0];
+    return at.length === 1 && (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && c.targetS !== undefined ? c : undefined;
+  };
+  const leadsTo = (id: number, to: number) => {
+    const c = reroute(id);
+    if (!c) return false;
+    if (to >= 0) return c.targetRoadId === to && r.crossings.filter(x => x.roadId === to).length === 1;
+    return c.targetRoadId === undefined && Math.abs(c.targetS! - (to === -1 ? 0 : r.length)) < 1e-6;
   };
   const json = (v: unknown) => JSON.stringify(v ?? null);
   for (const id of new Set([...now.keys(), ...then.keys()])) {
     const o = now.get(id), p = then.get(id);
     if (json(o?.ends) !== json(p?.ends)) return [0, length];
-    const to = (q: typeof o) => q?.to === undefined ? ledTo(id) : json(q.to);
-    if (json(o?.to) !== json(p?.to) && to(o) !== to(p)) return [0, length];
-    if (json(o && { ...o, to: undefined }) === json(p && { ...p, to: undefined })) continue;
+    // (a pin added on the target it had; a pin removed or changed: Auto or the player picks again)
+    if (o?.to !== p?.to && !(p?.to === undefined && o?.to !== undefined && leadsTo(id, o.to))) return [0, length];
+    const choice = (q: typeof o) => json(q && { ...q, via: undefined, to: undefined, ends: undefined });
+    if (choice(o) !== choice(p)) {
+      // Another choice than the full result's (its base is of the lineage but for the crossing choices): only a reroute
+      // the full result built as Auto's own, now the player's to shape (link-edit.ts); anything else the whole route.
+      const shaped = o?.type === 'reconnection' && o.via && Object.entries(o).every(([k, v]) => v === undefined || ['roadId', 'type', 'via', 'to'].includes(k));
+      if (p || !shaped || !reroute(id)) return [0, length];
+    } else if (json(o?.via) === json(p?.via)) continue;
     const at = r.crossings.filter(c => c.roadId === id);
     if (!at.length) return [0, length]; // not crossed in the full result: the whole route
     for (const c of at) for (const x of [c.s, c.targetS ?? c.s]) { const y = x > planStart ? x + shift : x; a = Math.min(a, y); b = Math.max(b, y); }

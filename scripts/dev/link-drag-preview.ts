@@ -24,7 +24,7 @@ let project = initial();
 const routeId = project.routes.find(r => r.role === 'mission')?.id ?? project.routes[0].id;
 project = replaceRouteFromLegacy(project, routeId, saved);
 let revision = 1;
-type Saved = { bases: Result[]; c: Result['crossings'][number]; mv: number; sv: number; length: number };
+type Saved = { what: string; bases: Result[]; c: Result['crossings'][number]; mv: number; sv: number; length: number };
 const shaped = (c: Saved['c'], via: [{ x: number; y: number }[], { x: number; y: number }[]] | null) => {
   // the drag's start (link-edit.ts grab + design-edits.ts setVia), and drag-perf's beforeMeasure: the shape dropped again
   const d = legacyDesignForRoute(project, routeId), list = d.crossingOverrides ??= [];
@@ -35,9 +35,10 @@ const shaped = (c: Saved['c'], via: [{ x: number; y: number }[], { x: number; y:
   return replaceRouteFromLegacy(project, routeId, d);
 };
 const file = process.env.BASES;
-let saved0: Saved;
-if (file && existsSync(file)) saved0 = deserialize(readFileSync(file)) as Saved;
-else {
+// (what the kept full results are of: another pack, preset, design or first drag is evaluated afresh)
+const what = JSON.stringify([pack.meta.id, process.env.PRESET ?? null, process.argv[2], !!process.env.FIRST]);
+let saved0: Saved | undefined = file && existsSync(file) ? deserialize(readFileSync(file)) as Saved : undefined;
+if (saved0?.what !== what) {
   const full = (design: typeof project) => {
     const t0 = performance.now(), r = evaluateProject(ctx, { epoch: 'probe', revision: revision++, design });
     console.log(`full ${(performance.now() - t0).toFixed(0)} ms`);
@@ -49,7 +50,7 @@ else {
   // FIRST=1: the reroute's first drag (its full result before Auto's own, no choice of the player's yet)
   const last = process.env.FIRST ? null : full(project = shaped(c, null));
   const bases = Object.values((last ?? first).routes).flatMap(r => r.legacy ? [previewBase(r.legacy)] : []);
-  saved0 = { bases, c, length: mission.length, mv: (last ?? first).routes[routeId].legacy!.quantities.materialValue, sv: (last ?? first).routes[routeId].legacy!.quantities.structureValue };
+  saved0 = { what, bases, c, length: mission.length, mv: (last ?? first).routes[routeId].legacy!.quantities.materialValue, sv: (last ?? first).routes[routeId].legacy!.quantities.structureValue };
   if (file) writeFileSync(file, serialize(saved0));
 }
 const { c } = saved0;

@@ -5,7 +5,7 @@
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
 //        [--scenario d11] [--preset d3-motorway] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi|link] [--bend 9]
-//        [--seconds 2] [--check] [--shot out.png] [--split forward|reverse]
+//        [--seconds 2] [--check] [--shot out.png] [--split forward|reverse] [--alloc out.heapprofile]
 //
 // --scenario <id>: another pack; the design defaults to scripts/scenarios/<id>/default.json and the
 // bend to the middle one. The budgets are the same for every scenario.
@@ -25,7 +25,7 @@ const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) |
 const bendArg = arg('--bend');
 const split = arg('--split'); // motorway: split the directions and drag the one towards B (forward) or A (reverse)
 const seconds = Number(arg('--seconds', 2));
-const profileOut = arg('--profile'), traceOut = arg('--trace');
+const profileOut = arg('--profile'), traceOut = arg('--trace'), allocOut = arg('--alloc');
 const check = process.argv.includes('--check');
 const shot = arg('--shot'); // screenshot path, taken once in the middle of the measured drag (skews its timing)
 
@@ -122,7 +122,7 @@ const uncovered = async (selector) => {
 };
 const T = (f, a) => page.evaluate(f, a);
 /** where the drag starts and its pointer offset (px) at phase u ∈ [0, 1) of the measured drag */
-let grab, path, beforeMeasure = async () => {}, afterWarmUp = async () => {};
+let grab, path, beforeMeasure = async () => {}, afterWarmUp = async () => {}, afterMeasure = async () => {};
 if (mode === 'bend') {
   // a loop around the bend's spot (the route length changes every step)
   grab = () => uncovered(`.pi[data-i="${bend}"]`);
@@ -180,14 +180,16 @@ if (mode === 'bend') {
   const focus = async (rank) => {
     const at = await T((rank) => {
       const r = window.trapla.result(), once = (id) => r.crossings.filter(c => c.roadId === id).length === 1;
-      const list = r.crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && c.geometry?.links?.some(l => l.length > 6))
+      const list = r.crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && once(c.roadId) && c.geometry?.links?.some(l => l.length > 6))
         .sort((a, b) => (b.linkLength ?? 0) - (a.linkLength ?? 0));
-      const c = rank ? list.find(c => c.roadId !== list[0].roadId && once(c.roadId)) ?? list[0] : list[0];
+      const c = list[rank];
+      if (!c) return null;
       const link = c.geometry.links.find(l => l.length > 6), q = link[Math.floor(link.length / 2)];
       // (a reroute is shaped once its crossing is selected, as a click on it would)
       window.trapla.select({ kind: 'crossing', roadId: c.roadId }); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
       return { roadId: c.roadId, link: [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map(f => link[Math.floor(link.length * f)]) };
     }, rank);
+    if (!at) throw new Error('link mode needs two reroutes of ways crossed once (one to warm up on, one to measure)');
     await page.waitForTimeout(1500);
     await viewIdle();
     // its middle, else the nearest point along it clear on screen of a culvert's symbol on our road (a press there
@@ -207,9 +209,13 @@ if (mode === 'bend') {
     await viewIdle();
     return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, target.q);
   };
-  afterWarmUp = async () => {
-    if (!(await T((id) => (window.trapla.getDesign().crossingOverrides ?? []).some(o => o.roadId === id && o.via), target.roadId))) throw new Error('the warm-up drag did not shape its reroute');
-  };
+  // (each drag shapes its own reroute: its bend points are new)
+  const shapedNow = (id) => T(([id, before]) => {
+    const via = (list) => JSON.stringify((list ?? []).find(o => o.roadId === id)?.via ?? null);
+    return via(window.trapla.getDesign().crossingOverrides) !== via(before);
+  }, [id, before]);
+  afterWarmUp = async () => { if (!(await shapedNow(target.roadId))) throw new Error('the warm-up drag did not shape its reroute'); };
+  afterMeasure = async () => { if (!(await shapedNow(target.roadId))) throw new Error('the measured drag did not shape its reroute'); };
   // after the warm-up drag: back to Auto's crossings as the design had them, the longest reroute in view
   beforeMeasure = async () => {
     await T((before) => { const d = window.trapla.getDesign(); d.crossingOverrides = before; window.trapla.setDesign(d); }, before);
@@ -220,17 +226,22 @@ if (mode === 'bend') {
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
 } else throw new Error(`unknown --mode ${mode}`);
 
-/** `minMoves`: moves made even past `secs` (the warm-up: on a loaded host the first moves over a long route can take
- * the whole time, a hover's first picks, and a drag must still begin) */
-const drag = async (secs, size, shotAt = null, minMoves = 0) => {
+/** `steps`: at least this many moves, the k-th at least k / steps of the way round (the warm-up: on a loaded host the
+ * first moves over a long route, a hover's first picks, can take the whole time, and a drag must still begin: the first
+ * move goes past the 5 px a drag starts with) */
+const drag = async (secs, size, shotAt = null, steps = 0, pressing = async () => {}) => {
   const c = await grab();
+  // (the pointer comes to rest over what it grabs before the press, as a player's does: what the hover shows there, the
+  // first picks of a new result, is not part of the drag)
   await page.mouse.move(c.x, c.y);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await pressing();
   await page.mouse.down();
   const t0 = Date.now();
   let k = 0;
   // pointer moves on a fixed 60 Hz timeline (late moves jump ahead, as a real mouse would)
-  while (Date.now() - t0 < secs * 1000 || k < minMoves) {
-    const o = path((Date.now() - t0) / 1000 / secs, size);
+  while (Date.now() - t0 < secs * 1000 || k < steps) {
+    const o = path(Math.max((Date.now() - t0) / 1000 / secs, steps ? (k + 1) / steps : 0), size);
     await page.mouse.move(c.x + o.x, c.y + o.y);
     // next slot of the timeline: missed slots are skipped, not sent in a burst
     k++;
@@ -249,11 +260,11 @@ await beforeMeasure();
 await page.waitForTimeout(800);
 
 const cdp = await page.context().newCDPSession(page);
+if (allocOut) { await cdp.send('HeapProfiler.enable'); await cdp.send('HeapProfiler.startSampling', { samplingInterval: 16384, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true }); }
 if (profileOut) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
 if (traceOut) await browser.startTracing(page, { path: traceOut, categories: ['devtools.timeline', 'v8', 'v8.execute', 'disabled-by-default-devtools.timeline', 'blink.user_timing', 'gpu'] });
 const programsBefore = await page.evaluate(() => window.trapla.programs?.() ?? []);
-await page.evaluate(() => { window.__drag.on = true; window.__drag.start = performance.now(); });
-const moves = await drag(seconds, 80, shot);
+const moves = await drag(seconds, 80, shot, 0, () => page.evaluate(() => { window.__drag.on = true; window.__drag.start = performance.now(); }));
 if (!(await page.evaluate(() => window.__drag.posts.size))) throw new Error(`the ${mode} drag changed nothing (no evaluation requested)`);
 const tUp = await page.evaluate(() => performance.now());
 await page.evaluate(() => window.trapla.whenIdle());
@@ -270,6 +281,8 @@ const compiled = compiledCount > 0 ? programsAfter.filter((p) => pid(p) > maxBef
 await page.waitForTimeout(300);
 const D = await page.evaluate(() => { const D = window.__drag; D.on = false; return { ...D, posts: [...D.posts] }; });
 if (traceOut) await browser.stopTracing();
+await afterMeasure();
+if (allocOut) { const { profile } = await cdp.send('HeapProfiler.stopSampling'); writeFileSync(allocOut, JSON.stringify(profile)); }
 if (profileOut) { const { profile } = await cdp.send('Profiler.stop'); writeFileSync(profileOut, JSON.stringify(profile)); }
 
 const q = (arr, f) => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(f * s.length))] : NaN; };

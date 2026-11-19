@@ -8,7 +8,7 @@
 // right/middle-drag = scroll. Hovering shows what is there and the place on the map.
 
 import { BRIDGE_STYLE_TEXT, ourWords } from '../core/terms';
-import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
+import { cellLength } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
@@ -124,9 +124,8 @@ export class ProfilePanel {
   private mapWindow: { s0: number; s1: number } | null = null;
   private zr = { lo: 0, hi: 1 };
   private pad = { l: 52, r: 14, t: 26, b: 22 };
-  /** prefix sums over station cells: one per cost group, plus cell length; and per part key */
+  /** prefix sums over station cells: one per cost group, plus cell length */
   private cum: Float64Array[] = [];
-  private cumKey = {} as Record<PartKey, Float64Array>;
   private cumLen = new Float64Array(1);
   private elements: Element[] = [];
   private tip: HTMLElement;
@@ -177,14 +176,15 @@ export class ProfilePanel {
     this.vpis = vpis;
     // prefix sums of the bill
     const n = r.n;
-    const prefix = (f: (i: number) => number) => {
-      const c = new Float64Array(n + 1);
-      for (let i = 0; i < n; i++) c[i + 1] = c[i] + f(i);
+    // (one pass per array: a long route's preview comes every frame of a drag)
+    this.cum = COST_GROUPS.map((g) => {
+      const c = new Float64Array(n + 1), parts = g.keys.map((k) => r.parts[k]);
+      for (let i = 0; i < n; i++) { let v = 0; for (const p of parts) v += p[i]; c[i + 1] = c[i] + v; }
       return c;
-    };
-    for (const k of PART_KEYS) this.cumKey[k] = prefix((i) => r.parts[k][i]);
-    this.cum = COST_GROUPS.map((g) => prefix((i) => { let v = 0; for (const k of g.keys) v += r.parts[k][i]; return v; }));
-    this.cumLen = prefix((i) => cellLength(i, n, r.ds));
+    });
+    const len = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) len[i + 1] = len[i] + cellLength(i, n, r.ds);
+    this.cumLen = len;
     // alignment elements: tangents between the curves; the arcs of one compound curve (bends joined
     // by the horizontal solver) are one stretch, labelled with its range of radii
     const els: Element[] = [];

@@ -66,22 +66,29 @@ describe('windowed drag preview', () => {
   });
 });
 
-describe('a crossing’s choice made during a drag', () => {
-  // (a road crossing the route at km ≈ 12)
-  const roads = new RoadNet({ cls: ['residential'], ways: [[0, 12_000, -500, 12_000, 2000]] });
+describe('a reroute’s first drag', () => {
+  // a main road at km ≈ 12 (a junction) and a street 150 m on, which Auto cuts and leads to that junction
+  const roads = new RoadNet({ cls: ['primary', 'residential'], ways: [[0, 12_000, -500, 12_000, 2000], [1, 12_150, -500, 12_150, 2000]] });
   const rctx = { ...ctx, roads };
-  it('the first drag of a reroute (its choice the player’s from then on) is a window around its crossing', () => {
+  const shaped = (o: NonNullable<Design['crossingOverrides']>[number]): Design => ({ ...base, crossingOverrides: [o] });
+  it('is a window around the reroute on the full result of Auto’s own choice, as the whole-route preview builds it', () => {
     const full = evaluate(rctx, base);
-    const c = full.crossings.find(x => x.roadId === 0)!;
-    const shaped: Design = { ...base, crossingOverrides: [{ roadId: 0, type: 'reconnection', via: [[{ x: 12_100, y: 1200 }], []] }] };
-    const preview = evaluate(rctx, shaped, { preview: true, materialValue: full.quantities.materialValue });
-    const window = preview.timing['window.length'];
-    expect(window).toBeGreaterThan(0);
-    expect(window).toBeLessThan(0.6 * preview.length);
-    expect(preview.crossings.find(x => x.roadId === 0)!.s).toBeCloseTo(c.s, -1);
-    // a choice on a road the full result does not cross: the whole route
-    const elsewhere: Design = { ...base, crossingOverrides: [{ roadId: 7, type: 'bridge' }] };
-    expect(evaluate(rctx, elsewhere, { preview: true }).timing['window.length']).toBeUndefined();
+    const c = full.crossings.find(x => x.roadId === 1)!;
+    expect([c.type, c.targetRoadId]).toEqual(['reconnection', 0]);
+    // (link-edit.ts: the drag makes the choice the player's, a bend point on its new piece, the crossing it leads to)
+    const d = shaped({ roadId: 1, type: 'reconnection', via: [[{ x: c.x - 60, y: c.y - 70 }], []], to: 0 });
+    const preview = evaluate(rctx, d, { preview: true, materialValue: full.quantities.materialValue });
+    expect(preview.timing['window.length']).toBeGreaterThan(0);
+    expect(preview.timing['window.length']).toBeLessThan(0.6 * preview.length);
+    setPreviewWindows(false); const plain = evaluate(rctx, d, { preview: true, materialValue: full.quantities.materialValue }); setPreviewWindows(true);
+    const reroute = (r: typeof plain) => { const x = r.crossings.find(y => y.roadId === 1)!; return [x.type, x.targetRoadId, Math.round(x.targetS!), x.issues?.map(v => v.title) ?? []]; };
+    expect(reroute(preview)).toEqual(reroute(plain));
+  });
+  it('another choice, or the reroute led elsewhere, is the whole route until its full result is in', () => {
+    evaluate(rctx, base);
+    for (const o of [{ roadId: 0, type: 'bridge' as const }, { roadId: 1, type: 'underpass' as const },
+      { roadId: 1, type: 'reconnection' as const, via: [[{ x: 12_100, y: 800 }], []] as [{ x: number; y: number }[], { x: number; y: number }[]], to: -1 }])
+      expect(evaluate(rctx, shaped(o), { preview: true }).timing['window.length']).toBeUndefined();
   });
 });
 
