@@ -8,10 +8,11 @@ import { baselineWords, GOAL_SHARE, missionTwists } from '../core/data/twists';
 import { twistLine, TWIST_NAMES, TWIST_ORDER, type TwistId } from '../core/twist-words';
 import { loadTwistState } from './twist-state';
 
-/** The twists to start with (none where the mission offers none: the screen says so). */
-export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> {
+/** The twists to start with; null where the mission offers none and the player continues a design there (or the mission is
+ * retired): a new start on a mission without twists says so on the screen. */
+export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> | null {
   const presetId = scenario.presetId ?? scenario.id, mission = missionTwists(presetId);
-  if (!mission) return noTwists(scenario, saved);
+  if (!mission) return saved || scenario.retired ? null : noTwists(scenario);
   const offer = TWIST_ORDER.filter(t => mission.offer.includes(t));
   const state = loadTwistState(scenario.id, presetId, offer);
   const terms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: [] };
@@ -53,7 +54,7 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
 }
 
 /** A mission without twists: one plain line and Start, so the screen is never empty. */
-function noTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> {
+function noTwists(scenario: ScenarioParams): Promise<{ on: TwistId[]; started: boolean }> {
   const root = document.createElement('main');
   root.className = 'scenario-picker twist-picker';
   root.setAttribute('aria-labelledby', 'twist-picker-heading');
@@ -63,7 +64,7 @@ function noTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: Twist
       <div class="scenario-picker-actions"><button type="button" class="twist-start"></button></div></div></div>`;
   root.querySelector('h1')!.textContent = scenario.title;
   const start = root.querySelector<HTMLButtonElement>('.twist-start')!;
-  start.textContent = saved ? 'Continue' : 'Start';
+  start.textContent = 'Start';
   document.body.append(root);
   root.querySelector<HTMLElement>('h1')!.focus();
   return new Promise((resolve) => start.addEventListener('click', () => { root.remove(); resolve({ on: [], started: true }); }));
