@@ -20,6 +20,7 @@ import type { BuildRoadTool, Placement } from './ui/build-road';
 import type { CurveEditor } from './ui/curve-edit';
 import type { Sel } from './ui/inspector';
 import type { MappedRoadCard } from './ui/mapped-road';
+import type { FlyAlong } from './ui/fly-along';
 import type { ProfilePanel } from './ui/profile';
 import { mappedLineKindFor } from './ui/route-kinds';
 import type { RouteSelection } from './ui/route-selection';
@@ -37,6 +38,7 @@ export interface AutomationContext {
   readonly last: Result | null; readonly projectFull: ProjectResult | null;
   readonly transportIndex: ProjectTransportIndex | null; readonly transportGraph: TransportGraphData | null;
   readonly sourceEditor: MappedRoadCard | null;
+  readonly flyAlong: FlyAlong;
   readonly sel: Sel | null; readonly qualifiedSelection: RouteSelection | null;
   /** the active road is selected (a drag on it bends it) */
   readonly roadSelected: boolean;
@@ -168,6 +170,9 @@ export function installAutomation(c: AutomationContext): void {
     /** parse the lazily loaded transport graph now (base-road hooks below need it) */
     whenTransport: () => c.ensureTransport().then(() => !!c.transportGraph),
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => c.view.lookAt(x, y, dist, bearing, elev),
+    /** the fly-along held `run` metres from end `from` (Esc lets go), or flying on (no `run`) */
+    flyAlong: (from: 'a' | 'b', run?: number) => { if (c.last) c.flyAlong.start(c.last, from, run); },
+    flying: () => c.flyAlong.flying,
     screenOf: (x: number, y: number, z: number) => c.view.project(x, y, z),
     resetCamera: () => c.view.resetCamera(),
     /** select something (as a click would): a bend, pin, crossing, building, stretch or piece at a station */

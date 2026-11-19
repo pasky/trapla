@@ -2063,6 +2063,26 @@ export class View {
   get selectedPi() { return this.selected; }
   /** the orbit target in local map coordinates (diagnostics) */
   get target() { const t = this.controls.target; return { x: t.x + this.cx, y: this.cy - t.z }; }
+  private cameraHeld = false;
+  /** Hold the camera at `eye` looking at `target` (local metres; a fly-along sets it every frame, ui/fly-along.ts):
+   * no orbit, no glide meanwhile. `null`: the orbit back, about the target as it is. */
+  holdCamera(eye: { x: number; y: number; z: number } | null, target?: { x: number; y: number; z: number }) {
+    this.flight++;
+    // the map's own marks in the scene (the planned line, proposals, bought-out diamonds) go with the markers
+    if (this.cameraHeld !== !!eye) for (const o of this.world.children) if (/^official|^proposal/.test(o.name) || o === this.takenMarkers?.pts) o.visible = !eye;
+    this.cameraHeld = !!eye;
+    if (!eye || !target) { this.controls.enabled = true; this.controls.update(); this.dirty = true; return; }
+    this.controls.enabled = false;
+    this.local(target.x, target.y, target.z * this.exag, this.controls.target);
+    this.local(eye.x, eye.y, eye.z * this.exag, this.camera.position);
+    this.camera.lookAt(this.controls.target);
+    this.dirty = true;
+  }
+  /** the camera and its target now (local metres), for holdCamera */
+  get eyeTarget() {
+    const c = this.camera.position, t = this.controls.target;
+    return { eye: { x: c.x + this.cx, y: this.cy - c.z, z: c.y / this.exag }, target: { x: t.x + this.cx, y: this.cy - t.z, z: t.y / this.exag } };
+  }
   /** where the camera is and looks (for automation): its height above the ground under it, the target's
    * height above the ground under it, and how far above the horizon it looks down, degrees */
   get pose() {

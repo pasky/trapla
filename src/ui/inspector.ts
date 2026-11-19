@@ -46,6 +46,8 @@ export type Sel =
 
 export interface InspectorEvents {
   close?: () => void;
+  /** fly along our line from this end (ui/fly-along.ts) */
+  fly?: (r: Result, from: 'a' | 'b') => void;
   select?: (sel: Sel) => void;
   /** bridge / tunnel / earthwork / Auto (null) on a station range; a tunnel's method ('cut': cut and cover) or
    * a bridge's style */
@@ -581,7 +583,8 @@ export class Inspector {
     if (!info) return '';
     const card = endCard(info, end, this.d ? lineOf(CATEGORIES[this.d.category]) : 'motorway');
     return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
-      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>${info.lore ? `<div class="sub lore">${esc(info.lore)}</div>` : ''}`;
+      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>${info.lore ? `<div class="sub lore">${esc(info.lore)}</div>` : ''}
+      <div class="ctx-foot"><button type="button" data-fly="${end}" title="Fly along it to the other end, low over the ground. Esc or a click stops.">Fly along</button></div>`;
   }
 
   // ---- a stream culvert ----
@@ -807,6 +810,7 @@ export class Inspector {
       try { localStorage.setItem(MORE_KEY, this.more ? '1' : '0'); } catch { /* private mode */ }
       this.render(); return;
     }
+    if (b.dataset.fly) { this.ev.fly?.(r, b.dataset.fly as 'a' | 'b'); return; }
     if (b.dataset.roadCard) { this.ev.select?.({ kind: 'crossing', roadId: Number(b.dataset.roadCard) }); return; }
     if (b.dataset.stretch) { const [s0, s1] = b.dataset.stretch.split(',').map(Number); this.ev.select?.({ kind: 'stretch', s0, s1 }); return; }
     if (b.dataset.piece) { const [s0, s1, kind] = b.dataset.piece.split(','); this.ev.select?.({ kind: 'stretch', s0: Number(s0), s1: Number(s1), piece: kind as PieceKind }); return; }

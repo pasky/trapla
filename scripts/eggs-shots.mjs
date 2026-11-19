@@ -1,6 +1,7 @@
 // The small details (research/96–98): each one clicked or played as a player would, its screenshot taken, what it says
 // asserted. Real mouse where a player would use one.
-//   node scripts/eggs-shots.mjs [--gpu] [--docs] [--only lore,records,…]   (--docs: docs/screenshots/660…, else /tmp/trapla-eggs)
+//   node scripts/eggs-shots.mjs [--gpu] [--docs] [--only lore,records,signs,fly,…]   (--docs: docs/screenshots/660…, else /tmp/trapla-eggs)
+//   flock -x /tmp/trapla-browser.lock node scripts/eggs-shots.mjs --gpu --only fly --frames   (the fly-along's frame times)
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
@@ -91,6 +92,42 @@ try {
     assert.equal(await failing.locator('#loading svg.notice-sign[aria-hidden="true"]').count(), 1);
     await failing.screenshot({ path: `${out}/670-sign-loading-failed.png` });
     await failing.close();
+  }
+  // 4. fly along (ui/fly-along.ts): from end A's card, 28 m up, over the Sázava bridge; frame times while it flies
+  //    (and the land cover streams in); Esc stops it and puts the view back
+  if (want('fly')) {
+    await game.open('scenario=d3-0302&preset=d3-0302-motorway');
+    await T(() => window.trapla.select({ kind: 'end', end: 'a' })); await idle(300);
+    const pose0 = JSON.stringify(await T(() => window.trapla.cameraPose()));
+    const r = await T(() => { const r = window.trapla.result(); let hi = 0, sh = 0; for (let i = 0; i < r.n; i++) if (r.kind[i] === 1 && r.grade[i] - r.ground[i] > hi) { hi = r.grade[i] - r.ground[i]; sh = r.s[i]; } return { L: r.length, high: sh }; });
+    // frame gaps meanwhile (rAF to rAF)
+    await T(() => { window.__gaps = []; let last = performance.now(); const f = (t) => { window.__gaps.push(t - last); last = t; if (window.__gaps.length < 20000) window.__raf = requestAnimationFrame(f); }; window.__raf = requestAnimationFrame(f); });
+    await page.getByRole('button', { name: 'Fly along' }).click();
+    assert.equal(await T(() => document.getElementById('overlay').classList.contains('flying')), true, 'flying, the markers hidden');
+    const speed = Math.max(45, r.L / 120);
+    // (the shots held at their place: a software renderer draws a frame in ≈ 0.6 s, so a time-based shot misses it)
+    let n = 671;
+    await page.waitForTimeout(process.argv.includes('--frames') ? 0.95 * r.L / speed * 1000 : Math.min(15000, 0.3 * r.L / speed * 1000));
+    for (const s of process.argv.includes('--frames') ? [] : [0.25 * r.L, r.high - 450, r.high]) {
+      await T((s) => window.trapla.flyAlong('a', s), s); await game.frames(4); await page.waitForTimeout(1500); await game.frames(2);
+      await shot(n++, `fly-along-${Math.round(s)}`);
+    }
+    const pose = await T(() => window.trapla.cameraPose());
+    console.log('flying at', JSON.stringify(pose));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    assert.equal(await T(() => document.getElementById('overlay').classList.contains('flying')), false, 'Esc stops it');
+    assert.equal(JSON.stringify(await T(() => window.trapla.cameraPose())), pose0, 'and puts the view back');
+    const gaps = await T(() => { cancelAnimationFrame(window.__raf); return window.__gaps.slice(5).sort((a, b) => a - b); });
+    // (--frames: the whole flight flown, nothing else; a timed run: flock -x, --gpu)
+    const q = (p) => gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))];
+    console.log(`fly-along frames: ${gaps.length}, median ${q(0.5).toFixed(1)} ms, p95 ${q(0.95).toFixed(1)} ms, p99 ${q(0.99).toFixed(1)} ms, max ${gaps.at(-1).toFixed(1)} ms`);
+    // a click stops it too, and selects nothing
+    assert.match(await inspector(), /^Interchange/, 'its card stays');
+    await page.getByRole('button', { name: 'Fly along' }).click(); await page.waitForTimeout(800);
+    const view = await page.locator('#view').boundingBox();
+    await page.mouse.click(view.x + view.width / 2, view.y + view.height / 2); await page.waitForTimeout(300);
+    assert.equal(await T(() => document.getElementById('overlay').classList.contains('flying')), false, 'a click stops it');
+    assert.equal(JSON.stringify(await T(() => window.trapla.cameraPose())), pose0);
   }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

@@ -53,6 +53,7 @@ import { createMapGestures } from './ui/map-gestures';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { earnedRecord } from './ui/records';
+import { createFlyAlong } from './ui/fly-along';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
@@ -262,7 +263,10 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, setEnd, inspectorEvents, decisionEvents } = createDesignEdits({
     store, profile, get last() { return session.last; }, select: (next, fly) => select(next, fly), deselect: () => deselect(),
   });
-  inspector.ev = inspectorEvents;
+  // fly along the line from an end (ui/fly-along.ts): only when asked, the map's markers hidden meanwhile (made
+  // before the shortcuts: its Esc goes first)
+  const flyAlong = createFlyAlong(view, document.getElementById('overlay')!, (x, y) => pack.terrain.heightAt(x, y));
+  inspector.ev = { ...inspectorEvents, fly: (r, from) => flyAlong.start(r, from) };
   decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });
@@ -418,7 +422,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
 
   // ---- debug / automation API (src/automation.ts) ----
   installAutomation({
-    store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A: ends.a, B: ends.b, handlerTiming,
+    store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A: ends.a, B: ends.b, handlerTiming, flyAlong,
     get last() { return session.last; }, get projectFull() { return session.projectFull; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; }, get sourceEditor() { return links.editor; },
     get sel() { return session.sel; }, get qualifiedSelection() { return session.qualifiedSelection; },
