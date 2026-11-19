@@ -190,7 +190,8 @@ three road stages: 18.98 bn (CÚ 2022, construction), with the interchange stage
 On the line's CHKO corner: our starter's works stand in zone III at km 4.51–4.68 of the Turnov stage (earthworks, a
 bridge end and a pier; the mapped line km 5.17–5.50): the stretch card says "Building here needs the nature
 authority's consent". A D 27.5 on the same line is banned there ("No new motorway may be built anywhere in a protected
-landscape area"), and Auto takes it under the area instead (tests/motorway-mode.test.ts).
+landscape area"; on a test line across such an area Auto takes a D 27.5 under it in a tunnel and an S 21.5 across
+on earth, tests/motorway-mode.test.ts).
 
 ### Known issues
 
