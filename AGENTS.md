@@ -160,4 +160,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   homes) only in proportion (model 33, research/61); "Our bridge over it" is met through the same retry
   (no grade floor first) and its crossing card says what raising our road for it cost (D3 km 8.59: 15 m, 1.28 bn).
   `scripts/straighten-audit.ts`, `scripts/choice-audit.ts` and `scripts/toolbar-layout.mjs` are gates.
+- Twists (PLAN.md "Twists and curveballs"): per-mission challenges checked after each full evaluation (never in a drag
+  preview), never changing the bill or validity; `npx tsx scripts/twists-check.ts` (run by tests/twists.test.ts) proves each offered twist with a
+  VALID reference design in `scripts/twists/<preset>/`; a change of the bills can break a reference (search again with
+  `--find`). Curveballs exist for Šternberk only (TODO for D3, D35, D11, Královec: research/92–94).
 - See PLAN.md "Next steps" and each section's "Known issues".

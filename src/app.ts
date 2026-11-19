@@ -58,11 +58,19 @@ import { installProfileBar } from './ui/profile-bar';
 import { installShortcuts } from './ui/shortcuts';
 import { installAutomation } from './automation';
 import { Intro } from './ui/intro';
+import { createTwists } from './ui/twists';
+import type { TwistId } from './core/twists';
+import type { ProjectResult } from './core/project';
+import { normalizeVpis } from './core/evaluate';
+import { KIND } from './core/structures';
+import { toast } from './ui/toast';
 
 const status = document.getElementById('status')!;
 
 /** Open the picked mission. `loading`: the loading card (main.ts), gone once the map is drawn. */
-export async function startApp({ picked, storage, loading }: { picked: PickedScenario; storage: StorageGuard; loading: Loading }) {
+export async function startApp({ picked, storage, loading, twists: twistChoice = null }: { picked: PickedScenario; storage: StorageGuard; loading: Loading;
+  /** the twist screen's answer (ui/twist-picker.ts); `started`: its Start applies From scratch / By hand now */
+  twists?: { on: TwistId[]; started: boolean } | null }) {
   // the small status over the map (under the loading card while that is up)
   const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
   const scenario = scenarioParams(picked.scenarioId, picked.presetId);
@@ -95,6 +103,12 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
   // One scenario factory for first start AND Start over (core/project-mission.ts, shared with the Node scripts).
   const { initial: initialProject, mission } = missionProject(scenario, legacyContext);
+  // From scratch (a twist): the mission's road on the straight line from A to B, no starting bends
+  const { initial: straightProject } = missionProject({ ...scenario, initial: scenario.initial && { ...scenario.initial, pis: [] } }, legacyContext);
+  /** the twists (ui/twists.ts), made once the map and the HUD are up */
+  let twists: ReturnType<typeof createTwists> = null;
+  /** a From scratch start under way (before the twists are made, too) */
+  let wantStraight = false;
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
     objectData, transportData, pricingData, initial: initialProject, mission,
     // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
@@ -114,7 +128,8 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   const storageNotice = () => showStorageNotice(document.getElementById('view')!, () => projectStore.snapshot.design);
   storage.onProblem = () => { console.warn('Saving stopped', storage.problem); storageNotice(); };
   if (storage.problem !== null) storageNotice();
-  const store = new ActiveRouteStore(projectStore, initialProject);
+  // Start over goes back to the straight line while From scratch is on
+  const store = new ActiveRouteStore(projectStore, () => wantStraight || twists?.scratchOn ? straightProject() : initialProject());
   /** what is on screen: the results shown, the selection and the ends of the line being edited (session.ts) */
   const session = newSession(store.route ? { a: store.route.endpoints.a.position, b: store.route.endpoints.b.position } : { a: A, b: B });
   const ends = session.ends;
@@ -251,6 +266,8 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
     get A() { return ends.a; }, get B() { return ends.b; },
     get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
     routeCard: () => routeCard(), directionsState: () => directionsState(),
+    // (By hand's pins just laid: the next result is the one to check)
+    afterFull: (result) => { if (!applyByHand(result)) twists?.afterFull(result); },
   });
   const { evals, requestEval, settled, sceneIdle } = results;
 
@@ -334,6 +351,49 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
     cancelDrag: () => { store.cancelStep(); view.cancelDrag(); }, releaseDrag: () => store.release(),
     get sel() { return session.sel; }, get mappedRoadSelected() { return !!links.editor?.selected; },
   });
+
+  // ---- twists: the challenges the player picked (ui/twists.ts) ----
+  /** By hand was asked for at a new start: our road's heights go to the ground (every 500 m) once a result says where */
+  let byHandWanted = false;
+  /** …applied to the result of the design as it is now (a From scratch start replaced the line); true: it changed the design */
+  const applyByHand = (result?: ProjectResult): boolean => {
+    const r = session.lastFull, mission = missionRouteId(), now = projectStore.snapshot;
+    if (!byHandWanted || !r || !result || result.epoch !== now.epoch || result.revision !== now.revision || store.activeRouteId !== mission) return false;
+    byHandWanted = false;
+    if (store.design.profileMode === 'manual') return false;
+    const step = 500, n = Math.max(1, Math.round(r.length / step)), at = (s: number) => r.ground[Math.min(r.n - 1, Math.round(s / r.ds))];
+    const pins = Array.from({ length: n - 1 }, (_, k) => { const s = r.length * (k + 1) / n; return { s: Math.round(s), z: Math.round(at(s) * 10) / 10, r: null }; });
+    store.update((d) => { d.profileMode = 'manual'; d.vpis = normalizeVpis([r.vpis[0], ...pins, r.vpis[r.vpis.length - 1]].map(v => ({ ...v })), r.length, r.vpis[0].z, r.vpis[r.vpis.length - 1].z); });
+    toast('By hand: our road now lies on the ground. Drag its ◆ height pins in the profile.');
+    return true;
+  };
+  /** a stretch of a road of ours: that road made the active one first */
+  const onRoute = (routeId: string, then: () => void) => { if (routeId === store.activeRouteId || switchRoute(routeId)) then(); };
+  twists = createTwists({
+    scenario, presetId, pack, ends: { a: positionA, b: positionB }, view, overlay: document.getElementById('overlay')!,
+    chip: hud.twists.chip, card: hud.twists.card, section: hud.twists.section, revealHud: () => hud.reveal('twists'),
+    design: () => projectStore.snapshot.design, subscribe: (fn) => { projectStore.subscribe((_, committed) => fn(committed)); },
+    busy: () => projectStore.inTransaction,
+    startFromScratch: () => {
+      select(null);
+      wantStraight = true; store.reset(); wantStraight = false;
+      view.resetCamera(); profile.fit();
+      toast('Started from the straight line.', 'Undo', () => store.undo());
+    },
+    setByHand: (on, fresh) => {
+      byHandWanted = on && fresh;
+      // turned on mid-game: the heights as they are now become the pins (as the Road card's By hand does)
+      if (on && !fresh && store.design.profileMode === 'auto' && session.last && settled()) store.update((d) => { takeProfile(d); });
+      if (byHandWanted) applyByHand(session.projectFull ?? undefined);
+      twists?.syncAutoButton();
+    },
+    showStretch: (routeId, s0, s1) => onRoute(routeId, () => selectPiece((s0 + s1) / 2, true)),
+    showPlace: (x, y) => view.flyTo(x, y, 900),
+    build: (kind, routeId, s0, s1, style) => onRoute(routeId, () => setStructure(kind === 'bridge' ? KIND.bridge : KIND.tunnel, s0, s1, style)),
+  }, twistChoice);
+  // Start over: to the straight line while From scratch is on (else the design began from the starter); By hand on: its
+  // heights on the ground again
+  { const reset = store.reset.bind(store); store.reset = () => { reset(); twists?.noteScratch(!!twists?.scratchOn); if (twists?.state.on.includes('byHand')) byHandWanted = true; }; }
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }

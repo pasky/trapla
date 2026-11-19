@@ -1,0 +1,168 @@
+{
+ "preset": "i46-sternberk-road",
+ "purpose": "Earth balance and Hands off the castle under the goal, before the news (its bridge ends in the villa garden): a search from the starter (scripts/twists-check.ts --find, seed 5); scripts/twists-play.mjs plays the news on it",
+ "meets": [
+  "earth",
+  "landmarks"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i46-sternberk",
+  "presetId": "i46-sternberk-road",
+  "packId": "i46-sternberk",
+  "objectData": "499739:989438279:2301648189",
+  "transportData": "a11b116b8e6de40d4ef2bd1246d13890a4281e6c08c7cf11ef1c649da55a9e1a",
+  "routes": [
+   {
+    "id": "route:legacy-mission",
+    "name": "Road",
+    "role": "mission",
+    "revision": 0,
+    "kind": "road",
+    "acousticSourceId": "acoustic:legacy-mission",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2644.2,
+       "y": 2453.8,
+       "z": 242.53284000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 4699,
+       "y": 5512.5,
+       "z": 365.6
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2667.5952873757224,
+       "y": 3504.701673132606,
+       "r": 1500
+      },
+      {
+       "x": 3168.4362618350788,
+       "y": 4219.955078766833,
+       "r": 1000
+      },
+      {
+       "x": 3359.3889034561626,
+       "y": 4725.597179436884,
+       "r": 800,
+       "speed": 70
+      },
+      {
+       "x": 3515.5726895318526,
+       "y": 5337.695756287301,
+       "r": 360,
+       "speed": 70
+      },
+      {
+       "x": 4549.759595213063,
+       "y": 5303.02631144778,
+       "r": 340,
+       "speed": 70
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 3301.7310143902228,
+        "s1": 3367.750449377799,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 1259,
+        "z": 266.9
+       },
+       {
+        "s": 1997,
+        "z": 288.7
+       },
+       {
+        "s": 3230,
+        "z": 333.2
+       }
+      ],
+      "manualVpis": []
+     }
+    },
+    "specification": {
+     "kind": "road",
+     "policy": "legacy-road",
+     "legalClass": "I",
+     "crossSection": "S11.5",
+     "designSpeed": 90,
+     "operations": {
+      "aadt": 10453,
+      "heavyShare": 0.086,
+      "speed": 90,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i46-sternberk:i46-sternberk-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Olomouc",
+     "position": {
+      "x": 2644.2,
+      "y": 2453.8,
+      "z": 242.53284000000002
+     }
+    },
+    {
+     "id": "b",
+     "name": "Opava",
+     "position": {
+      "x": 4699,
+      "y": 5512.5,
+      "z": 365.6
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "road"
+     ],
+     "maxTravelMin": 3.6,
+     "demand": {
+      "kind": "road",
+      "aadt": 10453
+     }
+    }
+   ]
+  }
+ }
+}

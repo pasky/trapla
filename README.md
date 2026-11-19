@@ -237,6 +237,23 @@ Also: [the most expensive piece](docs/screenshots/62-playtest-money.png),
 [the reference design](docs/screenshots/71-playtest-overview.png).
 Before the rethink: [docs/screenshots/rethink-before](docs/screenshots/rethink-before).
 
+### Twists, news from the site and the reveal
+
+There is no separate game mode: the game stays the builder, and each mission offers **twists**, challenges on top of a
+valid design, picked on a short screen after Start ([the twist screen](docs/screenshots/640-twist-screen.png)) and
+changed any time from the **Twists** card (the chip by the verdict, "✗ Twists 2/3"). *Earth balance*: what you dig fills
+your embankments, at most 10 % brought in or trucked away ([the starter brings in 18 %](docs/screenshots/641-starter-twists.png),
+[one height pinned](docs/screenshots/643-pin-lower.png)). *Hands off the castle*: rings around the castles, churches, chapels
+and viewpoints near the line ([in Šternberk](docs/screenshots/642-landmark-rings.png)). *Curveballs*: news from the site,
+drawn from the real project's story, a place to keep out of or less money ([the villa](docs/screenshots/644-news-villa.png),
+[its garden on the map](docs/screenshots/645-villa-broken.png), [the butterflies later](docs/screenshots/647-news-butterflies.png)).
+*From scratch* (the straight line, [Šternberk](docs/screenshots/649-from-scratch.png)), *By hand* (your heights,
+[Auto's off](docs/screenshots/648-by-hand.png)), and where it asks for something *Real price*. The first time the design is
+valid, meets every twist on and is 10 % under the line you started from (the planned one), the **reveal** shows yours next to
+the real project, its price and what happened to it ([the reveal](docs/screenshots/646-reveal.png)); *Keep improving*.
+Each twist is offered only where a reference design meets it (`npx tsx scripts/twists-check.ts`, PLAN.md "Twists and
+curveballs").
+
 ### Scenarios
 
 The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),

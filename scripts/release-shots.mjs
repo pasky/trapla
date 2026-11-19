@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { serveStatic } from './static-serve.mjs';
-import { checker } from './lib/browser.mjs';
+import { checker, passTwists } from './lib/browser.mjs';
 
 const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i < 0 ? d : process.argv[i + 1] ?? d; };
 const docs = process.argv.includes('--docs'), before = arg('--before');
@@ -144,6 +144,7 @@ try {
     await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /height\.i16\.gz$/.test(e.name) && e.responseEnd > 0), null, { timeout: 30000 });
     const clickAt = await page.evaluate(() => performance.now());
     await page.locator('[data-start-here] button').click();
+    await passTwists(page);
     await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 120000 });
     const heights = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /height\.i16\.gz$/.test(e.name)).map((e) => e.responseEnd));
     const sidecars = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /\/structures\.json$/.test(e.name)).length);

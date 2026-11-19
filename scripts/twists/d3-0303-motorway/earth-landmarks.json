@@ -1,0 +1,249 @@
+{
+ "preset": "d3-0303-motorway",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 1)",
+ "meets": [
+  "earth",
+  "landmarks"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0303",
+  "presetId": "d3-0303-motorway",
+  "packId": "d3-0303",
+  "objectData": "940998:245096016:1360424674",
+  "transportData": "4de3028910010b172b47ab3908fe693a0a56268c26a144ddb443fc37466ff9c6",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards V\u00e1clavice (on to 0304)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2602,
+       "y": 10703.8,
+       "z": 320.12800000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9438.8,
+       "y": 2713.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Host\u011bradice (from 0302)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 9438.8,
+       "y": 2713.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2602,
+       "y": 10703.8,
+       "z": 320.12800000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2602,
+       "y": 10703.8,
+       "z": 320.12800000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9438.8,
+       "y": 2713.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2841.8081227657635,
+       "y": 9151.25578568278,
+       "r": null
+      },
+      {
+       "x": 3040.912455307436,
+       "y": 8277.20876303318,
+       "r": null
+      },
+      {
+       "x": 3586.610172056621,
+       "y": 7483.515971347541,
+       "r": null
+      },
+      {
+       "x": 5020.566123956534,
+       "y": 6978.245154804741,
+       "r": null
+      },
+      {
+       "x": 6426.530025790934,
+       "y": 5389.832933564402,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 870,
+        "z": 338.6
+       },
+       {
+        "s": 5278,
+        "z": 346.8
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0303:d3-0303-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Host\u011bradice (from 0302)",
+     "position": {
+      "x": 2602,
+      "y": 10703.8,
+      "z": 320.12800000000004
+     }
+    },
+    {
+     "id": "b",
+     "name": "V\u00e1clavice (on to 0304)",
+     "position": {
+      "x": 9438.8,
+      "y": 2713.8,
+      "z": 319.8767600000001
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 6.3,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

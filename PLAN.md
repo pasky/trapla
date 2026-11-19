@@ -2471,3 +2471,91 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   embankments is not filled; a small
   light speck can remain at a dug ridge's nose; slip-road traffic starts as the average class II road (labelled);
   the A.4.N proxy for what the motorway's norm includes.
+
+## Twists and curveballs (owner request, no model version, 2026-11-20)
+
+The game stays the builder; what is new is **twists** a player picks per mission (`src/core/twists.ts` checks them,
+`src/core/data/twists.ts` says which a mission offers and its numbers, `src/ui/twists.ts` shows them). A twist never
+changes the bill or validity: VALID stays the norm check. Twists are checked on the main thread after each full
+evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), never in a drag preview.
+
+- **Twist screen** (`src/ui/twist-picker.ts`): after Start / Continue on the start screen (a direct link skips it), the
+  mission's twists as toggles with one line each, the goal above them, *All on* / *None*; the defaults are the owner's
+  difficulty (Earth balance, Hands off the castle, Curveballs, where offered); the choice is remembered per mission
+  (`trapla.twists.v1.<scenario>.<preset>`, `src/ui/twist-state.ts`). The map downloads meanwhile. In the game: a chip by
+  the verdict ("✓ Twists 3/3" / "✗ Twists 2/3") opens the **Twists** card: each twist with where it stands, what breaks
+  it and where (Show), fixes as buttons where one can be computed (*Bridge it* over a place that takes a bridge,
+  *Tunnel it* through a hill that may not be cut open, *Long spans over it* where piers are kept out), *Change twists*
+  (any time; the reveal says which were on), the news so far, *The real project* once revealed.
+- **The twists offered** (each only where `scripts/twists-check.ts` finds a VALID reference design meeting it in
+  `scripts/twists/<preset>/`, and where it asks for something: the starter breaks it):
+  - *Earth balance*: at most 10 % of the fill brought in, or of the dug earth trucked away (the larger share counts;
+    15 % of the cut is unsuitable whatever the design and is not counted). The starters bring in 9–86 % (Auto buys fill
+    where that is cheaper than digging deeper). On every mission offered: the starter breaks it, a reference meets it.
+    Not on the D11 class I road (its starter brings in 9 %).
+  - *Hands off the castle*: nothing of ours within 400 m of a castle, 200 m of a church, 100 m of a chapel or monument,
+    150 m of a viewpoint (a game rule: Act 20/1987 §17 declares a monument's protection zone one by one, no default);
+    named OSM landmarks (`pipeline/build_landmarks.py` → `src/core/data/landmarks.ts`, 274 points) whose ring comes within
+    1.5 km of the starter or of the straight line A–B. Rings and names on the map (`src/render/twist-marks.ts`; names close
+    up, a broken one always). A view check (no bridge seen from a castle) was not built.
+  - *From scratch*: the design begins on the straight line A–B (a Start over while it is on goes there too; turned on
+    mid-game, the card offers to start from the straight line). Its reference is the starter itself: a line the straight
+    one can be bent into.
+  - *By hand*: our road's heights as height pins; Auto still builds every crossing, culvert, wall and the structures along
+    the line. A fresh start puts the pins on the ground every 500 m (the ends at their tie-in heights): no Auto heights.
+    Turned on mid-game it takes the current heights as pins (as the Road card's By hand does). Auto heights are off while it
+    is on.
+  - *Curveballs* (below).
+  - Not offered, and why: *Keep every village connected* (no starter closes a public road: nothing to ask), *Quiet
+    nights* (a valid design already keeps every home under the night limit; a stricter limit would need the player to
+    paint walls house by house), *Faster* (every starter is already 10 % under the time goal), *Nobody moves*, *Spare the
+    forest*, *Few bridges*, *No tunnels*, *Real price* (checks built and tested; no reference designs searched yet).
+- **The goal and the reveal.** The goal is the starting design's bill less 10 % (`GOAL_SHARE`). The starter is the real
+  project's line on every mission but the Královec railway (a game proposal there: "the starting line"), priced by the
+  game. The real prices are not a fair goal: they include what the game does not build (interchanges, climbing lanes,
+  utilities, two tubes …): Šternberk ours 0.88 bn vs the ŘSD estimate 2.04 bn, D3 sections 5–10 bn vs 8–18.5 bn, D11
+  14.0 bn vs the 11.7 bn contract. The reveal comes the first time the design is VALID, meets every twist on and is under
+  the goal; it shows ours, the planned line priced the same way, the real project's price with what it includes, one
+  line of what really happened (research/87–94), the twists met, and *Keep improving*; the card reopens it.
+- **Curveballs** (`src/core/data/curveballs.ts`, research/91): news from the site, each a place with a rule our line must
+  keep (keep out; no pier or earthworks; no cut or fill, i.e. bridge it; no open cut, i.e. tunnel it) or a cap on the bill,
+  one line of story and its source (shown small on the card). Places are in EPSG:5514, so one list serves every pack of a
+  corridor. Pacing: the first arrives the moment everything else is met for the first time (then the reveal waits until
+  it is met); later ones need 5 minutes of play (the page shown, the player active within 2 min) and 8 edits since the last,
+  never while one is broken. The check replays all of them on one reference design (`all-news.json`): each stays
+  solvable from it.
+  - Šternberk (in order): the Weisshuhn villa listed with its garden (ÚSKP 107460, 30 Dec 2025; the cadastre parcels of the
+    villa, its greenhouse and gardens; no pier or earthworks in it, our deck may pass over); protected butterflies (9/2026;
+    species and place unpublished: a 90 m circle on the open land by the shooting range, PROVISIONAL); the Aleš stream under
+    a bridge as the real design has it (56 m, ŘSD leaflet); no money in the 2026 budget (zdopravy.cz 21 Dec 2025; the bill
+    under 88 % of the planned line's). The Sprchový valley floor as a no-fill place was tried and dropped: a band along the
+    stream also made the valley's sides a place to bridge, too close to the ground for a valid bridge on most lines.
+  - **TODO (research/92–94)**: D3, D35, D11 and the Královec railway have no curveballs yet. Located so far: the real
+    tunnels and bridges on the planned lines (D11 Poříčí 586 m and Opevnění 522 m tunnels, D35 Dětřichov and Maletín
+    tunnels: `meta.official.kinds`), the Bernartice railway viaduct (50.64787 N 15.96050 E), the Střítež war graves
+    (documented 12/2025, not located), the Kamenná Vrata exploratory gallery (documented, portals not located); nothing yet
+    for undermined ground, landslides, water zones or listed buildings within 500 m. The Český ráj I/35 mission (another
+    agent) had not merged: its curveballs (the EIA revoked, zone III, scarps) are to be added with it.
+- **Where**: Šternberk (Earth balance, Hands off, Curveballs, From scratch, By hand), the five D3 sections (Earth balance,
+  Hands off where landmarks are near, No tunnels on 0304, From scratch, By hand), the D35 first section (also Real price:
+  the real 17.69 bn estimate is under our starter's 19.46 bn), the D11 motorway and the Královec railway (Earth balance,
+  Hands off, From scratch, By hand). The reference designs are 18–36 % under their starters. Not yet: the whole D3 and the
+  whole D35 (a reference search there takes hours, 2–5 s an evaluation), the D11 class I road (its starter is the
+  straight line and brings in 9 % of its fill: Earth balance asks nothing there). *Nobody moves* was searched on Šternberk
+  and left one home.
+- **Verification**: `npx tsx scripts/twists-check.ts` (run for every mission by `tests/twists.test.ts`): the starting bill, what the
+  starter breaks, every reference VALID and meeting what it claims, every offered twist met by one, and the default twists
+  with every curveball and the goal met by one (the reveal reachable). `--find <preset> --twists … --goal` is the local
+  search the references came from (bends, height pins, bridges, repairs aimed at what a twist still finds), `--manual`
+  makes a By hand reference, `--show <file>` prints one design's twists.
+- **Playtest** (`scripts/twists-play.mjs --docs`, screenshots 640–649): the twist screen; the starter (Earth balance broken
+  at 18 %); the rings in town; one height pinned by dragging the profile; a reference design that meets the twists under the
+  goal, and the villa news on top of it (its bridge ends in the garden); *Long spans over it* from the card; the reveal; the
+  butterflies at their pace; By hand turned on mid-game; From scratch (the straight line is VALID here, 2.41 bn, through
+  three tunnels).
+- **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
+  mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
+  counts the shared body once per direction in Earth balance; the "From scratch" mark survives an Undo of the restart and a
+  loaded best; Hands off is offered where landmarks are near the line, not only where the starter breaks it (it rules out
+  what a cheaper line would take); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
+  slip between two.

@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
+import { passTwists } from '../lib/browser.mjs';
 
 const server = await createServer({ server: { port: 5298, strictPort: false }, logLevel: 'warn' });
 await server.listen();
@@ -36,7 +37,7 @@ try {
       return c.getByRole('button', { name: label, exact: true });
     };
     await page.goto(server.resolvedUrls.local[0]);
-    await (await card('Start')).click(); await ready();
+    await (await card('Start')).click(); await passTwists(page); await ready();
     const start = await page.evaluate(() => ({ d: window.trapla.getDesign(), s: window.trapla.summary() }));
     assert.equal(await page.evaluate(() => window.trapla.meta.id), id === 'd11-motorway' ? 'd11' : id, `${id}: Start opens its own map`);
     assert(start.d.pis.length > 0 && start.s.valid, `${id}: Start opens the VALID starter`);
@@ -44,7 +45,7 @@ try {
     await page.evaluate(() => { const d = window.trapla.getDesign(); d.pis[0].x += 40; window.trapla.setDesign(d); });
     await page.evaluate(() => window.trapla.whenIdle());
     await page.goto(server.resolvedUrls.local[0]);
-    await (await card('Continue')).click(); await ready();
+    await (await card('Continue')).click(); await passTwists(page); await ready();
     const cont = await page.evaluate(() => window.trapla.getDesign());
     assert.equal(cont.pis[0].x, start.d.pis[0].x + 40, `${id}: Continue keeps the edit`);
     // Start over: back to the deep-cloned starter (not the straight line, not the edit)

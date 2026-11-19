@@ -95,6 +95,14 @@ export async function startGame({ root = process.cwd(), gpu = process.argv.inclu
   return { server, browser, page, errors, pageErrors, base, open, idle, frames, still, park, close: async () => { await browser.close(); await server.close(); } };
 }
 
+/** After Start or Continue on the start screen: a mission with twists shows its twist screen first (src/ui/twist-picker.ts);
+ *  take what it offers (the remembered or default twists) and go on. A mission without twists goes straight on. */
+export async function passTwists(page, timeout = 120000) {
+  await page.waitForFunction(() => !!document.querySelector('.twist-start') || !!document.getElementById('loading') || !!window.trapla, null, { timeout });
+  const start = page.locator('.twist-start');
+  if (await start.count()) await start.click();
+}
+
 /** `ok(condition, what)`: prints PASS / FAIL, counts failures and makes the process exit 1 on any */
 export function checker() {
   let failed = 0;

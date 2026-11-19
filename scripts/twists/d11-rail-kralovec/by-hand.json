@@ -1,0 +1,223 @@
+{
+ "preset": "d11-rail-kralovec",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d11",
+  "presetId": "d11-rail-kralovec",
+  "packId": "d11",
+  "objectData": "2088988:889881338:3067130932",
+  "transportData": "2f1ce1f8f00ac3e5dc3a66eda26addbcf5025f601fd802d86b1d163e775a900e",
+  "routes": [
+   {
+    "id": "route:railway",
+    "name": "Railway",
+    "role": "mission",
+    "revision": 0,
+    "kind": "railway",
+    "acousticSourceId": "acoustic:route:railway",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 6640.8,
+       "y": 7782,
+       "z": 415.06280000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12204.8,
+       "y": 19202.5,
+       "z": 523.8
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 6012,
+       "y": 8426,
+       "r": null
+      },
+      {
+       "x": 7966,
+       "y": 11521,
+       "r": null
+      },
+      {
+       "x": 11000,
+       "y": 16400,
+       "r": null
+      },
+      {
+       "x": 11560,
+       "y": 18613,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 415.06280000000004,
+        "r": null
+       },
+       {
+        "s": 1780.494984807208,
+        "z": 436.06280000000004,
+        "r": null
+       },
+       {
+        "s": 2034.8514112082378,
+        "z": 438.06280000000004,
+        "r": null
+       },
+       {
+        "s": 2289.2078376092677,
+        "z": 436.06280000000004,
+        "r": null
+       },
+       {
+        "s": 2797.920690411327,
+        "z": 442.06280000000004,
+        "r": null
+       },
+       {
+        "s": 4439.509372142852,
+        "z": 462.06280000000004,
+        "r": null
+       },
+       {
+        "s": 6060.815005358623,
+        "z": 481.81856672694806,
+        "r": null
+       },
+       {
+        "s": 7886.342772042085,
+        "z": 504.4206570788455,
+        "r": null
+       },
+       {
+        "s": 8173.578888700355,
+        "z": 506.45626306105953,
+        "r": null
+       },
+       {
+        "s": 8460.815005358623,
+        "z": 503.60703392600954,
+        "r": null
+       },
+       {
+        "s": 9211.281636323492,
+        "z": 496.5831985551744,
+        "r": null
+       },
+       {
+        "s": 9461.437179978448,
+        "z": 497.15680682425716,
+        "r": null
+       },
+       {
+        "s": 11212.525985563141,
+        "z": 517.0364756684567,
+        "r": null
+       },
+       {
+        "s": 12445.996927003274,
+        "z": 529.2233232925155,
+        "r": null
+       },
+       {
+        "s": 13062.732397723341,
+        "z": 523.2762799999999,
+        "r": null
+       },
+       {
+        "s": 13268.310887963364,
+        "z": 523.8,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    },
+    "specification": {
+     "kind": "railway",
+     "policy": "conventional-new",
+     "designSpeed": 120,
+     "gaugeMm": 1435,
+     "tracks": 1,
+     "electrification": "AC25kV",
+     "operations": {
+      "passengerDay": 32,
+      "passengerNight": 4,
+      "freightDay": 0,
+      "freightNight": 0,
+      "passengerSpeed": 120,
+      "freightSpeed": 100
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d11:d11-rail-kralovec",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Trutnov hl.n.",
+     "position": {
+      "x": 6640.8,
+      "y": 7782,
+      "z": 415.06280000000004
+     }
+    },
+    {
+     "id": "b",
+     "name": "Královec",
+     "position": {
+      "x": 12204.8,
+      "y": 19202.5,
+      "z": 523.8
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "railway"
+     ],
+     "maxTravelMin": 9,
+     "demand": {
+      "kind": "railway",
+      "trainsPerDay": 36
+     }
+    }
+   ]
+  }
+ }
+}

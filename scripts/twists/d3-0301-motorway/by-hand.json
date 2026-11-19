@@ -1,0 +1,324 @@
+{
+ "preset": "d3-0301-motorway",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0301",
+  "presetId": "d3-0301-motorway",
+  "packId": "d3-0301",
+  "objectData": "1217490:4077152105:134072107",
+  "transportData": "8319268c9d85624279a6729a99ac26b32ca19c03c560f2db7ecd14d0d552bafa",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Jílové (on to 0302)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 5659.1,
+       "y": 10488.1,
+       "z": 352.92
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2825.3,
+       "y": 3024.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards D0 Praha",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2825.3,
+       "y": 3024.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 5659.1,
+       "y": 10488.1,
+       "z": 352.92
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 5659.1,
+       "y": 10488.1,
+       "z": 352.92
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2825.3,
+       "y": 3024.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 5301.3,
+       "y": 9003.8,
+       "r": null
+      },
+      {
+       "x": 3984.8,
+       "y": 7437.6,
+       "r": null
+      },
+      {
+       "x": 2801.8,
+       "y": 6262.9,
+       "r": null
+      },
+      {
+       "x": 3017.2,
+       "y": 4757.5,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 352.92,
+        "r": null
+       },
+       {
+        "s": 259.5202493374182,
+        "z": 357.92,
+        "r": null
+       },
+       {
+        "s": 519.0404986748364,
+        "z": 357.92,
+        "r": null
+       },
+       {
+        "s": 1816.6417453619274,
+        "z": 377.92,
+        "r": null
+       },
+       {
+        "s": 2076.1619946993455,
+        "z": 376.92,
+        "r": null
+       },
+       {
+        "s": 2335.6822440367637,
+        "z": 370.92,
+        "r": null
+       },
+       {
+        "s": 2595.202493374182,
+        "z": 366.92,
+        "r": null
+       },
+       {
+        "s": 2858.5252099110853,
+        "z": 368.92,
+        "r": null
+       },
+       {
+        "s": 3121.847926447989,
+        "z": 367.92,
+        "r": null
+       },
+       {
+        "s": 3648.4933595217954,
+        "z": 361.92,
+        "r": null
+       },
+       {
+        "s": 3911.816076058699,
+        "z": 364.92,
+        "r": null
+       },
+       {
+        "s": 4175.138792595602,
+        "z": 362.92,
+        "r": null
+       },
+       {
+        "s": 4442.109399876515,
+        "z": 356.9115,
+        "r": null
+       },
+       {
+        "s": 4709.0800071574295,
+        "z": 347.903,
+        "r": null
+       },
+       {
+        "s": 5243.021221719257,
+        "z": 327.886,
+        "r": null
+       },
+       {
+        "s": 5509.99182900017,
+        "z": 322.8775,
+        "r": null
+       },
+       {
+        "s": 5776.962436281084,
+        "z": 331.869,
+        "r": null
+       },
+       {
+        "s": 8446.66850909022,
+        "z": 431.784,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0301:d3-0301-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "D0 Praha",
+     "position": {
+      "x": 5659.1,
+      "y": 10488.1,
+      "z": 352.92
+     }
+    },
+    {
+     "id": "b",
+     "name": "Jílové (on to 0302)",
+     "position": {
+      "x": 2825.3,
+      "y": 3024.5,
+      "z": 431.784
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 4.8,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

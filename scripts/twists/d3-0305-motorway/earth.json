@@ -1,0 +1,303 @@
+{
+ "preset": "d3-0305-motorway",
+ "purpose": "Earth balance, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 9)",
+ "meets": [
+  "earth"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0305",
+  "presetId": "d3-0305-motorway",
+  "packId": "d3-0305",
+  "objectData": "881923:2382273695:1768429543",
+  "transportData": "d000381c3e4b2aa7e21ba7949fe06f3df97d94c39ec8f99222dfa1b6958e27e3",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Nov\u00e1 Hospoda",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 3074.4,
+       "y": 16722.2,
+       "z": 517.3200000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9940.5,
+       "y": 2665.9,
+       "z": 581.3288
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Vora\u010dice (from 0304)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 9940.5,
+       "y": 2665.9,
+       "z": 581.3288
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 3074.4,
+       "y": 16722.2,
+       "z": 517.3200000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 3074.4,
+       "y": 16722.2,
+       "z": 517.3200000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9940.5,
+       "y": 2665.9,
+       "z": 581.3288
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2947.7917683651776,
+       "y": 15090.861791873162,
+       "r": null
+      },
+      {
+       "x": 2750.9565438696713,
+       "y": 14506.547548414119,
+       "r": null
+      },
+      {
+       "x": 2562.2,
+       "y": 13483.7,
+       "r": null
+      },
+      {
+       "x": 2875.4054789934407,
+       "y": 11669.872814989247,
+       "r": null
+      },
+      {
+       "x": 3691.656136537901,
+       "y": 10290.815805459331,
+       "r": null
+      },
+      {
+       "x": 3871.7195141055777,
+       "y": 9679.665300312068,
+       "r": null
+      },
+      {
+       "x": 4404.4482213023175,
+       "y": 8627.21990193113,
+       "r": null
+      },
+      {
+       "x": 4686.494013164685,
+       "y": 8087.98220176066,
+       "r": null
+      },
+      {
+       "x": 5054.1,
+       "y": 6964.2,
+       "r": null
+      },
+      {
+       "x": 6481.5,
+       "y": 6188.7,
+       "r": null
+      },
+      {
+       "x": 8019.772562284852,
+       "y": 5355.58135758717,
+       "r": null
+      },
+      {
+       "x": 9264.76538290471,
+       "y": 3981.438262115144,
+       "r": null
+      },
+      {
+       "x": 9628.662622056412,
+       "y": 3283.327635457172,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 6145.589016486197,
+        "s1": 6370.540508608084,
+        "kind": 0
+       },
+       {
+        "s0": 10407.651080439051,
+        "s1": 10705.819811732772,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 230,
+        "z": 520.8
+       },
+       {
+        "s": 1789,
+        "z": 497.7
+       },
+       {
+        "s": 16584,
+        "z": 587.7
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0305:d3-0305-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Vora\u010dice (from 0304)",
+     "position": {
+      "x": 3074.4,
+      "y": 16722.2,
+      "z": 517.3200000000002
+     }
+    },
+    {
+     "id": "b",
+     "name": "Nov\u00e1 Hospoda",
+     "position": {
+      "x": 9940.5,
+      "y": 2665.9,
+      "z": 581.3288
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.7,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

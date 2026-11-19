@@ -21,7 +21,7 @@ try {
   const first = page.locator('[data-start-here]');
   await page.waitForFunction(() => document.querySelector('[data-start-here] button').disabled === false);
   await first.getByRole('button', { name: 'Start', exact: true }).click();
-  assert.deepEqual(await page.evaluate(() => window.chosen), { scenarioId: 'd3-0302', presetId: null });
+  assert.deepEqual(await page.evaluate(() => window.chosen), { scenarioId: 'd3-0302', presetId: null, fromPicker: true });
   assert.ok(page.url().includes('scenario=d3-0302'));
   await page.evaluate(async () => {
     const { projectStorageKeys } = await import('/src/project-store-contract.ts');

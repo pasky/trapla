@@ -59,6 +59,8 @@ export interface ResultDisplayContext {
   endInfo(end: 'a' | 'b'): NonNullable<ScenarioParams['ends']>['a'] | undefined;
   binfo(j: number): ReturnType<typeof buildingInfo>;
   directionsState(): DirectionsState | null;
+  /** a full result is on screen, its scene committed (the twists are checked here, never on a drag preview) */
+  afterFull?(result: ProjectResult): void;
 }
 
 export type ResultDisplay = ReturnType<typeof createResultDisplay>;
@@ -289,6 +291,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       app.projectStore.offerBest(result); app.projectScore(false);
       const t3 = performance.now();
       heavyStats = { ...stats, wall: t3 - started, commit: t3 - t0, commitView: t1 - t0, commitCrossings: t2 - t1, overlays: t3 - t2 };
+      app.afterFull?.(result);
       settle();
     }, error => {
       console.error('3D rebuild failed', error); app.setStatus('The 3D view could not be updated.');

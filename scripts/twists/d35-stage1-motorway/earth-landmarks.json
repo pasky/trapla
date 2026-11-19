@@ -1,0 +1,281 @@
+{
+ "preset": "d35-stage1-motorway",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find)",
+ "meets": [
+  "earth",
+  "landmarks",
+  "budget"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d35",
+  "presetId": "d35-stage1-motorway",
+  "packId": "d35",
+  "objectData": "381074:3514847598:3242263682",
+  "transportData": "23c4f0b2420a30876a1d96b4b20796af394b3494132bec40c1209dbfbb1743e7",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Star\u00e9 M\u011bsto",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2393.8,
+       "y": 3212,
+       "z": 457.95079999999996
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 18222.3,
+       "y": 2459.4,
+       "z": 428.66352
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Opatovec",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 18222.3,
+       "y": 2459.4,
+       "z": 428.66352
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2393.8,
+       "y": 3212,
+       "z": 457.95079999999996
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2393.8,
+       "y": 3212,
+       "z": 457.95079999999996
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 18222.3,
+       "y": 2459.4,
+       "z": 428.66352
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 3235.059312192887,
+       "y": 3362.352814236351,
+       "r": null
+      },
+      {
+       "x": 4892.704511322895,
+       "y": 4313.791621777545,
+       "r": null
+      },
+      {
+       "x": 5366.313680342364,
+       "y": 4430.30305768361,
+       "r": null
+      },
+      {
+       "x": 6907.539217933136,
+       "y": 4199.447072996506,
+       "r": null
+      },
+      {
+       "x": 7822.560266552971,
+       "y": 4248.961149460665,
+       "r": null
+      },
+      {
+       "x": 9335.892733325192,
+       "y": 4133.153682318405,
+       "r": null
+      },
+      {
+       "x": 12882.902639064341,
+       "y": 3543.1636821080288,
+       "r": null
+      },
+      {
+       "x": 14488.257845269587,
+       "y": 3753.3306460064127,
+       "r": null
+      },
+      {
+       "x": 17885.515654928007,
+       "y": 2737.6089674085447,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 4812.770028277262,
+        "s1": 5003.909157393993,
+        "kind": 0
+       },
+       {
+        "s0": 7005.43851974855,
+        "s1": 7292.871320236833,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 2170,
+        "z": 499.9
+       },
+       {
+        "s": 10019,
+        "z": 391.3
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d35:d35-stage1-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Opatovec",
+     "position": {
+      "x": 2393.8,
+      "y": 3212,
+      "z": 457.95079999999996
+     }
+    },
+    {
+     "id": "b",
+     "name": "Star\u00e9 M\u011bsto",
+     "position": {
+      "x": 18222.3,
+      "y": 2459.4,
+      "z": 428.66352
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.3,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}
