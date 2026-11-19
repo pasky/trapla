@@ -2475,9 +2475,9 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     money (85–88 % of the starting bill, last). Their places are real where a register has them: the ČGS registers of
     undermined ground (Ostřetina, Divišovice), mine workings (the Starý Rokytník shaft) and slope deformations (Radišov,
     Poříčí, Zlatá Olešnice, Libeč, Křenov), the AOPK register of migration-significant streams (the Mastník), queried within
-    400 m of each mission's lines. A source without a link shows as plain text (`cite.url` optional). The whole D3 takes seven
-    of its sections' curveballs (and the Ostřetina gold pits, which in 0301 lie at the section's fixed end), the whole D35
-    stage 1's four and three on its second section.
+    400 m of each mission's lines. A source without a link shows as plain text (`cite.url` optional). The whole D3 takes six
+    of its sections' curveballs and the Ostřetina gold pits (which in 0301 lie at the section's fixed end), no money news;
+    the whole D35 stage 1's four, three on its second section and less money.
   - Dropped while placing: Šternberk's registered slope (neither line reaches it; a village's demand instead), the shafts on
     Panský vrch by the Luka hill (a keep-out forced a tunnel too long for the goal), a memorial tree by D3 0302 (the works'
     edge stays 21 m off), the D11 tunnels as the real design has them and the Ličná valley's 670 m bridge (the D11 reference
@@ -2487,26 +2487,40 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     reference is 0.3 % under the goal).
   - The Český ráj I/35 mission (another agent) had not merged into main: its curveballs (the EIA revoked, zone III, the
     scarps) are to be added with it.
-- **Where**: Šternberk (Earth balance, Hands off, Curveballs, From scratch, By hand), the five D3 sections (Earth balance,
-  Hands off where landmarks are near, No tunnels on 0304, From scratch, By hand), the D35 first section (also Real price:
-  the real 17.69 bn estimate is under our starter's 19.46 bn), the D11 motorway and the Královec railway (Earth balance,
-  Hands off, From scratch, By hand). The reference designs are 18–36 % under their starters. Not yet: the whole D3 and the
-  whole D35 (a reference search there takes hours, 2–5 s an evaluation), the D11 class I road (its starter is the
-  straight line and brings in 9 % of its fill: Earth balance asks nothing there). *Nobody moves* was searched on Šternberk
-  and left one home.
+- **Where** (round 3): Šternberk (Earth balance, Hands off, Curveballs 5, Spare the forest 4.5 ha, Few bridges 150 m, From
+  scratch, By hand); D3 0301 (Earth, Hands off, Curveballs 5, Few bridges 500 m, …), 0302 (Earth, Hands off, Curveballs 5,
+  Nobody moves, Spare the forest 5 ha, Few bridges 1,300 m, …), 0303 (… Curveballs 6, Spare the forest 12.5 ha, Few bridges
+  300 m), 0304 (… Curveballs 6, Few bridges 300 m, No tunnels), 0305 (Earth, Curveballs 5, Few bridges 900 m; no landmarks
+  near); the whole D3 (Curveballs 7, From scratch, By hand); D35 stage 1 (Earth, Hands off, Curveballs 6, Spare the forest
+  2 ha, Few bridges 400 m, Real price, …); the whole D35 (Earth, Hands off, Curveballs 8, From scratch, By hand); the D11
+  motorway (Earth, Hands off, Curveballs 6, Few bridges 1,600 m, …); the Královec railway (Earth, Hands off, Curveballs 5,
+  Spare the forest 5 ha, Few bridges 1,600 m, …). The D11 class I road has none (its starter is the straight line and
+  brings in 9 % of its fill): its twist screen says so in one line. The whole routes' references are stitched from their
+  sections' (`scripts/twists-stitch.ts`: each section's bends, pins and painted tunnels carried into the whole pack by their
+  EPSG:5514 places, stations measured anew; `--freeze` takes the heights the whole line got by hand, where the whole-route
+  grade solve misses the sections' pins; `--repair` applies the fixes the issues spell out) and then searched.
 - **Verification**: `npx tsx scripts/twists-check.ts` (run for every mission by `tests/twists.test.ts`): the starting bill, what the
   starter breaks, every reference VALID and meeting what it claims, every offered twist met by one, and the default twists
   with every curveball and the goal met by one (the reveal reachable). `--find <preset> --twists … --goal` is the local
-  search the references came from (bends, height pins, bridges, repairs aimed at what a twist still finds), `--manual`
-  makes a By hand reference, `--show <file>` prints one design's twists.
-- **Playtest** (`scripts/twists-play.mjs --docs`, screenshots 640–649): the twist screen; the starter (Earth balance broken
+  search the references came from (bends, height pins or heights by hand, bridges, repairs aimed at what a twist still
+  finds: a pin out of the ground where a place forbids earthworks, a bend pushed off a place; how far over a forest or
+  bridge cap or a curveball's money the design is), `--manual` makes a By hand reference, `--show <file|preset>` prints one
+  design's twists, `--survey <preset> [designs]` prints and writes (`--json`) the lines every 25 m in EPSG:5514 with what
+  they do there (the curveballs' places were picked from it, research/95).
+- **Playtest** (`scripts/twists-play.mjs --docs`, screenshots 640–654): the twist screen; the starter (Earth balance broken
   at 18 %); the rings in town; one height pinned by dragging the profile; a reference design that meets the twists under the
   goal, and the villa news on top of it (its bridge ends in the garden); *Long spans over it* from the card; the reveal; the
   butterflies at their pace; By hand turned on mid-game; From scratch (the straight line is VALID here, 2.41 bn, through
-  three tunnels).
+  three tunnels). Round 3: D3 Voračice → Nová Hospoda, its first news a game event on a real register's place (the
+  Divišovice uranium workings, the ČGS link) and the place on the map, the next at its pace a game event without one (plain
+  text, no link); the class I road's twist screen (none); the whole D3's.
 - **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
   mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
   counts the shared body once per direction in Earth balance; the "From scratch" mark survives an Undo of the restart and a
   loaded best; Hands off is offered where landmarks are near the line, not only where the starter breaks it (it rules out
   what a cheaper line would take); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
-  slip between two.
+  slip between two. Round 3: LOW counts a road at the ground's level (an embankment of 0.2 m) as an embankment, so a village's cutting
+  must be a cutting all the way along its stretch; the game events' places are the game's (research/95 says how each was
+  placed), their circles' sizes game scales; the money caps were set at what the reference with every news reaches (85–89 %);
+  the whole D3's reference is By hand (its stitched heights frozen); a section's curveball at its fixed end (the 0301 gold
+  pits) is offered on the whole route only.

@@ -548,13 +548,5 @@ export const CURVEBALLS: Record<string, Curveball> = {
   },
   // ---- end d35-full-motorway ----
   // ---- d3-full-motorway (places: research/95) ----
-  // GAME EVENT (research/95 "Money"): the cap is the game's, 88 % of the starting bill (the goal is 90 %); it comes last.
-  'd3-full-money': {
-    id: 'd3-full-money', headline: 'Less money for roads',
-    story: 'The state road fund has less money next year. The motorway must cost less to keep its place.',
-    ask: 'Keep the bill under 88 % of the planned line’s',
-    cite: { text: 'A game event of a kind real projects meet (the state road fund is set year by year)' },
-    budget: 0.88,
-  },
   // ---- end d3-full-motorway ----
 };

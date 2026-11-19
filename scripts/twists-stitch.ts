@@ -39,6 +39,8 @@ const pis = [
 ].map(p => ({ p, s: nearestS(L0, p.x, p.y) })).sort((a, b) => a.s - b.s)
   // (two sections' bends meeting at their boundary closer than 800 m would merge into one curve: the later one goes)
   .filter((q, k, a) => k === 0 || q.s - a[k - 1].s > Number(process.env.STITCH_GAP ?? 800) || !sections.some(sec => a[k - 1].s < sec.s0 && q.s >= sec.s0 - 1)).map(q => q.p);
+// (STITCH_DROP=i,j: bends left out by index, where two sections' bends merge into one curve on the whole line)
+for (const k of (process.env.STITCH_DROP ?? '').split(',').filter(Boolean).map(Number).sort((a, b) => b - a)) pis.splice(k, 1);
 const stage1: Design = { ...structuredClone(base), pis, gradePins: [], structureOverrides: [] };
 let design = replaceRouteFromLegacy(whole.starter, wr, stage1);
 const L1 = evalDesign(whole, design).routes[wr]!.legacy!;
@@ -54,19 +56,20 @@ const vpis = sections.flatMap(q => q.L.vpis.map(v => ({ ...v, s: sOn(q, v.s) }))
   .filter((v, i, a) => i === 0 || v.s - a[i - 1].s > 5);
 // --boundary W: within W m of where two sections meet, the starter's own heights (the crossings just past a section's end
 // were never in its design)
-if (args.includes('--boundary')) {
+const boundary = (vs: typeof vpis) => {
+  if (!args.includes('--boundary')) return vs;
   const w = Number(args[args.indexOf('--boundary') + 1]), cuts = sections.slice(1).map(q => sOn(q, 0));
   const inWin = (s: number) => cuts.some(c => Math.abs(s - c) <= w);
-  const keep = vpis.filter(v => !inWin(v.s));
   const fromStarter = L0.vpis.map(v => ({ ...v, s: nearestS(L1, ...(Object.values(at(L0, v.s)) as [number, number])) })).filter(v => inWin(v.s));
-  vpis.splice(0, vpis.length, ...[...keep, ...fromStarter].sort((a, b) => a.s - b.s));
-}
+  return [...vs.filter(v => !inWin(v.s)), ...fromStarter].sort((a, b) => a.s - b.s);
+};
+vpis.splice(0, vpis.length, ...boundary(vpis));
 design = replaceRouteFromLegacy(whole.starter, wr, args.includes('--manual') ? { ...stage1, profileMode: 'manual', vpis, structureOverrides } : { ...stage1, gradePins, structureOverrides });
 let r = evalDesign(whole, design);
 // --freeze: the heights the whole line got (its pins as the sections set them, met or not) taken by hand, as By hand takes them
 if (args.includes('--freeze')) {
   const d = legacyDesignForRoute(design, wr);
-  design = replaceRouteFromLegacy(whole.starter, wr, { ...d, profileMode: 'manual', vpis: r.routes[wr]!.legacy!.vpis.map(v => ({ ...v })), gradePins: [] });
+  design = replaceRouteFromLegacy(whole.starter, wr, { ...d, profileMode: 'manual', vpis: boundary(r.routes[wr]!.legacy!.vpis.map(v => ({ ...v }))), gradePins: [] });
   r = evalDesign(whole, design);
 }
 // --repair N: the fixes the issues spell out, applied N rounds (a pin moved to where the road passes, or unpinned, one of two bends that merge dropped, a height point raised or lowered by what they say, a bridge
