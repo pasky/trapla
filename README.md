@@ -278,7 +278,7 @@ previews re-solve only the edited stretch (`docs/evaluate-performance.md`). Repr
 `node scripts/scenarios/screenshots.mjs <id> --docs-overview|--docs-A|--docs-B <name>`.
 The start view [frames A and B](docs/screenshots/146-whole-d3-start-framed.png) (the whole D3 looked at across);
 an end that meets an interchange or a road has a sign and [a card](docs/screenshots/147-interchange-card-i18.png)
-("Interchange with road I/18 — its ramps are not part of this job"); the total
+("Interchange with road I/18 — shown only: its slip roads are not built or billed here"); the total
 [follows a drag live](docs/screenshots/148-whole-d3-live-price-drag.png) (≈); the D35 first section
 [joins the open D35 and goes on as the next section](docs/screenshots/149-d35-first-section-ends.png).
 Trutnov offers the real D11 as a motorway, first in its card ([start screen](docs/screenshots/570-d11-motorway-picker.png), research/87),
