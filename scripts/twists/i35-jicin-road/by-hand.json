@@ -1,0 +1,519 @@
+{
+ "preset": "i35-jicin-road",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i35-jicin",
+  "presetId": "i35-jicin-road",
+  "packId": "i35-jicin",
+  "objectData": "1059523:4110933075:3687078145",
+  "transportData": "efafb8a736f232bfc74eb38f89072c06faaed3989886083a0870e6efa5a8abad",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Four-lane road towards Úlibice",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 1692.4,
+       "y": 9969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12240.1,
+       "y": 1569.6,
+       "z": 302.79232
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 5935.5,
+      "heavyShare": 0.205,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Four-lane road towards Čímyšl",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 12240.1,
+       "y": 1569.6,
+       "z": 302.79232
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 1692.4,
+       "y": 9969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 5935.5,
+      "heavyShare": 0.205,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 1692.4,
+       "y": 9969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12240.1,
+       "y": 1569.6,
+       "z": 302.79232
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2998.4,
+       "y": 9284.6,
+       "r": null
+      },
+      {
+       "x": 3589.5,
+       "y": 8941.6,
+       "r": null
+      },
+      {
+       "x": 3941.6,
+       "y": 8395.2,
+       "r": null
+      },
+      {
+       "x": 3957.3,
+       "y": 7777.3,
+       "r": null
+      },
+      {
+       "x": 4370.5,
+       "y": 7171.4,
+       "r": null
+      },
+      {
+       "x": 5196.1,
+       "y": 6828.1,
+       "r": null
+      },
+      {
+       "x": 5842.7,
+       "y": 6197.2,
+       "r": null
+      },
+      {
+       "x": 6492,
+       "y": 5636.4,
+       "r": null
+      },
+      {
+       "x": 7117.3,
+       "y": 5264.6,
+       "r": null
+      },
+      {
+       "x": 7660.7,
+       "y": 4750.2,
+       "r": null
+      },
+      {
+       "x": 8146.2,
+       "y": 4203.7,
+       "r": null
+      },
+      {
+       "x": 8944.6,
+       "y": 3804.3,
+       "r": null
+      },
+      {
+       "x": 10314.8,
+       "y": 3298.9,
+       "r": null
+      },
+      {
+       "x": 11160.5,
+       "y": 2910.6,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 313.1227200000001,
+        "r": null
+       },
+       {
+        "s": 295.0910760655268,
+        "z": 307.1227200000001,
+        "r": null
+       },
+       {
+        "s": 590.1821521310536,
+        "z": 305.1227200000001,
+        "r": null
+       },
+       {
+        "s": 885.2732281965805,
+        "z": 308.1227200000001,
+        "r": null
+       },
+       {
+        "s": 1180.3643042621072,
+        "z": 320.1227200000001,
+        "r": null
+       },
+       {
+        "s": 1475.455380327634,
+        "z": 333.1227200000001,
+        "r": null
+       },
+       {
+        "s": 1770.546456393161,
+        "z": 343.1227200000001,
+        "r": null
+       },
+       {
+        "s": 2040.0341622736546,
+        "z": 345.1227200000001,
+        "r": null
+       },
+       {
+        "s": 2309.5218681541483,
+        "z": 339.1227200000001,
+        "r": null
+       },
+       {
+        "s": 2579.009574034642,
+        "z": 338.1227200000001,
+        "r": null
+       },
+       {
+        "s": 2848.4972799151356,
+        "z": 335.1227200000001,
+        "r": null
+       },
+       {
+        "s": 3117.984985795629,
+        "z": 335.1227200000001,
+        "r": null
+       },
+       {
+        "s": 3387.472691676123,
+        "z": 347.1227200000001,
+        "r": null
+       },
+       {
+        "s": 3656.9603975566165,
+        "z": 358.1227200000001,
+        "r": null
+       },
+       {
+        "s": 3926.44810343711,
+        "z": 361.1227200000001,
+        "r": null
+       },
+       {
+        "s": 4195.935809317603,
+        "z": 356.1227200000001,
+        "r": null
+       },
+       {
+        "s": 4465.423515198097,
+        "z": 348.1227200000001,
+        "r": null
+       },
+       {
+        "s": 4734.911221078592,
+        "z": 342.1227200000001,
+        "r": null
+       },
+       {
+        "s": 5004.398926959085,
+        "z": 339.1227200000001,
+        "r": null
+       },
+       {
+        "s": 5273.886632839578,
+        "z": 337.80913626135646,
+        "r": null
+       },
+       {
+        "s": 5543.374338720072,
+        "z": 334.1780533399489,
+        "r": null
+       },
+       {
+        "s": 5812.862044600566,
+        "z": 340.8044346786771,
+        "r": null
+       },
+       {
+        "s": 6082.349750481059,
+        "z": 344.6059710712038,
+        "r": null
+       },
+       {
+        "s": 6351.8374563615525,
+        "z": 348.98348938965427,
+        "r": null
+       },
+       {
+        "s": 6575.805780026971,
+        "z": 348.11573558612974,
+        "r": null
+       },
+       {
+        "s": 7023.742427357807,
+        "z": 335.9408475154441,
+        "r": null
+       },
+       {
+        "s": 7247.710751023225,
+        "z": 330.07327110303333,
+        "r": null
+       },
+       {
+        "s": 7471.679074688644,
+        "z": 325.90242887990405,
+        "r": null
+       },
+       {
+        "s": 7919.615722019479,
+        "z": 315.9592986531461,
+        "r": null
+       },
+       {
+        "s": 8143.584045684897,
+        "z": 310.1227200000001,
+        "r": null
+       },
+       {
+        "s": 8367.552369350316,
+        "z": 300.1336789492457,
+        "r": null
+       },
+       {
+        "s": 8591.520693015733,
+        "z": 294.28788654691755,
+        "r": null
+       },
+       {
+        "s": 8815.489016681153,
+        "z": 300.42610612548384,
+        "r": null
+       },
+       {
+        "s": 9039.45734034657,
+        "z": 308.41203416060523,
+        "r": null
+       },
+       {
+        "s": 9487.393987677406,
+        "z": 312.1243245385595,
+        "r": null
+       },
+       {
+        "s": 9711.362311342824,
+        "z": 319.1227200000001,
+        "r": null
+       },
+       {
+        "s": 9935.330635008242,
+        "z": 325.1227200000001,
+        "r": null
+       },
+       {
+        "s": 10159.29895867366,
+        "z": 325.1227200000001,
+        "r": null
+       },
+       {
+        "s": 10383.267282339079,
+        "z": 319.1227200000001,
+        "r": null
+       },
+       {
+        "s": 10607.235606004497,
+        "z": 309.1227200000001,
+        "r": null
+       },
+       {
+        "s": 11733.075281831787,
+        "z": 293.0125866666667,
+        "r": null
+       },
+       {
+        "s": 12014.535200788609,
+        "z": 297.9850533333334,
+        "r": null
+       },
+       {
+        "s": 12295.995119745432,
+        "z": 298.95752000000005,
+        "r": null
+       },
+       {
+        "s": 12577.455038702254,
+        "z": 292.9299866666667,
+        "r": null
+       },
+       {
+        "s": 13421.83479557272,
+        "z": 292.8473866666667,
+        "r": null
+       },
+       {
+        "s": 13703.294714529544,
+        "z": 301.81985333333336,
+        "r": null
+       },
+       {
+        "s": 13984.754633486365,
+        "z": 302.79232,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i35-jicin:i35-jicin-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Čímyšl",
+     "position": {
+      "x": 1692.4,
+      "y": 9969.3,
+      "z": 313.1227200000001
+     }
+    },
+    {
+     "id": "b",
+     "name": "Úlibice",
+     "position": {
+      "x": 12240.1,
+      "y": 1569.6,
+      "z": 302.79232
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.5,
+     "demand": {
+      "kind": "road",
+      "aadt": 11871
+     }
+    }
+   ]
+  }
+ }
+}

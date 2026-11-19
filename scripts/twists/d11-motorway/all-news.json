@@ -1,0 +1,446 @@
+{
+ "preset": "d11-motorway",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 1 → 11 → 21)",
+ "meets": [
+  "earth",
+  "landmarks",
+  "curveballs"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d11",
+  "presetId": "d11-motorway",
+  "packId": "d11",
+  "objectData": "2088988:889881338:3067130932",
+  "transportData": "2f1ce1f8f00ac3e5dc3a66eda26addbcf5025f601fd802d86b1d163e775a900e",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards PL border",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 6909.9,
+       "y": 3283.3,
+       "z": 480.96768
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12896.3,
+       "y": 20878.9,
+       "z": 527.9932800000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 6500,
+      "heavyShare": 0.2256,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Trutnov",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 12896.3,
+       "y": 20878.9,
+       "z": 527.9932800000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 6909.9,
+       "y": 3283.3,
+       "z": 480.96768
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 6500,
+      "heavyShare": 0.2256,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 6909.9,
+       "y": 3283.3,
+       "z": 480.96768
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12896.3,
+       "y": 20878.9,
+       "z": 527.9932800000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 7124.223974894249,
+       "y": 4287.061520903258,
+       "r": null
+      },
+      {
+       "x": 7249.016527397663,
+       "y": 4709.871486267853,
+       "r": null
+      },
+      {
+       "x": 7667.832525396689,
+       "y": 4976.334229645801,
+       "r": null
+      },
+      {
+       "x": 8233.196540663532,
+       "y": 5878.582149357962,
+       "r": null
+      },
+      {
+       "x": 8652.414149414939,
+       "y": 5961.094813572586,
+       "r": null
+      },
+      {
+       "x": 9607.11351130826,
+       "y": 6237.396942879061,
+       "r": null
+      },
+      {
+       "x": 9912.374616295421,
+       "y": 6866.299415691762,
+       "r": null
+      },
+      {
+       "x": 9834.21887959087,
+       "y": 7513.548927184767,
+       "r": null
+      },
+      {
+       "x": 9942.147692730985,
+       "y": 9447.540137801772,
+       "r": null
+      },
+      {
+       "x": 10083.131801397763,
+       "y": 10546.82163389769,
+       "r": null
+      },
+      {
+       "x": 10169.656383020705,
+       "y": 10792.951683537533,
+       "r": null
+      },
+      {
+       "x": 11000.42289751521,
+       "y": 12116.402479283935,
+       "r": null
+      },
+      {
+       "x": 10563.615024001048,
+       "y": 13752.477608867264,
+       "r": null
+      },
+      {
+       "x": 10038.870716461506,
+       "y": 15041.582363289688,
+       "r": null
+      },
+      {
+       "x": 10391.4217684739,
+       "y": 16668.291014873503,
+       "r": null
+      },
+      {
+       "x": 11197.638426583864,
+       "y": 17333.332160230588,
+       "r": null
+      },
+      {
+       "x": 11544.741305797752,
+       "y": 17601.232715499453,
+       "r": null
+      },
+      {
+       "x": 11608.801618818281,
+       "y": 18003.072445383223,
+       "r": null
+      },
+      {
+       "x": 11792.868496627372,
+       "y": 18535.08385882724,
+       "r": null
+      },
+      {
+       "x": 11770.224094074343,
+       "y": 18908.635825070967,
+       "r": null
+      },
+      {
+       "x": 11883.511316391048,
+       "y": 19501.234485545996,
+       "r": null
+      },
+      {
+       "x": 11926.551180266104,
+       "y": 19891.716431270303,
+       "r": null
+      },
+      {
+       "x": 12380.665247125124,
+       "y": 20584.426531827434,
+       "r": null
+      },
+      {
+       "x": 12609.632752528822,
+       "y": 20715.20317923736,
+       "r": null
+      },
+      {
+       "x": 12655.692585315739,
+       "y": 20735.690159686048,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 5082.923652058991,
+        "s1": 5196.36958303981,
+        "kind": 0
+       },
+       {
+        "s0": 10624.214946790078,
+        "s1": 10914.883901057558,
+        "kind": 0
+       },
+       {
+        "s0": 13877.934972502399,
+        "s1": 14060.144111997653,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 320,
+        "z": 479.2
+       },
+       {
+        "s": 750,
+        "z": 471.2
+       },
+       {
+        "s": 900,
+        "z": 468.9
+       },
+       {
+        "s": 1080,
+        "z": 467.9
+       },
+       {
+        "s": 2649,
+        "z": 488.7
+       },
+       {
+        "s": 2790,
+        "z": 494.8
+       },
+       {
+        "s": 3389,
+        "z": 502.8
+       },
+       {
+        "s": 3658,
+        "z": 502
+       },
+       {
+        "s": 3919,
+        "z": 505.3
+       },
+       {
+        "s": 6499,
+        "z": 418.2
+       },
+       {
+        "s": 6960,
+        "z": 408.1
+       },
+       {
+        "s": 6989,
+        "z": 408.9
+       },
+       {
+        "s": 7437,
+        "z": 425.4
+       },
+       {
+        "s": 8078,
+        "z": 438.9
+       },
+       {
+        "s": 10210,
+        "z": 499.1
+       },
+       {
+        "s": 11059,
+        "z": 514.5
+       },
+       {
+        "s": 11969,
+        "z": 518.3
+       },
+       {
+        "s": 12767,
+        "z": 534.6
+       },
+       {
+        "s": 12909,
+        "z": 531.3
+       },
+       {
+        "s": 14027,
+        "z": 501.7
+       },
+       {
+        "s": 16858,
+        "z": 535.5
+       },
+       {
+        "s": 17452,
+        "z": 532
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d11:d11-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Trutnov",
+     "position": {
+      "x": 6909.9,
+      "y": 3283.3,
+      "z": 480.96768
+     }
+    },
+    {
+     "id": "b",
+     "name": "PL border",
+     "position": {
+      "x": 12896.3,
+      "y": 20878.9,
+      "z": 527.9932800000001
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 12.6,
+     "demand": {
+      "kind": "road",
+      "aadt": 13000
+     }
+    }
+   ]
+  }
+ }
+}

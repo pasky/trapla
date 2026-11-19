@@ -1,0 +1,321 @@
+{
+ "preset": "d3-0304-motorway",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seed 2)",
+ "meets": [
+  "earth",
+  "landmarks",
+  "curveballs"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0304",
+  "presetId": "d3-0304-motorway",
+  "packId": "d3-0304",
+  "objectData": "734992:3869263678:2318659238",
+  "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Vora\u010dice (on to 0305/I)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 8438.8,
+       "y": 17213.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2574.4,
+       "y": 3222.2,
+       "z": 517.32
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards V\u00e1clavice (from 0303)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2574.4,
+       "y": 3222.2,
+       "z": 517.32
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 8438.8,
+       "y": 17213.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 8438.8,
+       "y": 17213.8,
+       "z": 319.8767600000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2574.4,
+       "y": 3222.2,
+       "z": 517.32
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 7853.2471356627,
+       "y": 14814.791054440888,
+       "r": null
+      },
+      {
+       "x": 7473.208250073711,
+       "y": 13953.71786803397,
+       "r": null
+      },
+      {
+       "x": 6922.4716819293,
+       "y": 12885.311888196056,
+       "r": null
+      },
+      {
+       "x": 6371.093638591112,
+       "y": 11973.648344708336,
+       "r": null
+      },
+      {
+       "x": 6256.9217506411305,
+       "y": 11590.875256948822,
+       "r": null
+      },
+      {
+       "x": 6118.518926625154,
+       "y": 11236.70881520643,
+       "r": null
+      },
+      {
+       "x": 5678.4541430456275,
+       "y": 10814.180470839432,
+       "r": null
+      },
+      {
+       "x": 3974.6487448102553,
+       "y": 8470.174292047648,
+       "r": null
+      },
+      {
+       "x": 3774.1817176324753,
+       "y": 6745.589673651151,
+       "r": null
+      },
+      {
+       "x": 2845.835187414856,
+       "y": 4249.937590875481,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 835.8168096137371,
+        "s1": 964.1328631794757,
+        "kind": 0
+       },
+       {
+        "s0": 3129.883887920483,
+        "s1": 3329.603170877146,
+        "kind": 0
+       },
+       {
+        "s0": 6643.711668300081,
+        "s1": 6747.955208581624,
+        "kind": 0
+       },
+       {
+        "s0": 9785.941611851367,
+        "s1": 10100.171668134559,
+        "kind": 0
+       },
+       {
+        "s0": 12191.619446706432,
+        "s1": 12298.798539372185,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 5768,
+        "z": 413.8
+       },
+       {
+        "s": 7407,
+        "z": 409.5
+       },
+       {
+        "s": 7728,
+        "z": 399.4
+       },
+       {
+        "s": 8735,
+        "z": 417.1
+       },
+       {
+        "s": 10844,
+        "z": 434.9
+       },
+       {
+        "s": 11735,
+        "z": 467
+       },
+       {
+        "s": 14194,
+        "z": 495.3
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0304:d3-0304-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "V\u00e1clavice (from 0303)",
+     "position": {
+      "x": 8438.8,
+      "y": 17213.8,
+      "z": 319.8767600000001
+     }
+    },
+    {
+     "id": "b",
+     "name": "Vora\u010dice (on to 0305/I)",
+     "position": {
+      "x": 2574.4,
+      "y": 3222.2,
+      "z": 517.32
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.1,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

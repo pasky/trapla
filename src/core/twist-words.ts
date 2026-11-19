@@ -35,8 +35,8 @@ export function twistLine(id: TwistId, t: TwistTerms): string {
     case 'landmarks': return 'Keep clear of the castles, churches, chapels and viewpoints near the line (their rings on the map).';
     case 'curveballs': return 'News from the site arrives as you play: a place to keep out of, a new demand, less money.';
     case 'homes': return 'Nobody loses their home: no house bought out.';
-    case 'forest': return `At most ${num(t.forestHa ?? 0, 1)} ha of forest cleared.`;
-    case 'bridges': return `At most ${num(t.bridgeM ?? 0)} m of bridges in all.`;
+    case 'forest': return `At most ${num(t.forestHa ?? 0, 1)} ha of forest cleared for our road.`;
+    case 'bridges': return `At most ${num(t.bridgeM ?? 0)} m of bridges on our road in all.`;
     case 'tunnels': return 'No tunnels at all.';
     case 'faster': return `Travel time 10 % under the goal: at most ${num(t.maxTravelMin * 0.9, 2)} min.`;
     case 'budget': return `No dearer than the real project: ${money(t.budget ?? 0)} CZK.`;

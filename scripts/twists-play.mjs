@@ -3,7 +3,10 @@
 // design that meets the twists and the goal, and the first news from the site (the villa) on top of it → the fix, by
 // dragging a bend on the map → the reveal → the next news at its pace → changing twists mid-game → From scratch.
 //
-//   node scripts/twists-play.mjs [--docs]      --docs: docs/screenshots/640–653 (look at them)
+// Then D3 Voračice → Nová Hospoda (a game event on a real register's place, the Mastník's banks, then one without), the class I road (no
+// twists) and the whole D3's twist screen.
+//
+//   node scripts/twists-play.mjs [--docs]      --docs: docs/screenshots/640–654 (look at them)
 // Untimed: flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/twists-play.mjs (AGENTS.md).
 import { readFileSync } from 'node:fs';
 import { startGame, checker, INTRO_KEY } from './lib/browser.mjs';
@@ -29,7 +32,7 @@ try {
   // ---- the twist screen ----
   await page.locator('.twist-picker').waitFor({ timeout: 30000 });
   const names = await page.locator('.twist-picker-list b').allTextContents();
-  ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
+  ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,Spare the forest,Few bridges,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
   ok(await page.locator('.twist-picker-list input:checked').count() === 3, 'the default three are on');
   ok(/Goal: a valid design under 792 M CZK/.test(await page.locator('.twist-picker-goal').textContent()), 'it says the goal');
   await shot('twist-screen');
@@ -105,6 +108,50 @@ try {
   ok(await page.evaluate(() => window.trapla.getDesign().pis.length) === 0, 'From scratch: the design starts again on the straight line');
   await page.getByRole('button', { name: 'Done' }).click();
   await game.park(); await shot('from-scratch');
+  // ---- another mission's news: a real register's place, then a game event (D3 Voračice → Nová Hospoda) ----
+  // a section of a corridor's card: its chip, then Start
+  const pick = async (section) => {
+    await page.goto(game.base);
+    const chip = page.locator('.scenario-picker-section', { hasText: section }).first();
+    await chip.waitFor({ timeout: 120000 }); await chip.click();
+    const card = page.locator('.scenario-picker-card', { has: chip });
+    await page.waitForFunction((t) => [...document.querySelectorAll('.scenario-picker-card')].some(c => [...c.querySelectorAll('.scenario-picker-section.on')].some(x => x.textContent.includes(t)) && !c.querySelector('.scenario-picker-actions button').disabled), section, { timeout: 120000 });
+    await card.locator('.scenario-picker-actions button').first().click();
+    await page.locator('.twist-picker').waitFor({ timeout: 30000 });
+  };
+  await pick('Voračice → Nová Hospoda');
+  ok(await page.locator('.twist-picker-list input:checked').count() === 2, 'D3 0305: the default twists on (Earth balance, Curveballs)');
+  await page.locator('.twist-start').click();
+  await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
+  await game.idle(600);
+  await page.evaluate((d) => window.trapla.setProject(d), JSON.parse(readFileSync('scripts/twists/d3-0305-motorway/earth.json', 'utf8')).design);
+  await game.idle(1200);
+  const news2 = page.locator('.news-card');
+  ok(await news2.count() === 1 && /Leave the Mastník open/.test(await news2.textContent()), 'the first triumph there brings its first news: the Mastník’s banks');
+  ok(/nature\.cz/.test(await news2.locator('a').getAttribute('href') ?? '') && /A game event of a kind real projects meet/.test(await news2.textContent()),
+    'a game event on a real place: it says so and links the register the place comes from');
+  await game.park(); await shot('news-real-place');
+  await news2.getByRole('button', { name: 'Show me' }).click(); await game.still();
+  ok(await page.locator('.twist-label.zone.broken').count() >= 1, 'the place on the map, red: our embankment on its banks');
+  await game.park(); await shot('mastnik-place');
+  await news2.getByRole('button', { name: 'OK' }).click();
+  const KEY2 = 'trapla.twists.v1.d3-0305.d3-0305-motorway';
+  await page.evaluate((key) => { const s = JSON.parse(localStorage.getItem(key)); s.playMs += 6 * 60_000; s.editsSince = 9; s.fired = s.fired.filter(id => id === 'd3-0305-mastnik'); localStorage.setItem(key, JSON.stringify(s)); }, KEY2);
+  // (a design that meets every news of the mission, so the next may come)
+  await page.reload(); await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 }); await game.idle(600);
+  await page.evaluate((d) => window.trapla.setProject(d), JSON.parse(readFileSync('scripts/twists/d3-0305-motorway/all-news.json', 'utf8')).design);
+  await game.idle(1200);
+  ok(await page.locator('.news-card').count() === 1 && /Graves under the field/.test(await page.locator('.news-card').textContent()), 'at its pace: graves under a field (a game event)');
+  ok(await page.locator('.news-card .news-source').count() === 1 && !(await page.locator('.news-card a').count()), 'a game event without a real place: its source line is plain text, no link');
+  await game.park(); await shot('news-game-event');
+  // ---- a mission without twists says so; a whole route offers its own ----
+  await pick('Class I road');
+  ok(/No twists on this mission yet/.test(await page.locator('.twist-picker').textContent()), 'the class I road: the twist screen says it has none');
+  await shot('no-twists');
+  await pick('Whole route');
+  const whole = await page.locator('.twist-picker-list b').allTextContents();
+  ok(whole.includes('Curveballs') && whole.includes('By hand'), `the whole D3 offers its twists (${whole.join(', ')})`);
+  await shot('whole-route-twists');
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally {
   await game.close();

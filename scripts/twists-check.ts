@@ -19,7 +19,7 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
 import { corridorOfRoute } from '../src/core/project-motorway';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { checkTwists, earthShare, twistFacts, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
+import { checkTwists, earthShare, ourResults, twistFacts, useAt, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
 import { GOAL_SHARE, MISSION_TWISTS } from '../src/core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
 import { CATEGORIES } from '../src/core/data/categories';
@@ -27,14 +27,14 @@ import type { Design } from '../src/core/evaluate';
 import { paintOverride } from '../src/core/overrides';
 import { KIND } from '../src/core/structures';
 
-type Fixture = { preset: string; purpose: string; meets: TwistId[]; goal?: boolean; design: ProjectDesign };
+export type Fixture = { preset: string; purpose: string; meets: TwistId[]; goal?: boolean; design: ProjectDesign };
 const presetOf = (id: string) => PRESETS.find(p => (p.presetId ?? p.id) === id);
 
-interface Mission {
+export interface Mission {
   preset: string; scenario: ScenarioParams; pack: ReturnType<typeof loadPack>; setup: MissionTwistSetup; starter: ProjectDesign;
   ctx: ProjectEvalContext;
 }
-function mission(preset: string): Mission {
+export function mission(preset: string): Mission {
   const scenario = presetOf(preset);
   if (!scenario) throw new Error(`no mission ${preset}`);
   const pack = loadPack(`public/scenarios/${scenario.id}`), { meta } = pack;
@@ -52,12 +52,12 @@ const ours = (d: ProjectDesign) => {
 function facts(m: Mission, d: ProjectDesign, r: ProjectResult): TwistFacts {
   return twistFacts(r, ours(d), j => (m.pack.overlays.binfo?.[j]?.[2] ?? 0) <= 1, j => ({ x: m.pack.overlays.buildings[j][0], y: m.pack.overlays.buildings[j][1] }));
 }
-function check(m: Mission, d: ProjectDesign, r: ProjectResult, on: readonly TwistId[], scratch = false): TwistCheck[] {
+export function check(m: Mission, d: ProjectDesign, r: ProjectResult, on: readonly TwistId[], scratch = false): TwistCheck[] {
   const mission = d.routes.find(x => x.role === 'mission')!, legacy = legacyDesignForRoute(d, mission.id);
   return checkTwists(on, facts(m, d, r), m.setup.terms, { manual: legacy.profileMode === 'manual', scratch, curveballs: m.setup.curveballs,
     startBill: m.setup.mission.startBill, deckHalf: CATEGORIES[legacy.category].crownWidth / 2 });
 }
-const evalDesign = (m: Mission, d: ProjectDesign) => evaluateProject(m.ctx, { epoch: 'twists', revision: 1, design: d });
+export const evalDesign = (m: Mission, d: ProjectDesign) => evaluateProject(m.ctx, { epoch: 'twists', revision: 1, design: d });
 
 // ---- search ----------------------------------------------------------------------------------------
 function find(preset: string, twists: TwistId[], goal: boolean, from: string | undefined, iters: number, seed: number, out: string) {
@@ -75,13 +75,21 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     p += r.issues.length * 0.3 * bill;
     for (const c of checks) if (!c.met) {
       if (c.id === 'earth') p += 3 * bill * Math.max(0.02, earthShare(f) - (m.setup.terms.earthShare ?? 0.1));
+      // (a cap: how far over it, so the search sees the way down)
+      else if (c.id === 'forest') p += 0.15 * bill + 0.05 * bill * Math.max(0, f.forestM2 / 1e4 - (m.setup.terms.forestHa ?? 0));
+      else if (c.id === 'bridges') p += 0.15 * bill + 0.0005 * bill * Math.max(0, f.bridges.reduce((a, b) => a + b.s1 - b.s0, 0) - (m.setup.terms.bridgeM ?? 0));
       else p += 0.15 * bill * Math.max(1, c.issues.reduce((a, i) => a + Math.max(1, ((i.s1 ?? 0) - (i.s0 ?? 0)) / 20), 0));
     }
     if (goal && r.cost.total !== null && r.cost.total > target) p += 0.5 * (r.cost.total - target);
+    // a curveball's cap on the bill: how far over it
+    if (twists.includes('curveballs') && r.cost.total !== null)
+      for (const c of m.setup.curveballs) if (c.budget !== undefined) p += Math.max(0, r.cost.total - c.budget * bill);
     return { p, checks, met: checks.every(c => c.met) && r.valid && (!goal || (r.cost.total ?? Infinity) <= target) };
   };
   let cur = start, curR = evalDesign(m, cur), curS = score(cur, curR);
   let best = { d: cur, s: curS, r: curR };
+  // (the cheapest design that meets everything asked, kept apart: a cheaper one that breaks something never replaces it)
+  let bestMet = curS.met ? best : null;
   const log = (k: number, s: typeof curS, r: ProjectResult) => console.log(`${k} ${(s.p / 1e6).toFixed(0)} M · cost ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} · valid ${r.valid} (${r.issues.length}${r.issues.length ? ": " + r.issues.slice(0, 2).map(i => i.violation?.title ?? i.code).join("; ") : ""}) · ${s.checks.map(c => `${c.id}:${c.met ? '✓' : '✗'} ${c.status}`).join(' | ')}${s.met ? ' · MET' : ''}`);
   log(0, curS, curR);
   for (let k = 1; k <= iters; k++) {
@@ -90,10 +98,23 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     const heat = 1 - k / iters, step = 30 + 170 * heat * rand();
     const kind = rand();
     // a repair aimed at something a twist still finds: a bridge over a place that takes one, a bend pushed off a place
-    const broken = curS.checks.flatMap(c => c.issues.filter(i => Number.isFinite(i.x) && i.routeId === routeId));
+    const broken = curS.checks.flatMap(c => c.issues.filter(i => Number.isFinite(i.x) && (!i.routeId || i.routeId === routeId)));
     if (rand() < 0.3 && broken.length) {
       const i = broken[Math.floor(rand() * broken.length)];
-      if (i.fix) d.structureOverrides = paintOverride(d.structureOverrides ?? [], Math.max(0, i.fix.s0 - rand() * 40), Math.min(L.length, i.fix.s1 + rand() * 40),
+      const z = i.ref?.startsWith('curveball:') && i.s0 !== undefined ? m.setup.curveballs.find(c => c.id === i.ref!.slice(10))?.zone : undefined;
+      const use = z && /: our (cutting|embankment) at/.exec(i.text)?.[1];
+      if (use && d.profileMode === 'manual' && d.vpis.length > 2 && rand() < 0.5) {
+        // heights by hand: the nearest height point out of the ground there
+        const at = (i.s0! + i.s1!) / 2, k2 = d.vpis.slice(1, -1).reduce((b, v, k) => Math.abs(v.s - at) < Math.abs(d.vpis[b].s - at) ? k + 1 : b, 1);
+        const j = Math.max(0, Math.min(L.n - 1, Math.round(d.vpis[k2].s / L.ds)));
+        d.vpis[k2] = { ...d.vpis[k2], z: Math.round((use === 'cutting' ? Math.max(d.vpis[k2].z, L.ground[j] + 0.5 + rand() * 4) : Math.min(d.vpis[k2].z, L.ground[j] - 0.5 - rand() * 4)) * 10) / 10 };
+      } else if (use && d.profileMode === 'auto' && rand() < 0.5) {
+        // earthworks where a place forbids them: a height pin out of the ground there (above it over a cut, below it under a fill)
+        const pins = d.gradePins ?? (d.gradePins = []), at = (i.s0! + i.s1!) / 2 + gauss() * 20, j = Math.max(0, Math.min(L.n - 1, Math.round(at / L.ds)));
+        const zz = use === 'cutting' ? Math.max(L.grade[j], L.ground[j] + 0.5 + rand() * 4) : Math.min(L.grade[j], L.ground[j] - 0.5 - rand() * 4);
+        const s = Math.round(L.s[j]);
+        d.gradePins = [...pins.filter(p => Math.abs(p.s - s) > 30), { s, z: Math.round(zz * 10) / 10 }].sort((a, b) => a.s - b.s);
+      } else if (i.fix) d.structureOverrides = paintOverride(d.structureOverrides ?? [], Math.max(0, i.fix.s0 - rand() * 40), Math.min(L.length, i.fix.s1 + rand() * 40),
         i.fix.kind === 'bridge' ? KIND.bridge : KIND.tunnel, i.fix.style ?? (i.fix.kind === 'bridge' && rand() < 0.5 ? 'long' : undefined));
       else if (d.pis.length) {
         const c = placeOf(m, i.ref) ?? { x: i.x, y: i.y }, s = i.s0 ?? nearestS(L, i.x, i.y);
@@ -110,7 +131,10 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
       const idx = order.filter(o => o.s < L.s[j]).length;
       d.pis.splice(idx, 0, at);
     } else if (kind < 0.6 && d.pis.length) d.pis.splice(Math.floor(rand() * d.pis.length), 1);
-    else if (kind < 0.85 && d.profileMode === 'auto') {
+    else if (kind < 0.85 && d.profileMode === 'manual' && d.vpis.length > 2) {
+      const k2 = 1 + Math.floor(rand() * (d.vpis.length - 2));
+      d.vpis[k2] = { ...d.vpis[k2], z: Math.round((d.vpis[k2].z + gauss() * (0.5 + 3 * heat)) * 10) / 10 };
+    } else if (kind < 0.85 && d.profileMode === 'auto') {
       const pins = d.gradePins ?? (d.gradePins = []);
       if (pins.length && rand() < 0.3) pins.splice(Math.floor(rand() * pins.length), 1);
       else {
@@ -129,8 +153,10 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     const accept = s.p < curS.p || rand() < Math.exp(-(s.p - curS.p) / (0.01 * bill * heat + 1));
     if (accept) { cur = next; curR = r; curS = s; }
     if (s.p < best.s.p) { best = { d: next, s, r }; log(k, s, r); }
-    if (k % 50 === 0) { cur = best.d; curR = best.r; curS = best.s; save(best); }
+    if (s.met && (!bestMet || (r.cost.total ?? Infinity) < (bestMet.r.cost.total ?? Infinity))) bestMet = { d: next, s, r };
+    if (k % 50 === 0) { cur = best.d; curR = best.r; curS = best.s; save(bestMet ?? best); }
   }
+  best = bestMet ?? best;
   save(best);
   function save(b: typeof best) {
     mkdirSync(out.replace(/\/[^/]+$/, ''), { recursive: true });
@@ -148,7 +174,7 @@ function placeOf(m: Mission, ref: string | undefined): { x: number; y: number } 
   const p = z.shape.pts;
   return { x: p.reduce((a, q) => a + q[0], 0) / p.length, y: p.reduce((a, q) => a + q[1], 0) / p.length };
 }
-function nearestS(L: { n: number; x: Float64Array; y: Float64Array; s: Float64Array }, x: number, y: number) {
+export function nearestS(L: { n: number; x: Float64Array; y: Float64Array; s: Float64Array }, x: number, y: number) {
   let d = Infinity, s = 0;
   for (let i = 0; i < L.n; i++) { const q = (L.x[i] - x) ** 2 + (L.y[i] - y) ** 2; if (q < d) { d = q; s = L.s[i]; } }
   return s;
@@ -202,9 +228,45 @@ const args = process.argv.slice(2), opt = (k: string) => { const i = args.indexO
 if (import.meta.url !== `file://${process.argv[1]}`) { /* imported (tests/twists.test.ts) */ }
 else if (args[0] === '--show') {
   // one design: its verdict and every twist of the mission with what breaks it
-  const fx = JSON.parse(readFileSync(args[1], 'utf8')) as Fixture, m = mission(fx.preset), r = evalDesign(m, fx.design);
+  // (`--show <preset>`: the starter)
+  const fx = args[1].endsWith('.json') ? JSON.parse(readFileSync(args[1], 'utf8')) as Fixture : { preset: args[1], design: undefined as unknown as ProjectDesign };
+  const m = mission(fx.preset); fx.design ??= m.starter;
+  const r = evalDesign(m, fx.design);
   console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(1)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).join('; '));
   for (const c of check(m, fx.design, r, process.env.ALL ? TWIST_ORDER : m.setup.mission.offer)) console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.map(i => `\n      ${i.text}`).join('')}`);
+} else if (args[0] === '--survey') {
+  // where to put a curveball: the starter's and the given designs' lines about every 25 m (the nearest whole number of stations) in EPSG:5514 (what the line does there,
+  // its height over the ground, the land cover, the ground's cross slope, the nearest village); `--json f` writes them
+  const m = mission(args[1]), o = m.pack.meta.origin as [number, number], T = m.pack.terrain, places = m.pack.overlays.places as { name: string; kind: string; x: number; y: number }[];
+  const files = args.slice(2).filter(a => a.endsWith('.json') && a !== opt('--json'));
+  const lines = [{ name: 'starter', d: m.starter }, ...files.map(f => ({ name: f.replace(/^.*\//, '').replace(/\.json$/, ''), d: (JSON.parse(readFileSync(f, 'utf8')) as Fixture).design }))];
+  const LCN = ['open', 'forest', 'water', 'building', 'road', 'urban', 'rail', 'stream'];
+  const outJ: Record<string, unknown> = { preset: args[1], origin: o, places: places.map(p => ({ ...p, X: p.x + o[0], Y: p.y + o[1] })), lines: {} };
+  for (const { name, d } of lines) {
+    const r = evalDesign(m, d), rows: unknown[] = [];
+    console.log(`== ${name}: ${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} M`);
+    for (const { id, r: L } of ourResults(r, ours(d))) {
+      const step = Math.max(1, Math.round(25 / L.ds));
+      let line = '';
+      for (let i = 0; i < L.n; i += step) {
+        const x = L.x[i], y = L.y[i], nx = -L.ty[i], ny = L.tx[i], use = useAt(L, i);
+        const cross = (T.heightAt(x + nx * 30, y + ny * 30) - T.heightAt(x - nx * 30, y - ny * 30)) / 60;
+        let near = { name: '', d: Infinity };
+        for (const p of places) { const dd = Math.hypot(p.x - x, p.y - y); if (dd < near.d) near = { name: p.name, d: dd }; }
+        const row = { route: id, s: Math.round(L.s[i]), X: Math.round(x + o[0]), Y: Math.round(y + o[1]), use, h: +(L.grade[i] - L.ground[i]).toFixed(1),
+          lc: LCN[T.landcover(x, y)] ?? '?', cross: +cross.toFixed(2), place: near.name, placeM: Math.round(near.d), dayL: Math.round(L.dayL[i] ?? 0), dayR: Math.round(L.dayR[i] ?? 0) };
+        rows.push(row);
+        if (i % (step * 10) === 0) line += `\n  ${id} km ${(L.s[i] / 1000).toFixed(2)} ${row.X},${row.Y} ${use} ${row.h} m ${row.lc} slope ${row.cross} · ${near.name} ${row.placeM} m`;
+      }
+      console.log(line.slice(1));
+      console.log(`  runs: ${L.runs.map(u => `${u.kind === KIND.bridge ? 'bridge' : u.kind === KIND.tunnel ? 'tunnel' : u.kind} ${(u.s0 / 1000).toFixed(2)}–${(u.s1 / 1000).toFixed(2)}`).join(', ')}`);
+    }
+    (outJ.lines as Record<string, unknown>)[name] = rows;
+    // (the homes this design buys out, EPSG:5514)
+    (outJ.homes ??= {} as Record<string, unknown>);
+    (outJ.homes as Record<string, unknown>)[name] = facts(m, d, r).homes.map(h => ({ j: h.j, X: Math.round(h.x + o[0]), Y: Math.round(h.y + o[1]) }));
+  }
+  if (opt('--json')) writeFileSync(opt('--json')!, JSON.stringify(outJ));
 } else if (args[0] === '--manual') {
   // By hand: a design with our road's heights set by hand where Auto had them (as the HUD's By hand button takes them)
   const m = mission(args[1]), from = opt('--from'), start = from ? (JSON.parse(readFileSync(from, 'utf8')) as Fixture).design : m.starter;

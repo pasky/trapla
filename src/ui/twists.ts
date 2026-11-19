@@ -191,7 +191,9 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     el.querySelector('.news-head')!.textContent = c.headline;
     el.querySelector('.news-story')!.textContent = c.story;
     el.querySelector('.news-ask')!.textContent = c.zone ? `${c.ask}. It is marked on the map.` : `${c.ask}: ${money(c.budget! * setup!.mission.startBill)}.`;
-    const a = el.querySelector('a')!; a.textContent = c.cite.text; a.href = c.cite.url;
+    // (a game event names the kind of rule it stands for, as plain text; a real event links its source)
+    const a = el.querySelector('a')!; a.textContent = c.cite.text;
+    if (c.cite.url) a.href = c.cite.url; else a.replaceWith(Object.assign(document.createElement('span'), { className: 'news-source', textContent: c.cite.text }));
     el.querySelector<HTMLButtonElement>('.news-show')!.onclick = () => { if (c.zone) { const m = middle(c.zone.shape); app.showPlace(m.x, m.y); } else app.revealHud(); };
     el.querySelector<HTMLButtonElement>('.news-ok')!.onclick = () => { el.remove(); newsEl = null; if (pendingReveal) { pendingReveal = false; reveal(false); } };
     (document.getElementById('view') ?? document.body).append(el);

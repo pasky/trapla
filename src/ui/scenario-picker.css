@@ -39,6 +39,7 @@
 .scenario-picker-actions { display: flex; gap: 10px; margin-top: auto; padding-top: 20px; }
 .scenario-picker button { border: 1px solid #536e5a; border-radius: 6px; padding: 9px 22px; background: #315b46; color: white; font: inherit; cursor: pointer; }
 .scenario-picker button:disabled { background: #dde3dd; color: #657268; border-color: #ccd6cd; cursor: default; }
+.scenario-picker .scenario-picker-actions button:not(.scenario-picker-retry):hover:not(:disabled) { background: #284c3a; } /* (not the page's pale hover under white text) */
 .scenario-picker button:focus-visible, .scenario-picker-return:focus-visible { outline: 3px solid #bc711d; outline-offset: 3px; }
 .scenario-picker .scenario-picker-retry { background: transparent; color: #315b46; }
 .scenario-picker-build { display: block; margin-top: 8px; font-size: 13px; overflow-wrap: anywhere; user-select: all; }

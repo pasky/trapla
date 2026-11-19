@@ -251,8 +251,17 @@ drawn from the real project's story, a place to keep out of or less money ([the 
 [Auto's off](docs/screenshots/648-by-hand.png)), and where it asks for something *Real price*. The first time the design is
 valid, meets every twist on and is 10 % under the line you started from (the planned one), the **reveal** shows yours next to
 the real project, its price and what happened to it ([the reveal](docs/screenshots/646-reveal.png)); *Keep improving*.
-Each twist is offered only where a reference design meets it (`npx tsx scripts/twists-check.ts`, PLAN.md "Twists and
-curveballs").
+*Nobody moves*, *Spare the forest* and *Few bridges* (along our road) where a reference design gets there under the goal.
+Every mission with twists has 5–8 curveballs: the real project's own where they can be placed (the Luka tunnel, the Pod
+skálou forest, the D11 contract, Český ráj's revoked approval and its conditions: the scarps' green bridges, the biocorridor,
+the rivers' banks; Nudvojovice refusing to sell where the real line tunnels under Pelešany), otherwise game events of kinds real projects meet, and the card says so: an
+archaeological find kept in place, a nest, a gas main, a village asking for a cutting, less money; some on real registers'
+places (old mine workings, undermined
+ground and slow landslides from the Czech Geological Survey, streams animals travel along from the nature agency; [a real place](docs/screenshots/650-news-real-place.png),
+[on the map](docs/screenshots/651-mastnik-place.png), [a game event](docs/screenshots/652-news-game-event.png); research/95).
+A mission without twists says so ([the class I road](docs/screenshots/653-no-twists.png)); the whole routes have theirs
+([the whole D3](docs/screenshots/654-whole-route-twists.png)). Each twist is offered only where a reference design meets it
+(`npx tsx scripts/twists-check.ts`, PLAN.md "Twists and curveballs").
 
 ### Scenarios
 

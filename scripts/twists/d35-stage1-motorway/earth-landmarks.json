@@ -1,10 +1,11 @@
 {
  "preset": "d35-stage1-motorway",
- "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find)",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find); also at most 400 m of bridges (Few bridges)",
  "meets": [
   "earth",
   "landmarks",
-  "budget"
+  "budget",
+  "bridges"
  ],
  "goal": true,
  "design": {

@@ -31,7 +31,7 @@ export function missionLandmarks(scenario: Pick<ScenarioParams, 'initial'>, fram
   return out;
 }
 
-export interface MissionTwistSetup { mission: MissionTwists; terms: TwistTerms; curveballs: (CurveballCheck & { story: string; cite: { text: string; url: string } })[] }
+export interface MissionTwistSetup { mission: MissionTwists; terms: TwistTerms; curveballs: (CurveballCheck & { story: string; cite: { text: string; url?: string } })[] }
 
 /** Everything the twists of mission `presetId` need on this map; undefined where it offers none. */
 export function missionTwistSetup(presetId: string, scenario: Pick<ScenarioParams, 'initial' | 'maxTravelMin'>, frame: PackFrame): MissionTwistSetup | undefined {

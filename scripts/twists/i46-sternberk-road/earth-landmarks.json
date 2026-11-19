@@ -1,9 +1,10 @@
 {
  "preset": "i46-sternberk-road",
- "purpose": "Earth balance and Hands off the castle under the goal, before the news (its bridge ends in the villa garden): a search from the starter (scripts/twists-check.ts --find, seed 5); scripts/twists-play.mjs plays the news on it",
+ "purpose": "Earth balance and Hands off the castle under the goal, before the news (its bridge ends in the villa garden): a search from the starter (scripts/twists-check.ts --find, seed 5); scripts/twists-play.mjs plays the news on it; also at most 150 m of bridges (Few bridges)",
  "meets": [
   "earth",
-  "landmarks"
+  "landmarks",
+  "bridges"
  ],
  "goal": true,
  "design": {
