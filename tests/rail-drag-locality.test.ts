@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 import { evaluateProject } from '../src/core/project-evaluate';
 import type { ProjectDesign } from '../src/core/project';
 import type { Result } from '../src/core/evaluate';
-import type { GradePinViolation } from '../src/core/grade-pins';
 import { railwayDesign, replaceRailwayFromDesign } from '../src/core/project-railway';
 
 const D11 = 'public/scenarios/d11';
@@ -33,37 +32,46 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     else expect(['bridge', 'underpass']).toContain(track.type);
   }, 120_000);
 
-  // QA sweep 3 second re-check: the profile drag 8 px up at km 2.03 pinned 441.9 m, out of reach of the climb from
-  // A. The line stays Auto's own (no far problems), and the height the card suggests is one Auto then meets: the
-  // slopes' bound it used to suggest (440.44 m) failed the search again.
-  it('leaves an unreachable pin out and suggests a height Auto meets', () => {
+  // The owner's rule (2026-11-19): a pin the player set is honoured; what it costs is said where it is, each problem's fix
+  // the pin (a height Auto reaches within the norm there, or unpin), and the line is Auto's own beyond the stretch it
+  // re-solves around the pin. Cost model 51 left both pins below out (the bill Auto's own, one problem at the pin).
+  const pinned = (z: number) => {
     const base = fixture('rail-kralovec'), rail = base.routes.find(r => r.kind === 'railway')!;
-    const pinned = (z: number) => replaceRailwayFromDesign(base, rail.id, { ...railwayDesign(base, rail), gradePins: [{ s: 2030, z }] });
-    const r0 = run(base).routes['route:railway'].legacy!, out = run(pinned(441.9)).routes['route:railway'].legacy!;
-    expect(out.cost.total).toBe(r0.cost.total);
-    const v = out.violations.find(v => 'pin' in v) as GradePinViolation;
-    expect(out.violations).toEqual([v]);
-    expect(v.pin.suggested!.z).toBeLessThan(440.44);
-    expect(v.fix).toBe(`Set it to ${v.pin.suggested!.z.toFixed(1)} m, or unpin`);
-    const set = run(pinned(v.pin.suggested!.z)).routes['route:railway'].legacy!;
-    expect(set.violations).toEqual([]);
+    return replaceRailwayFromDesign(base, rail.id, { ...railwayDesign(base, rail), gradePins: [{ s: 2030, z }] });
+  };
+  const atS = (x: Result, s: number) => x.grade[Math.round(s / x.ds)];
+  const local = (r0: Result, out: Result) => {
+    for (let s = 0; s <= r0.length; s += 50) if (s < 1500 || s > 2600) expect(Math.abs(atS(out, s) - atS(r0, s))).toBeLessThan(0.01);
+  };
+  // QA sweep 3 second re-check: the profile drag 8 px up at km 2.03 pinned 441.9 m, out of reach of the climb from A at
+  // its 12.5 ‰ limit: the climb to it steeper, said there; the stream at km 2.087 then runs through the cut, said there.
+  it('honours a pin out of reach of the climb, steeper there, and suggests a height Auto meets within the norm', () => {
+    const r0 = run(fixture('rail-kralovec')).routes['route:railway'].legacy!, out = run(pinned(441.9)).routes['route:railway'].legacy!;
+    expect(Math.abs(atS(out, 2030) - 441.9)).toBeLessThanOrEqual(0.5);
+    local(r0, out);
+    expect(out.violations.some(v => 'pin' in v)).toBe(false);
+    const steep = out.violations.filter(v => v.kind === 'gradient');
+    expect(steep.length).toBeGreaterThan(0);
+    for (const v of steep) { expect(v.s0).toBeGreaterThanOrEqual(1500); expect(v.s1).toBeLessThanOrEqual(2100); }
+    // every problem is the pin's: its fix the suggested height (the slopes' bound, 440.44 m, is out of the search's reach)
+    const z = out.violations[0].target!.pin!.z!;
+    expect(z).toBeLessThan(440.44);
+    for (const v of out.violations) {
+      expect(v.target?.pin).toEqual({ s: 2030, z });
+      expect(v.fix).toBe(`Set the pin at km 2.03 to ${z.toFixed(1)} m, or unpin`);
+    }
+    expect(run(pinned(z)).routes['route:railway'].legacy!.violations).toEqual([]);
   }, 120_000);
 
-  // QA P2 fixes re-check (main 5331cc1): the height suggested then, 439.5 m, was met only 0.9 m too high for the
-  // tunnel under the stream at km 2.087 (9 m under its bed), so the cut and cover began at km 2.15 and the stream ran
-  // through the open cut: not valid, 198 M cheaper, its fixes (a bridge in the cut, a culvert 11 m up) unbuildable.
-  // A pin met only by missing a crossing Auto's own line clears is out of reach like one too steep.
-  it('leaves out a pin that would leave a stream in the cut', () => {
-    const base = fixture('rail-kralovec'), rail = base.routes.find(r => r.kind === 'railway')!;
-    const pinned = (z: number) => replaceRailwayFromDesign(base, rail.id, { ...railwayDesign(base, rail), gradePins: [{ s: 2030, z }] });
-    const r0 = run(base).routes['route:railway'].legacy!, out = run(pinned(439.5)).routes['route:railway'].legacy!;
-    expect(out.cost.total).toBe(r0.cost.total);
-    const v = out.violations.find(v => 'pin' in v) as GradePinViolation;
-    expect(out.violations).toEqual([v]);
-    expect(v.title).toBe('Pinned height out of reach: a stream');
-    const stream = out.waterCrossings.find(w => Math.abs(w.s - 2087) < 5)!;
-    expect(stream.structure).toBe('tunnel');
-    const set = run(pinned(v.pin.suggested!.z)).routes['route:railway'].legacy!;
-    expect(set.violations).toEqual([]);
+  // QA P2 fixes re-check (main 5331cc1): 439.5 m is met only 0.9 m too high for the tunnel under the stream at km 2.087
+  // (9 m under its bed), so the stream runs through the open cut. Honoured: the stream's problems say so, the fix the pin.
+  it('honours a pin that leaves a stream in the cut, and says so at the stream', () => {
+    const r0 = run(fixture('rail-kralovec')).routes['route:railway'].legacy!, out = run(pinned(439.5)).routes['route:railway'].legacy!;
+    expect(Math.abs(atS(out, 2030) - 439.5)).toBeLessThanOrEqual(0.5);
+    local(r0, out);
+    expect(out.violations.map(v => v.title).sort()).toEqual(['Our cutting runs through a stream', 'Our earthworks block a stream']);
+    const z = out.violations[0].target!.pin!.z!;
+    for (const v of out.violations) { expect(v.s0).toBeGreaterThan(2000); expect(v.s1).toBeLessThan(2150); expect(v.target?.pin).toEqual({ s: 2030, z }); }
+    expect(run(pinned(z)).routes['route:railway'].legacy!.violations).toEqual([]);
   }, 120_000);
 });

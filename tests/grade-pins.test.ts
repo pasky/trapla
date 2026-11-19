@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoProfile, profileOk, type AutoProfileOptions } from '../src/core/autoprofile';
+import { autoProfile, pinClearanceBlame, profileOk, STEEP_MAX, type AutoProfileOptions } from '../src/core/autoprofile';
 import { GRADE_PIN_TOLERANCE, gradePinViolations, normalizeGradePins, reachableSuggestions, type GradePin } from '../src/core/grade-pins';
 import { buildProfile, elevationAt } from '../src/core/vertical';
 
@@ -57,7 +57,8 @@ describe('pinned Auto DP heights', () => {
     expect(r.vpis.at(-1)!.z).toBe(ground.at(-1));
   });
 
-  it('reports computed gradient reach bounds and a height edit for an unreachable pin', () => {
+  // 20 m up in 100 m: 20 %, beyond STEEP_MAX times the 6 % limit: out of any reach Auto builds to (else honoured, below)
+  it('reports computed gradient reach bounds and a height edit for a pin out of any reach', () => {
     const r = autoProfile(s, g, { ...opt, pins: [{ s: 100, z: 20 }] });
     expect(r.feasible).toBe(false);
     expect(r.pinViolations).toHaveLength(1);
@@ -70,9 +71,30 @@ describe('pinned Auto DP heights', () => {
     expect(r.vpis).toEqual(autoProfile(s, g, opt).vpis);
   });
 
-  it('suggests a height the search meets, not the slopes\' bound it cannot reach', () => {
-    // 36 m in the first 600 m is the slopes' bound; the changes of slope from A (6 % takes room) leave it out of reach
-    const run = (pins: GradePin[]) => autoProfile(s, g, { ...opt, pins });
+  // The owner (2026-11-19): a pin the player set is honoured. Out of the slopes' reach within the norm (here two pins
+  // 25 m apart in height 300 m apart: 8.3 % of a 6 % limit), the line is steeper next to them, never beyond STEEP_MAX
+  // times the norm, and Auto's own line outside the stretch it re-solves around them (the far line unchanged).
+  it('honours pins out of the slopes\' reach by a steep stretch next to them, the far line Auto\'s own', () => {
+    const ss = Float64Array.from({ length: 601 }, (_, i) => i * 10), gg = Float64Array.from(ss, x => 30 * Math.sin(x / 900));
+    const own = autoProfile(ss, gg, opt), ownP = buildProfile(own.vpis, opt.minCrest, opt.minSag);
+    const z0 = elevationAt(ownP, 3000), pins = [{ s: 3000, z: z0 }, { s: 3300, z: z0 + 25 }];
+    const r = autoProfile(ss, gg, { ...opt, pins }), p = buildProfile(r.vpis, opt.minCrest, opt.minSag);
+    expect(r.pinViolations).toEqual([]);
+    for (const pin of pins) expect(Math.abs(elevationAt(p, pin.s) - pin.z)).toBeLessThanOrEqual(GRADE_PIN_TOLERANCE + 1e-9);
+    expect(r.steep!.every(w => w.left.pin.reason === 'gradient-envelope')).toBe(true);
+    const spans = r.honoured!.spans, within = (a: number, b: number) => spans.some(([x, y]) => a >= x - 260 && b <= y + 260);
+    expect(spans[0][0]).toBeGreaterThan(500);
+    expect(spans[spans.length - 1][1]).toBeLessThan(5500);
+    const steep = p.grades.map((x, i) => ({ x: Math.abs(x), s0: p.pts[i].s, s1: p.pts[i + 1].s })).filter(q => q.x > opt.maxGradient + 1e-9);
+    expect(steep.some(q => q.s0 < 3300 && q.s1 > 3000)).toBe(true);
+    for (const q of steep) { expect(q.x).toBeLessThanOrEqual(STEEP_MAX * opt.maxGradient + 1e-9); expect(within(q.s0, q.s1)).toBe(true); }
+    for (let x = 0; x <= 6000; x += 10) if (!within(x, x)) expect(elevationAt(p, x)).toBeCloseTo(elevationAt(ownP, x), 6);
+  });
+
+  it('suggests a height the search meets within the norm, not the slopes\' bound it cannot reach', () => {
+    // 36 m in the first 600 m is the slopes' bound; the changes of slope from A (6 % takes room) leave it out of reach.
+    // The suggestion's check is the line within the norm (`pinStrict`: left out, as before the owner's rule).
+    const run = (pins: GradePin[]) => autoProfile(s, g, { ...opt, pins, pinStrict: true });
     for (const z of [50, -50]) {
       const v0 = run([{ s: 600, z }]).pinViolations![0];
       expect(Math.abs(v0.pin.suggested!.z)).toBe(36);
@@ -174,31 +196,36 @@ describe('pinned Auto DP heights', () => {
   });
 });
 
-// A pin met only by missing a crossing's clearance Auto's own line keeps (cost model 51): out of reach, the line
-// Auto's own. Judged on the finished (rounded) line; only where the search must keep it (a retry asked at any price,
-// or a suggestion's strict check); the nearest of several pins is not blamed when another is the one in the way.
+// A pin met only by missing a crossing's clearance Auto's own line keeps: honoured (the owner, 2026-11-19; cost model
+// 51 left it out), the line Auto's own from 500 m either side of it, and the crossing it misses put down to it
+// (pinClearanceBlame: the nearest pin). A suggestion's check (`pinStrict`) still leaves it out, the old rule, judged on
+// the finished (rounded) line; the nearest of several pins is not blamed when another is the one in the way.
 describe('a pin against a crossing', () => {
   // flat ground, a crossing over km 0.80–1.20 our line must clear 6 m above
   const floor = Float64Array.from(s, (x) => x >= 800 && x <= 1200 ? 6 : NaN);
   const at = (penalty: number) => Float64Array.from(s, () => penalty);
   const ask = { minH: floor, clearancePenaltyAt: at(1e11) };
-  it('leaves out a pin that holds the line under it, only where the search must keep it', () => {
+  it('honours a pin that holds the line under it, the line Auto\'s own beyond 500 m of it', () => {
     const own = autoProfile(s, g, { ...opt, ...ask });
     const ownP = buildProfile(own.vpis, opt.minCrest, opt.minSag);
     for (let x = 800; x <= 1200; x += 10) expect(elevationAt(ownP, x)).toBeGreaterThanOrEqual(6 - 0.05);
-    const pinned = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 900, z: 0 }] });
-    expect(pinned.vpis).toEqual(own.vpis);
-    expect(pinned.pinViolations!.map(v => v.pin.reason)).toEqual(['clearance']);
-    expect(pinned.lineOk).toBe(true);
-    // a first pass (the ordinary penalty): the pin holds, the retries may still meet the crossing
-    expect(autoProfile(s, g, { ...opt, minH: floor, clearancePenaltyAt: at(1e8), pins: [{ s: 900, z: 0 }] }).pinViolations).toEqual([]);
-    // a suggestion's check: strict
-    expect(autoProfile(s, g, { ...opt, minH: floor, pinStrict: true, pins: [{ s: 900, z: 0 }] }).pinViolations![0].pin.reason).toBe('clearance');
+    const pins = [{ s: 900, z: 0 }], pinned = autoProfile(s, g, { ...opt, ...ask, pins });
+    const p = buildProfile(pinned.vpis, opt.minCrest, opt.minSag);
+    expect(pinned.pinViolations).toEqual([]);
+    expect(Math.abs(elevationAt(p, 900))).toBeLessThanOrEqual(GRADE_PIN_TOLERANCE + 1e-9);
+    expect(pinned.honoured!.pins).toEqual(pins);
+    for (let x = 0; x <= 2000; x += 10) if (x < 900 - 760 || x > 900 + 760) expect(elevationAt(p, x)).toBeCloseTo(elevationAt(ownP, x), 9);
+    // the crossing it misses, put down to it
+    const blame = pinClearanceBlame(s, g, { ...opt, ...ask, pins }, pinned.vpis, () => own.vpis);
+    expect([...blame.keys()]).toEqual([0]);
+    expect(blame.get(0)).toBeGreaterThanOrEqual(800);
+    // a suggestion's check: within the norm, left out
+    expect(autoProfile(s, g, { ...opt, minH: floor, pinStrict: true, pins }).pinViolations![0].pin.reason).toBe('clearance');
   });
-  it('keeps a pin out of the way although nearer the crossing, and a saved pin off the route costs nothing', () => {
+  it('a suggestion\'s check keeps a pin out of the way although nearer the crossing, and a saved pin off the route costs nothing', () => {
     // the pin at km 1.00 holds the line down through the whole crossing; the misses at its start lie nearer the pin at
     // km 0.70, which a line clearing the crossing meets
-    const r = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 700, z: 3 }, { s: 1000, z: 0 }, { s: 3000, z: 0 }] });
+    const r = autoProfile(s, g, { ...opt, ...ask, pinStrict: true, pins: [{ s: 700, z: 3 }, { s: 1000, z: 0 }, { s: 3000, z: 0 }] });
     expect(r.pinViolations!.map(v => v.pin.index)).toEqual([1]);
     const lone = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 3000, z: 0 }] });
     expect(lone.vpis).toEqual(autoProfile(s, g, { ...opt, ...ask }).vpis);

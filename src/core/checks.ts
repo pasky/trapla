@@ -84,6 +84,9 @@ export interface ViolationTarget {
   movePin?: { k: number; s: number; z: number };
   /** By hand: the height pin whose radius back to the smallest fixes it */
   smallest?: number;
+  /** Auto: the player's height pin (its chainage) that causes it; set to `z` (a height Auto reaches within the norm,
+   * null: none found) or unpinned, it goes */
+  pin?: { s: number; z: number | null };
 }
 
 /** one-line form for logs and scripts */
