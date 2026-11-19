@@ -1,0 +1,273 @@
+{
+ "preset": "d3-0302-motorway",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 2 → 12 → 24)",
+ "meets": [
+  "earth",
+  "landmarks",
+  "curveballs"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0302",
+  "presetId": "d3-0302-motorway",
+  "packId": "d3-0302",
+  "objectData": "616929:519725088:3053423868",
+  "transportData": "faa16c1fdac83e1d59d4202d41de6c063d6e4b34b15bbb9a051c2aea90cf89cf",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Hostěradice (on to 0303)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2825.3,
+       "y": 7524.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 3602,
+       "y": 3203.8,
+       "z": 320.128
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Jílové (from 0301)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 3602,
+       "y": 3203.8,
+       "z": 320.128
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2825.3,
+       "y": 7524.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2825.3,
+       "y": 7524.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 3602,
+       "y": 3203.8,
+       "z": 320.128
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2759.223828053339,
+       "y": 7237.879110244549,
+       "r": null
+      },
+      {
+       "x": 2787.8135427621164,
+       "y": 6838.2365729199155,
+       "r": null
+      },
+      {
+       "x": 2909.3130992171314,
+       "y": 5832.947956272574,
+       "r": null
+      },
+      {
+       "x": 3084.3688365816947,
+       "y": 4013.5743761884155,
+       "r": null
+      },
+      {
+       "x": 3545.7307851595465,
+       "y": 3405.417286937847,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 1950.1384909282049,
+        "s1": 2143.6127511585087,
+        "kind": 0
+       },
+       {
+        "s0": 2143.6127511585087,
+        "s1": 2154.3657993281213,
+        "kind": 1
+       },
+       {
+        "s0": 2154.3657993281213,
+        "s1": 2249.310803287239,
+        "kind": 1,
+        "style": "long"
+       },
+       {
+        "s0": 3070.768086312142,
+        "s1": 3204.8621083654793,
+        "kind": 1
+       },
+       {
+        "s0": 3643.6466529625677,
+        "s1": 3772.918404674305,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 1129,
+        "z": 404.9
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0302:d3-0302-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Jílové (from 0301)",
+     "position": {
+      "x": 2825.3,
+      "y": 7524.5,
+      "z": 431.784
+     }
+    },
+    {
+     "id": "b",
+     "name": "Hostěradice (on to 0303)",
+     "position": {
+      "x": 3602,
+      "y": 3203.8,
+      "z": 320.128
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 2.5,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

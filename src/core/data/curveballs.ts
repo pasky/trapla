@@ -167,13 +167,14 @@ export const CURVEBALLS: Record<string, Curveball> = {
     cite: { text: 'A game event of a kind real projects meet (the EIA hearing: villages ask for a lower line)' },
     zone: { label: 'Past Rakousy', forbid: LOW, shape: { kind: 'polygon', pts: [[-741854, -1068407], [-741843, -1068490], [-741829, -1068546], [-741811, -1068598], [-741787, -1068650], [-741760, -1068700], [-741694, -1068798], [-741760, -1068842], [-741829, -1068740], [-741859, -1068685], [-741886, -1068626], [-741906, -1068568], [-741921, -1068505], [-741931, -1068443], [-741938, -1068353], [-741858, -1068347]] } },
   },
-  // GAME EVENT (research/95 "A nest"): the forest edge the reference crosses at km 0.87–0.93, a 55 m circle on it.
+  // GAME EVENT (research/95 "A nest"): the forest edge the reference crosses at km 0.87–0.93, a 55 m circle 35 m off its
+  // line (away from the starter).
   'd3-0302-nest': {
     id: 'd3-0302-nest', headline: 'An eagle owl nests here',
     story: 'An eagle owl nests at the edge of the wood below Studené. The nature office wants the works kept away from it.',
     ask: 'Keep out of the nest’s quiet zone',
     cite: { text: 'A game event of a kind real projects meet (nature act 114/1992)' },
-    zone: { label: 'Owl’s nest', forbid: KEEP_OUT, shape: { kind: 'circle', x: -742100, y: -1065871, r: 55 } },
+    zone: { label: 'Owl’s nest', forbid: KEEP_OUT, shape: { kind: 'circle', x: -742065, y: -1065868, r: 55 } },
   },
   // GAME EVENT (research/95 "Money"): the cap is the game's, 88 % of the starting bill (the goal is 90 %); it comes last.
   'd3-0302-money': {

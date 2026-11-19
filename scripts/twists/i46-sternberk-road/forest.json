@@ -1,0 +1,169 @@
+{
+ "preset": "i46-sternberk-road",
+ "purpose": "Spare the forest (at most 4.5 ha) under the goal: a search from earth-landmarks.json (--find --twists forest --goal, seed 31)",
+ "meets": [
+  "forest"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i46-sternberk",
+  "presetId": "i46-sternberk-road",
+  "packId": "i46-sternberk",
+  "objectData": "499739:989438279:2301648189",
+  "transportData": "a11b116b8e6de40d4ef2bd1246d13890a4281e6c08c7cf11ef1c649da55a9e1a",
+  "routes": [
+   {
+    "id": "route:legacy-mission",
+    "name": "Road",
+    "role": "mission",
+    "revision": 0,
+    "kind": "road",
+    "acousticSourceId": "acoustic:legacy-mission",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2644.2,
+       "y": 2453.8,
+       "z": 242.53284000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 4699,
+       "y": 5512.5,
+       "z": 365.6
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2669.567232595718,
+       "y": 2835.2424033189154,
+       "r": null
+      },
+      {
+       "x": 2756.670070736598,
+       "y": 3098.3497132707225,
+       "r": null
+      },
+      {
+       "x": 2761.2441002851683,
+       "y": 3199.2780176723436,
+       "r": null
+      },
+      {
+       "x": 2775.069117185157,
+       "y": 3751.845597615321,
+       "r": 1500
+      },
+      {
+       "x": 3316.3692462112867,
+       "y": 4778.354966679085,
+       "r": 800,
+       "speed": 70
+      },
+      {
+       "x": 3509.37814424134,
+       "y": 5302.214480933654,
+       "r": 360,
+       "speed": 70
+      },
+      {
+       "x": 4549.759595213063,
+       "y": 5303.02631144778,
+       "r": 340,
+       "speed": 70
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 569.7973957266732,
+        "s1": 668.9338372811452,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 2628,
+        "z": 304.7
+       }
+      ],
+      "manualVpis": []
+     }
+    },
+    "specification": {
+     "kind": "road",
+     "policy": "legacy-road",
+     "legalClass": "I",
+     "crossSection": "S11.5",
+     "designSpeed": 90,
+     "operations": {
+      "aadt": 10453,
+      "heavyShare": 0.086,
+      "speed": 90,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i46-sternberk:i46-sternberk-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Olomouc",
+     "position": {
+      "x": 2644.2,
+      "y": 2453.8,
+      "z": 242.53284000000002
+     }
+    },
+    {
+     "id": "b",
+     "name": "Opava",
+     "position": {
+      "x": 4699,
+      "y": 5512.5,
+      "z": 365.6
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "road"
+     ],
+     "maxTravelMin": 3.6,
+     "demand": {
+      "kind": "road",
+      "aadt": 10453
+     }
+    }
+   ]
+  }
+ }
+}
