@@ -4,8 +4,12 @@
 //  2. D3 0304 at km 4.49, road II/114 under the motorway's bridge: Build → Slip road four times (two exits, two
 //     entries, one on each side of the motorway before and after the bridge): VALID and priced; a gore dragged
 //     along the motorway; a slip road put across the motorway is a problem; the mission end's interchange card.
-// node scripts/interchange-scene.mjs [--gpu] [--docs]   (--docs: docs/screenshots/620–632)
-import { mkdirSync } from 'node:fs';
+//     Each slip road is bent off the motorway and square onto the road; on each side the entry starts at the
+//     exit's junction (one crossroads, billed once).
+//  3. D3 0303 at km 3.06, road II/105 (saved from the game): VALID and priced where the motorway moves aside tracks
+//     a slip road crosses.
+// node scripts/interchange-scene.mjs [--gpu] [--docs]   (--docs: docs/screenshots/620–633)
+import { mkdirSync, readFileSync } from 'node:fs';
 import { checker, startGame } from './lib/browser.mjs';
 
 const out = process.argv.includes('--docs') ? 'docs/screenshots' : '/tmp/trapla-interchange';
@@ -114,11 +118,12 @@ try {
   ok((await page.locator('.route-build-choices button').allTextContents()).includes('Slip road'), 'Build offers a slip road');
   await page.locator('.route-build-choices button', { hasText: /^Slip road$/ }).click();
   ok(/start it beside a motorway to leave it/.test(await page.locator('.inspector.k-build').innerText()), 'its card says how the ends go');
+  // (on each side the entry starts where the exit ends: one crossroads on road II/114)
   const slips = [
-    { name: 'exit towards Voračice', a: await gore(site.s - 450, 1), b: await road(site.at + 100) },
-    { name: 'entry towards Voračice', a: await road(site.at + 180), b: await gore(site.s + 450, 1) },
-    { name: 'exit towards Václavice', a: await gore(site.s + 450, -1), b: await road(site.at - 100) },
-    { name: 'entry towards Václavice', a: await road(site.at - 180), b: await gore(site.s - 450, -1) },
+    { name: 'exit towards Voračice', a: await gore(site.s - 450, 1), b: await road(site.at + 140) },
+    { name: 'entry towards Voračice', a: await road(site.at + 140), b: await gore(site.s + 450, 1), shared: true },
+    { name: 'exit towards Václavice', a: await gore(site.s + 450, -1), b: await road(site.at - 140) },
+    { name: 'entry towards Václavice', a: await road(site.at - 140), b: await gore(site.s - 450, -1), shared: true },
   ];
   for (const [k, slip] of slips.entries()) {
     if (k) await build('Slip road');
@@ -128,6 +133,9 @@ try {
     const hb = await hoverAt(slip.b);
     await clickAt(slip.b); await game.idle();
     ok(/motorway|joins road II\/114/.test(ha ?? '') && /motorway|joins road II\/114/.test(hb ?? ''), `${slip.name}: ${ha} → ${hb}`);
+    if (slip.shared) ok(/at another slip road's junction/.test(ha ?? ''), `${slip.name} starts at the exit's junction (${ha})`);
+    const pis = await page.evaluate(() => window.trapla.getDesign().pis.length);
+    ok(pis === 2, `${slip.name}: Build bends it twice, off the motorway and square onto the road (${pis} bends)`);
     if (k === 0) {
       const card = await page.locator('#inspector').innerText();
       ok(/Slip road, one way, from our motorway to road II\/114/.test(card) && /Exit lane on the motorway, 234 m/.test(card), 'its card: one way, its exit lane');
@@ -138,6 +146,8 @@ try {
   const done = await issues();
   ok(done.valid && done.total !== null && done.list.length === 0, `the diamond is VALID and priced: ${(done.total / 1e9).toFixed(4)} bn (${done.list.join('; ') || 'no problems'})`);
   ok(done.total - base.total > 100e6 && done.total - base.total < 400e6, `the interchange costs ${((done.total - base.total) / 1e6).toFixed(0)} M`);
+  const shares = await page.evaluate(() => window.trapla.projectResult().works.items.filter(w => w.label?.startsWith('Shares its junction with')).length);
+  ok(shares === 2, `two crossroads on road II/114, each built and billed once (${shares} shared)`);
   const marks = await page.evaluate(() => { const m = window.trapla.debugView().laneMarks; return m ? m.geometry.attributes.position.count : 0; });
   ok(marks > 100, 'its four speed-change lanes are drawn');
   await page.evaluate(() => window.trapla.setActiveRoute('route:motorway-forward')); await game.idle();
@@ -147,7 +157,7 @@ try {
   const g0 = await gore(site.s - 390, 1);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 200, 200, 35), [g0.x, g0.y]);
   await game.idle(); await game.still(); await shot('627-exit-lane-and-gore');
-  const term = await road(site.at + 100);
+  const term = await road(site.at + 140);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 220, 150, 45), [term.x, term.y]);
   await game.idle(); await game.still(); await shot('628-slip-road-junction-on-road-ii-114');
   // a gore dragged along the motorway: its bend goes with it
@@ -179,5 +189,18 @@ try {
   const endCard = await page.locator('#inspector').innerText();
   ok(/Shown only: its slip roads are not built or billed here/.test(endCard), 'the mission end\'s interchange card says it is shown only');
   await shot('631-mission-end-interchange-card');
+
+  // ---- 3. a diamond on D3 0303, where the motorway moves aside tracks a slip road crosses (saved from the game) ----
+  await game.open('scenario=d3-0303');
+  await page.evaluate(() => window.trapla.whenTransport());
+  const d0303 = JSON.parse(readFileSync(new URL('../tests/fixtures/interchange/d3-0303-diamond.json', import.meta.url), 'utf8'));
+  await page.evaluate((d) => window.trapla.setProject(d), d0303); await game.idle();
+  await page.evaluate(() => window.trapla.setActiveRoute('route:motorway-forward')); await game.idle();
+  const r0303 = await issues();
+  ok(r0303.valid && r0303.total !== null && r0303.list.length === 0, `the D3 0303 diamond is VALID and priced: ${(r0303.total / 1e9).toFixed(4)} bn`);
+  await page.evaluate(() => window.trapla.lookAt(3510, 7790, 900, 0, 89)); await game.idle(); await game.still();
+  await shot('632-d3-0303-diamond-overview');
+  await page.evaluate(() => window.trapla.lookAt(3560, 7790, 330, 230, 40)); await game.idle(); await game.still();
+  await shot('633-d3-0303-slip-road-over-moved-track');
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }

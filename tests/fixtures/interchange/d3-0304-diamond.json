@@ -1,1 +1,542 @@
-{"schemaVersion": 1, "scenarioId": "d3-0304", "presetId": "d3-0304-motorway", "packId": "d3-0304", "objectData": "734992:3869263678:2318659238", "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439", "routes": [{"id": "route:motorway-forward", "name": "Motorway towards Vora\u010dice (on to 0305/I)", "role": "mission", "revision": 0, "kind": "motorway", "acousticSourceId": "acoustic:route:motorway-forward", "endpoints": {"a": {"position": {"x": 8438.8, "y": 17213.8, "z": 319.8767600000001}, "anchor": {"kind": "mission", "portId": "a"}, "binding": "resolved"}, "b": {"position": {"x": 2574.4, "y": 3222.2, "z": 517.32}, "anchor": {"kind": "mission", "portId": "b"}, "binding": "resolved"}}, "alignment": {"kind": "corridor", "corridorId": "corridor:motorway", "direction": "forward"}, "specification": {"kind": "motorway", "policy": "paired-d27.5", "crossSection": "D27.5", "designSpeed": 130, "operations": {"aadt": 15350, "heavyShare": 0.2256, "speed": 130, "speedPolicy": "design"}}}, {"id": "route:motorway-reverse", "name": "Motorway towards V\u00e1clavice (from 0303)", "role": "mission", "revision": 0, "kind": "motorway", "acousticSourceId": "acoustic:route:motorway-reverse", "endpoints": {"a": {"position": {"x": 2574.4, "y": 3222.2, "z": 517.32}, "anchor": {"kind": "mission", "portId": "b"}, "binding": "resolved"}, "b": {"position": {"x": 8438.8, "y": 17213.8, "z": 319.8767600000001}, "anchor": {"kind": "mission", "portId": "a"}, "binding": "resolved"}}, "alignment": {"kind": "corridor", "corridorId": "corridor:motorway", "direction": "reverse"}, "specification": {"kind": "motorway", "policy": "paired-d27.5", "crossSection": "D27.5", "designSpeed": 130, "operations": {"aadt": 15350, "heavyShare": 0.2256, "speed": 130, "speedPolicy": "design"}}}, {"id": "route:fd90b479-3d10-4e64-bf5c-4ed4a02424d9", "acousticSourceId": "acoustic:220dd6cb-ecd4-40f8-83d6-60b669ad2245", "name": "Slip road", "revision": 0, "role": "auxiliary", "kind": "road", "endpoints": {"a": {"position": {"x": 7240.32901844591, "y": 13462.962595564657, "z": 390.25961494562387}, "anchor": {"kind": "route", "routeId": "route:motorway-forward", "s": 4039.002759377326}, "binding": "resolved"}, "b": {"position": {"x": 6934.1916560043765, "y": 13082.64967233556, "z": 380.09748786331687}, "anchor": {"kind": "source", "location": {"transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439", "sourceId": "osm:way:1181265642", "s": 1045.004676546414}}, "binding": "resolved"}}, "specification": {"kind": "road", "policy": "legacy-road", "legalClass": "ramp", "crossSection": "V7.25", "designSpeed": 50, "operations": {"aadt": 3036, "heavyShare": 0.075, "speed": 50, "speedPolicy": "design"}}, "alignment": {"kind": "pi", "pis": [{"x": 7160.075682892248, "y": 13335.984636325617, "r": null}], "vertical": {"kind": "auto", "pins": []}, "controls": {"structureOverrides": []}}}, {"id": "route:4b660e0e-bc18-4c2e-b3bb-56e2a8849975", "acousticSourceId": "acoustic:9191ce1f-35d0-4b55-b6bb-293c954aadf8", "name": "Slip road 2", "revision": 0, "role": "auxiliary", "kind": "road", "endpoints": {"a": {"position": {"x": 6855.238634651954, "y": 13095.528196079884, "z": 383.7178460446504}, "anchor": {"kind": "source", "location": {"transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439", "sourceId": "osm:way:1181265642", "s": 1125.0011511844202}}, "binding": "resolved"}, "b": {"position": {"x": 6807.210877170795, "y": 12673.954102056583, "z": 392.18040792982555}, "anchor": {"kind": "route", "routeId": "route:motorway-forward", "s": 4938.7806018128695}, "binding": "resolved"}}, "specification": {"kind": "road", "policy": "legacy-road", "legalClass": "ramp", "crossSection": "V7.25", "designSpeed": 50, "operations": {"aadt": 3036, "heavyShare": 0.075, "speed": 50, "speedPolicy": "design"}}, "alignment": {"kind": "pi", "pis": [{"x": 6869.203993212255, "y": 12810.77827230245, "r": null}], "vertical": {"kind": "auto", "pins": []}, "controls": {"structureOverrides": []}}}, {"id": "route:ce7a9e1c-702f-4854-97c4-a5d2889a9abd", "acousticSourceId": "acoustic:d5731f91-0114-4d2d-8c42-94c813d8d49f", "name": "Slip road 3", "revision": 0, "role": "auxiliary", "kind": "road", "endpoints": {"a": {"position": {"x": 6828.069346161263, "y": 12663.129395530597, "z": 392.18040792982555}, "anchor": {"kind": "route", "routeId": "route:motorway-reverse", "s": 4938.7806018128695}, "binding": "resolved"}, "b": {"position": {"x": 7131.575840243059, "y": 13050.453096955303, "z": 374.4112758503844}, "anchor": {"kind": "source", "location": {"transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439", "sourceId": "osm:way:1181265642", "s": 845.0118375401473}}, "binding": "resolved"}}, "specification": {"kind": "road", "policy": "legacy-road", "legalClass": "ramp", "crossSection": "V7.25", "designSpeed": 50, "operations": {"aadt": 3036, "heavyShare": 0.075, "speed": 50, "speedPolicy": "design"}}, "alignment": {"kind": "pi", "pis": [{"x": 6904.263973004743, "y": 12792.583552822602, "r": null}], "vertical": {"kind": "auto", "pins": []}, "controls": {"structureOverrides": []}}}, {"id": "route:c5904916-6aa6-4c28-93ca-e3ccc1a9a020", "acousticSourceId": "acoustic:1aa9175b-27d7-41c3-b15b-10d3700c9c5a", "name": "Slip road 4", "revision": 0, "role": "auxiliary", "kind": "road", "endpoints": {"a": {"position": {"x": 7210.543674586373, "y": 13037.572156970895, "z": 373.03912650827255}, "anchor": {"kind": "source", "location": {"transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439", "sourceId": "osm:way:1181265642", "s": 765.0003541408565}}, "binding": "resolved"}, "b": {"position": {"x": 7260.834466655523, "y": 13451.483196899097, "z": 390.25961494562387}, "anchor": {"kind": "route", "routeId": "route:motorway-reverse", "s": 4039.002759377326}, "binding": "resolved"}}, "specification": {"kind": "road", "policy": "legacy-road", "legalClass": "ramp", "crossSection": "V7.25", "designSpeed": 50, "operations": {"aadt": 3036, "heavyShare": 0.075, "speed": 50, "speedPolicy": "design"}}, "alignment": {"kind": "pi", "pis": [{"x": 7194.542287329683, "y": 13316.689476866484, "r": null}], "vertical": {"kind": "auto", "pins": []}, "controls": {"structureOverrides": []}}}], "corridors": [{"id": "corridor:motorway", "revision": 0, "kind": "motorway", "mode": "paired", "endpoints": {"a": {"position": {"x": 8438.8, "y": 17213.8, "z": 319.8767600000001}, "anchor": {"kind": "mission", "portId": "a"}, "binding": "resolved"}, "b": {"position": {"x": 2574.4, "y": 3222.2, "z": 517.32}, "anchor": {"kind": "mission", "portId": "b"}, "binding": "resolved"}}, "children": {"forward": "route:motorway-forward", "reverse": "route:motorway-reverse"}, "formationPolicy": "paired-d27.5", "correspondence": [], "spine": {"kind": "pi", "pis": [{"x": 7708, "y": 15854.6, "r": null}, {"x": 7693.5, "y": 14248.4, "r": null}, {"x": 6926.6, "y": 12878.5, "r": null}, {"x": 6068.5, "y": 11225, "r": null}, {"x": 4811.2, "y": 9789.9, "r": null}, {"x": 4040.4, "y": 8430.7, "r": null}, {"x": 3547.5, "y": 6886.3, "r": null}, {"x": 3014.6, "y": 4999.1, "r": null}], "controls": {"structureOverrides": []}, "vertical": {"kind": "auto", "pins": [], "manualVpis": []}}}], "connections": [], "buildingOverrides": [], "mission": {"id": "d3-0304:d3-0304-motorway", "revision": 0, "ports": [{"id": "a", "name": "V\u00e1clavice (from 0303)", "position": {"x": 8438.8, "y": 17213.8, "z": 319.8767600000001}}, {"id": "b", "name": "Vora\u010dice (on to 0305/I)", "position": {"x": 2574.4, "y": 3222.2, "z": 517.32}}], "connections": [{"from": "a", "to": "b", "direction": "both", "kinds": ["motorway"], "maxTravelMin": 8.1, "demand": {"kind": "road", "aadt": 30700}}]}}
+{
+ "schemaVersion": 1,
+ "scenarioId": "d3-0304",
+ "presetId": "d3-0304-motorway",
+ "packId": "d3-0304",
+ "objectData": "734992:3869263678:2318659238",
+ "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439",
+ "routes": [
+  {
+   "id": "route:motorway-forward",
+   "name": "Motorway towards Vora\u010dice (on to 0305/I)",
+   "role": "mission",
+   "revision": 0,
+   "kind": "motorway",
+   "acousticSourceId": "acoustic:route:motorway-forward",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 8438.8,
+      "y": 17213.8,
+      "z": 319.8767600000001
+     },
+     "anchor": {
+      "kind": "mission",
+      "portId": "a"
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 2574.4,
+      "y": 3222.2,
+      "z": 517.32
+     },
+     "anchor": {
+      "kind": "mission",
+      "portId": "b"
+     },
+     "binding": "resolved"
+    }
+   },
+   "alignment": {
+    "kind": "corridor",
+    "corridorId": "corridor:motorway",
+    "direction": "forward"
+   },
+   "specification": {
+    "kind": "motorway",
+    "policy": "paired-d27.5",
+    "crossSection": "D27.5",
+    "designSpeed": 130,
+    "operations": {
+     "aadt": 15350,
+     "heavyShare": 0.2256,
+     "speed": 130,
+     "speedPolicy": "design"
+    }
+   }
+  },
+  {
+   "id": "route:motorway-reverse",
+   "name": "Motorway towards V\u00e1clavice (from 0303)",
+   "role": "mission",
+   "revision": 0,
+   "kind": "motorway",
+   "acousticSourceId": "acoustic:route:motorway-reverse",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 2574.4,
+      "y": 3222.2,
+      "z": 517.32
+     },
+     "anchor": {
+      "kind": "mission",
+      "portId": "b"
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 8438.8,
+      "y": 17213.8,
+      "z": 319.8767600000001
+     },
+     "anchor": {
+      "kind": "mission",
+      "portId": "a"
+     },
+     "binding": "resolved"
+    }
+   },
+   "alignment": {
+    "kind": "corridor",
+    "corridorId": "corridor:motorway",
+    "direction": "reverse"
+   },
+   "specification": {
+    "kind": "motorway",
+    "policy": "paired-d27.5",
+    "crossSection": "D27.5",
+    "designSpeed": 130,
+    "operations": {
+     "aadt": 15350,
+     "heavyShare": 0.2256,
+     "speed": 130,
+     "speedPolicy": "design"
+    }
+   }
+  },
+  {
+   "id": "route:62355390-e11f-4fd0-95ee-a28c0293b696",
+   "acousticSourceId": "acoustic:d16b59d5-a9a2-4ca8-b621-c88706f5f822",
+   "name": "Slip road",
+   "revision": 0,
+   "role": "auxiliary",
+   "kind": "road",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 7240.32901844591,
+      "y": 13462.962595564657,
+      "z": 390.25961494562387
+     },
+     "anchor": {
+      "kind": "route",
+      "routeId": "route:motorway-forward",
+      "s": 4039.002759377326
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 6894.71904673151,
+      "y": 13089.088297825292,
+      "z": 381.8971401023481
+     },
+     "anchor": {
+      "kind": "source",
+      "location": {
+       "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439",
+       "sourceId": "osm:way:1181265642",
+       "s": 1084.9989609006243
+      }
+     },
+     "binding": "resolved"
+    }
+   },
+   "specification": {
+    "kind": "road",
+    "policy": "legacy-road",
+    "legalClass": "ramp",
+    "crossSection": "V7.25",
+    "designSpeed": 50,
+    "operations": {
+     "aadt": 3036,
+     "heavyShare": 0.075,
+     "speed": 50,
+     "speedPolicy": "design"
+    }
+   },
+   "alignment": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 7160.075682892248,
+      "y": 13335.984636325617,
+      "r": null
+     },
+     {
+      "x": 6904.143530966109,
+      "y": 13146.865999662992,
+      "r": null
+     }
+    ],
+    "vertical": {
+     "kind": "auto",
+     "pins": []
+    },
+    "controls": {
+     "structureOverrides": []
+    }
+   }
+  },
+  {
+   "id": "route:9d7f6c5f-bc30-49d7-b68b-7214e52e60cb",
+   "acousticSourceId": "acoustic:bebbcbc9-2a5d-4960-a337-198f2fb7b938",
+   "name": "Slip road 2",
+   "revision": 0,
+   "role": "auxiliary",
+   "kind": "road",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 6894.71904673151,
+      "y": 13089.088297825292,
+      "z": 381.8971401023481
+     },
+     "anchor": {
+      "kind": "source",
+      "location": {
+       "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439",
+       "sourceId": "osm:way:1181265642",
+       "s": 1084.9989609006243
+      }
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 6807.210877170795,
+      "y": 12673.954102056583,
+      "z": 392.18040792982555
+     },
+     "anchor": {
+      "kind": "route",
+      "routeId": "route:motorway-forward",
+      "s": 4938.7806018128695
+     },
+     "binding": "resolved"
+    }
+   },
+   "specification": {
+    "kind": "road",
+    "policy": "legacy-road",
+    "legalClass": "ramp",
+    "crossSection": "V7.25",
+    "designSpeed": 50,
+    "operations": {
+     "aadt": 3036,
+     "heavyShare": 0.075,
+     "speed": 50,
+     "speedPolicy": "design"
+    }
+   },
+   "alignment": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 6883.470884298473,
+      "y": 13020.130362398733,
+      "r": null
+     },
+     {
+      "x": 6869.203993212255,
+      "y": 12810.77827230245,
+      "r": null
+     }
+    ],
+    "vertical": {
+     "kind": "auto",
+     "pins": []
+    },
+    "controls": {
+     "structureOverrides": []
+    }
+   }
+  },
+  {
+   "id": "route:52dac137-2231-4fdc-a702-7c0ca9e269ba",
+   "acousticSourceId": "acoustic:90afe2d7-22b6-449d-90df-5cfe69a63758",
+   "name": "Slip road 3",
+   "revision": 0,
+   "role": "auxiliary",
+   "kind": "road",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 6828.069346161263,
+      "y": 12663.129395530597,
+      "z": 392.18040792982555
+     },
+     "anchor": {
+      "kind": "route",
+      "routeId": "route:motorway-reverse",
+      "s": 4938.7806018128695
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 7171.050090890134,
+      "y": 13044.014203730703,
+      "z": 373.7899322764499
+     },
+     "anchor": {
+      "kind": "source",
+      "location": {
+       "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439",
+       "sourceId": "osm:way:1181265642",
+       "s": 805.0158901191162
+      }
+     },
+     "binding": "resolved"
+    }
+   },
+   "specification": {
+    "kind": "road",
+    "policy": "legacy-road",
+    "legalClass": "ramp",
+    "crossSection": "V7.25",
+    "designSpeed": 50,
+    "operations": {
+     "aadt": 3036,
+     "heavyShare": 0.075,
+     "speed": 50,
+     "speedPolicy": "design"
+    }
+   },
+   "alignment": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 6904.263973004743,
+      "y": 12792.583552822602,
+      "r": null
+     },
+     {
+      "x": 7160.721199087418,
+      "y": 12980.691944810585,
+      "r": null
+     }
+    ],
+    "vertical": {
+     "kind": "auto",
+     "pins": []
+    },
+    "controls": {
+     "structureOverrides": []
+    }
+   }
+  },
+  {
+   "id": "route:b42b29ed-f7fd-4726-9e90-79616be211cc",
+   "acousticSourceId": "acoustic:fb228665-81b7-4094-a79a-c71c043b2741",
+   "name": "Slip road 4",
+   "revision": 0,
+   "role": "auxiliary",
+   "kind": "road",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 7171.050090890134,
+      "y": 13044.014203730703,
+      "z": 373.7899322764499
+     },
+     "anchor": {
+      "kind": "source",
+      "location": {
+       "transportData": "6d749883d23c4a458e298e2f7c156f1b86a7646f5cc770b144ac54cde830b439",
+       "sourceId": "osm:way:1181265642",
+       "s": 805.0158901191162
+      }
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 7260.834466655523,
+      "y": 13451.483196899097,
+      "z": 390.25961494562387
+     },
+     "anchor": {
+      "kind": "route",
+      "routeId": "route:motorway-reverse",
+      "s": 4039.002759377326
+     },
+     "binding": "resolved"
+    }
+   },
+   "specification": {
+    "kind": "road",
+    "policy": "legacy-road",
+    "legalClass": "ramp",
+    "crossSection": "V7.25",
+    "designSpeed": 50,
+    "operations": {
+     "aadt": 3036,
+     "heavyShare": 0.075,
+     "speed": 50,
+     "speedPolicy": "design"
+    }
+   },
+   "alignment": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 7182.065150291147,
+      "y": 13111.543078728506,
+      "r": null
+     },
+     {
+      "x": 7194.542287329683,
+      "y": 13316.689476866484,
+      "r": null
+     }
+    ],
+    "vertical": {
+     "kind": "auto",
+     "pins": []
+    },
+    "controls": {
+     "structureOverrides": []
+    }
+   }
+  }
+ ],
+ "corridors": [
+  {
+   "id": "corridor:motorway",
+   "revision": 0,
+   "kind": "motorway",
+   "mode": "paired",
+   "endpoints": {
+    "a": {
+     "position": {
+      "x": 8438.8,
+      "y": 17213.8,
+      "z": 319.8767600000001
+     },
+     "anchor": {
+      "kind": "mission",
+      "portId": "a"
+     },
+     "binding": "resolved"
+    },
+    "b": {
+     "position": {
+      "x": 2574.4,
+      "y": 3222.2,
+      "z": 517.32
+     },
+     "anchor": {
+      "kind": "mission",
+      "portId": "b"
+     },
+     "binding": "resolved"
+    }
+   },
+   "children": {
+    "forward": "route:motorway-forward",
+    "reverse": "route:motorway-reverse"
+   },
+   "formationPolicy": "paired-d27.5",
+   "correspondence": [],
+   "spine": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 7708,
+      "y": 15854.6,
+      "r": null
+     },
+     {
+      "x": 7693.5,
+      "y": 14248.4,
+      "r": null
+     },
+     {
+      "x": 6926.6,
+      "y": 12878.5,
+      "r": null
+     },
+     {
+      "x": 6068.5,
+      "y": 11225,
+      "r": null
+     },
+     {
+      "x": 4811.2,
+      "y": 9789.9,
+      "r": null
+     },
+     {
+      "x": 4040.4,
+      "y": 8430.7,
+      "r": null
+     },
+     {
+      "x": 3547.5,
+      "y": 6886.3,
+      "r": null
+     },
+     {
+      "x": 3014.6,
+      "y": 4999.1,
+      "r": null
+     }
+    ],
+    "controls": {
+     "structureOverrides": []
+    },
+    "vertical": {
+     "kind": "auto",
+     "pins": [],
+     "manualVpis": []
+    }
+   }
+  }
+ ],
+ "connections": [],
+ "buildingOverrides": [],
+ "mission": {
+  "id": "d3-0304:d3-0304-motorway",
+  "revision": 0,
+  "ports": [
+   {
+    "id": "a",
+    "name": "V\u00e1clavice (from 0303)",
+    "position": {
+     "x": 8438.8,
+     "y": 17213.8,
+     "z": 319.8767600000001
+    }
+   },
+   {
+    "id": "b",
+    "name": "Vora\u010dice (on to 0305/I)",
+    "position": {
+     "x": 2574.4,
+     "y": 3222.2,
+     "z": 517.32
+    }
+   }
+  ],
+  "connections": [
+   {
+    "from": "a",
+    "to": "b",
+    "direction": "both",
+    "kinds": [
+     "motorway"
+    ],
+    "maxTravelMin": 8.1,
+    "demand": {
+     "kind": "road",
+     "aadt": 30700
+    }
+   }
+  ]
+ }
+}

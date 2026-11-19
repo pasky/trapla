@@ -16,6 +16,7 @@ import { classTraffic } from '../core/traffic-census';
 import { fillDirections, type DirectionsState } from './hud';
 import { DEFAULT_SPEED, isTraffic, SLIP_ROAD_TRAFFIC, startSpeed, strayDistance } from './road-edit';
 import { isSlipRoad } from '../core/slip-roads';
+import { pieceDepth, topPieces } from './pieces';
 import { toast } from './toast';
 
 export interface RouteCardDeps {
@@ -101,7 +102,7 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
           : host.role === 'mission' ? 'our road' : host.name; })()
       : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
         : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
-    what.textContent = `${isSlipRoad(route) ? 'Slip road, one way,' : `New ${rail ? 'railway' : 'road'}`} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
+    what.textContent = `${isSlipRoad(route) ? 'Slip road, one way,' : `New ${rail ? 'railway' : 'road'}`} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.${isSlipRoad(route) ? costNote(r) : ''}`;
   }
   const form = document.createElement('form'); form.className = 'source-operations route-traffic';
   const fields: HTMLInputElement[] = [];
@@ -250,4 +251,17 @@ export function noLinksCard(host: () => HTMLElement, onClose: () => void): void 
   close.onclick = onClose; h.append(title, close);
   const p = document.createElement('p'); p.textContent = 'This map’s roads cannot be changed yet: its road links are missing.';
   root.append(h, p);
+}
+
+/** What makes a slip road dear, where one piece of earthworks over 6 m high or deep is most of its cost (a slip road
+ * on level ground costs a few tens of millions): that piece in a sentence, else nothing. */
+export function costNote(r: Result): string {
+  const [top] = topPieces(r, 1);
+  if (!top || (top.kind !== 'fill' && top.kind !== 'cut') || top.cost < 0.4 * r.cost.total) return '';
+  const depth = pieceDepth(r, top.i0, top.i1);
+  if (depth < 6) return '';
+  const streams = r.waterCrossings.filter(c => c.i >= top.i0 && c.i <= top.i1 && (c.structure === 'pipe' || c.structure === 'box')).length;
+  return top.kind === 'fill'
+    ? ` Most of its cost: an embankment up to ${Math.round(depth)} m high over lower ground${streams ? `, ${streams === 1 ? 'a stream' : `${streams} streams`} under it in culverts` : ''}.`
+    : ` Most of its cost: a cutting up to ${Math.round(depth)} m deep.`;
 }
