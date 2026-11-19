@@ -1,10 +1,10 @@
-// The small details (research/96): each one clicked or played as a player would, its screenshot taken, what it says
+// The small details (research/96–98): each one clicked or played as a player would, its screenshot taken, what it says
 // asserted. Real mouse where a player would use one.
 //   node scripts/eggs-shots.mjs [--gpu] [--docs] [--only lore,records,…]   (--docs: docs/screenshots/660…, else /tmp/trapla-eggs)
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { startGame } from './lib/browser.mjs';
+import { passTwists, startGame } from './lib/browser.mjs';
 
 const docs = process.argv.includes('--docs'), out = docs ? 'docs/screenshots' : '/tmp/trapla-eggs';
 const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1].split(',') : null;
@@ -72,6 +72,25 @@ try {
     const text = await inspector();
     assert.ok(t.length <= 2168 || /Longer than any motorway tunnel open in Czechia \(Panenská, D8, about 2.2 km\)/.test(text), `the player's ${t.length} m tunnel: ${text}`);
     await shot(666, 'record-tunnel');
+  }
+  // 3. the failure screens' road signs (ui/signs.ts, research/98), each notice as the game shows it
+  if (want('signs')) {
+    for (const [n, kind] of [[667, 'insecure'], [668, 'webgl'], [669, 'small']]) {
+      await page.goto(`${game.base}?scenario=d3-0302`, { waitUntil: 'domcontentloaded' });
+      await page.evaluate(async (kind) => { document.body.replaceChildren(); const m = await import('/src/ui/device-check.ts'); m.showDeviceNotice(kind, kind === 'small' ? () => {} : undefined); }, kind);
+      assert.equal(await page.locator('.device-notice svg.notice-sign[aria-hidden="true"]').count(), 1);
+      await page.screenshot({ path: `${out}/${n}-sign-${kind}.png`, clip: { x: 0, y: 0, width: 1440, height: 560 } });
+    }
+    errors.splice(0); // (the game's own page, emptied under it for the notices)
+    // (a fresh page: the one above fetched the pack ahead already)
+    const failing = await game.browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await failing.route(/height\.i16\.gz/, (route) => route.request().method() === 'HEAD' ? route.continue() : route.fulfill({ status: 503, body: 'down' }));
+    await failing.goto(`${game.base}?scenario=d3-0302&preset=d3-0302-motorway`);
+    await passTwists(failing).catch(() => {});
+    await failing.waitForSelector('#loading.failed', { timeout: 60000 }).catch(async (e) => { await failing.screenshot({ path: `${out}/debug.png` }); throw e; });
+    assert.equal(await failing.locator('#loading svg.notice-sign[aria-hidden="true"]').count(), 1);
+    await failing.screenshot({ path: `${out}/670-sign-loading-failed.png` });
+    await failing.close();
   }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }
