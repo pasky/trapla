@@ -2,13 +2,14 @@
 // the overlap credited by core/slip-roads.ts). Each road's Result has its own slopes to the ground; beside each other:
 // - where the slip road's crown lies on the motorway's formation (by its gore), neither has a slope between them
 //   (the slip road's inner slope and the motorway's outer slope there are under the other's pavement);
-// - where both are in cutting with their faces meeting between them, each face ends at the ridge where they meet
-//   (drawn to the ground, the two faces stood up as a blade of earth at full ground height);
+// - where both are in cutting with a ridge too narrow to keep between them, it is dug out (and billed so): one slope
+//   from crown edge to crown edge, each face ending halfway on it;
 // - embankments side by side are drawn as they are (the higher face is the surface, as built).
 // Returns shallow copies with those stations' daylight changed (and the ridge heights), or the inputs unchanged.
 import { CATEGORIES } from '../core/data/categories';
 import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
+import { dugRidge } from '../core/slip-roads';
 
 type Arrays = { dayL: Float64Array; dayR: Float64Array; zDayL: Float64Array; zDayR: Float64Array; apexL: Float32Array; apexR: Float32Array };
 const copy = (r: Result): Arrays => ({ dayL: Float64Array.from(r.dayL), dayR: Float64Array.from(r.dayR), zDayL: Float64Array.from(r.zDayL),
@@ -43,21 +44,14 @@ export function mergeSlipRoads(motorway: Result, slips: readonly Result[]): { mo
         if (dayR > wr) setR(wr, zr, zr);
         continue;
       }
-      // both cuttings, their faces meeting between the crowns: x from the motorway's line, faces linear crown → daylight
-      if (!(zDayM > zm && zDayR > zr) || !(dayM > wm) || !(dayR > wr)) continue;
-      const lo = dd - dayR, hi = dayM;
-      if (!(hi > Math.max(wm, lo))) continue; // (they do not reach each other)
-      const fm = (x: number) => zm + (zDayM - zm) * (x - wm) / (dayM - wm), fr = (x: number) => zr + (zDayR - zr) * ((dd - x) - wr) / (dayR - wr);
-      // fm rises outward from the motorway, fr rises towards it: the crossing is where fm − fr changes sign
-      const a = Math.max(wm, lo), b = Math.min(hi, dd - wr);
-      if (!(b > a)) continue;
-      const ga = fm(a) - fr(a), gb = fm(b) - fr(b);
-      if (!(ga <= 0 && gb >= 0)) continue;
-      const x = a + (b - a) * (ga === gb ? 0.5 : -ga / (gb - ga)), z = fm(x);
+      // both cuttings with a ridge too narrow to keep between them: dug out to one slope from crown edge to crown
+      // edge, as billed (core/slip-roads.ts dugRidge): each face ends halfway, on that slope
+      const ridge = dugRidge({ z: zm, zDay: zDayM, day: dayM, w: wm }, { z: zr, zDay: zDayR, day: dayR, w: wr }, dd);
+      if (!ridge) continue;
       // (the nearer ridge wins where several stations of one meet one of the other)
       const mNow = (own.m ? (mLeft ? own.m.dayL : own.m.dayR) : (mLeft ? motorway.dayL : motorway.dayR))[k];
-      if (x < mNow) setM(x, z, z);
-      setR(dd - x, z, z);
+      if (ridge.x < mNow) setM(ridge.x, ridge.z, ridge.z);
+      setR(dd - ridge.x, ridge.z, ridge.z);
     }
     out.push(mine.r ? { ...ramp, ...mine.r } as Result : ramp);
   }

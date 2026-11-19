@@ -13,6 +13,7 @@ import type { ProjectDesign, RouteDesign, XYZ } from './project';
 import { stationIndex } from './range';
 import { KIND } from './structures';
 import { landPerM2 } from './cost';
+import { GRADE_PIN_TOLERANCE } from './grade-pins';
 import { LAND, PRICES } from './data/prices';
 
 const d = D275_SECTION;
@@ -43,6 +44,11 @@ export const SLIP_ROAD = {
   allowance: { perKm: 1 / 7, perInterchange: 76_700_900, code: 'A.4.N' },
   /** Gores closer than this along one motorway make one interchange (its four ramps), m. Game rule. */
   interchangeReach: 1500,
+  /** A slip road's end put this close along a road to another slip road's end there goes onto its junction (Build →
+   * Slip road), m: within a T's zone (data/urban ENDPOINT_JUNCTIONS 'tie-in'), the two would rebuild one mouth. Game rule. */
+  shareJunction: 30,
+  /** Two ends this close along the road are one junction (a crossroads), m: the map's 1 m rounding. */
+  junctionTolerance: 1.5,
 };
 
 export const isSlipRoad = (route: RouteDesign | undefined): boolean =>
@@ -138,6 +144,22 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
  * two bodies' works are one (`zones`: wherever its works and the motorway's come within `clearance` of each other,
  * the interchange's own earthworks, not land two roads share; `goreZones`: those of its first metres on the
  * motorway's formation, where the slip roads of the other carriageway reach too). `heightAt`: the ground. */
+const STEP_TOLERANCE = GRADE_PIN_TOLERANCE + 0.05;
+/** Two cuttings side by side whose tops come within this of each other leave a narrow ridge of ground between them:
+ * designers dig it out, the two one cutting with one slope from crown edge to crown edge, m. PROVISIONAL: the
+ * screen's clearance between two roads' works (project-ledger.ts INDEPENDENCE_SCREEN), what the game calls too narrow
+ * a strip to leave. */
+export const RIDGE_REACH = 10;
+/** Where the motorway's cutting (crown edge at `wm` from its line, height `zm`, its face to the ground at `dayM`,
+ * `zDayM`) and a slip road's beside it (its line `d` from the motorway's, the same measured from its own line) leave
+ * a ridge too narrow to keep (their tops within RIDGE_REACH, or their faces meeting): the common slope's middle
+ * (across from the motorway's line, its height); null where they are not both cuttings that close. */
+export function dugRidge(m: { z: number; zDay: number; day: number; w: number }, r: { z: number; zDay: number; day: number; w: number }, d: number) {
+  if (!(m.zDay > m.z && r.zDay > r.z && m.day > m.w && r.day > r.w)) return null;
+  const x0 = m.w, x1 = d - r.w;
+  if (!(x1 > x0 + 1e-6) || (d - r.day) - m.day >= RIDGE_REACH) return null;
+  return { x0, x1, x: (x0 + x1) / 2, z: (m.z + r.z) / 2 };
+}
 export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, direction: 1 | -1, speed: number, terrain: TerrainClass,
   shared: (q: number) => number, clearance: number, heightAt: (x: number, y: number) => number) {
   const i = end === 'a' ? 0 : ramp.n - 1, kind = end === 'a' ? 'exit' as const : 'entry' as const;
@@ -162,12 +184,14 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
       : 'Turn it to join the way the traffic goes, or end it on the other side of the motorway',
     rule: 'Game rule: a slip road leaves and joins a carriageway along its traffic, on its right' });
   const wm = CATEGORIES['D27.5'].crownWidth / 2, wr = CATEGORIES['V7.25'].crownWidth / 2, formation = wm + SLIP_ROAD.widening;
+  // (each m³ at what the slip road pays for its own earth; one with no cut of its own at the motorway's rate)
+  const cutOf = (r: Result) => r.quantities.cut > 0 ? (r.cost.earthDetail.excavation + r.cost.earthDetail.surplusHaul + r.cost.earthDetail.unsuitable) / r.quantities.cut : 0;
   const rate = {
     fill: ramp.quantities.fill > 0 ? (ramp.cost.earthDetail.fillPlacing + ramp.cost.earthDetail.borrow) / ramp.quantities.fill : 0,
-    cut: ramp.quantities.cut > 0 ? (ramp.cost.earthDetail.excavation + ramp.cost.earthDetail.surplusHaul + ramp.cost.earthDetail.unsuitable) / ramp.quantities.cut : 0,
+    cut: cutOf(ramp) || cutOf(line),
     haul: ramp.quantities.cut + ramp.quantities.fill > 0 ? ramp.cost.earthDetail.haul / (ramp.quantities.cut + ramp.quantities.fill) : 0,
   };
-  let inside = 0, credit = 0, overlap = 0;
+  let inside = 0, credit = 0, overlap = 0, dug = 0, dugCost = 0;
   const zones: { x: number; y: number; r: number }[] = [], goreZones: typeof zones = [];
   const clashes: { s0: number; s1: number; need: number }[] = [];
   let across: number | null = null;
@@ -193,6 +217,20 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     const dayR = rampLeft ? ramp.dayL[q] : ramp.dayR[q], zDayR = rampLeft ? ramp.zDayL[q] : ramp.zDayR[q], zr = ramp.grade[q];
     const face = (z: number, zDay: number, u: number, w: number, day: number) => u <= w ? z : u <= day ? z + (zDay - z) * (u - w) / Math.max(1e-6, day - w) : NaN;
     const lo = d - dayR, hi = dayM, fillM = zDayM <= zm, fillR = zDayR <= zr;
+    // a ridge too narrow to keep between two cuttings: dug out to one slope from crown edge to crown edge (what
+    // stands above it, under neither face nor dug by either, is cut too)
+    const ridge = dugRidge({ z: zm, zDay: zDayM, day: dayM, w: wm }, { z: zr, zDay: zDayR, day: dayR, w: wr }, d);
+    if (ridge) {
+      const steps = Math.max(2, Math.ceil((ridge.x1 - ridge.x0) / 0.5)), dx = (ridge.x1 - ridge.x0) / steps;
+      let area = 0;
+      for (let m = 0; m < steps; m++) {
+        const x = ridge.x0 + (m + 0.5) * dx, gz = heightAt(line.x[kk] + nx * x, line.y[kk] + ny * x);
+        const a = face(zm, zDayM, x, wm, dayM), b = face(zr, zDayR, d - x, wr, dayR);
+        const top = Math.min(gz, Number.isNaN(a) ? gz : a, Number.isNaN(b) ? gz : b), common = zm + (zr - zm) * (x - ridge.x0) / (ridge.x1 - ridge.x0);
+        area += Math.max(0, top - common) * dx;
+      }
+      dug += area * ramp.ds; dugCost += area * ramp.ds * (rate.cut + rate.haul);
+    }
     if (!(hi - lo > 1e-6)) continue;
     const steps = Math.max(2, Math.ceil((hi - lo) / 0.5)), dx = (hi - lo) / steps, len = ramp.ds;
     let fill = 0, cut = 0, worst = 0;
@@ -203,8 +241,9 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
       if (a > gz && b > gz) fill += (Math.min(a, b) - gz) * dx; else if (a < gz && b < gz) cut += (gz - Math.max(a, b)) * dx;
       // an embankment face standing on the other's carriageway, or a cutting face undermining it (a face buried
       // in the other's embankment, or cut away by the other's cutting, is one body)
-      if (x > wm && x >= d - wr && x <= d + wr && (fillM ? a > zr + 0.3 : a < zr - 0.3)) worst = Math.max(worst, hi - (d - wr));
-      if (x < d - wr && x <= wm && (fillR ? b > zm + 0.3 : b < zm - 0.3)) worst = Math.max(worst, wm - lo);
+      // (within the height a slip road is held at beside the motorway, MERGE_TOLERANCE: one body)
+      if (x > wm && x >= d - wr && x <= d + wr && (fillM ? a > zr + STEP_TOLERANCE : a < zr - STEP_TOLERANCE)) worst = Math.max(worst, hi - (d - wr));
+      if (x < d - wr && x <= wm && (fillR ? b > zm + STEP_TOLERANCE : b < zm - STEP_TOLERANCE)) worst = Math.max(worst, wm - lo);
     }
     overlap += fill * (rate.fill + rate.haul) * len + cut * (rate.cut + rate.haul) * len
       + (hi - lo) * len * (landPerM2(ramp.cell.urban[q]) + ramp.cell.forest[q] * LAND.forestExtraPerM2 + PRICES.topsoilDepth * PRICES.topsoil);
@@ -223,19 +262,29 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     detail: 'Beside the motorway at another height, the slope of one would stand on the other. Walls between them are not built by the game.',
     rule: 'Engine limit: a slip road shares the motorway\'s earthworks only at its height; otherwise each needs room for its own slopes.' });
   const insideM = Math.min(ramp.length, inside * ramp.ds);
-  return { kind, lane, violations, zones, goreZones, credit, insideM, overlap: Math.max(0, overlap), gore: g, sGore: line.s[k] };
+  return { kind, lane, violations, zones, goreZones, credit, insideM, overlap: Math.max(0, overlap), dug, dugCost, gore: g, sGore: line.s[k] };
 }
 
 /** Where a slip road and its carriageway are one paved area at one level: from the gore while their crowns are
  * within this of each other, m. MODELLING ASSUMPTION (no source found for how far a ramp keeps the motorway's
  * level): a gap a person could stand in; beyond it each has its own slopes (and slipRoadAtMotorway checks them). */
 export const MERGE_GAP = 4;
+/** Beyond MERGE_GAP, how much the two crowns' heights may differ per metre of gap between them: a low fill's slope
+ * (1 : 2.5 up to 3 m high, the flattest fill slope the game builds: data/prices.ts side slopes, research/48 §1), so that neither body's slope
+ * stands on the other's carriageway (slipRoadAtMotorway's clash). Held while the gap is under MERGE_REACH, m. */
+export const MERGE_SLOPE = 2.5, MERGE_REACH = 30;
+/** How closely a slip road is held at the motorway's height where they adjoin, m: a grade pin's tolerance
+ * (grade-pins.ts GRADE_PIN_TOLERANCE), what the grade search can hold on its 1 m height grid (a narrower band is
+ * missed between its steps). PROVISIONAL: the crossfall that joins the two pavements is not modelled. */
+export const MERGE_TOLERANCE = GRADE_PIN_TOLERANCE;
 /** The heights a slip road is held at near its gore (its plan line `xy`, [x0, y0, …] from its start; `end`: the
- * end on the motorway `line`): the motorway's height, while their crowns are within MERGE_GAP. */
+ * end on the motorway `line`): the motorway's height while their crowns are within MERGE_GAP, then within a low
+ * slope's fall of it across the gap between them (as designers keep a slip road beside the motorway's body until it
+ * has room for its own slopes), until the gap is MERGE_REACH. */
 export function mergeBands(xy: readonly number[], end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>): { s: number; min: number; max: number }[] {
   const n = xy.length / 2, out: { s: number; min: number; max: number }[] = [];
   if (n < 2) return out;
-  const reach = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening + CATEGORIES['V7.25'].crownWidth / 2 + MERGE_GAP;
+  const edges = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening + CATEGORIES['V7.25'].crownWidth / 2, reach = edges + MERGE_REACH;
   // (the samples' own stations: the line is sampled at length / ⌈length / step⌉, not at `step`)
   const along = [0]; for (let p = 1; p < n; p++) along.push(along[p - 1] + Math.hypot(xy[2 * p] - xy[2 * p - 2], xy[2 * p + 1] - xy[2 * p - 1]));
   let k = -1;
@@ -246,8 +295,8 @@ export function mergeBands(xy: readonly number[], end: 'a' | 'b', line: Pick<Res
     for (let j = j0; j <= j1; j++) { const e = Math.hypot(line.x[j] - x, line.y[j] - y); if (e < best) { best = e; kk = j; } }
     k = kk;
     if (best > reach) break;
-    // (±0.25 m: PROVISIONAL, half a grade pin's tolerance, so the two pavements meet within a kerb's height)
-    out.push({ s: along[p], min: line.grade[kk] - 0.25, max: line.grade[kk] + 0.25 });
+    const off = MERGE_TOLERANCE + Math.max(0, best - edges - MERGE_GAP) / MERGE_SLOPE;
+    out.push({ s: along[p], min: line.grade[kk] - off, max: line.grade[kk] + off });
   }
   return out.sort((a, b) => a.s - b.s);
 }

@@ -19,7 +19,7 @@ import { ROAD_CLASSES } from '../core/data/urban';
 import { KIND } from '../core/structures';
 import { CATEGORIES } from '../core/data/categories';
 import { moveStretchEnds, newRoad, newSlipRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
-import { carriagewayOf, gore, isSlipRoad, sideAt } from '../core/slip-roads';
+import { carriagewayOf, gore, isSlipRoad, sideAt, SLIP_ROAD } from '../core/slip-roads';
 import { mappedRoadName } from '../core/terms';
 import { stationIndex } from '../core/range';
 
@@ -35,13 +35,17 @@ export interface MappedLineKind {
   /** The project with this rebuilt route's ends moved along its old line to [s0, s1] (one edit). */
   moveEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, s0: number, s1: number): ProjectDesign;
 }
-export interface EndContext { at: { x: number; y: number }; design: ProjectDesign; towards: { forward: string; reverse: string } }
+/** where an end on a mapped road goes: the project, and the line whose end it is (when one is dragged) */
+export interface SourceContext { design: ProjectDesign; exclude?: string }
+export interface EndContext { at: { x: number; y: number }; design: ProjectDesign; towards: { forward: string; reverse: string };
+  /** the mapped lines, once loaded */
+  base?: ProjectTransportIndex }
 export interface BuildKind {
   kind: RouteKind;
   /** Build menu label. */
   label: string;
   /** An end on a mapped source at canonical station s, or a plain refusal. */
-  onSource(base: ProjectTransportIndex, sourceId: string, s: number): Verdict<{ end: PlacedEnd; label: string }>;
+  onSource(base: ProjectTransportIndex, sourceId: string, s: number, where?: SourceContext): Verdict<{ end: PlacedEnd; label: string }>;
   /** An end on a project route at station s, given its engineered result (`at`: the point clicked, beside the
    * route's line; `design`: the project; `towards`: where each direction of a motorway goes, in place names). */
   onRoute(route: RouteDesign, result: RouteResult, s: number, where?: EndContext): Verdict<{ end: PlacedEnd; label: string }>;
@@ -131,12 +135,25 @@ export const ROAD_BUILD: BuildKind = {
 export const SLIP_BUILD: BuildKind = {
   kind: 'road', label: 'Slip road',
   hint: 'Traffic runs from its start to its end: start it beside a motorway to leave it, end it there to join it. Its other end joins a road.',
-  onSource(base, sourceId, s) {
+  onSource(base, sourceId, s, where) {
     const source = base.source(sourceId);
     if (source && ROAD_CLASSES[source.tags.highway ?? '']?.noAtGrade) return { ok: false, why: 'A slip road joins a motorway built in this game only.' };
-    return ROAD_BUILD.onSource(base, sourceId, s);
+    // (near another slip road's end on that road: onto its junction, one crossroads)
+    const other = where?.design.routes.filter(r => r.id !== where.exclude && isSlipRoad(r)).flatMap(r => [r.endpoints.a, r.endpoints.b])
+      .flatMap(e => e.anchor.kind === 'source' && e.anchor.location.sourceId === sourceId && Math.abs(e.anchor.location.s - s) <= SLIP_ROAD.shareJunction ? [e.anchor.location.s] : [])
+      .sort((p, q) => Math.abs(p - s) - Math.abs(q - s))[0];
+    const at = other ?? s, placed = ROAD_BUILD.onSource(base, sourceId, at);
+    if (!placed.ok) return placed;
+    const p0 = base.position(sourceId, at - 5), p1 = base.position(sourceId, at + 5);
+    return { ...placed, ...(other !== undefined ? { label: `${placed.label}, at another slip road's junction` } : {}),
+      end: { ...placed.end, ...(p0 && p1 ? { along: { x: p1.x - p0.x, y: p1.y - p0.y } } : {}) } };
   },
   onRoute(route, result, s, where) {
+    // (at another slip road's end on a road: onto its junction there)
+    if (isSlipRoad(route) && where?.base) for (const e of [route.endpoints.a, route.endpoints.b]) {
+      if (e.anchor.kind !== 'source' || Math.hypot(e.position.x - where.at.x, e.position.y - where.at.y) > SLIP_ROAD.shareJunction) continue;
+      return SLIP_BUILD.onSource(where.base, e.anchor.location.sourceId, e.anchor.location.s, { design: where.design });
+    }
     if (route.kind !== 'motorway') return ROAD_BUILD.onRoute(route, result, s, where);
     const r = result.legacy, carriageway = where && carriagewayOf(where.design, route.id);
     if (!r || !where || !carriageway) return { ok: false, why: 'This motorway is not checked yet, so nothing can join it.' };

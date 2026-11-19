@@ -1,5 +1,5 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
-import { editedNetwork, type OldLineOf, type ResolvedEnds, type SourceWays } from './project-roadnet';
+import { editedNetwork, type MovedWays, type OldLineOf, type ResolvedEnds, type SourceWays } from './project-roadnet';
 import { KIND } from './structures';
 import { evaluate, OLD_ROAD_TIE, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
@@ -41,7 +41,9 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     /** The same for the designed roads in this road's network (project-roadnet.ts editedNetwork). */
     endsOf?: (route: ProjectDesign['routes'][number]) => ResolvedEnds;
     /** a rebuilt stretch's old line, for its plan line in this road's network (project-roadnet.ts planLine) */
-    oldOf?: OldLineOf } = {}): ProjectRoadEvaluation {
+    oldOf?: OldLineOf;
+    /** ways another road built with this one moves aside (a slip road: its motorway's relocations) */
+    moved?: MovedWays } = {}): ProjectRoadEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route) throw new Error('Unknown project route');
   // BEFORE categories, horizontal/vertical norms, AADT, pricing or emissions are selected.
@@ -60,7 +62,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     if (route.role !== 'auxiliary' || !ctx.roads || sourceWay === undefined) return { status: 'incomplete', reason: 'source-needs-network' };
   }
   if (ctx.roads) {
-    const edited = editedNetwork(ctx.roads, project, [route], options.sourceWays, options.endsOf, options.oldOf);
+    const edited = editedNetwork(ctx.roads, project, [route], options.sourceWays, options.endsOf, options.oldOf, options.moved);
     if (!edited) return { status: 'incomplete', reason: 'source-needs-network' };
     roads = edited.roads;
   }

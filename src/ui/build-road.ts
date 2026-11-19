@@ -77,7 +77,7 @@ export class BuildRoadTool {
     const start = this.start, refused = this.refuse?.(start, p.end);
     if (refused) { this.note = refused; this.render(); return; }
     this.cancel(false);
-    this.onDone?.({ position: start.position, anchor: start.anchor, ...(start.travel ? { travel: start.travel } : {}) }, p.end);
+    this.onDone?.({ position: start.position, anchor: start.anchor, ...(start.travel ? { travel: start.travel } : {}), ...(start.along ? { along: start.along } : {}) }, p.end);
   }
   private render() {
     if (!this.active) return;

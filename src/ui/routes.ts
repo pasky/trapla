@@ -219,7 +219,7 @@ export function createRoutes(app: RoutesContext) {
     if (app.pack.transportMeta) void ensureTransport(); // ends may join mapped lines
   };
   /** where an end goes next to another line: the point, the project, where a motorway's directions go */
-  const endContext = (x: number, y: number, line: RouteDesign): EndContext => ({ at: { x, y }, design: app.projectStore.snapshot.design,
+  const endContext = (x: number, y: number, line: RouteDesign): EndContext => ({ at: { x, y }, design: app.projectStore.snapshot.design, ...(app.links.index ? { base: app.links.index } : {}),
     towards: line.role === 'mission' ? { forward: placeName(app.scenario.labels.b), reverse: placeName(app.scenario.labels.a) } : { forward: 'its end', reverse: 'its start' } });
   /** where a click while building puts a road end: on a road (joins it), else free ground */
   const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => placeFor(building, clientX, clientY, x, y);
@@ -241,7 +241,7 @@ export function createRoutes(app: RoutesContext) {
     if (under && underRoute && ur && joins(underRoute.kind)) return building.onRoute(underRoute, ur, under.s, endContext(x, y, underRoute));
     const source = app.sourceAt(clientX, clientY);
     if (source?.kind === 'route-hit' && joins(app.projectStore.snapshot.design.routes.find(r => r.id === source.routeId)?.kind)) return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
-    if (source?.kind === 'source' && app.links.index && joins(app.links.index.source(source.hit.sourceId)?.kind)) return building.onSource(app.links.index, source.hit.sourceId, source.hit.s);
+    if (source?.kind === 'source' && app.links.index && joins(app.links.index.source(source.hit.sourceId)?.kind)) return building.onSource(app.links.index, source.hit.sourceId, source.hit.s, { design: app.projectStore.snapshot.design, ...(exclude ? { exclude } : {}) });
     if (app.pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
     if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: app.pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
@@ -271,7 +271,7 @@ export function createRoutes(app: RoutesContext) {
         const p = app.links.index.position(source.id, s);
         // (not along a stretch another road rebuilds: that is placed as a click there is)
         const claimed = app.links.claimedSources().some(c => c.sourceId === source.id && s >= c.s0 && s <= c.s1);
-        if (p && !claimed && Math.hypot(p.x - g.x, p.y - g.y) <= reach) return kind.onSource(app.links.index, source.id, s);
+        if (p && !claimed && Math.hypot(p.x - g.x, p.y - g.y) <= reach) return kind.onSource(app.links.index, source.id, s, { design: app.projectStore.snapshot.design, exclude: route.id });
       }
     }
     return placeFor(kind, clientX, clientY, g.x, g.y, route.id);
