@@ -3,7 +3,7 @@
 // design that meets the twists and the goal, and the first news from the site (the villa) on top of it → the fix, by
 // dragging a bend on the map → the reveal → the next news at its pace → changing twists mid-game → From scratch.
 //
-// Then D3 Voračice → Nová Hospoda (a game event on a real register's place, then one without), the class I road (no
+// Then D3 Voračice → Nová Hospoda (a game event on a real register's place, the Mastník's banks, then one without), the class I road (no
 // twists) and the whole D3's twist screen.
 //
 //   node scripts/twists-play.mjs [--docs]      --docs: docs/screenshots/640–654 (look at them)
@@ -127,17 +127,17 @@ try {
   await page.evaluate((d) => window.trapla.setProject(d), JSON.parse(readFileSync('scripts/twists/d3-0305-motorway/earth.json', 'utf8')).design);
   await game.idle(1200);
   const news2 = page.locator('.news-card');
-  ok(await news2.count() === 1 && /Old uranium workings/.test(await news2.textContent()), 'the first triumph there brings its first news: the old uranium workings');
-  ok(/geology\.cz/.test(await news2.locator('a').getAttribute('href') ?? '') && /A game event of a kind real projects meet/.test(await news2.textContent()),
+  ok(await news2.count() === 1 && /Leave the Mastník open/.test(await news2.textContent()), 'the first triumph there brings its first news: the Mastník’s banks');
+  ok(/nature\.cz/.test(await news2.locator('a').getAttribute('href') ?? '') && /A game event of a kind real projects meet/.test(await news2.textContent()),
     'a game event on a real place: it says so and links the register the place comes from');
   await game.park(); await shot('news-real-place');
   await news2.getByRole('button', { name: 'Show me' }).click(); await game.still();
-  ok(await page.locator('.twist-label.zone').count() >= 1, 'the place on the map');
-  await game.park(); await shot('uranium-place');
+  ok(await page.locator('.twist-label.zone.broken').count() >= 1, 'the place on the map, red: our embankment on its banks');
+  await game.park(); await shot('mastnik-place');
   await news2.getByRole('button', { name: 'OK' }).click();
   const KEY2 = 'trapla.twists.v1.d3-0305.d3-0305-motorway';
-  await page.evaluate((key) => { const s = JSON.parse(localStorage.getItem(key)); s.playMs += 6 * 60_000; s.editsSince = 9; s.fired = s.fired.filter(id => id === 'd3-0305-uranium'); localStorage.setItem(key, JSON.stringify(s)); }, KEY2);
-  // (the uranium workings met, so the next news may come: the design that meets every news of the mission)
+  await page.evaluate((key) => { const s = JSON.parse(localStorage.getItem(key)); s.playMs += 6 * 60_000; s.editsSince = 9; s.fired = s.fired.filter(id => id === 'd3-0305-mastnik'); localStorage.setItem(key, JSON.stringify(s)); }, KEY2);
+  // (a design that meets every news of the mission, so the next may come)
   await page.reload(); await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 }); await game.idle(600);
   await page.evaluate((d) => window.trapla.setProject(d), JSON.parse(readFileSync('scripts/twists/d3-0305-motorway/all-news.json', 'utf8')).design);
   await game.idle(1200);

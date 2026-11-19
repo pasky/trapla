@@ -255,8 +255,8 @@ the real project, its price and what happened to it ([the reveal](docs/screensho
 5–8 curveballs: the real project's own where they can be placed (the Luka tunnel, the Pod skálou forest, the D11 contract),
 otherwise game events of kinds real projects meet, and the card says so: an archaeological find kept in place, a nest, a
 gas main, a village asking for a cutting, less money, mostly on real registers' places (old mine workings, undermined
-ground and slow landslides from the Czech Geological Survey; [a real place](docs/screenshots/650-news-real-place.png),
-[on the map](docs/screenshots/651-uranium-place.png), [a game event](docs/screenshots/652-news-game-event.png); research/95).
+ground and slow landslides from the Czech Geological Survey, streams animals travel along from the nature agency; [a real place](docs/screenshots/650-news-real-place.png),
+[on the map](docs/screenshots/651-mastnik-place.png), [a game event](docs/screenshots/652-news-game-event.png); research/95).
 A mission without twists says so ([the class I road](docs/screenshots/653-no-twists.png)); the whole routes have theirs
 ([the whole D3](docs/screenshots/654-whole-route-twists.png)). Each twist is offered only where a reference design meets it
 (`npx tsx scripts/twists-check.ts`, PLAN.md "Twists and curveballs").

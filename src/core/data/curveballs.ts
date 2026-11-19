@@ -118,16 +118,6 @@ export const CURVEBALLS: Record<string, Curveball> = {
     cite: { text: 'A game event of a kind real projects meet (nature act 114/1992)' },
     zone: { label: 'Stork’s nest', forbid: KEEP_OUT, shape: { kind: 'circle', x: -741960, y: -1063406, r: 60 } },
   },
-  // GAME EVENT on a real place (research/95 "Undermined ground"): the ČGS register of undermined areas, "Petrov u
-  // Prahy-Ostřetina" (gold ore, located exactly, a system of workings), within 150 m of the starter and the reference. On
-  // the whole D3 only: in the 0301 mission it lies at the section's end, whose height the next section sets.
-  'd3-0301-gold': {
-    id: 'd3-0301-gold', headline: 'Old gold pits under the line',
-    story: 'The survey found the old gold pits of Ostřetina under the line. Digging into them would open the old workings.',
-    ask: 'No cutting into the old gold pits',
-    cite: { text: 'A game event of a kind real projects meet, on a place in the ČGS register of undermined areas', url: 'https://mapy.geology.cz/arcgis/rest/services/Dulni_Dila/poddolovana_uzemi/MapServer' },
-    zone: { label: 'Old gold pits', forbid: NO_CUT, shape: { kind: 'polygon', pts: [[-742042, -1064797], [-742239, -1065111], [-742267, -1065093], [-742298, -1065062], [-742312, -1065036], [-742321, -1065008], [-742325, -1064973], [-742182, -1064746]] } },
-  },
   // GAME EVENT (research/95 "Money"): the cap is the game's, 85 % of the starting bill (the goal is 90 %); it comes last.
   'd3-0301-money': {
     id: 'd3-0301-money', headline: 'Less money for roads',
@@ -548,5 +538,13 @@ export const CURVEBALLS: Record<string, Curveball> = {
   },
   // ---- end d35-full-motorway ----
   // ---- d3-full-motorway (places: research/95) ----
+  // GAME EVENT (research/95 "Money"): the cap is the game's, 88 % of the starting bill (the goal is 90 %); it comes last.
+  'd3-full-money': {
+    id: 'd3-full-money', headline: 'Less money for roads',
+    story: 'The state road fund has less money next year. The motorway must cost less to keep its place.',
+    ask: 'Keep the bill under 88 % of the planned line’s',
+    cite: { text: 'A game event of a kind real projects meet (the state road fund is set year by year)' },
+    budget: 0.88,
+  },
   // ---- end d3-full-motorway ----
 };

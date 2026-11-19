@@ -65,11 +65,11 @@ derived is reproducible from the pack (lines, land cover, ways, buildings) and t
   mine workings ([důlní díla](https://mapy.geology.cz/arcgis/rest/services/Dulni_Dila/dulni_dila/MapServer), layer 0), queried
   within 400 m of every mission's starter and reference (EPSG:5514, 2026-11-20). The event (the survey finding them, the rule)
   is the game's.
-- **Used:** D3 "Petrov u Prahy-Ostřetina" (gold ore, located exactly, a system of workings; both lines cut into it at
-  km 8.1–8.4: NO_CUT, the polygon within 150 m of the lines; on the whole D3 only, it lies at 0301's fixed end); D3 0305 "Divišovice" (radioactive ores, after 1945, a system
+- **Used:** D3 0305 "Divišovice" (radioactive ores, after 1945, a system
   of workings, DIAMO's shafts nearby; both lines at km 7.1–7.4: NO_CUT, spoil from it would need a special tip); D11
   "šachtice Starý Rokytník" (an old shaft, notice 2919; both lines within 40 m at km 0.75: KEEP_OUT 40 m).
-- **Not used:** the Jílové gold district and the shafts on Panský vrch by D3 0302 (dozens of registered workings round the
+- **Not used:** "Petrov u Prahy-Ostřetina" (gold ore, located exactly; both D3 lines cut into it at km 8.1–8.4, but it lies at
+  0301's fixed end, and on the whole D3 the stitched reference could not be lifted over it), the Jílové gold district and the shafts on Panský vrch by D3 0302 (dozens of registered workings round the
   Luka tunnel's hill; a keep-out of them forced a tunnel too long for the goal), the D35 coal workings at Mladějov (the
   lines pass in the deep tunnel), Královec black-coal area at the D11's end (4.5 km², the line's end is fixed in it).
 
@@ -131,7 +131,7 @@ reference (`scripts/twists-check.ts --survey`), kept within 400 m.
 | D3 0303 | side-valley bridge (real design, km 15.5 of the leaflet), settlement by Dunávice (game), Dunávice in a cutting (game), gas main (game), eagle owl (game), money (game) |
 | D3 0304 | burial ground by Maršovice (game), listed farm at Strnadice (game), Šebáňovice in a cutting (game), gas main (game), stork's nest (game), money (game) |
 | D3 0305 | Divišovice uranium workings (real place), burial ground by Dědkov (game), stork's nest (game), gas main (game), the Mastník's banks (real register's place) |
-| whole D3 | six of the sections' (0301 graves, 0302 Luka and the valley side, 0303 valley, 0304 graves, 0305 uranium) and the Ostřetina gold pits (at 0301's fixed end, so on the whole route only) |
+| whole D3 | five of the sections' (0301 graves, 0302 Luka and the valley side, 0303 valley, 0305 uranium), money (game) |
 | D35 stage 1 | Pod skálou protection zone (real EIA condition), Radišov slope (real place), settlement by Radišov (game; the rescue survey is real), Dětřichov in a cutting (game), stork's nest (game), money (game) |
 | whole D35 | stage 1's four, and on the second section a burial ground by Řepová, a stork's nest by Javoří, Podolí in a cutting (game), money |
 | D11 motorway | Starý Rokytník shaft (real place), Poříčí slope (real place), Zlatá Olešnice slope (real place), soldiers' graves by Lampertice (game; the kind is real on the D11), stork's nest (game), the contract (real event, game cap) |

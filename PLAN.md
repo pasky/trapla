@@ -2473,11 +2473,10 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     (KEEP_OUT 50–60 m at a forest edge between the lines), a gas main beside a road (SPAN along the road), a newly listed
     farmstead (KEEP_OUT), a village asking for the road in a cutting (a new rule list LOW: no embankment, no bridge), less
     money (85–88 % of the starting bill, last). Their places are real where a register has them: the ČGS registers of
-    undermined ground (Ostřetina, Divišovice), mine workings (the Starý Rokytník shaft) and slope deformations (Radišov,
+    undermined ground (Divišovice), mine workings (the Starý Rokytník shaft) and slope deformations (Radišov,
     Poříčí, Zlatá Olešnice, Libeč, Křenov), the AOPK register of migration-significant streams (the Mastník), queried within
-    400 m of each mission's lines. A source without a link shows as plain text (`cite.url` optional). The whole D3 takes six
-    of its sections' curveballs and the Ostřetina gold pits (which in 0301 lie at the section's fixed end), no money news;
-    the whole D35 stage 1's four, three on its second section and less money.
+    400 m of each mission's lines. A source without a link shows as plain text (`cite.url` optional). The whole D3 takes five
+    of its sections' curveballs and less money; the whole D35 stage 1's four, three on its second section and less money.
   - Dropped while placing: Šternberk's registered slope (neither line reaches it; a village's demand instead), the shafts on
     Panský vrch by the Luka hill (a keep-out forced a tunnel too long for the goal), a memorial tree by D3 0302 (the works'
     edge stays 21 m off), the D11 tunnels as the real design has them and the Ličná valley's 670 m bridge (the D11 reference
@@ -2491,7 +2490,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   scratch, By hand); D3 0301 (Earth, Hands off, Curveballs 5, Few bridges 500 m, …), 0302 (Earth, Hands off, Curveballs 5,
   Nobody moves, Spare the forest 5 ha, Few bridges 1,300 m, …), 0303 (… Curveballs 6, Spare the forest 12.5 ha, Few bridges
   300 m), 0304 (… Curveballs 6, Few bridges 300 m, No tunnels), 0305 (Earth, Curveballs 5, Few bridges 900 m; no landmarks
-  near); the whole D3 (Curveballs 7, From scratch, By hand); D35 stage 1 (Earth, Hands off, Curveballs 6, Spare the forest
+  near); the whole D3 (Earth balance, Hands off, Curveballs 6, From scratch, By hand); D35 stage 1 (Earth, Hands off, Curveballs 6, Spare the forest
   2 ha, Few bridges 400 m, Real price, …); the whole D35 (Earth, Hands off, Curveballs 8, From scratch, By hand); the D11
   motorway (Earth, Hands off, Curveballs 6, Few bridges 1,600 m, …); the Královec railway (Earth, Hands off, Curveballs 5,
   Spare the forest 5 ha, Few bridges 1,600 m, …). The D11 class I road has none (its starter is the straight line and
@@ -2512,7 +2511,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   goal, and the villa news on top of it (its bridge ends in the garden); *Long spans over it* from the card; the reveal; the
   butterflies at their pace; By hand turned on mid-game; From scratch (the straight line is VALID here, 2.41 bn, through
   three tunnels). Round 3: D3 Voračice → Nová Hospoda, its first news a game event on a real register's place (the
-  Divišovice uranium workings, the ČGS link) and the place on the map, the next at its pace a game event without one (plain
+  Mastník's banks, the AOPK link) and the place on the map, red, the next at its pace a game event without one (plain
   text, no link); the class I road's twist screen (none); the whole D3's.
 - **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
   mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
@@ -2522,5 +2521,5 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   slip between two. Round 3: LOW counts a road at the ground's level (an embankment of 0.2 m) as an embankment, so a village's cutting
   must be a cutting all the way along its stretch; the game events' places are the game's (research/95 says how each was
   placed), their circles' sizes game scales; the money caps were set at what the reference with every news reaches (85–89 %);
-  the whole D3's reference is By hand (its stitched heights frozen); a section's curveball at its fixed end (the 0301 gold
-  pits) is offered on the whole route only.
+  the whole D3's reference is By hand (its stitched heights frozen: the whole-route grade solve misses the sections' pins); the Ostřetina gold pits (ČGS) lie at D3 0301's fixed end and
+  on the whole route needed heights the stitched reference could not reach: not offered.

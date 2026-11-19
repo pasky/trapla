@@ -2,7 +2,7 @@
 // bends, height pins and painted structures carried over into the whole pack (EPSG:5514 places, stations re-measured on
 // the stitched line); the rest of the line stays the starter's. A starting point for `twists-check.ts --find --from`.
 //
-//   npx tsx scripts/twists-stitch.ts <whole preset> <section fixture.json>… [--manual] [--repair N] [--painted none|tunnels] [--freeze] --out f.json
+//   npx tsx scripts/twists-stitch.ts <whole preset> <section fixture.json>… [--manual] [--repair N] [--painted none|tunnels] [--freeze [--hybrid W]] --out f.json
 import { readFileSync, writeFileSync } from 'node:fs';
 import { check, evalDesign, mission, nearestS, type Fixture } from './twists-check';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
@@ -69,7 +69,13 @@ let r = evalDesign(whole, design);
 // --freeze: the heights the whole line got (its pins as the sections set them, met or not) taken by hand, as By hand takes them
 if (args.includes('--freeze')) {
   const d = legacyDesignForRoute(design, wr);
-  design = replaceRouteFromLegacy(whole.starter, wr, { ...d, profileMode: 'manual', vpis: boundary(r.routes[wr]!.legacy!.vpis.map(v => ({ ...v }))), gradePins: [] });
+  let frozen = boundary(r.routes[wr]!.legacy!.vpis.map(v => ({ ...v })));
+  // --hybrid W: each section's own heights (where its news are met), the whole line's within W m of where sections meet
+  if (args.includes('--hybrid')) {
+    const w = Number(args[args.indexOf('--hybrid') + 1]), cuts = sections.slice(1).map(q => sOn(q, 0)), inWin = (s: number) => cuts.some(c => Math.abs(s - c) <= w);
+    frozen = [...vpis.filter(v => !inWin(v.s)), ...frozen.filter(v => inWin(v.s))].sort((a, b) => a.s - b.s);
+  }
+  design = replaceRouteFromLegacy(whole.starter, wr, { ...d, profileMode: 'manual', vpis: frozen, gradePins: [] });
   r = evalDesign(whole, design);
 }
 // --repair N: the fixes the issues spell out, applied N rounds (a pin moved to where the road passes, or unpinned, one of two bends that merge dropped, a height point raised or lowered by what they say, a bridge
