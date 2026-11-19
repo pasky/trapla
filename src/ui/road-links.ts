@@ -24,7 +24,7 @@ import { toast } from './toast';
 
 export interface RoadLinksContext {
   readonly session: Session;
-  readonly store: ActiveRouteStore; readonly projectStore: ProjectStore; readonly pack: Pack; readonly view: View;
+  readonly store: ActiveRouteStore; readonly projectStore: ProjectStore; readonly pack: Pack; readonly view: View; readonly scenario: { readonly id: string };
   /** the pack's road-link fingerprint; null: a pack without road links */
   readonly transportData: string | null;
   readonly worker: Worker; readonly previewWorker: Worker;
@@ -64,7 +64,7 @@ export function createRoadLinks(app: RoadLinksContext) {
       const built = app.session.projectFull?.routes[r.id]?.legacy;
       return built && !r.source?.intervals.some(i => i.sourceId === sourceId) ? [{ ...built, name: r.role === 'mission' ? 'our road' : r.name }] : [];
     }));
-    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, app.view, transportIndex, claimedSources, covered);
+    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, app.view, transportIndex, claimedSources, covered, () => app.scenario.id);
     editor.onClose = () => app.select(null);
     const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, app.view, transportIndex,
       () => app.projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))));

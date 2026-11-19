@@ -208,7 +208,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
   let namesAsked = false;
   // ---- road links: the transport graph, loaded on first need (ui/road-links.ts) ----
-  const links = createRoadLinks({ session, store, projectStore, pack, view, transportData, worker, previewWorker, select: next => select(next) });
+  const links = createRoadLinks({ session, store, projectStore, pack, view, scenario, transportData, worker, previewWorker, select: next => select(next) });
   const { ensure: ensureTransport, claimedSources, mappedRoadNear, legacyRoadAt } = links;
   // A saved project that already rebuilds mapped roads needs the graph before its first scene.
   if (claimedSources().length) await ensureTransport();

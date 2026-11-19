@@ -46,6 +46,8 @@ select, input[type=number] { font: inherit; padding: 2px 4px; }
 .card.score.preview .total { opacity: .7; }
 .chip.pending { color: #6b7079; } .chip.best.stale { opacity: .45; }
 .sub { color: #667; font-size: 12px; margin-bottom: 6px; }
+/* local knowledge (core/data/lore.ts): the last grey line of a card a real object opens */
+.sub.lore { margin: 8px 0 0; }
 table { width: 100%; border-collapse: collapse; }
 td { padding: 2px 0; vertical-align: top; }
 td:nth-child(2) { text-align: right; padding-left: 8px; }

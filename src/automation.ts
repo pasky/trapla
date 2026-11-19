@@ -122,6 +122,9 @@ export function installAutomation(c: AutomationContext): void {
       .sort((p, q) => q.stations[q.stations.length - 1] - p.stations[p.stations.length - 1]).map(q => q.id),
     sourceScreen: (id: string, s: number) => { const p = c.transportIndex?.position(id, s); return p ? c.view.project(p.x, p.y, c.view.drape(p.x, p.y)) : null; },
     sourceSelection: () => c.sourceEditor?.selection ?? null,
+    /** a mapped way's length (m) and tags */
+    sourceLength: (id: string) => { const q = c.transportIndex?.graph.sources.find(q => q.id === id); return q ? q.stations[q.stations.length - 1] : 0; },
+    sourceTags: (id: string) => c.transportIndex?.graph.sources.find(q => q.id === id)?.tags ?? null,
     /** the road links are loaded and parsed (they load on first need) */
     transportLoaded: () => !!c.transportGraph,
     /** the screen point (px inside the view) of the drawn ground at x, y */

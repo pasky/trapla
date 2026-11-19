@@ -578,7 +578,7 @@ export class Inspector {
     if (!info) return '';
     const card = endCard(info, end, this.d ? lineOf(CATEGORIES[this.d.category]) : 'motorway');
     return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
-      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>${info.lore ? `<div class="sub lore">${esc(info.lore)}</div>` : ''}`;
   }
 
   // ---- a stream culvert ----

@@ -13,6 +13,7 @@ import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
+import { ALL_LORE } from '../src/core/data/lore';
 import { ROW_HELP, rowHelp } from '../src/ui/hud';
 import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -84,9 +85,14 @@ describe('player-facing text', () => {
       if (!info) continue;
       ends++;
       const card = endCard(info, end);
-      for (const text of [card.title, ...card.lines]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
+      for (const text of [card.title, ...card.lines, ...(info.lore ? [info.lore] : [])]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
     }
     expect(ends).toBeGreaterThan(8);
+    // local knowledge on mapped ways' cards (research/96): one short sentence each
+    for (const lore of ALL_LORE) for (const text of [lore.line, lore.title]) {
+      check('local knowledge', text);
+      if (text) expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(16);
+    }
     // a motorway direction is named after the place it leads to, never with its section note in nested
     // brackets (QA: "Drag this direction (Hostěradice (on to 0303)).")
     for (const sc of PRESETS) for (const label of [sc.labels.a, sc.labels.b]) {

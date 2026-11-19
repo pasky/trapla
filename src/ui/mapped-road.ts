@@ -9,6 +9,7 @@ import type { View } from '../render/view';
 import { derivedStretch } from './road-edit';
 import { mappedLineKindFor, type MappedLineKind } from './route-kinds';
 import { coveredText, mappedRoadName, namedByNumber } from '../core/terms';
+import { mappedLore } from '../core/data/lore';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const node = document.createElement(tag); node.textContent = text; return node;
@@ -26,7 +27,9 @@ export class MappedRoadCard {
   constructor(private root: () => HTMLElement, private view: View, private base: ProjectTransportIndex,
     private claimed: () => readonly SourceInterval[],
     /** the parts of a mapped road other project roads' earthworks cover (road-edit.ts coveredStretches) */
-    private covered: (sourceId: string) => readonly (SourceInterval & { by: string })[] = () => []) {}
+    private covered: (sourceId: string) => readonly (SourceInterval & { by: string })[] = () => [],
+    /** the terrain pack shown (local knowledge keyed by pack, core/data/lore.ts) */
+    private pack: () => string | undefined = () => undefined) {}
   get selected() { return this.hit; }
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
@@ -48,20 +51,26 @@ export class MappedRoadCard {
     root.replaceChildren(); root.className = 'card ctx inspector k-source';
     const header = el('div'); header.className = 'ctx-h';
     const label = ROAD_CLASSES[source.tags.highway ?? '']?.label ?? (source.kind === 'railway' ? 'railway' : 'road');
-    const name = mappedRoadName(source.tags, label);
+    // local knowledge: one grey sourced line, the card's last whatever else it says (research/96)
+    const lore = mappedLore(this.pack(), source.id, source.tags);
+    const name = lore?.title ?? mappedRoadName(source.tags, label);
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Close (Esc)'; close.type = 'button';
     close.onclick = () => { this.clear(); this.onClose?.(); };
     // "Road III/1057" already says its class
     // ("Street" with no name of its own: said once)
-    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label ? [] : [el('small', cap(label))]), close);
+    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label || lore?.title ? [] : [el('small', cap(label))]), close);
     root.append(header);
-    if (!what.ok) { root.append(el('p', what.why)); return; }
-    if (under) { root.append(el('p', coveredText(under.by))); return; }
-    if (!this.interval) { root.append(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }
+    const body = (...nodes: HTMLElement[]) => {
+      root.append(...nodes);
+      if (lore) { const note = el('div', lore.line); note.className = 'sub lore'; root.append(note); }
+    };
+    if (!what.ok) { body(el('p', what.why)); return; }
+    if (under) { body(el('p', coveredText(under.by))); return; }
+    if (!this.interval) { body(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }
     const how = el('p', 'Drag it to change its line.'); how.className = 'mapped-how';
     const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.becomes}.`);
     stretch.className = 'sub';
-    root.append(how, stretch);
+    body(how, stretch);
   }
   /** Is this map point on the highlighted stretch (within `reach` metres of its line)? */
   covers(x: number, y: number, reach: number): boolean {
