@@ -87,8 +87,9 @@ Runner-up: I/57 Valašské Meziříčí – Jarcová (busier town, bigger story,
   4337741 at B; `ENDPOINT_JUNCTIONS.merge`, PROVISIONAL): our earthworks over it near the end are the junction's.
   Without the declaration Auto bridged the I/46 over our own end (62 M at A, 541 M at B). The real start is an
   interchange split (the old road becomes its branch); the game builds neither interchange.
-- **Category and speed:** S 11.5 at 90 km/h, the real project's; its last three bends (past km 2.0) at 70 km/h, as the
-  real project past its interchange at km 2.0.
+- **Category and speed:** S 11.5 at 90 km/h, the real project's; the starter's last three bends at 70 km/h, as the
+  real project past its interchange at km 2.0 (a bend's speed holds for its own stretch: on the starter the 70 begins
+  at km 2.21, between bends 2 and 3).
 - **Traffic: the town count, not a forecast.** No forecast for the bypass was found. The mission takes ŘSD CSD 2025 on
   the I/46 through Šternberk, the stretch the bypass replaces, from the town sign to the Domašov turn: sections
   7-1096 (16,731 vehicles a day, 1,299 heavy, 957 m), 7-1091 (12,816 / 707, 651 m), 7-2182 (9,671 / 866, 753 m) and
@@ -113,7 +114,8 @@ Cost model 56, S 11.5, Auto grade (`scripts/scenarios/i46-sternberk/default.json
 3.2 min: road base 219, earthworks 56, bridges 178 (one 240 m viaduct over the Sprchový potok valley, km 3.89–4.13),
 crossings 118 (2 tracks over us, 1 under, 6 moved, the two merges), other objects 159, buildings 84 (38, most of them
 sheds of the allotments the real line goes through too), land 45, noise walls 18 (590 m), forest 3. The mapped line sampled every
-1.5 km with Auto's radii (`reference.json`): 1,266 M (a 480 m bridge).
+1.5 km with Auto's radii at 90 km/h throughout (`reference.json`, so not a geometry-only comparison): 1,266 M (a 480 m
+bridge).
 
 ŘSD's estimate is **2,037 M** (07/2025). What the real project builds that ours does not: two interchanges with
 2,620 m of branches (the split at the start and Olomoucká street at km 2.056), six more bridges (520 m in all: the

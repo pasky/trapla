@@ -38,6 +38,7 @@ try {
     await page.goto(server.resolvedUrls.local[0]);
     await (await card('Start')).click(); await ready();
     const start = await page.evaluate(() => ({ d: window.trapla.getDesign(), s: window.trapla.summary() }));
+    assert.equal(await page.evaluate(() => window.trapla.meta.id), id === 'd11-motorway' ? 'd11' : id, `${id}: Start opens its own map`);
     assert(start.d.pis.length > 0 && start.s.valid, `${id}: Start opens the VALID starter`);
     // an edit, then reload: the picker offers Continue and keeps the edit
     await page.evaluate(() => { const d = window.trapla.getDesign(); d.pis[0].x += 40; window.trapla.setDesign(d); });

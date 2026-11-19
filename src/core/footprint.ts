@@ -74,7 +74,8 @@ export interface FootprintRoute {
 export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string;
   /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
+interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'];
+  /** under a bridge end or tunnel entrance whose road is moved with the earthworks beside it (not under earth) */ support?: true }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
 /** the longest end of a way under our earthworks rejoined to the road our junction rebuilds where it meets it, m
  * (PROVISIONAL: a short junction arm; a longer stretch runs along our earthworks and is moved aside) */
@@ -305,7 +306,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
       for (const [a, b] of subtract(hit, structure ? severed.get(segment.way) ?? [] : screened(segment.way)))
-        group.hits.push({ a, b, i: cell.i, j: cell.i, structure });
+        group.hits.push({ a, b, i: cell.i, j: cell.i, structure, ...(cell.structure && !structure ? { support: true as const } : {}) });
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);
     const visitWater = (segment: WaterSegment) => {
@@ -342,24 +343,33 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   }
   // The joined road where it leaves our earthworks just past the junction's zone (a road forking off at a small angle):
   // its mouth is rebuilt with the junction, as a side road's end rejoined to a rebuilt junction (JUNCTION_TIE_IN), not
-  // a road to move aside. Only earth over it, touching what the junction rebuilds on that way.
-  for (const junction of r.junctions ?? []) for (const [way, works] of junctionWorks.get(junction) ?? []) {
-    const group = roadHits.get(`${way}:earth`);
-    if (!group) continue;
-    const rebuilt = union(works.map(([a, b]) => ({ a, b, i: 0, j: 0 })));
-    const mouth = union([...group.hits]).filter(h => rebuilt.some(w => h.a <= w.b + 0.5 && h.b >= w.a - 0.5)
-      && subtract([h.a, h.b], rebuilt.map(w => [w.a, w.b] as [number, number])).reduce((m, [a, b]) => m + b - a, 0) <= JUNCTION_TIE_IN);
-    if (!mouth.length) continue;
-    works.push(...mouth.map(h => [h.a, h.b] as [number, number]));
-    group.hits = group.hits.filter(h => !mouth.some(m => h.a >= m.a - 1e-9 && h.b <= m.b + 1e-9));
+  // a road to move aside. Only earth over it (no bridge end or tunnel entrance), within that much of the zone along
+  // our road too, touching what the junction rebuilds on that way.
+  const reach = new Map<FootprintJunction, [number, number]>();
+  for (const junction of r.junctions ?? []) {
+    const span: [number, number] = junction.end === 'a' ? [0, Math.min(length, junction.zone)] : [Math.max(0, length - junction.zone), length];
+    reach.set(junction, span);
+    for (const [way, works] of junctionWorks.get(junction) ?? []) {
+      const group = roadHits.get(`${way}:earth`);
+      if (!group) continue;
+      const near = (h: Hit) => !h.support && (junction.end === 'a' ? r.s[h.j] <= junction.zone + JUNCTION_TIE_IN
+        : length - r.s[h.i] <= junction.zone + JUNCTION_TIE_IN);
+      const rebuilt: [number, number][] = union(works.map(([a, b]) => ({ a, b, i: 0, j: 0 }))).map(w => [w.a, w.b]);
+      const mouth = union(group.hits.filter(near)).filter(h => rebuilt.some(([a, b]) => h.a <= b + 0.5 && h.b >= a - 0.5)
+        && subtract([h.a, h.b], rebuilt).reduce((m, [a, b]) => m + b - a, 0) <= JUNCTION_TIE_IN);
+      if (!mouth.length) continue;
+      works.push(...mouth.map(h => [h.a, h.b] as [number, number]));
+      for (const h of mouth) if (junction.end === 'a') span[1] = Math.max(span[1], Math.min(length, r.s[h.j] + r.ds / 2));
+      else span[0] = Math.min(span[0], Math.max(0, r.s[h.i] - r.ds / 2));
+      group.hits = group.hits.filter(h => !(near(h) && mouth.some(m => h.a >= m.a - 1e-9 && h.b <= m.b + 1e-9)));
+    }
   }
   for (const junction of r.junctions ?? []) {
-    const i = junction.end === 'a' ? 0 : r.n - 1, byWay = junctionWorks.get(junction);
+    const i = junction.end === 'a' ? 0 : r.n - 1, byWay = junctionWorks.get(junction), [s0, s1] = reach.get(junction)!;
     let covered = 0;
     for (const intervals of byWay?.values() ?? []) for (const h of union(intervals.map(([a, b]) => ({ a, b, i, j: i })))) covered += h.b - h.a;
     const way = byWay?.keys().next().value ?? junction.ways.values().next().value;
-    conflicts.push({ id: `junction:${junction.end}`, feature: 'road', action: 'junction', i,
-      s0: junction.end === 'a' ? 0 : Math.max(0, length - junction.zone), s1: junction.end === 'a' ? Math.min(length, junction.zone) : length,
+    conflicts.push({ id: `junction:${junction.end}`, feature: 'road', action: 'junction', i, s0, s1,
       x: r.x[i], y: r.y[i], length: covered, affectedLength: covered, cost: junction.cost, lumpCost: junction.cost,
       ...(way !== undefined && roads ? { roadId: way, cls: roads.wayClass(way) } : {}),
       ...(junction.continuation ? { continuation: true } : {}), detail: '', source: junction.source });

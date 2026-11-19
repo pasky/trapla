@@ -54,7 +54,8 @@ try {
     ok(chips.length === 6 && /^Praha → Jílové/.test(chips[0]) && /^Whole route/.test(chips[5]) && chips.every((c) => /km · [\d.]+ MB$/.test(c)),
       `the D3 card has its sections by place names with length and size, the whole route last (${chips.join(' | ')})`);
     const town = page.locator('.scenario-picker-card').last();
-    ok(/Šternberk bypass/.test(await town.textContent()) && !(await town.locator('.scenario-picker-note').count()), 'the Šternberk bypass is last, with no warning');
+    ok(/Šternberk bypass/.test(await town.textContent()) && !(await town.locator('.scenario-picker-note').count())
+      && await town.getByRole('button', { name: 'Start' }).isEnabled(), 'the Šternberk bypass is last, with no warning, its map on the site');
     ok(!/Nová Paka/.test(await page.locator('.scenario-picker').textContent()), 'the retired Nová Paka is not offered');
     ok(!/km\/h|section 0|\b030[1-5]\b|Built 27\.5|Earlier map|proposal/.test(await page.locator('.scenario-picker').textContent()), 'no speeds, section numbers, notes or internal words on the cards');
     // a card's description never repeats its title or its chosen section's name
@@ -82,12 +83,18 @@ try {
   }
   // ---- older saves: a save of a retired mission is listed apart ----
   {
-    const { context, page } = await fresh(browser, { width: 1440, height: 1700 }, () => { localStorage.setItem('trapla.d3.design', JSON.stringify({ pis: [] })); });
+    const { context, page } = await fresh(browser, { width: 1440, height: 1700 }, () => {
+      localStorage.setItem('trapla.d3.design', JSON.stringify({ pis: [] })); localStorage.setItem('trapla.i16-nova-paka.design', JSON.stringify({ pis: [] }));
+    });
     await page.goto(site.url); await pickerReady(page);
     const older = page.locator('.scenario-picker-older');
-    ok(await older.count() === 1 && /Jílové → Václavice, two-lane road/.test(await older.textContent()), 'a save of the retired D3 road is under "Your older saves"');
+    ok(await older.count() === 1 && /Jílové → Václavice, two-lane road/.test(await older.textContent()) && /Nová Paka bypass/.test(await older.textContent()),
+      'saves of the retired D3 road and Nová Paka are under "Your older saves"');
     await page.locator('.scenario-picker-older').scrollIntoViewIfNeeded();
     await shot(page, 554, 'start-screen-older-saves');
+    await older.locator('li', { hasText: 'Nová Paka bypass' }).getByRole('button', { name: 'Continue' }).click();
+    await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
+    ok(await page.evaluate(() => window.trapla.meta.id) === 'i16-nova-paka', 'Continue on the Nová Paka save opens its map');
     await context.close();
   }
   // ---- the loading card on a slow line, the map before its first price, the first run ----

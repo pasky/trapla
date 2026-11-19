@@ -236,8 +236,15 @@
  * d3-0303 −11.6, d3-0304 −150.2, d3-0305 −18.7, d3-full −199.2, d35 first section −195.2, d35-full −814.6 (its bridges
  * at km 2.52 and 31.89 short spans on two frame piers each instead of long spans, 20.94 three frame piers in its long
  * spans: bridges −498, earthworks −129), retired d3 motorway −14.7; the road and railway missions unchanged. PLAN.md
- * "The D11 motorway mission". */
-export const COST_MODEL_VERSION = 56;
+ * "The D11 motorway mission".
+ * Model 57: a mission end's joined road forking off at a small angle that stays under our earthworks up to 30 m past the
+ * junction's zone (earth only, near the end along our road too, touching what the junction rebuilds on that way) is
+ * the junction's mouth, rebuilt with it (footprint.ts, JUNCTION_TIE_IN), not a road to move aside (which its end in our
+ * junction made impossible: "no room for it beside our earthworks"). Every frozen D11 bill, starter and saved design of
+ * every pack unchanged (scripts/exact.ts: 186 of 191 results identical, the other 5 the new Šternberk starter); a
+ * player's design with such a fork is valid now, or cheaper where the mouth was moved aside. PLAN.md "The Šternberk
+ * bypass replaces Nová Paka". */
+export const COST_MODEL_VERSION = 57;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

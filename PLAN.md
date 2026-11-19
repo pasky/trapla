@@ -2373,7 +2373,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
 - Shots 570–575 (`scripts/d11-motorway-shots.mjs --docs 570`; 575 the frame piers of a line with a bend every 2.5 km).
 
 
-## The Šternberk bypass replaces Nová Paka; the start screen's words (owner request, no model version, 2026-11-19)
+## The Šternberk bypass replaces Nová Paka; the start screen's words (owner request, cost model 57, 2026-11-19)
 
 - **Why:** Nová Paka's ground (DMR 5G) and aerial photo were taken while its real bypass was being built: the real
   cuts are in the terrain (earthworks come cheap) and the photo shows the site. Research: research/88 (five planned,
@@ -2390,7 +2390,8 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   railways; the D3 section chips are place names (Praha → Jílové …), the D35's first section too; a card's
   description is its goal alone (no "title: …" prefix). `scripts/release-shots.mjs` checks all four.
 - **A joined road forking off at a small angle** (Šternberk A, the I/46 at 13°) that stays under our earthworks just
-  past the junction's zone: up to 30 m of it past the zone, touching what the junction rebuilds on that way, is the
+  past the junction's zone: up to 30 m of it past the zone (earth only, not under a bridge end or tunnel entrance;
+  within that much of the end along our road too), touching what the junction rebuilds on that way, is the
   junction's mouth (`JUNCTION_TIE_IN`, as a side road's end rejoined to a rebuilt junction), not a road to move aside
   (it could not be: its end lies in our junction). Small drags of bend 1: 4 of 12 invalid → 0. No other pack's result
   changed (`scripts/exact.ts`); tests/endpoint-junction.test.ts.
