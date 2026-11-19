@@ -11,7 +11,7 @@ import { evaluateProjectRoad, type SourceWays } from './project-road';
 import type { KeepClear } from './keep-clear';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
-import { carriagewayOf, gore, isSlipRoad, SLIP_ROAD, slipRoadAtMotorway } from './slip-roads';
+import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, slipRoadAtMotorway } from './slip-roads';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
 import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvaluation } from './project-railway';
@@ -235,9 +235,22 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
       if (hold) holds.push(hold);
     }
   }
-  return routeProposal(ctx, snapshot, route, true, prices, undefined, ends, holds.flatMap(h => heldBands(placedHold(h, line))),
+  return routeProposal(ctx, snapshot, route, true, prices, undefined, ends, [...holds.flatMap(h => heldBands(placedHold(h, line))), ...slipBands(design, route, ends, legacyOf)],
     r => lineEnds(design, r, legacyOf)).route;
 }
+/** A slip road at its motorway's level near its gore (core/slip-roads.ts mergeBands): grade bands as a crossing holds. */
+function slipBands(design: ProjectDesign, route: RouteDesign, ends: { a?: XYZ; b?: XYZ } | undefined, legacyOf: (id: string) => Result | undefined) {
+  if (!isSlipRoad(route)) return [];
+  const out: { s: number; min: number; max: number }[] = [];
+  for (const end of ['a', 'b'] as const) {
+    const anchor = route.endpoints[end].anchor, host = anchor.kind === 'route' && carriagewayOf(design, anchor.routeId)?.paired ? legacyOf(anchor.routeId) : undefined;
+    if (!host) continue;
+    out.push(...mergeBands(planLine(route, ends, MERGE_STEP), MERGE_STEP, end, host));
+  }
+  return out;
+}
+/** spacing of a slip road's held heights near its gore, m */
+const MERGE_STEP = 10;
 /** Ends on another designed road: its nearest point and height now (a slip road's end on a motorway: its gore on
  * the carriageway it joins, core/slip-roads.ts). */
 function followEnds(design: ProjectDesign, r: RouteDesign, legacyOf: (id: string) => Result | undefined): { a?: XYZ; b?: XYZ } | undefined {
@@ -499,14 +512,15 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(design, route, evaluated) : undefined;
     const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design, oldLineOf(ctx)(route)) : [];
     let holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
-    let proposal = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, holds.flatMap(heldBands), endsOf, routeClear(route));
+    const merge = slipBands(design, route, ends, evaluated);
+    let proposal = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, [...holds.flatMap(heldBands), ...merge], endsOf, routeClear(route));
     // (high above the owner's bridge on its own bridge: held above it instead, where that misses fewer holds)
     const turned = proposal.route.legacy && overBridge(proposal.route.legacy, holds);
     if (turned) {
       // (a motorway's two directions are evaluated once per corridor: that evaluation is redone)
       const corridorId = corridorOfRoute(design, route.id)?.id, kept = corridorId ? corridorCache.get(corridorId) : undefined;
       if (corridorId) corridorCache.delete(corridorId);
-      const again = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, turned.flatMap(heldBands), endsOf, routeClear(route));
+      const again = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, [...turned.flatMap(heldBands), ...merge], endsOf, routeClear(route));
       if (again.route.legacy && heldChecks(again.route.legacy, turned, route.kind).violations.length < heldChecks(proposal.route.legacy!, holds, route.kind).violations.length) {
         proposal = again; holds = turned;
         for (const h of turned) if (h.over) h.crossing.above = true;
@@ -647,13 +661,16 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   }
   const speed = route.specification.kind === 'road' ? route.specification.designSpeed : 50;
   const at = slipRoadAtMotorway(legacy, end, host, carriageway.direction, speed, ctx.environment.terrainClass,
-    q => { let c = 0; for (const key of SHARED_PARTS) c += legacy.parts[key][q]; return c; }, INDEPENDENCE_SCREEN.clearance);
+    q => { let c = 0; for (const key of SHARED_PARTS) c += legacy.parts[key][q]; return c; }, INDEPENDENCE_SCREEN.clearance,
+    (x, y) => ctx.legacy.terrain.heightAt(x, y));
   if (at.violations.length) { legacy.violations.push(...at.violations); legacy.valid = false; }
   const word = at.kind === 'exit' ? 'Exit' : 'Entry';
   list.push({ kind: 'lane', s: legacy.s[i], x: at.gore.x, y: at.gore.y, length: at.lane.length, cost: at.lane.cost, lines: at.lane.lines,
     label: `${word} lane on the motorway, ${Math.round(at.lane.length)} m (its hard shoulder, paved 0.5 m wider)` });
   if (at.credit > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: at.insideM, cost: -at.credit,
-    label: `Its first ${Math.round(at.insideM)} m are inside the motorway's earthworks: not built twice` });
+    label: `Its first ${Math.round(at.insideM)} m are on the motorway's formation: not built twice` });
+  if (at.overlap > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: -at.overlap,
+    label: 'Where its slopes and the motorway\'s overlap: that earth and land once' });
   let zones = designedJunctions.get(route.id); if (!zones) designedJunctions.set(route.id, zones = []);
   for (const z of at.zones) zones.push({ routeId: hostRoute.id, ...z });
   // (both directions are one body: the other direction's route shares it)
@@ -661,7 +678,7 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   for (const z of at.zones) zones.push({ routeId: other.children.forward === hostRoute.id ? other.children.reverse : other.children.forward, ...z });
   builtJunctions.add(`${route.id}:${end}`);
   // what it builds on earth (its earthworks and road, not its bridges or tunnels), less what the motorway's body gives
-  let earth = -at.credit;
+  let earth = -at.credit - at.overlap;
   for (let q = 0; q < legacy.n; q++) if (legacy.kind[q] === KIND.earth) for (const key of SHARED_PARTS) earth += legacy.parts[key][q];
   return { corridorId: carriageway.corridorId, length: host.length, s: at.sGore, routeId: route.id, earth: Math.max(0, earth), x: at.gore.x, y: at.gore.y,
     goreZones: at.goreZones };

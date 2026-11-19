@@ -12,6 +12,8 @@ import type { Result } from './evaluate';
 import type { ProjectDesign, RouteDesign, XYZ } from './project';
 import { stationIndex } from './range';
 import { KIND } from './structures';
+import { landPerM2 } from './cost';
+import { LAND, PRICES } from './data/prices';
 
 const d = D275_SECTION;
 /** Through-lanes' outer edge from the motorway's line, m (median half + inner shoulder + two lanes). */
@@ -129,14 +131,15 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
 }
 
 /** What a slip road builds where it meets the motorway (`end` on carriageway `direction` of the paired body `line`):
- * the speed-change lane (a work of the slip road, drawn and billed), the slip road's own first metres inside the
- * motorway's formation (a credit: not built twice), and where the two bodies' works are one (`zones`: wherever the
- * slip road's works and the motorway's come within `clearance` of each other, the interchange's own earthworks,
- * not land two roads share; `gore`: those of its first metres inside the motorway's formation, where the slip
- * roads of the other carriageway reach too). `shared(q)`: the slip road's cost at its station q that the
- * motorway's body provides where it lies inside it. */
+ * the speed-change lane (a work of the slip road, drawn and billed); what the two bodies build once where they
+ * meet (a credit: its first metres on the motorway's formation, `shared(q)` its cost there, and where their slopes
+ * overlap the earth and land between them, as the two directions of a split motorway count it,
+ * project-motorway.ts splitLedger); a slope of one standing on the other's carriageway (a problem); and where the
+ * two bodies' works are one (`zones`: wherever its works and the motorway's come within `clearance` of each other,
+ * the interchange's own earthworks, not land two roads share; `goreZones`: those of its first metres on the
+ * motorway's formation, where the slip roads of the other carriageway reach too). `heightAt`: the ground. */
 export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, direction: 1 | -1, speed: number, terrain: TerrainClass,
-  shared: (q: number) => number, clearance: number) {
+  shared: (q: number) => number, clearance: number, heightAt: (x: number, y: number) => number) {
   const i = end === 'a' ? 0 : ramp.n - 1, kind = end === 'a' ? 'exit' as const : 'entry' as const;
   let k = 0, best = Infinity;
   for (let j = 0; j < line.n; j++) { const dd = Math.hypot(line.x[j] - ramp.x[i], line.y[j] - ramp.y[i]); if (dd < best) { best = dd; k = j; } }
@@ -153,11 +156,15 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     fix: end === 'a' ? 'Turn it to leave the way the traffic goes, or start it on the other side of the motorway'
       : 'Turn it to join the way the traffic goes, or end it on the other side of the motorway',
     rule: 'Game rule: a slip road leaves and joins a carriageway along its traffic, on its right' });
-  // the slip road's stations from this end inward, while its line is inside the motorway's formation (credited),
-  // and while the two bodies' works come close (the interchange's own zone)
-  const formation = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening;
-  let inside = 0, credit = 0;
+  const wm = CATEGORIES['D27.5'].crownWidth / 2, wr = CATEGORIES['V7.25'].crownWidth / 2, formation = wm + SLIP_ROAD.widening;
+  const rate = {
+    fill: ramp.quantities.fill > 0 ? (ramp.cost.earthDetail.fillPlacing + ramp.cost.earthDetail.borrow) / ramp.quantities.fill : 0,
+    cut: ramp.quantities.cut > 0 ? (ramp.cost.earthDetail.excavation + ramp.cost.earthDetail.surplusHaul + ramp.cost.earthDetail.unsuitable) / ramp.quantities.cut : 0,
+    haul: ramp.quantities.cut + ramp.quantities.fill > 0 ? ramp.cost.earthDetail.haul / (ramp.quantities.cut + ramp.quantities.fill) : 0,
+  };
+  let inside = 0, credit = 0, overlap = 0;
   const zones: { x: number; y: number; r: number }[] = [], goreZones: typeof zones = [];
+  const clashes: { s0: number; s1: number; need: number }[] = [];
   for (let step = 0; step < ramp.n; step++) {
     const q = end === 'a' ? step : ramp.n - 1 - step;
     let kk = 0, dd = Infinity;
@@ -167,8 +174,65 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     if (dd - mine - theirs > clearance) continue;
     const zone = { x: ramp.x[q], y: ramp.y[q], r: Math.max(mine, dd) + theirs + clearance };
     zones.push(zone);
-    if (inside === step && dd <= formation) { inside = step + 1; credit += shared(q); goreZones.push(zone); }
+    if (inside === step && dd <= formation) { inside = step + 1; credit += shared(q); goreZones.push(zone); continue; }
+    if (ramp.kind[q] !== KIND.earth || line.kind[kk] !== KIND.earth || !(dd > 1e-6)) continue;
+    // Across the motorway's line towards the slip road (x from its line, the slip road's line at d): each body's
+    // top, its crown then its slope facing the other (as the two directions of a split motorway, splitLedger).
+    const nx = (ramp.x[q] - line.x[kk]) / dd, ny = (ramp.y[q] - line.y[kk]) / dd, d = dd;
+    const left = -line.ty[kk] * nx + line.tx[kk] * ny > 0, rampLeft = -ramp.ty[q] * -nx + ramp.tx[q] * -ny > 0;
+    const dayM = left ? line.dayL[kk] : line.dayR[kk], zDayM = left ? line.zDayL[kk] : line.zDayR[kk], zm = line.grade[kk];
+    const dayR = rampLeft ? ramp.dayL[q] : ramp.dayR[q], zDayR = rampLeft ? ramp.zDayL[q] : ramp.zDayR[q], zr = ramp.grade[q];
+    const face = (z: number, zDay: number, u: number, w: number, day: number) => u <= w ? z : u <= day ? z + (zDay - z) * (u - w) / Math.max(1e-6, day - w) : NaN;
+    const lo = d - dayR, hi = dayM, fillM = zDayM <= zm, fillR = zDayR <= zr;
+    if (!(hi - lo > 1e-6)) continue;
+    const steps = Math.max(2, Math.ceil((hi - lo) / 0.5)), dx = (hi - lo) / steps, len = ramp.ds;
+    let fill = 0, cut = 0, worst = 0;
+    for (let m = 0; m < steps; m++) {
+      const x = lo + (m + 0.5) * dx, gz = heightAt(line.x[kk] + nx * x, line.y[kk] + ny * x);
+      const a = x >= 0 ? face(zm, zDayM, x, wm, dayM) : zm, b = x <= d ? face(zr, zDayR, d - x, wr, dayR) : zr;
+      if (Number.isNaN(a) || Number.isNaN(b)) continue;
+      if (a > gz && b > gz) fill += (Math.min(a, b) - gz) * dx; else if (a < gz && b < gz) cut += (gz - Math.max(a, b)) * dx;
+      // an embankment face standing on the other's carriageway, or a cutting face undermining it (a face buried
+      // in the other's embankment, or cut away by the other's cutting, is one body)
+      if (x > wm && x >= d - wr && x <= d + wr && (fillM ? a > zr + 0.3 : a < zr - 0.3)) worst = Math.max(worst, hi - (d - wr));
+      if (x < d - wr && x <= wm && (fillR ? b > zm + 0.3 : b < zm - 0.3)) worst = Math.max(worst, wm - lo);
+    }
+    overlap += fill * (rate.fill + rate.haul) * len + cut * (rate.cut + rate.haul) * len
+      + (hi - lo) * len * (landPerM2(ramp.cell.urban[q]) + ramp.cell.forest[q] * LAND.forestExtraPerM2 + PRICES.topsoilDepth * PRICES.topsoil);
+    if (worst > 0) {
+      const last = clashes[clashes.length - 1], s = ramp.s[q];
+      if (last && Math.min(Math.abs(s - last.s0), Math.abs(s - last.s1)) <= ramp.ds + 1e-6) { last.s0 = Math.min(last.s0, s); last.s1 = Math.max(last.s1, s); last.need = Math.max(last.need, worst); }
+      else clashes.push({ s0: s, s1: s, need: worst });
+    }
   }
+  for (const c of clashes) violations.push({ kind: 'footprint', basis: 'engine', s0: c.s0, s1: c.s1,
+    title: 'Its slope and the motorway\'s clash',
+    fix: `Move it at least ${Math.ceil(c.need)} m further from the motorway here, or give it the motorway's height`,
+    detail: 'Beside the motorway at another height, the slope of one would stand on the other. Walls between them are not built by the game.',
+    rule: 'Engine limit: a slip road shares the motorway\'s earthworks only at its height; otherwise each needs room for its own slopes.' });
   const insideM = Math.min(ramp.length, inside * ramp.ds);
-  return { kind, lane, violations, zones, goreZones, credit, insideM, gore: g, sGore: line.s[k] };
+  return { kind, lane, violations, zones, goreZones, credit, insideM, overlap: Math.max(0, overlap), gore: g, sGore: line.s[k] };
+}
+
+/** Where a slip road and its carriageway are one paved area at one level: from the gore while their crowns are
+ * within this of each other, m. MODELLING ASSUMPTION (no source found for how far a ramp keeps the motorway's
+ * level): a gap a person could stand in; beyond it each has its own slopes (and slipRoadAtMotorway checks them). */
+export const MERGE_GAP = 4;
+/** The heights a slip road is held at near its gore (its plan line `xy`, [x0, y0, …] every `step` m from its
+ * start; `end`: the end on the motorway `line`): the motorway's height, while their crowns are within MERGE_GAP. */
+export function mergeBands(xy: readonly number[], step: number, end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>): { s: number; min: number; max: number }[] {
+  const n = xy.length / 2, out: { s: number; min: number; max: number }[] = [];
+  if (n < 2) return out;
+  const reach = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening + CATEGORIES['V7.25'].crownWidth / 2 + MERGE_GAP;
+  let k = -1;
+  for (let step0 = 0; step0 < n; step0++) {
+    const p = end === 'a' ? step0 : n - 1 - step0, x = xy[2 * p], y = xy[2 * p + 1];
+    let best = Infinity, kk = 0;
+    const j0 = k < 0 ? 0 : Math.max(0, k - 30), j1 = k < 0 ? line.n - 1 : Math.min(line.n - 1, k + 30);
+    for (let j = j0; j <= j1; j++) { const e = Math.hypot(line.x[j] - x, line.y[j] - y); if (e < best) { best = e; kk = j; } }
+    k = kk;
+    if (best > reach) break;
+    out.push({ s: p * step, min: line.grade[kk] - 0.25, max: line.grade[kk] + 0.25 });
+  }
+  return out.sort((a, b) => a.s - b.s);
 }
