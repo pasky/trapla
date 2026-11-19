@@ -1,0 +1,179 @@
+{
+ "preset": "d11-rail-kralovec",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 1)",
+ "meets": [
+  "earth",
+  "landmarks"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d11",
+  "presetId": "d11-rail-kralovec",
+  "packId": "d11",
+  "objectData": "2088988:889881338:3067130932",
+  "transportData": "2f1ce1f8f00ac3e5dc3a66eda26addbcf5025f601fd802d86b1d163e775a900e",
+  "routes": [
+   {
+    "id": "route:railway",
+    "name": "Railway",
+    "role": "mission",
+    "revision": 0,
+    "kind": "railway",
+    "acousticSourceId": "acoustic:route:railway",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 6640.8,
+       "y": 7782,
+       "z": 415.06280000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12204.8,
+       "y": 19202.5,
+       "z": 523.8
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 5970.55663450006,
+       "y": 8416.037992284579,
+       "r": null
+      },
+      {
+       "x": 6494.954215382852,
+       "y": 9172.641559524875,
+       "r": null
+      },
+      {
+       "x": 6913.974167086245,
+       "y": 10054.455656700642,
+       "r": null
+      },
+      {
+       "x": 7167.690928707643,
+       "y": 10572.3506870945,
+       "r": null
+      },
+      {
+       "x": 7618.3122170946535,
+       "y": 11404.955982911682,
+       "r": null
+      },
+      {
+       "x": 11178.06137865366,
+       "y": 16299.502181666898,
+       "r": null
+      },
+      {
+       "x": 11799.336585596457,
+       "y": 18709.441739194095,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 2317.2572003432465,
+        "s1": 2400.246549523609,
+        "kind": 0
+       },
+       {
+        "s0": 5631.161293408304,
+        "s1": 5825.624866196573,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 7366,
+        "z": 492.3
+       },
+       {
+        "s": 7896,
+        "z": 498.1
+       }
+      ],
+      "manualVpis": []
+     }
+    },
+    "specification": {
+     "kind": "railway",
+     "policy": "conventional-new",
+     "designSpeed": 120,
+     "gaugeMm": 1435,
+     "tracks": 1,
+     "electrification": "AC25kV",
+     "operations": {
+      "passengerDay": 32,
+      "passengerNight": 4,
+      "freightDay": 0,
+      "freightNight": 0,
+      "passengerSpeed": 120,
+      "freightSpeed": 100
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d11:d11-rail-kralovec",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Trutnov hl.n.",
+     "position": {
+      "x": 6640.8,
+      "y": 7782,
+      "z": 415.06280000000004
+     }
+    },
+    {
+     "id": "b",
+     "name": "Kr\u00e1lovec",
+     "position": {
+      "x": 12204.8,
+      "y": 19202.5,
+      "z": 523.8
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "railway"
+     ],
+     "maxTravelMin": 9,
+     "demand": {
+      "kind": "railway",
+      "trainsPerDay": 36
+     }
+    }
+   ]
+  }
+ }
+}

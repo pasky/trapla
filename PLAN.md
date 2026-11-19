@@ -2461,6 +2461,13 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     (documented 12/2025, not located), the Kamenná Vrata exploratory gallery (documented, portals not located); nothing yet
     for undermined ground, landslides, water zones or listed buildings within 500 m. The Český ráj I/35 mission (another
     agent) had not merged: its curveballs (the EIA revoked, zone III, scarps) are to be added with it.
+- **Where**: Šternberk (Earth balance, Hands off, Curveballs, From scratch, By hand), the five D3 sections (Earth balance,
+  Hands off where landmarks are near, No tunnels on 0304, From scratch, By hand), the D35 first section (also Real price:
+  the real 17.69 bn estimate is under our starter's 19.46 bn), the D11 motorway and the Královec railway (Earth balance,
+  Hands off, From scratch, By hand). The reference designs are 18–36 % under their starters. Not yet: the whole D3 and the
+  whole D35 (a reference search there takes hours, 2–5 s an evaluation), the D11 class I road (its starter is the
+  straight line and brings in 9 % of its fill: Earth balance asks nothing there). *Nobody moves* was searched on Šternberk
+  and left one home.
 - **Verification**: `npx tsx scripts/twists-check.ts` (run for every mission by `tests/twists.test.ts`): the starting bill, what the
   starter breaks, every reference VALID and meeting what it claims, every offered twist met by one, and the default twists
   with every curveball and the goal met by one (the reveal reachable). `--find <preset> --twists … --goal` is the local
