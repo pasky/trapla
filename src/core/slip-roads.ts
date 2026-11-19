@@ -207,21 +207,23 @@ export function dugRidges(ramp: Result, line: Result, heightAt: (x: number, y: n
     }
     return area;
   };
-  for (const q of dug) out.area[q] = taken(q, out.x[q], out.z[q]);
-  // the nose: beside the dug stretch, what stands of the ridge is cut down to the slope rising from it along the road
-  if (dug.length) for (let q = 0; q < n; q++) {
-    const a = at[q];
-    if (!a || Number.isFinite(out.x[q])) continue;
-    let near = -1, best = Infinity;
-    for (const p of dug) { const e = Math.abs(ramp.s[p] - ramp.s[q]); if (e < best) { best = e; near = p; } }
-    const x = (a.x0 + a.x1) / 2, z = out.z[near] + best / RIDGE_NOSE;
-    const g = heightAt(line.x[a.kk] + a.nx * x, line.y[a.kk] + a.ny * x);
-    const fm = face(a.zm, a.zDayM, x, wm, a.dayM), fr = face(a.zr, a.zDayR, a.d - x, wr, a.dayR);
-    const top = Math.min(g, Number.isNaN(fm) ? g : fm, Number.isNaN(fr) ? g : fr);
-    if (!(z < top - 0.1)) continue;
-    const area = taken(q, x, z);
-    if (!Number.isFinite(area)) continue;
-    out.x[q] = x; out.z[q] = z; out.area[q] = area;
+  // (a station whose ground cannot be measured is not dug: neither billed nor drawn)
+  for (const q of dug) { const area = taken(q, out.x[q], out.z[q]); if (Number.isFinite(area)) out.area[q] = area; else { out.x[q] = NaN; out.z[q] = NaN; } }
+  // the nose: on from either end of a dug stretch, along the stations next to it where both are still cuttings, what
+  // stands of the ridge is cut down to the slope rising from it along the road
+  const isDug = (q: number) => Number.isFinite(out.x[q]) && out.area[q] >= 0 && dug.includes(q);
+  for (const q0 of dug) if (isDug(q0)) for (const step of [-1, 1]) {
+    if (isDug(q0 + step)) continue;
+    for (let q = q0 + step; q >= 0 && q < n && at[q] && !Number.isFinite(out.x[q]); q += step) {
+      const a = at[q]!, x = (a.x0 + a.x1) / 2, z = out.z[q0] + Math.abs(ramp.s[q] - ramp.s[q0]) / RIDGE_NOSE;
+      const g = heightAt(line.x[a.kk] + a.nx * x, line.y[a.kk] + a.ny * x);
+      const fm = face(a.zm, a.zDayM, x, wm, a.dayM), fr = face(a.zr, a.zDayR, a.d - x, wr, a.dayR);
+      const top = Math.min(g, Number.isNaN(fm) ? g : fm, Number.isNaN(fr) ? g : fr);
+      if (!(z < top - 0.1)) break;
+      const area = taken(q, x, z);
+      if (!Number.isFinite(area)) break;
+      out.x[q] = x; out.z[q] = z; out.area[q] = area;
+    }
   }
   return out;
 }

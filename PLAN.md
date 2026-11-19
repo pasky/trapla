@@ -2433,14 +2433,15 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
      was engineered against the pack's ground, not the ground its motorway leaves. Now a slip road is built against
      its motorway's footprint relocations within 1.5 km of its gore (those stretches cut out of its network, the moved
      pieces added as ground ways: `RoadNet.edited(cuts, extra, ground)`, `editedNetwork(…, moved)`,
-     `project-evaluate.ts movedByMotorway`), and its changes of what is left of those ways are one design with the
-     motorway (`sharedWays`). Slip roads on the two carriageways meet in the motorway's body wherever they come
+     `project-evaluate.ts movedByMotorway`; all of the motorway's, in its order, so every slip road numbers them
+     alike), and its changes of what is left of those ways near each relocation are one design with the motorway
+     (`sharedWays`). Slip roads on the two carriageways meet in the motorway's body wherever they come
      near it (was: only by the gores). The D3 0303 diamond: 5.7349 bn valid (the north terminal moved to road station
      ≈ 1270 for the sight triangle, as a player would), `tests/fixtures/interchange/d3-0303-diamond.json`.
   2. *Two slip roads share one junction*: Build → Slip road puts an end within 30 m of another slip road's end on the
      same road onto its junction (a click on that slip road's end too); two ends at one point are one crossroads,
-     built and billed by the first (the second's lump credited: "Shares its junction with Slip road …"), their works
-     there one design (`sharedJunctions`).
+     built and billed by the first (the others' lumps and roundabout rings credited: "Shares its junction with Slip
+     road …"), their works there one design (`sharedJunctions`); a T and a roundabout at one point are a problem.
   3. *Shape*: Build → Slip road adds a second bend before a road end that meets the road square (on the road's
      normal, a quarter of the way to the leaving bend, 40–90 m; where the road crosses askew, kept at least halfway
      out from the motorway, at most 20 m beyond the end on the obtuse side; `road-edit.ts squareBend`, PROVISIONAL).
@@ -2464,6 +2465,9 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
 - **Known gaps:** a loop over or under its own motorway (trumpet, cloverleaf) is not engineered (a problem); the
   shared junction is priced as one T allowance (no crossroads price of its own) and cannot be a roundabout for both;
   interchange spacing (4 km, medium-low source) not checked; only the motorway's footprint relocations are seen by
-  its slip roads (not its crossings' reroutes); a narrow valley between two embankments is not filled; a small
+  its slip roads (not its crossings' reroutes), on the ground's height (a moved piece carried on a low fill is not
+  matched), and a choice on a slip road's crossing of a moved piece is not kept; a slip road's drag preview does not
+  see its motorway's merge holds or moved tracks (the full check after the drag does); a narrow valley between two
+  embankments is not filled; a small
   light speck can remain at a dug ridge's nose; slip-road traffic starts as the average class II road (labelled);
   the A.4.N proxy for what the motorway's norm includes.

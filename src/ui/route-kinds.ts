@@ -144,9 +144,10 @@ export const SLIP_BUILD: BuildKind = {
       .sort((p, q) => Math.abs(p - s) - Math.abs(q - s))[0];
     const at = other ?? s, placed = ROAD_BUILD.onSource(base, sourceId, at);
     if (!placed.ok) return placed;
-    const p0 = base.position(sourceId, at - 5), p1 = base.position(sourceId, at + 5);
+    // (one-sided near the road's end)
+    const p0 = base.position(sourceId, at - 5) ?? base.position(sourceId, at), p1 = base.position(sourceId, at + 5) ?? base.position(sourceId, at);
     return { ...placed, ...(other !== undefined ? { label: `${placed.label}, at another slip road's junction` } : {}),
-      end: { ...placed.end, ...(p0 && p1 ? { along: { x: p1.x - p0.x, y: p1.y - p0.y } } : {}) } };
+      end: { ...placed.end, ...(p0 && p1 && Math.hypot(p1.x - p0.x, p1.y - p0.y) > 0.5 ? { along: { x: p1.x - p0.x, y: p1.y - p0.y } } : {}) } };
   },
   onRoute(route, result, s, where) {
     // (at another slip road's end on a road: onto its junction there)

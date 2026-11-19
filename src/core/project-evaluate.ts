@@ -238,30 +238,33 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
     }
   }
   return routeProposal(ctx, snapshot, route, true, prices, undefined, ends, [...holds.flatMap(h => heldBands(placedHold(h, line))), ...slipBands(design, route, ends, legacyOf)],
-    r => lineEnds(design, r, legacyOf), undefined, movedByMotorway(design, route, legacyOf)).route;
+    r => lineEnds(design, r, legacyOf), undefined, movedByMotorway(design, route, legacyOf, ctx.legacy.roads?.wayCount ?? 0)).route;
 }
-/** The existing ways a slip road's motorway moves aside (its footprint relocations within an interchange's reach of
- * the gore): the slip road is built with it, against the ground as the motorway leaves it (those stretches gone, the
- * pieces moved aside there instead), so the two never change one old road as two designs. */
-function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (id: string) => Result | undefined): (MovedWays & {
-  /** the motorway's directions, and where its relocations and the slip road's works lie (the slip road's changes of
-   * what is left of those ways are designed with them: ScreenRoute.sharedWays) */
-  hosts: string[]; zone: { x: number; y: number; r: number } }) | undefined {
+/** The existing ways a slip road's motorway moves aside (all its footprint relocations, in its own order, so that every
+ * slip road of one motorway numbers them alike): the slip road is built with it, against the ground as the motorway
+ * leaves it (those stretches gone, the pieces moved aside there instead), so the two never change one old road as two
+ * designs. `wayCount`: the pack's ways (a relocation of a piece of a rebuilt road is not cut from the pack's network). */
+function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (id: string) => Result | undefined, wayCount: number): (MovedWays & {
+  /** the motorway's directions, and each relocation's reach (the slip road's changes of what is left of those ways
+   * near them are designed with them: ScreenRoute.sharedWays) */
+  hosts: string[]; zones: { way: number; x: number; y: number; r: number }[] }) | undefined {
   if (!isSlipRoad(route)) return undefined;
-  const out: MovedWays & { hosts: string[]; zone: { x: number; y: number; r: number } } = { cuts: [], ways: [], hosts: [], zone: { x: 0, y: 0, r: 0 } };
-  for (const end of ['a', 'b'] as const) {
-    const anchor = route.endpoints[end].anchor, host = anchor.kind === 'route' && carriagewayOf(design, anchor.routeId) ? legacyOf(anchor.routeId) : undefined;
-    if (!host || anchor.kind !== 'route') continue;
-    const k = stationIndex(host, anchor.s), reach = SLIP_ROAD.interchangeReach, corridor = design.corridors.find(c => c.children.forward === anchor.routeId || c.children.reverse === anchor.routeId)!;
-    out.hosts = [corridor.children.forward, corridor.children.reverse];
-    out.zone = { x: host.x[k], y: host.y[k], r: 2 * reach };
-    for (const f of host.footprintConflicts) {
-      if (f.action !== 'relocation' || f.feature !== 'road' || !f.sourceIntervals?.length || f.cls === undefined || Math.hypot(f.x - host.x[k], f.y - host.y[k]) > reach) continue;
-      const paths = (f.geometry?.links ?? [f.geometry?.road ?? []]).filter(p => p.length > 1);
-      if (!paths.length) continue;
-      for (const i of f.sourceIntervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
-      for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]) });
-    }
+  const anchor = [route.endpoints.a.anchor, route.endpoints.b.anchor].find(a => a.kind === 'route' && carriagewayOf(design, a.routeId));
+  const corridor = anchor?.kind === 'route' ? design.corridors.find(c => c.children.forward === anchor.routeId || c.children.reverse === anchor.routeId) : undefined;
+  const host = corridor && legacyOf(corridor.children.forward);
+  if (!corridor || !host) return undefined;
+  const out = { cuts: [] as MovedWays['cuts'], ways: [] as MovedWays['ways'], hosts: [corridor.children.forward, corridor.children.reverse], zones: [] as { way: number; x: number; y: number; r: number }[] };
+  for (const f of host.footprintConflicts) {
+    if (f.action !== 'relocation' || f.feature !== 'road' || !f.sourceIntervals?.length || f.cls === undefined) continue;
+    const intervals = f.sourceIntervals.filter(i => i.way < wayCount);
+    if (!intervals.length) continue;
+    // (a stretch closed rather than moved: taken out with nothing in its place)
+    const paths = (f.geometry?.links ?? [f.geometry?.road ?? []]).filter(p => p.length > 1);
+    for (const i of intervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
+    for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]) });
+    // (its reach: the moved piece, and the junction mouths where it meets what is left)
+    const r = Math.max(f.length, ...paths.flat().map(q => Math.hypot(q.x - f.x, q.y - f.y))) + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance;
+    for (const way of new Set(intervals.map(i => i.way))) out.zones.push({ way, x: f.x, y: f.y, r });
   }
   return out.cuts.length ? out : undefined;
 }
@@ -540,10 +543,10 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design, oldLineOf(ctx)(route)) : [];
     let holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
     const merge = slipBands(design, route, ends, evaluated);
-    const moved = movedByMotorway(design, route, evaluated);
+    const moved = movedByMotorway(design, route, evaluated, ctx.legacy.roads?.wayCount ?? 0);
     if (moved) {
       let shared = start.sharedWays.get(route.id); if (!shared) start.sharedWays.set(route.id, shared = []);
-      for (const way of new Set(moved.cuts.map(c => c.way))) for (const id of moved.hosts) shared.push({ routeId: id, way, ...moved.zone });
+      for (const z of moved.zones) for (const id of moved.hosts) shared.push({ routeId: id, ...z });
     }
     let proposal = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, [...holds.flatMap(heldBands), ...merge], endsOf, routeClear(route), moved);
     // (high above the owner's bridge on its own bridge: held above it instead, where that misses fewer holds)
@@ -785,30 +788,44 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
  * SLIP_ROAD.shareJunction): one junction, a crossroads where the two come from either side, built and billed by the
  * first; the second is an arm of it (its junction lump credited), and the two change that road there as one design. */
 function sharedJunctions(start: ReturnType<typeof projectStart>) {
-  const { design, legacyOf, ownWorks, designedJunctions, sharedWays } = start;
+  const { design, legacyOf, ownWorks, designedJunctions, sharedWays, ringsOf } = start;
+  const formOf = (route: RouteDesign, end: 'a' | 'b') => route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined;
   const ends = design.routes.filter(isSlipRoad).flatMap(route => (['a', 'b'] as const).flatMap(end => {
     const anchor = route.endpoints[end].anchor, legacy = legacyOf.get(route.id);
     if (anchor.kind !== 'source' || !legacy) return [];
     const i = end === 'a' ? 0 : legacy.n - 1, f = legacy.footprintConflicts.find(q => q.action === 'junction' && q.i === i && !q.continuation);
-    return f ? [{ route, legacy, i, f, sourceId: anchor.location.sourceId, s: anchor.location.s }] : [];
+    return f ? [{ route, end, legacy, i, f, sourceId: anchor.location.sourceId, s: anchor.location.s }] : [];
   }));
   const taken = new Set<typeof ends[number]>();
-  for (const [k, e] of ends.entries()) {
+  for (const e of ends) {
     if (taken.has(e)) continue;
-    for (const o of ends.slice(k + 1)) {
-      if (taken.has(o) || o.route === e.route || o.sourceId !== e.sourceId || Math.abs(o.s - e.s) > SLIP_ROAD.junctionTolerance) continue;
-      taken.add(o);
+    // the ends at that point: the first (in the project's order) builds the junction, the others are its arms
+    const group = ends.filter(o => !taken.has(o) && o.sourceId === e.sourceId && Math.abs(o.s - e.s) <= SLIP_ROAD.junctionTolerance
+      && (o === e || o.route !== e.route));
+    if (group.length < 2) continue;
+    for (const o of group) taken.add(o);
+    for (const o of group.slice(1)) {
+      const list = ownWorks.get(o.route.id) ?? []; ownWorks.set(o.route.id, list);
+      // (one junction has one form: a T and a roundabout at one point are two junctions the game does not build)
+      if (formOf(o.route, o.end) !== formOf(e.route, e.end)) {
+        o.legacy.violations.push({ kind: 'crossing', s0: o.legacy.s[o.i], s1: o.legacy.s[o.i], basis: 'game', title: `Shares its junction with ${e.route.name}, but not its form`,
+          fix: `Set both junctions to Auto, or both to Roundabout`, rule: 'Game rule: roads sharing a junction share its form.' });
+        o.legacy.valid = false;
+      }
       const cost = o.f.lumpCost ?? o.f.cost;
-      let list = ownWorks.get(o.route.id); if (!list) ownWorks.set(o.route.id, list = []);
       if (cost > 0) list.push({ kind: 'junction', s: o.legacy.s[o.i], x: o.legacy.x[o.i], y: o.legacy.y[o.i], length: 0, cost: -cost,
         label: `Shares its junction with ${e.route.name}: one crossroads, built and billed once` });
-      // (the junction's works, and its change of the road it joins, are one design of the two)
-      const r = Math.max(e.f.length, o.f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) + o.legacy.cell.width[o.i] / 2 + e.legacy.cell.width[e.i] / 2 + INDEPENDENCE_SCREEN.clearance;
+      // (a roundabout's ring is the first's: its land and houses once)
+      ringsOf.delete(o.route.id);
+    }
+    // (the junction's works, and its changes of the road it joins, are one design of them all)
+    for (const o of group) for (const q of group) if (o !== q) {
+      const r = Math.max(o.f.length, q.f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) + o.legacy.cell.width[o.i] / 2 + q.legacy.cell.width[q.i] / 2 + INDEPENDENCE_SCREEN.clearance;
       const zone = { x: o.legacy.x[o.i], y: o.legacy.y[o.i], r };
-      let zones = designedJunctions.get(o.route.id); if (!zones) designedJunctions.set(o.route.id, zones = []);
-      zones.push({ routeId: e.route.id, ...zone });
-      let shared = sharedWays.get(o.route.id); if (!shared) sharedWays.set(o.route.id, shared = []);
-      for (const way of new Set([e.f.roadId, o.f.roadId].filter((w): w is number => w !== undefined))) shared.push({ routeId: e.route.id, way, ...zone });
+      const zones = designedJunctions.get(o.route.id) ?? []; designedJunctions.set(o.route.id, zones);
+      zones.push({ routeId: q.route.id, ...zone });
+      const shared = sharedWays.get(o.route.id) ?? []; sharedWays.set(o.route.id, shared);
+      for (const way of new Set([o.f.roadId, q.f.roadId].filter((w): w is number => w !== undefined))) shared.push({ routeId: q.route.id, way, ...zone });
     }
   }
 }

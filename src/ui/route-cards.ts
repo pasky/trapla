@@ -253,8 +253,8 @@ export function noLinksCard(host: () => HTMLElement, onClose: () => void): void 
   root.append(h, p);
 }
 
-/** What makes a slip road dear, where one piece of earthworks over 6 m high or deep is most of its cost (a slip road
- * on level ground costs a few tens of millions): that piece in a sentence, else nothing. */
+/** What makes a slip road dear, where one piece of earthworks over 6 m high or deep is its largest (≥ 40 % of its
+ * cost; a slip road on level ground costs a few tens of millions): that piece in a sentence, else nothing. */
 export function costNote(r: Result): string {
   const [top] = topPieces(r, 1);
   if (!top || (top.kind !== 'fill' && top.kind !== 'cut') || top.cost < 0.4 * r.cost.total) return '';
@@ -262,6 +262,6 @@ export function costNote(r: Result): string {
   if (depth < 6) return '';
   const streams = r.waterCrossings.filter(c => c.i >= top.i0 && c.i <= top.i1 && (c.structure === 'pipe' || c.structure === 'box')).length;
   return top.kind === 'fill'
-    ? ` Most of its cost: an embankment up to ${Math.round(depth)} m high over lower ground${streams ? `, ${streams === 1 ? 'a stream' : `${streams} streams`} under it in culverts` : ''}.`
-    : ` Most of its cost: a cutting up to ${Math.round(depth)} m deep.`;
+    ? ` Its largest cost: an embankment up to ${Math.round(depth)} m high over lower ground${streams ? `, ${streams === 1 ? 'a stream' : `${streams} streams`} under it in culverts` : ''}.`
+    : ` Its largest cost: a cutting up to ${Math.round(depth)} m deep.`;
 }

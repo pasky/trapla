@@ -54,20 +54,20 @@ export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heigh
         // (ended at the pavement's edge, as a ridge: no ground collar over the other road)
         if (dayM > wm) setM(Math.min(dayM, Math.max(wm, dd - wr)), zm, zm);
         if (dayR > wr) setR(wr, zr, zr);
-        continue;
       }
-      // both cuttings with a ridge too narrow to keep between them: dug out to one slope from crown edge to crown
-      // edge, and its nose cut down along the road where that ends, as billed (core/slip-roads.ts dugRidges): each
-      // face ends halfway, on that bottom
-      // (the slip road's face covers all of it, to the motorway's crown edge, the motorway's face there ended at its
-      // crown edge: one surface between them, not two faces that would have to meet exactly; a nose drawn as its
-      // face's samples, up to the ridge left and down to the motorway)
+    }
+    // both cuttings with a ridge too narrow to keep between them: dug out to one slope from crown edge to crown
+    // edge, and its nose cut down along the road where that ends, exactly where billed (core/slip-roads.ts dugRidges)
+    // (the slip road's face covers all of it, to the motorway's crown edge, the motorway's face there ended at its
+    // crown edge: one surface between them, not two faces that would have to meet exactly; a nose drawn as its
+    // face's samples, up to the ridge left and down to the motorway)
+    for (let q = 0; q < ramp.n; q++) {
       if (!Number.isFinite(ridge.x[q])) continue;
-      const kr = ridge.k[q], ml = ridge.mLeft[q] === 1, m = own.m ??= copy(motorway), zk = motorway.grade[kr], d = ridge.d[q];
+      const kr = ridge.k[q], ml = ridge.mLeft[q] === 1, m = own.m ??= copy(motorway), zk = motorway.grade[kr], d = ridge.d[q], zr = ramp.grade[q];
       set(m, ml, kr, wm, zk, zk);
       const r = mine.r ??= copy(ramp), rl = ridge.rLeft[q] === 1;
-      // (a hand's breadth under the motorway's crown edge: no sliver of sky between them)
-      // (measured across the slip road, which may run askew to the motorway there)
+      // (measured across the slip road, which may run askew to the motorway there; a hand's breadth under the
+      // motorway's crown edge: no sliver of sky between them)
       set(r, rl, q, (d - wm) / ridge.cos[q] + 0.25, zk, zk);
       const x = ridge.x[q], z = ridge.z[q], across = d - wm - wr;
       // (u: from the slip road's crown edge, d − wr from the motorway's line, to the motorway's, wm)

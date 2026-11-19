@@ -104,6 +104,16 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(r.cost.total! - alone.cost.total!).toBeGreaterThan(100e6);
     expect(r.cost.total! - alone.cost.total!).toBeLessThan(400e6);
   }, 120_000);
+  it('a shared junction has one form: a T and a roundabout there are a problem, two roundabouts one ring (review)', () => {
+    const d = structuredClone(design), exit = d.routes.find(q => q.name === 'Slip road')!, entry = d.routes.find(q => q.name === 'Slip road 2')!;
+    if (exit.alignment.kind !== 'pi' || entry.alignment.kind !== 'pi') throw new Error('bends expected');
+    entry.alignment.controls.junctionForms = { a: 'roundabout' };
+    expect(run(d).routes[entry.id].legacy!.violations.map(v => v.title)).toContain('Shares its junction with Slip road, but not its form');
+    exit.alignment.controls.junctionForms = { b: 'roundabout' };
+    const r = run(d), rings = r.works.items.filter(w => w.label?.startsWith('Roundabout\'s ring') && [exit.id, entry.id].includes(w.owner.id));
+    expect(r.issues.map(i => i.violation.title)).toEqual([]);
+    expect(rings.map(w => w.owner.id)).toEqual([exit.id]);
+  }, 120_000);
   it('a slip road with both ends on the motorway is a problem and earns no credit (review: it was credited twice)', () => {
     const d = structuredClone(design), first = d.routes.find(q => q.name === 'Slip road')!;
     const line = run({ ...d, routes: d.routes.slice(0, 2) }).routes['route:motorway-forward'].legacy!, k = Math.round(4160 / line.ds);
