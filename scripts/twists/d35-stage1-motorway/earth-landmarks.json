@@ -3,7 +3,8 @@
  "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find)",
  "meets": [
   "earth",
-  "landmarks"
+  "landmarks",
+  "budget"
  ],
  "goal": true,
  "design": {

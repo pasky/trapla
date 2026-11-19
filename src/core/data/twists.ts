@@ -59,7 +59,7 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
     real: { price: 18_500e6, priceText: 'ŘSD estimate, 09/2025, with a 925 m Mastník viaduct', story: 'A 925 m viaduct is to cross the Mastník valley before it joins the D3 already open.' } },
   'd3-full-motorway': { offer: ['earth', 'landmarks', 'scratch', 'byHand'], startBill: 36_081e6, terms: { earthShare: EARTH_SHARE }, curveballs: [],
     real: { price: 71_500e6, priceText: 'ŘSD estimates of the five sections, 09/2025', story: '58.5 km across the Sázava country: planned since the 1990s, its permits advancing, works no sooner than 2028.' } },
-  'd35-stage1-motorway': { offer: ['earth', 'landmarks', 'scratch', 'byHand'], startBill: 19_459e6, terms: { earthShare: EARTH_SHARE }, curveballs: [],
+  'd35-stage1-motorway': { offer: ['earth', 'landmarks', 'budget', 'scratch', 'byHand'], startBill: 19_459e6, terms: { earthShare: EARTH_SHARE, budget: 17_694e6 }, curveballs: [],
     real: { price: 17_694e6, priceText: 'ŘSD estimate, 09/2025, with the 4 km Dětřichov tunnel', story: 'Its 4 km tunnel passes under the protected Pod skálou slope; it is to be built by a private partner.' } },
   'd35-full-motorway': { offer: ['earth', 'landmarks', 'scratch', 'byHand'], startBill: 33_239e6, terms: { earthShare: EARTH_SHARE }, curveballs: [],
     real: { priceText: 'Built and run by a private partner: the chosen bid, 71.3 bn CZK, pays for 22 years of upkeep too', story: 'Both sections have their permits; a private partner was chosen in 2026 to build it and look after it.' } },

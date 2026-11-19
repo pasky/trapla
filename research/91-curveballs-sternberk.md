@@ -63,3 +63,33 @@ Sources: [ŘSD leaflet](https://apdos.roadmedia.cz/Upload/Stavby/329/infoletak_s
 | `eia-screening` | Early environmental screening cleared review | No new hard restriction verified | Šternberk cadastral area only | [CENIA OLK068](https://portal.cenia.cz/eiasea/detail/EIA_OLK068) |
 | `sprchovy-valley` | A deep valley needs a long bridge | Bridge or tunnel; documented project uses bridge | Approximate valley corridor | [ŘSD leaflet](https://apdos.roadmedia.cz/Upload/Stavby/329/infoletak_s46-sternberk-obchvat.pdf) |
 | `military-and-allotments` | Workshops and gardens crowd the approach | No blanket rule; exclude only confirmed restricted/occupied land | Approximate southern/eastern approach | [Research note 88](research/88-town-bypass-candidates.md) |
+
+## Round 2: what the game uses (2026-11-20, checked by hand)
+
+- **The villa** — Weisshuhnova vila, Jívavská 1416/73, 49.72399 N 17.31799 E; ÚSKP 107460 "Vila se zahradou", a monument
+  from 30 Dec 2025 (cs.wikipedia, "Seznam kulturních památek ve Šternberku", raw list entry: `|Název=Weisshuhnova vila
+  |Adresa=Jívavská 1416/73 |Zeměpisná_šířka=49.7239868 |Zeměpisná_délka=17.3179938 |Popis=Vila se zahradou |Id_objektu=
+  107460 |Památkou_od=2025-12-30`; zdopravy.cz says the ministry decided in November 2025). It stands 120 m from our B, by
+  the I/46 (Jívavská street) the bypass rejoins. The owner, Tomáš Kubálek, "nesouhlasí s vedením obchvatu v její těsné
+  blízkosti; … má jeden z pilířů plánovaného mostu stát přímo na zahradě u historického skleníku. Usiluje proto o změnu
+  trasy obchvatu, ŘSD ji ale odmítá" (zdopravy.cz, 16 Nov 2026). The place: ČÚZK RÚIAN parcels (MapServer
+  `RUIAN/Prohlizeci_sluzba_nad_daty_RUIAN`, layer 5) of the villa (st. 1529, 494 m²), the greenhouse (st. 1531, 26 m²; the
+  pack's building 6302) and the gardens round them (1535/1, 1535/2, 6491/45, "zahrada"), merged: 3,033 m². Which parcels
+  the listing takes in is not published (PROVISIONAL). The starter's viaduct passes 52 m from the villa; its east end and
+  embankment are in the garden. Rule: no pier or earthworks there (our deck may pass over: the reported conflict is the
+  pier). Keeping our deck out too was tried: no line found that ends at B so (B is 120 m away), which is why ŘSD holds
+  to its line.
+- **No money** — zdopravy.cz, 21 Dec 2025, "Stavba obchvatu Šternberka se zpozdí, v rozpočtu na něj nejsou peníze"
+  ("Rozpočet Státního fondu dopravní infrastruktury, jak je nastaven na rok 2026, tak neumožňuje financování řady
+  staveb"); ŘSD, 28 Jan 2026: one of the very few works moved to the next year. hanacka.drbna.cz, 17 Dec 2025, adds that
+  not all the land is bought ("nemají vyřešené všechny pozemky"). The game's cap: 88 % of the starting bill.
+- **The butterflies** — reported to the region in 9/2026 (zdopravy.cz and Olomoucký deník, 16 Nov 2026, from the region's
+  official notice board); species and place not published. The game's place (PROVISIONAL, its guess): a 90 m circle on the
+  open land by the shooting range at our km 1.1–1.3 (the ŘSD leaflet: the line runs "přes pozemek vojenských opraváren,
+  kolem střelnice a vodojemu").
+- **The Aleš stream** — ŘSD leaflet 07/2025: "V km 1,218 překonává mostem délky 56 m místní komunikaci do chatové osady a
+  souběžný potok Aleš"; the OSM planned line has its 48 m bridge there (`meta.official.kinds`). Our starter crosses it at
+  km 0.75 on a 4.4 m embankment over a culvert. The place: the stream's mapped reach (OSM 968409233) 150 m either side of
+  that crossing, 20 m either side of it. Rule: no cut or fill (a bridge).
+- Tried and dropped: the Sprchový potok valley floor (ŘSD: "estakádou délky 287 m") as a no-fill band along the stream
+  (OSM 389408307) 25–45 m wide: on most lines the band's edges are where a bridge would be too close to the ground.

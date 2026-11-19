@@ -48,6 +48,9 @@ export class TwistMarks {
     view.addRenderListener(() => this.place());
   }
 
+  /** the camera the marks were last placed for: a frame with the same one (a drag's preview redrawing the road) skips them */
+  private placedFor = '';
+
   set(marks: readonly TwistMark[]) {
     for (const it of this.items) { it.path.remove(); it.dot.remove(); it.label.remove(); }
     this.items = marks.map(mark => {
@@ -64,10 +67,14 @@ export class TwistMarks {
       const pts = outline(mark.shape).map(p => ({ ...p, z: this.heightAt(p.x, p.y) + 1 }));
       return { mark, pts, path, dot, label, z: this.heightAt(mark.at.x, mark.at.y) + 1 };
     });
+    this.placedFor = '';
     this.place();
   }
 
   private place() {
+    const c0 = this.view.camera, key = `${c0.matrixWorld.elements.join(',')}|${c0.projectionMatrix.elements[0]}|${this.overlay.clientWidth}x${this.overlay.clientHeight}`;
+    if (key === this.placedFor) return;
+    this.placedFor = key;
     const mpp = this.view.metresPerPixel, taken: number[][] = [];
     // broken and new first: they keep their names when labels crowd
     const order = [...this.items].sort((a, b) => rank(b.mark) - rank(a.mark));

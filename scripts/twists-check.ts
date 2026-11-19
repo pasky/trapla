@@ -19,7 +19,7 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
 import { corridorOfRoute } from '../src/core/project-motorway';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { checkTwists, earthShare, twistFacts, DEFAULT_TWISTS, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
+import { checkTwists, earthShare, twistFacts, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
 import { GOAL_SHARE, MISSION_TWISTS } from '../src/core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
 import { CATEGORIES } from '../src/core/data/categories';
@@ -204,7 +204,7 @@ else if (args[0] === '--show') {
   // one design: its verdict and every twist of the mission with what breaks it
   const fx = JSON.parse(readFileSync(args[1], 'utf8')) as Fixture, m = mission(fx.preset), r = evalDesign(m, fx.design);
   console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(1)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).join('; '));
-  for (const c of check(m, fx.design, r, m.setup.mission.offer)) console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.map(i => `\n      ${i.text}`).join('')}`);
+  for (const c of check(m, fx.design, r, process.env.ALL ? TWIST_ORDER : m.setup.mission.offer)) console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.map(i => `\n      ${i.text}`).join('')}`);
 } else if (args[0] === '--manual') {
   // By hand: a design with our road's heights set by hand where Auto had them (as the HUD's By hand button takes them)
   const m = mission(args[1]), from = opt('--from'), start = from ? (JSON.parse(readFileSync(from, 'utf8')) as Fixture).design : m.starter;
