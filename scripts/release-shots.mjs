@@ -7,6 +7,7 @@
 //                                                         served at /, for the start screen and intro before)
 // Needs a build (npm run build). Untimed: `flock -s /tmp/trapla-browser.lock nice -n 10 …` (AGENTS.md).
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { serveStatic } from './static-serve.mjs';
 import { checker } from './lib/browser.mjs';
@@ -83,9 +84,10 @@ try {
   }
   // ---- older saves: a save of a retired mission is listed apart ----
   {
-    const { context, page } = await fresh(browser, { width: 1440, height: 1700 }, () => {
-      localStorage.setItem('trapla.d3.design', JSON.stringify({ pis: [] })); localStorage.setItem('trapla.i16-nova-paka.design', JSON.stringify({ pis: [] }));
-    });
+    // (a real Nová Paka design, its starter, so that Continue opens it)
+    const nova = JSON.stringify(JSON.parse(readFileSync('scripts/scenarios/i16-nova-paka/default.json', 'utf8')).design);
+    const { context, page } = await fresh(browser, { width: 1440, height: 1700 },
+      `localStorage.setItem('trapla.d3.design', JSON.stringify({ pis: [] })); localStorage.setItem('trapla.i16-nova-paka.design', ${JSON.stringify(nova)});`);
     await page.goto(site.url); await pickerReady(page);
     const older = page.locator('.scenario-picker-older');
     ok(await older.count() === 1 && /Jílové → Václavice, two-lane road/.test(await older.textContent()) && /Nová Paka bypass/.test(await older.textContent()),
