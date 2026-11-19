@@ -359,7 +359,7 @@ export const D11_MOTORWAY: ScenarioParams = {
 const i35Section = (id: string, title: string, section: string, pis: PI[], traffic: number, heavyShare: number, maxTravelMin: number,
   labels: ScenarioParams['labels'], goal: string, ends: ScenarioParams['ends']): ScenarioParams => ({
   id, presetId: `${id}-road`, mode: 'motorway', title, group: 'Český ráj', ends,
-  initial: { category: (process.env.I35CAT ?? 'S21.5') as 'S21.5', speed: 110, pis },
+  initial: { category: 'S21.5', speed: 110, pis },
   picker: { kind: 'Four-lane road', goal, section, note: 'Not a motorway: a motorway may not enter the protected landscape.' },
   traffic, heavyShare, maxTravelMin, terrainClass: 'hilly', maxGradient: 0.06, labels,
 });
