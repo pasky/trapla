@@ -101,7 +101,7 @@ export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, l
   if (c.shared) {
     const o = ownOutcome({ ...c, targetS: undefined }, name);
     return words({ ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
-      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` });
+      explain: `${o.explain} Both directions of ${line === 'motorway' ? 'the motorway' : 'our road'} cross it here together; the other direction's bill carries it.` });
   }
   return words(ownOutcome(c, name));
 }

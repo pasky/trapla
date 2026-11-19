@@ -6,7 +6,7 @@
 import type { RouteId } from '../core/project';
 import { autoFollowingCorridor, corridorOfRoute, rejoinStretch } from '../core/project-motorway';
 import { CATEGORIES, lineOf } from '../core/data/categories';
-import { routeWord } from '../core/route-section';
+import { routeCategory, routeWord } from '../core/route-section';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Result } from '../core/evaluate';
 import { DIRECTIONS_TEXT, placeName } from '../core/terms';
@@ -71,7 +71,8 @@ export function createRoutes(app: RoutesContext) {
     const kind = route ? routeWord(route) : app.scenario.mode === 'motorway' ? lineOf(CATEGORIES[app.scenario.initial?.category ?? 'D27.5']) : app.scenario.mode ?? 'road';
     document.getElementById('legend-route')!.textContent = kind;
     document.getElementById('legend-height')!.textContent = kind === 'railway' ? 'track height' : 'road height';
-    app.profile.setLine(kind); app.hud.setLine(kind);
+    const category = route ? routeCategory(route) : app.scenario.initial?.category;
+    app.profile.setLine(kind); app.hud.setLine(kind, kind !== 'railway' && !!(category && category !== 'existing' && CATEGORIES[category].gradeSeparated));
     // a motorway's ends are its corridor's A and B on the map (its direction towards A reads from B)
     app.profile.setEndLabels(corridor?.mode === 'paired' ? ['A', 'B'] : null);
     if (!corridor) { app.hud.setDirections(null); return; }

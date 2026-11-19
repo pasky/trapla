@@ -2420,7 +2420,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   time; ends on the mapped line at km 0.6 (past the D10 / I/35 interchange and the Liberec–Turnov railway), 6.4 (past
   the Valdštejnsko interchange, the railway and I/35 the line bridges, and III/2835), 18.9 (Čímyšl) and 33.02 (where the
   D35 Úlibice bypass starts). Starters: the mapped line's nodes every ≈ 0.6 km, VALID on Auto alone: 5.63 / 4.39 /
-  5.37 bn, the whole route 15.18 bn (31.95 km, 17.4 min). The whole route evaluates in ≈ 1.1 s (35 ms/km: dense
+  5.37 bn, the whole route 15.16 bn (31.95 km, 17.4 min). The whole route evaluates in ≈ 1.1 s (35 ms/km: dense
   crossings, the town of Turnov); drag-perf bend / road / link pass (`drag-i35-full-*` gates).
 - **Known issues:** the 2+1 stretch (20.5 km) is built four-lane (one category per route); no pier is built in a pond
   (the middle stage's 1.5 km reference crossed one lengthwise; its reference is 1.0 km); a bridge running 400 m along a

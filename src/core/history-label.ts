@@ -2,9 +2,10 @@
 // Worked out from the two designs either side of the step, so every edit is named the same way wherever it
 // was made (map, profile, cards, build tools).
 import type { ProjectDesign, RouteDesign } from './project';
+import { routeWord } from './route-section';
 
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
-const lineWord = (r: RouteDesign) => r.kind === 'railway' ? 'railway' : r.kind === 'motorway' ? 'motorway' : 'road';
+const lineWord = (r: RouteDesign) => routeWord(r);
 const nameOf = (r: RouteDesign) => r.role === 'mission' ? `our ${lineWord(r)}` : r.name;
 
 type Crossings = Extract<RouteDesign['alignment'], { kind: 'pi' }>['controls']['crossings'];
@@ -83,7 +84,9 @@ export function historyLabel(before: ProjectDesign, after: ProjectDesign): strin
       ? { ...c, revision: 0, spine: { ...c.spine, controls: { ...c.spine.controls, crossings: undefined } } } : { ...c, revision: 0 });
     const k = ka.findIndex((x, i) => !same(x, kb[i]));
     if (k >= 0 && same(strip(before), strip(after)) && ka.filter((x, i) => !same(x, kb[i])).length === 1) return crossingChange(ka[k], kb[k]);
-    return 'the motorway';
+    const corridor = after.corridors.find((c, i) => !same({ ...c, revision: 0 }, { ...before.corridors[i], revision: 0 }));
+    const forward = corridor && after.routes.find(r => r.id === corridor.children.forward);
+    return `the ${forward ? routeWord(forward) : 'motorway'}`;
   }
   if (!changed.length) return same(before.connections, after.connections) ? 'an edit' : 'a connection';
   // a paired motorway's two directions change together: one change

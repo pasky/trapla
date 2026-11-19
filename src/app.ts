@@ -1,5 +1,6 @@
 // The game itself, loaded while the start screen is up (src/main.ts): the pack, the 3D view, the workers, the
 // panels and every event between them.
+import { CATEGORIES, lineOf } from './core/data/categories';
 import { scenarioParams } from './core/data/scenario';
 import { missionProject } from './core/project-mission';
 import { RouteExtras } from './render/extras';
@@ -136,7 +137,7 @@ export async function startApp({ picked, storage, loading }: { picked: PickedSce
   installToolbarFit(document.getElementById('view')!);
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
-  const intro = new Intro(document.getElementById('view')!, scenario.mode ?? 'road');
+  const intro = new Intro(document.getElementById('view')!, scenario.mode === 'motorway' ? lineOf(CATEGORIES[scenario.initial?.category ?? 'D27.5']) : scenario.mode ?? 'road');
   // The start view frames A and B in what the toolbar, legend and attribution leave, clear of the intro.
   view.frameSafe = () => {
     const host = document.getElementById('view')!.getBoundingClientRect();

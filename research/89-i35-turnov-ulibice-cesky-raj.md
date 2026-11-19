@@ -129,6 +129,7 @@ and 12 m wider than the 2+1). Its rows, all sourced, none scaled:
 | Built-up row | none: the rural row, as for the motorway | — |
 | Tunnels | one 2-lane tube per direction (the study: Pelešany two one-way tubes, T-8.0) | [TST] §6.3 |
 | One direction (split) | 10.75 m, 60 % of the norm, as D 27.5's one direction (SPK p. 7) | categories.ts 'D27.5-1' |
+| Noise source | a class I road's (Manuál 2018 v2020 class I emission, TP 219 non-E class I night shares, PROVISIONAL: the I/35 carries the E442, whose E-road row of TP 219 tab. 3-2 is not in the game) at its signed speed, half the traffic on each direction's lane-pair axis (±5.375 m); the Manual's motorway source (motorway emission, its four-lane free-flow lane speeds for a 130 km/h limit) is the D 27.5's only | road-noise.ts; evaluate.ts motorwayLanes |
 | In law | a class I road: a CHKO's zones III–IV need consent (a note), zones I–II and reserves ban works as for any road; a motorway (D 27.5) is banned anywhere in a CHKO | zákon 114/1992 §26 (research/75); the category flag `motorwayByLaw` |
 
 Known difference: the real line is S 21.5 only to MÚK Žernov (km 12.4) and the 2+1 S 15.25/110 beyond (20.5 km; SPK has
@@ -184,7 +185,7 @@ under the houses of Pelešany and considers covering the road beside the Přepe�
 first stage's embankments buy 769 k m³ of fill (its cuts give 107 k). The real stages' figures are context for the
 player, not a target.
 
-The whole route: **15.18 bn**, 31.95 km, 17.4 min (the stages' sum 15.39 bn); its 1.5 km reference 15.50 bn. ŘSD's
+The whole route: **15.16 bn**, 31.95 km, 17.4 min (the stages' sum 15.39 bn); its 1.5 km reference 15.60 bn. ŘSD's
 three road stages: 18.98 bn (CÚ 2022, construction), with the interchange stage 19.98 bn.
 
 On the line's CHKO corner: our starter's works stand in zone III at km 4.51–4.68 of the Turnov stage (earthworks, a

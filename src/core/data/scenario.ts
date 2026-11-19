@@ -350,12 +350,15 @@ export const D11_MOTORWAY: ScenarioParams = {
 // ≈ 14.5 km; the 2023 technical study, 33.0 km, E1 line of the 2021 EIA opinion, revoked 12/2025, new EIA from 2026).
 // Category: S 21.5 at 110 km/h, the real project's to MÚK Žernov (km 12.4); beyond it the real road is the 2+1
 // S 15.25/110, which the game cannot change to mid-route (research/89 §6). Not a motorway in law: CHKO Český ráj's
-// zones III–IV need consent, a note (zákon 114/1992 §26; categories.ts motorwayByLaw). Sections: the pack's A and B
-// on the mapped line (OSM highway=proposed ways 1012219137, 1012219136, 883368325) at the Valdštejnsko (km 5.6) and
-// Čímyšl (km 18.9) interchanges. Traffic: the EIA's 2040 forecast (dokumentace 2020 p. 76), averaged over each
-// stretch's segments by length, its heavy share (NA) the noise model's. Time targets: a mission choice, the mapped
-// line + 10 % at 110 km/h, rounded up to 0.1 min. Starters: mapped-line bends every ≈ 1.5 km, none within 750 m
-// of B (scripts/motorway-starter.ts --mapped=1.5).
+// zones III–IV need consent, a note (zákon 114/1992 §26; categories.ts motorwayByLaw). Ends: the packs' A and B on the
+// mapped line (OSM highway=proposed ways 1012219137, 1012219136, 883368325): km 0.6 past the D10 / I/35 interchange and
+// the Liberec–Turnov railway; km 6.4 past the Valdštejnsko interchange, the railway and road I/35 the line bridges and
+// road III/2835; km 18.9 at the Čímyšl interchange; km 33.02 where the D35 Úlibice bypass starts (research/89 §7).
+// Traffic: the EIA's 2040 forecast (dokumentace 2020 p. 76), averaged over each stretch's segments by length, its heavy
+// share (NA) the noise model's. Time targets: a mission choice, the mapped line + 10 % at 110 km/h, rounded up to 0.1
+// min. Starters: the mapped line's nodes every ≈ 0.6 km, none within 750 m of B (scripts/motorway-starter.ts
+// --mapped=0.6), VALID as sampled. (The Valdštejnsko – Čímyšl reference fixture is every 1.0 km, not check.ts --seed's
+// 1.5 km, which crosses a pond lengthwise: do not reseed it.)
 const i35Section = (id: string, title: string, section: string, pis: PI[], traffic: number, heavyShare: number, maxTravelMin: number,
   labels: ScenarioParams['labels'], goal: string, ends: ScenarioParams['ends']): ScenarioParams => ({
   id, presetId: `${id}-road`, mode: 'motorway', title, group: 'Český ráj', ends,

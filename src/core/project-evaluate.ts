@@ -26,7 +26,7 @@ import { thisRoadWords } from './terms';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
 import { stationIndex } from './range';
-import { routeCategory, routeWord } from './route-section';
+import { motorwayCategory, routeCategory, routeWord } from './route-section';
 import { structureSurcharge, surchargeRate } from './cost';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
@@ -803,7 +803,7 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
     // another road, which a road crossing it changes on its own)
     const ownWay = ownWayOf(route);
     return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(route.kind === 'railway' ? { railway: true } : {}), ...(ownWay !== undefined ? { ownWays: [ownWay, ...remnantOf(route) !== undefined ? [remnantOf(route)!] : []] } : {}),
-      ...(corridor ? { profile: 'motorway' as const } : {}),
+      ...(corridor && CATEGORIES[motorwayCategory(route as Extract<RouteDesign, { kind: 'motorway' }>)].motorwayByLaw ? { profile: 'motorway' as const } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
       // its other works on the ground: the links that reconnect side roads. (The old road where it is
       // removed is land given back: another road's works over it share nothing with this road; where the
@@ -1129,7 +1129,7 @@ function heldBodyBilled(owner: RouteDesign, own: Result, c: CrossingResult): num
   return Math.max(0, c.cost - (c.worksCost ?? 0) - (c.houseCost ?? 0)) * (1 + rate);
 }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-const ownerName = (r: RouteDesign) => r.role === 'mission' ? (r.kind === 'railway' ? 'our railway' : r.kind === 'motorway' ? 'our motorway' : 'our road') : r.name;
+const ownerName = (r: RouteDesign) => r.role === 'mission' ? `our ${routeWord(r)}` : r.name;
 /** How far a road passing over the owner's bridge on its own bridge stays above the owner's grade, m: the
  * clearance over a road (CROSSING_RULES.overHeight), over a railway or motorway STRUCTURE_RULES.railClearance. */
 const clearOver = (owner: RouteDesign) => ROUTE_KINDS[owner.kind].clearanceOver;

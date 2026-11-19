@@ -209,6 +209,10 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     if (!port || Math.hypot(e.position.x - port.position.x, e.position.y - port.position.y, e.position.z - port.position.z) > 1e-6)
       return { status: 'incomplete', reason: 'unresolved-binding' };
   }
+  // the mission's corridor is built to the mission's category (a saved or loaded project cannot swap the motorway for
+  // a four-lane road, or back, and keep its mission's score)
+  const asked = ctx.scenario.initial?.category;
+  if (goal && asked && CATEGORIES[asked].paired && asked !== paired) return { status: 'incomplete', reason: 'unsupported-policy' };
   const unpriced = goal ? undefined : ['motorway-needs-interchange' as const];
   if (corridor.mode === 'independent') {
     // Each direction ends at its own lanes' continuation beside the port, at the port's height.

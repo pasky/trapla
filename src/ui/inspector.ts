@@ -593,7 +593,7 @@ export class Inspector {
     return `${this.head(card.title, `km ${km(c.s)}`)}
       <div class="ctx-state"><b>${esc(card.state)} · ${czk(c.cost)}</b>${card.why.map(t => `<div class="why">${esc(t)}</div>`).join('')}</div>
       <div class="more-box">${card.more.map(t => `<div class="sub">${esc(t)}</div>`).join('')}</div>
-      <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${CATEGORIES[d.category].mode} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
+      <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${lineOf(CATEGORIES[d.category])} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
   }
 
   // ---- height point (By hand) ----
@@ -701,7 +701,7 @@ export class Inspector {
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
       why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is bought out, km ${km(r.s[removed.i])}, and goes with it.`
-        : removed.in === 'access' ? `The way to it is cut at km ${km(r.s[removed.i])}: buying it out costs less than keeping that way across our ${CATEGORIES[d.category].mode}.`
+        : removed.in === 'access' ? `The way to it is cut at km ${km(r.s[removed.i])}: buying it out costs less than keeping that way across our ${lineOf(CATEGORIES[d.category])}.`
         : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}, or within ${BUILDING_RULES.clearance} m of it.`
         : removed.in === 'works' ? `Under the earth slopes of the road raised or lowered to cross ours at km ${km(r.s[removed.i])}, or within ${BUILDING_RULES.clearance} m of them.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`

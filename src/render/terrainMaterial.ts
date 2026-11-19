@@ -53,7 +53,7 @@ export function oobTexture(lc: Uint8Array, nx: number, ny: number, oobBit: numbe
 
 export const LC_LEVELS = 4;
 /** size of the `roadSections` table */
-export const ROAD_SECTIONS = 8;
+export const ROAD_SECTIONS = 10;
 
 export interface TerrainUniforms {
   [name: string]: THREE.IUniform;
@@ -90,30 +90,38 @@ export interface TerrainUniforms {
   roadSections: { value: THREE.Vector4[] };
   /** centre-line dash and gap (m) */
   roadDash: { value: THREE.Vector2 };
-  /** paired motorway (section index PAIRED_SECTION): median half-width, inner paved shoulder, inner lane
-   * width, outer paved shoulder (m); lines: edge width, lane-line width, dash, gap (m) */
-  roadPaired: { value: THREE.Vector4 };
-  /** the paired section's outer lane width, m (S 21.5: 3.50 beside a 3.25 inner lane) */
-  roadPairedOuter: { value: number };
+  /** the two paired cross-sections (PAIRED_VARIANTS: D 27.5, S 21.5): median half-width, inner paved shoulder,
+   * inner lane width, outer paved shoulder (m); lines (both): edge width, lane-line width, dash, gap (m) */
+  roadPaired: { value: THREE.Vector4[] };
+  /** each paired section's outer lane width, m (S 21.5: 3.50 beside a 3.25 inner lane) */
+  roadPairedOuter: { value: number[] };
   roadPairedLines: { value: THREE.Vector4 };
-  /** half-width of one direction's own formation (split motorway), m */
-  roadCarriageway: { value: number };
+  /** half-width of one direction's own formation (split motorway), m, per paired section */
+  roadCarriageway: { value: number[] };
   /** railway: (on), track-centre distance, ballast top half-width, half the rail spacing (m) */
   roadRail: { value: THREE.Vector4 };
 }
-/** `roadSections` slot reserved for the paired motorway cross-section (two carriageways and a median). */
-export const PAIRED_SECTION = ROAD_SECTIONS - 1;
+/** The paired cross-sections the shader draws, each with its own slots (two may be on the map together: a motorway
+ * built in a four-lane road's mission). */
+export const PAIRED_VARIANTS: readonly PairedCategoryId[] = ['D27.5', 'S21.5'];
+/** `roadSections` slots of a paired corridor (two carriageways and a median), per variant: 9 D 27.5, 7 S 21.5. */
+export const pairedSlot = (c: PairedCategoryId) => ROAD_SECTIONS - 1 - 2 * PAIRED_VARIANTS.indexOf(c);
+/** …and of one direction of it split: the same paint, the median on its left (travel inside): 8, 6. */
+export const carriagewaySlot = (c: PairedCategoryId) => pairedSlot(c) - 1;
 /** Slots of a railway formation (single / double track): ballast beds, sleepers and rails (`roadRail`). */
-export const RAIL_SECTION = ROAD_SECTIONS - 3, RAIL2_SECTION = ROAD_SECTIONS - 4;
-/** Slot of one direction of a split motorway: the same paint, the median on its left (travel inside). */
-export const CARRIAGEWAY_SECTION = ROAD_SECTIONS - 2;
+export const RAIL_SECTION = 5, RAIL2_SECTION = 4;
+/** a slot of a paired corridor or of one of its directions */
+export const isPairedSlot = (k: number) => k >= ROAD_SECTIONS - 2 * PAIRED_VARIANTS.length;
+export const isCarriagewaySlot = (k: number) => isPairedSlot(k) && (ROAD_SECTIONS - 1 - k) % 2 === 1;
 
-/** Point the shader's paired cross-section at a corridor category's lanes (one paired section is drawn at a time). */
-export function setPairedSection(u: TerrainUniforms, category: PairedCategoryId): void {
-  const d = PAIRED_SECTIONS[category];
-  u.roadPaired.value.set(d.median / 2, d.innerPavedShoulder, d.innerLane, d.outerPavedShoulder);
-  u.roadPairedOuter.value = d.outerLane;
-  u.roadCarriageway.value = CATEGORIES[CATEGORIES[category].carriagewayOf!].crownWidth / 2;
+/** The shader's paired cross-sections from the corridor categories' lanes. */
+export function setPairedSections(u: TerrainUniforms): void {
+  PAIRED_VARIANTS.forEach((category, v) => {
+    const d = PAIRED_SECTIONS[category];
+    u.roadPaired.value[v].set(d.median / 2, d.innerPavedShoulder, d.innerLane, d.outerPavedShoulder);
+    u.roadPairedOuter.value[v] = d.outerLane;
+    u.roadCarriageway.value[v] = CATEGORIES[CATEGORIES[category].carriagewayOf!].crownWidth / 2;
+  });
 }
 
 export function terrainUniforms(): TerrainUniforms {
@@ -135,10 +143,10 @@ export function terrainUniforms(): TerrainUniforms {
     shadeAmt: { value: 1 },
     roadSections: { value: Array.from({ length: ROAD_SECTIONS }, () => new THREE.Vector4(0, 0, 0, 0)) },
     roadDash: { value: new THREE.Vector2(3, 6) },
-    roadPaired: { value: new THREE.Vector4(0, 0, 0, 0) },
+    roadPaired: { value: PAIRED_VARIANTS.map(() => new THREE.Vector4(0, 0, 0, 0)) },
     roadPairedLines: { value: new THREE.Vector4(0, 0, 1, 1) },
-    roadPairedOuter: { value: 0 },
-    roadCarriageway: { value: 0 },
+    roadPairedOuter: { value: PAIRED_VARIANTS.map(() => 0) },
+    roadCarriageway: { value: PAIRED_VARIANTS.map(() => 0) },
     roadRail: { value: new THREE.Vector4(0, 0, 0, 0) },
   };
 }
@@ -374,14 +382,18 @@ vec3 earthAlbedo(vec3 p, float fillW, vec3 geo, float fw, float fs) {
 const ROAD_GLSL = /* glsl */ `
 uniform vec4 roadSections[${ROAD_SECTIONS}];
 uniform vec2 roadDash;
-uniform vec4 roadPaired;
+uniform vec4 roadPaired[2];
 uniform vec4 roadPairedLines;
-uniform float roadPairedOuter;
-uniform float roadCarriageway;
+uniform float roadPairedOuter[2];
+uniform float roadCarriageway[2];
 uniform vec4 roadRail;
 // offset from the motorway's centre line: paired sections are symmetric about it, a split direction's
 // axis lies roadCarriageway to the right of it (geo.x left-positive, the median on the left)
-float rdSpine(int k, float gx) { return k == ${ROAD_SECTIONS - 1} ? abs(gx) : roadCarriageway - gx; }
+// which paired cross-section a slot draws (0 D 27.5, 1 S 21.5; -1 none), and whether it is the corridor (not one direction)
+int rdPaired(int k) { return k >= ${ROAD_SECTIONS - 2} ? 0 : k >= ${ROAD_SECTIONS - 4} ? 1 : -1; }
+bool rdWhole(int k) { return k == ${ROAD_SECTIONS - 1} || k == ${ROAD_SECTIONS - 3}; }
+vec4 rdPairedRow(int v) { return v == 0 ? roadPaired[0] : roadPaired[1]; }
+float rdSpine(int k, float gx) { return rdWhole(k) ? abs(gx) : (rdPaired(k) == 0 ? roadCarriageway[0] : roadCarriageway[1]) - gx; }
 // coverage of [lo, hi] by a pixel of width fw centred at x
 float rdCover(float x, float lo, float hi, float fw) {
   float w = max(fw, 1e-4);
@@ -396,7 +408,8 @@ float rdDashes(float s, float dash, float period, float fs) {
 // twin decks: the paired section's median is open on a bridge
 bool roadGap(vec3 geo) {
   int k = int(floor(geo.y * 0.5 + 0.01));
-  return k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0 && geo.y - 2.0 * float(k) > 0.5 && rdSpine(k, geo.x) < roadPaired.x;
+  int v = rdPaired(k);
+  return v >= 0 && rdPairedRow(v).z > 0.0 && geo.y - 2.0 * float(k) > 0.5 && rdSpine(k, geo.x) < rdPairedRow(v).x;
 }
 vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
   // geo.y interpolates only between a section's 2k and 2k + 1 (earthworks / bridge)
@@ -407,9 +420,10 @@ vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
   float x = abs(geo.x), lane = roadSection.x, paved = roadSection.y;
   float fine = ewOctave(p + 11.1, 0.45, fw), mid = ewOctave(p + 3.7, 2.3, fw), big = ewOctave(p, 9.0, fw);
   vec3 col = vec3(0.33, 0.33, 0.34) * (1.0 + 0.10 * big + 0.07 * mid + 0.09 * fine);
-  if ((k == ${ROAD_SECTIONS - 3} || k == ${ROAD_SECTIONS - 4}) && roadRail.x > 0.0) {
+  int pv = rdPaired(k);
+  if ((k == ${RAIL_SECTION} || k == ${RAIL2_SECTION}) && roadRail.x > 0.0) {
     // railway: gravel walkway shoulders, ballast bed per track, concrete sleepers every 0.6 m, two rails
-    float c = k == ${ROAD_SECTIONS - 4} ? 0.5 * roadRail.y : 0.0, u = abs(abs(geo.x) - c);
+    float c = k == ${RAIL2_SECTION} ? 0.5 * roadRail.y : 0.0, u = abs(abs(geo.x) - c);
     vec3 walk = mix(vec3(0.50, 0.46, 0.40), vec3(0.44, 0.47, 0.36), smoothstep(-0.2, 0.3, big + mid)) * (1.0 + 0.15 * fine);
     vec3 ballast = vec3(0.47, 0.45, 0.43) * (1.0 + 0.25 * fine + 0.08 * mid);
     col = mix(walk, ballast, rdCover(u, -1.0, roadRail.z, fx));
@@ -419,12 +433,14 @@ vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
     col = mix(col, vec3(0.30, 0.29, 0.28), rdCover(abs(u - roadRail.w), 0.0, 0.08, fx));
     col = mix(col, vec3(0.80, 0.80, 0.82), rail * 0.8);
     if (bridge > 0.5) col = mix(col, vec3(0.70, 0.69, 0.66) * (1.0 + 0.05 * mid), rdCover(abs(geo.x), c + roadRail.z + 0.6, 1e3, fx));
-  } else if (k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0) {
+  } else if (pv >= 0 && rdPairedRow(pv).z > 0.0) {
     // two carriageways about the spine: median (grass, concrete barrier), inner shoulder, two lanes, hard shoulder, verge
     x = rdSpine(k, geo.x);
-    float m = roadPaired.x, l0 = m + roadPaired.y, l1 = l0 + roadPaired.z + roadPairedOuter, paved = l1 + roadPaired.w;
-    float u = x - l0 - roadPaired.z; // offset from the line between the two lanes
-    float track = 1.0 - smoothstep(0.15, 0.45, abs(abs(u) - 0.5 * (u < 0.0 ? roadPaired.z : roadPairedOuter)) - 0.9);
+    vec4 P = rdPairedRow(pv);
+    float outer = pv == 0 ? roadPairedOuter[0] : roadPairedOuter[1];
+    float m = P.x, l0 = m + P.y, l1 = l0 + P.z + outer, paved = l1 + P.w;
+    float u = x - l0 - P.z; // offset from the line between the two lanes
+    float track = 1.0 - smoothstep(0.15, 0.45, abs(abs(u) - 0.5 * (u < 0.0 ? P.z : outer)) - 0.9);
     col *= 1.0 - 0.06 * track * (1.0 - smoothstep(0.3, 0.8, fx));
     vec3 grass = mix(vec3(0.40, 0.55, 0.28), vec3(0.52, 0.60, 0.33), smoothstep(-0.3, 0.3, big + mid)) * (1.0 + 0.15 * fine);
     vec3 concrete = vec3(0.72, 0.71, 0.68) * (1.0 + 0.05 * mid);

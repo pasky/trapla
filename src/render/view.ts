@@ -25,7 +25,7 @@ import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, slopeKnee, groundStations } from './earthwork-surface';
 import { FACE_AT } from '../core/sections';
-import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, setPairedSection, terrainUniforms } from './terrainMaterial';
+import { carriagewaySlot, isCarriagewaySlot, isPairedSlot, pairedSlot, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, setPairedSections, terrainUniforms } from './terrainMaterial';
 import { MOTORWAY_MARKINGS, PAIRED_SECTIONS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
 import { structureFootprints } from '../core/footprint';
@@ -121,8 +121,8 @@ const PORTAL_LID = 7.5, PORTAL_LID_BLEND = 3;
 const SECTIONS = [undefined, ...Object.values(CATEGORIES).map((c) => c.section).filter((s) => s)];
 function sectionIndex(crownWidth: number) {
   const cat = categoryOfCrown(crownWidth);
-  if (cat?.paired) return PAIRED_SECTION;
-  if (cat?.carriageway) return CARRIAGEWAY_SECTION;
+  const paired = cat && pairedCategoryOf(cat.id);
+  if (paired) return cat.paired ? pairedSlot(paired) : carriagewaySlot(paired);
   if (cat?.mode === 'railway') return cat.tracks === 2 ? RAIL2_SECTION : RAIL_SECTION;
   return Math.max(0, SECTIONS.indexOf(cat?.section));
 }
@@ -213,7 +213,7 @@ export class View {
     SECTIONS.forEach((s, k) => { if (s) u.roadSections.value[k].set(s.lane, s.lane + s.hardShoulder, s.edgeLine, s.centreLine); });
     const dash = SECTIONS[1];
     if (dash) u.roadDash.value.set(dash.dash, dash.gap);
-    setPairedSection(u, 'D27.5');
+    setPairedSections(u);
     u.roadRail.value.set(1, TRACK_CENTRES_M, RAILWAY_EVIDENCE.ballastTopHalfWidthM, (RAILWAY_EVIDENCE.standardGaugeMm + 72) / 2000);
     u.roadPairedLines.value.set(MOTORWAY_MARKINGS.edgeLine, MOTORWAY_MARKINGS.laneLine, MOTORWAY_MARKINGS.dash, MOTORWAY_MARKINGS.gap);
     return u;
@@ -874,11 +874,9 @@ export class View {
     yield;
     const n = r.n, w = crownWidth / 2;
     const bad = badStations(r), section = sectionIndex(crownWidth), paired = pairedSectionOf(crownWidth);
-    // the terrain shader draws the lanes of one paired cross-section: this road's (a mission has one)
-    if (paired) setPairedSection(this.terrainU, paired.id);
     // one direction of a separate motorway stretch run against its travel (the reverse direction, A→B):
     // its median side is on the right
-    const side = mirrored && section === CARRIAGEWAY_SECTION ? -1 : 1;
+    const side = mirrored && isCarriagewaySlot(section) ? -1 : 1;
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const kinds: number[] = [], geo: number[] = [];
@@ -1128,9 +1126,9 @@ export class View {
     const shade = (c: THREE.Color, f: number) => c.clone().multiplyScalar(f);
     const supports = structureFootprints({ ...r, crownWidth });
     // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
-    const gap = (section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION) && paired ? paired.section.median / 2 : 0;
+    const gap = isPairedSlot(section) && paired ? paired.section.median / 2 : 0;
     // one direction of a split motorway: its half of the median (on its left) is open on a bridge
-    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [side > 0 ? [-w, w - gap] : [-w + gap, w]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
+    const strips: [number, number][] = isCarriagewaySlot(section) ? [side > 0 ? [-w, w - gap] : [-w + gap, w]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
       yield;
@@ -1188,9 +1186,9 @@ export class View {
             return highest;
           });
           // twin decks stand on their own piers (same share of each deck's width as a single deck's)
-          for (const [lo, hi] of gap || section === CARRIAGEWAY_SECTION ? strips : [[-p.left, p.left]]) {
+          for (const [lo, hi] of gap || isCarriagewaySlot(section) ? strips : [[-p.left, p.left]]) {
             const [cx, cy] = across(p, (lo + hi) / 2);
-            boxAt(cx, cy, p.tx, p.ty, this.terrain.heightAt(cx, cy) - 2, top, p.along, gap || section === CARRIAGEWAY_SECTION ? (hi - lo) / 2 * 0.55 : p.left, shade(concrete, 0.85));
+            boxAt(cx, cy, p.tx, p.ty, this.terrain.heightAt(cx, cy) - 2, top, p.along, gap || isCarriagewaySlot(section) ? (hi - lo) / 2 * 0.55 : p.left, shade(concrete, 0.85));
           }
         }
         // a frame pier: its two columns up to a crossbeam under the deck, over what runs between them

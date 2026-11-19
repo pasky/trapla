@@ -376,6 +376,9 @@ describe('a four-lane class I road (S 21.5) on the paired corridor', () => {
     expect(runs(d).some(r => r.kind === KIND.tunnel && r.s0 <= 900 && r.s1 >= 1100)).toBe(true);
     expect(runs(s)).toEqual([]);
     expect(d.result.valid && s.result.valid).toBe(true);
+    // a motorway mission's corridor is a motorway: the same project in a D 27.5 mission does not score
+    const motorwayMission = { ...s.ctx, legacy: { ...s.ctx.legacy, scenario: { ...s.ctx.legacy.scenario, initial: { category: 'D27.5' as const, speed: 110 } } } };
+    expect(evaluateProject(motorwayMission, s.snapshot).complete).toBe(false);
     const [f] = s.snapshot.design.routes, spine = s.result.routes[f.id].legacy!;
     expect(legacyDesignForRoute(s.snapshot.design, f.id).category).toBe('S21.5');
     // its narrower body and its own price rows: cheaper than the motorway on the same line

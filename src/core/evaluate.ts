@@ -1997,7 +1997,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
       settled = settle(); selection = settled.selection;
       work('selection', again);
       supportStart = performance.now();
-      supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
+      supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b, ...withCones, motorway: !!cat.motorwayByLaw }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
       work('support', supportStart);
       if (supported.diagnostics.some(f => f.reason === 'span-limit' && f.automatic && f.cells && gaps.some(([a, z]) => f.cells![0] <= z && f.cells![1] >= a))) {
         ({ settled, selection, supported } = before); forced.set(before.forced);
@@ -2702,7 +2702,9 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
   const noiseModel = cat.mode === 'railway' ? createRailNoiseModel(opts.railTraffic ?? [])
     : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare,
-      ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
+      // (the Manual's motorway source for a motorway in law; a four-lane class I road, S 21.5, is a class I road's
+      // source at its signed speed, on the two directions' lane axes all the same, motorwayLanes)
+      ...(cat.motorwayByLaw ? { profile: 'motorway' as const } : {}) });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
