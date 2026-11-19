@@ -32,7 +32,8 @@ log=${GATES_LOG:-/tmp/trapla-gates-$branch}
 
 # name | kind (node; alone: a Node gate on its own, its tests time out on a loaded host; timed; browser) | set (quick, full) | command
 # (the whole I/35's road drag is between bends 20 and 21: between the middle bends 19 and 20 the press lands on a crossed
-# road's works and selects that crossing)
+# road's works and selects that crossing. A reroute's drag on a whole route misses the budget, the whole D3's too: the
+# I/35's is gated on its last stage, PLAN.md "The I/35 through Český ráj")
 gates() {
   cat <<EOF
 tsc|node|quick|npx tsc --noEmit
@@ -61,7 +62,8 @@ toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-la
 start-screen|browser|full|DIST=dist PORT=\$((PORT + 70)) node scripts/release-shots.mjs --check
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 $(for m in road link; do echo "drag-d11-motorway-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d11 --preset d11-motorway --mode $m"; done)
-$(for m in bend road link; do echo "drag-i35-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-full --preset i35-full-road --mode $m$([ $m = road ] && echo ' --bend 20')"; done)
+$(for m in bend road; do echo "drag-i35-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-full --preset i35-full-road --mode $m$([ $m = road ] && echo ' --bend 20')"; done)
+drag-i35-jicin-link|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-jicin --preset i35-jicin-road --mode link
 EOF
 }
 

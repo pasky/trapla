@@ -2427,6 +2427,11 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   railway right under it stands its piers on the track where no frame pier's columns miss it (a 100 m drag on the last
   stage, 1 of 72); Auto takes the Pelešany stretch in cuts and on bridges and buys out homes where the real design
   tunnels under the houses; the interchanges are not built.
+- **A reroute's drag on a whole route is not live** (found here, not new): dragging the longest reroute (a 1.4 km
+  diversion along our embankment at km 14.4 of the whole I/35) takes the preview worker ≈ 50–60 ms (latency p50 80–95
+  ms, budget 60) on a loaded host (load ≈ 9), the whole D3's 140 ms (p50 170 ms); the D11 motorway's 7 ms, the I/35
+  stages' 8 ms. The gates run it on the last stage (`drag-i35-jicin-link`) and the whole route's bend and road drags;
+  `drag-perf --mode link` on `d3-full` shows the same on main. To look at: whether those previews are windowed at all.
 
 ## Twists and curveballs (owner request, no model version, 2026-11-20)
 
