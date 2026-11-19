@@ -2,6 +2,7 @@
 // tangent guide of the active bend, official line, DOM markers and labels, heightfield picking.
 
 import * as THREE from 'three';
+import { BufferPool, FloatBuffer, IndexBuffer } from './mesh-buffers';
 import { Declutter } from './declutter';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -151,6 +152,13 @@ export interface PreparedScene {
   replacementHeight: (x: number, y: number) => number;
   mask: ReturnType<typeof routeMask>;
 }
+
+/** the earthwork ribbon's and collars' buffers, reused from build to build (mesh-buffers.ts) */
+const ribbonBuffers = new BufferPool(() => {
+  const set = { pos: new FloatBuffer(), col: new FloatBuffer(), elev: new FloatBuffer(), ink: new FloatBuffer(), kinds: new FloatBuffer(),
+    geo: new FloatBuffer(), idx: new IndexBuffer(), groundPos: new FloatBuffer(), groundIdx: new IndexBuffer() };
+  return { ...set, clear: () => { for (const b of Object.values(set)) b.clear(); } };
+});
 
 export class View {
   readonly renderer: THREE.WebGLRenderer;
@@ -918,15 +926,16 @@ export class View {
     // its median side is on the right
     const side = mirrored && isCarriagewaySlot(section) ? -1 : 1;
     // ---- ribbon (crown + slopes) and bridge decks ----
-    const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
-    const kinds: number[] = [], geo: number[] = [];
+    const buffers = ribbonBuffers.take();
+    try {
+    const { pos, col, idx, elev, ink, kinds, geo, groundPos, groundIdx } = buffers;
     const v = new THREE.Vector3();
     // `e` = true elevation for the contour lines (the surface itself may be lifted), `k` = contour strength,
     // `kind` = EW_KIND, `g` = [depth below the class II top, below the class III top, station] (slopes)
     const noGeo = [0, 0, 0];
     const push = (x: number, y: number, z: number, c: THREE.Color, e = z, k = 0, kind: number = EW_KIND.structure, g = noGeo) => {
-      this.local(x, y, z, v); pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); elev.push(e); ink.push(k);
-      kinds.push(kind); geo.push(g[0], g[1], g[2]);
+      this.local(x, y, z, v); pos.push3(v.x, v.y, v.z); col.push3(c.r, c.g, c.b); elev.push1(e); ink.push1(k);
+      kinds.push1(kind); geo.push3(g[0], g[1], g[2]);
       return pos.length / 3 - 1;
     };
     const asphalt = new THREE.Color(0x3b3b42), asphaltBad = new THREE.Color(0x8a2020);
@@ -961,17 +970,16 @@ export class View {
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
       });
     }
-    const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
-    const groundPos: number[] = [], groundIdx: number[] = [];
+    const quad = (a: number, b: number, c: number, d: number) => { idx.push3(a, b, c); idx.push3(b, d, c); };
     const coarse = context.replacementHeight;
     const flushGround = () => {
       if (!groundIdx.length) return;
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(groundPos, 3));
-      geometry.setIndex(groundIdx); geometry.computeBoundingSphere();
+      geometry.setAttribute('position', groundPos.attribute(3));
+      geometry.setIndex(groundIdx.attribute()); geometry.computeBoundingSphere();
       const collar = new THREE.Mesh(geometry, this.collarMaterial());
       collar.name = 'daylight-ground'; out.push(collar);
-      groundPos.length = 0; groundIdx.length = 0;
+      groundPos.clear(); groundIdx.clear();
     };
     // earthworks, and a bridge end's abutment set into a bank (groundStations): its sides are concrete
     // wing walls out to the engine's daylight points
@@ -1024,7 +1032,7 @@ export class View {
           const ground = groundPos.length / 3;
           for (let k = 0; k <= 8; k++) {
             const p = collarPoint(s, k/8, natural, coarse);
-            this.local(p.x,p.y,p.z+groundLift,v); groundPos.push(v.x,v.y,v.z);
+            this.local(p.x,p.y,p.z+groundLift,v); groundPos.push3(v.x,v.y,v.z);
           }
           if (prev) {
             if (prev.knees && knees) {
@@ -1035,7 +1043,7 @@ export class View {
             else if (prev.knee !== undefined && knee !== undefined) { quad(prev.day, day, prev.knee, knee); quad(prev.knee, knee, prev.edge, edge); }
             else quad(prev.day, day, prev.edge, edge);
             if (prev.wallGround !== undefined && wallGround !== undefined) quad(prev.wallGround, wallGround, prev.wallSlope!, wallSlope!);
-            for (let k = 0; k < 8; k++) groundIdx.push(prev.ground+k, ground+k, prev.ground+k+1, ground+k, ground+k+1, prev.ground+k+1);
+            for (let k = 0; k < 8; k++) { groundIdx.push3(prev.ground+k, ground+k, prev.ground+k+1); groundIdx.push3(ground+k, ground+k+1, prev.ground+k+1); }
           }
           prev = { day, edge, knee, knees, ground, wallGround, wallSlope };
         }
@@ -1068,8 +1076,8 @@ export class View {
     // cut-out is visible as a sky-coloured hole beside the first/last bridge span (down to the cone's top where
     // a cone stands in front of the abutment).
     const again = (k: number) => { // vertex k once more, as concrete
-      pos.push(pos[3*k], pos[3*k+1], pos[3*k+2]); col.push(concrete.r, concrete.g, concrete.b); elev.push(elev[k]); ink.push(0);
-      kinds.push(EW_KIND.structure); geo.push(...noGeo);
+      pos.push3(pos.at(3*k), pos.at(3*k+1), pos.at(3*k+2)); col.push3(concrete.r, concrete.g, concrete.b); elev.push1(elev.at(k)); ink.push1(0);
+      kinds.push1(EW_KIND.structure); geo.push3(noGeo[0], noGeo[1], noGeo[2]);
       return pos.length / 3 - 1;
     };
     yield; // a long route's whole-route passes below are sliced too
@@ -1136,18 +1144,18 @@ export class View {
         for (let j = 0; j <= rows; j++) {
           const d = PORTAL_LID * j / rows, px = x + nx * o + r.tx[i] * into * d, py = y + ny * o + r.ty[i] * into * d;
           const g = natural(px, py), blend = Math.max(side, Math.min(1, d / PORTAL_LID_BLEND));
-          this.local(px, py, g + (blend ? (Math.max(g, coarse(px, py)) - g) * blend : 0) + groundLift, v); groundPos.push(v.x, v.y, v.z);
+          this.local(px, py, g + (blend ? (Math.max(g, coarse(px, py)) - g) * blend : 0) + groundLift, v); groundPos.push3(v.x, v.y, v.z);
         }
       }
       for (let k = 0; k < wide; k++) for (let j = 0; j < rows; j++) {
         const a = base + k * (rows + 1) + j, b = a + rows + 1;
-        groundIdx.push(a, b, a + 1, b, b + 1, a + 1);
+        groundIdx.push3(a, b, a + 1); groundIdx.push3(b, b + 1, a + 1);
       }
     }
     flushGround();
     // bridge deck edges and piers, tunnel portals
     // (`into`: the index list it goes to; `lid`: closed on top)
-    const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color, into = idx, lid = false) => {
+    const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color, into: { push(...v: number[]): unknown } = idx, lid = false) => {
       const nx = -ty, ny = tx;
       const corners: number[] = [];
       for (const [sa, sc] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
@@ -1277,13 +1285,13 @@ export class View {
     }
     yield;
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.setAttribute('elev', new THREE.Float32BufferAttribute(elev, 1));
-    g.setAttribute('ink', new THREE.Float32BufferAttribute(ink, 1));
-    g.setAttribute('ewKind', new THREE.Float32BufferAttribute(kinds, 1));
-    g.setAttribute('ewGeo', new THREE.Float32BufferAttribute(geo, 3));
-    g.setIndex(idx);
+    g.setAttribute('position', pos.attribute(3));
+    g.setAttribute('color', col.attribute(3));
+    g.setAttribute('elev', elev.attribute(1));
+    g.setAttribute('ink', ink.attribute(1));
+    g.setAttribute('ewKind', kinds.attribute(1));
+    g.setAttribute('ewGeo', geo.attribute(3));
+    g.setIndex(idx.attribute());
     const ribbon = new THREE.Mesh(g, this.ribbonMaterial());
     ribbon.name = 'ribbon';
     out.push(ribbon); // owned (disposed on abort) before the next yield
@@ -1296,9 +1304,9 @@ export class View {
       const attrs = { position: [pos, 3], color: [col, 3], elev: [elev, 1], ink: [ink, 1], ewKind: [kinds, 1], ewGeo: [geo, 3] } as const;
       const pg = new THREE.BufferGeometry();
       for (const [name, [src, size]] of Object.entries(attrs)) {
-        const a: number[] = [];
-        for (const k of portalIdx) for (let c = 0; c < size; c++) a.push(src[k * size + c]);
-        pg.setAttribute(name, new THREE.Float32BufferAttribute(a, size));
+        const a = new Float32Array(portalIdx.length * size);
+        portalIdx.forEach((k, j) => { for (let c = 0; c < size; c++) a[j * size + c] = src.at(k * size + c); });
+        pg.setAttribute(name, new THREE.BufferAttribute(a, size));
       }
       pg.computeVertexNormals(); pg.computeBoundingSphere();
       const portals = new THREE.Mesh(pg, this.portalMaterial());
@@ -1307,6 +1315,7 @@ export class View {
     }
 
     out.push(...this.centreline(r, bad));
+    } finally { ribbonBuffers.give(buffers); }
 
     handedOver = true;
     const commit = () => {
