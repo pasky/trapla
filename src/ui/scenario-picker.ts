@@ -107,7 +107,8 @@ const CORRIDOR: Record<string, string> = { 'Středočeská D3': 'The D3 south of
  * Missing packs stay here with a build instruction instead of starting a broken terrain view.
  * Continue is advisory only: loading/migration and save protection belong to the store.
  */
-export interface PickedScenario { scenarioId: string; presetId: string | null }
+/** `fromPicker`: chosen on the start screen (a direct link skips it, and the twist screen with it) */
+export interface PickedScenario { scenarioId: string; presetId: string | null; fromPicker?: boolean }
 export async function pickScenario(options: ScenarioPickerOptions = {}): Promise<PickedScenario> {
   const params = new URLSearchParams(location.search), requested = params.get('scenario');
   const requestedPreset = params.get('preset');
@@ -139,7 +140,7 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
       else url.searchParams.set('preset', scenario.presetId ?? scenario.id);
       history.replaceState(null, '', url);
       root.remove();
-      resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null });
+      resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null, fromPicker: true });
     };
     const layout = pickerLayout(PRESETS, isSaved, onThisSite);
     // A first visit (no design saved anywhere) most likely starts the mission offered first: its map downloads

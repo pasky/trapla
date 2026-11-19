@@ -1,0 +1,12 @@
+/* the twist screen (src/ui/twist-picker.ts), in the start screen's look */
+.twist-picker-card { max-width: 640px; padding: 20px 24px; border: 2px solid #c98b3c; border-radius: 12px; background: #fffefa; box-shadow: 0 2px 10px rgba(160, 100, 30, .12); }
+.twist-picker-list { list-style: none; margin: 0; padding: 0; }
+.twist-picker-list li { border-top: 1px solid #e6e9e2; }
+.twist-picker-list li:first-child { border-top: 0; }
+.twist-picker-list label { display: grid; grid-template-columns: 26px 1fr; column-gap: 6px; padding: 8px 2px; cursor: pointer; }
+.twist-picker-list input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: #315b46; cursor: pointer; }
+.twist-picker-list b { font-size: 16px; }
+.twist-picker-list small { grid-column: 2; color: #50645a; font-size: 14px; line-height: 1.35; }
+.twist-picker-list li.on b { color: #315b46; }
+.twist-picker .scenario-picker-actions { padding-top: 14px; }
+.twist-picker-goal { margin: 0 0 8px; font-weight: 600; color: #a35f12; }

@@ -8,6 +8,7 @@ import { hasProjectSave } from './project-store-contract';
 import { StorageGuard } from './ui/storage-guard';
 import { pickScenario } from './ui/scenario-picker';
 import { deviceCheck } from './ui/device-check';
+import { pickTwists } from './ui/twist-picker';
 import { Loading } from './ui/loading';
 import { prefetchPack } from './packs';
 import { keepPrefetched } from './pack-fetch';
@@ -24,15 +25,19 @@ async function boot() {
   } });
   const scenario = scenarioParams(picked.scenarioId, picked.presetId);
   document.title = `${scenario.title} — Trapla`;
+  // the map downloads while the twist screen is up
+  const files = prefetchPack(scenario.id);
+  keepPrefetched(new Set(files.map(f => f.url)));
+  const presetId = scenario.presetId ?? scenario.id;
+  const saved = (() => { try { return hasProjectSave(storage, { scenarioId: scenario.id, presetId }); } catch { return false; } })();
+  const twists = picked.fromPicker ? await pickTwists(scenario, saved) : null;
   const status = document.getElementById('status');
   if (status) status.style.display = 'none';
   const loading = new Loading(document.getElementById('view')!, scenario.title);
-  const files = prefetchPack(scenario.id);
-  keepPrefetched(new Set(files.map(f => f.url)));
   loading.track(files);
   try {
     const { startApp } = await game;
-    await startApp({ picked, storage, loading });
+    await startApp({ picked, storage, loading, twists });
   } catch (e) {
     console.error(e);
     keepPrefetched(new Set()); // nothing of the map is kept behind the failure

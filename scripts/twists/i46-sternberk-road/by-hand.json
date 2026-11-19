@@ -1,0 +1,208 @@
+{
+ "preset": "i46-sternberk-road",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i46-sternberk",
+  "presetId": "i46-sternberk-road",
+  "packId": "i46-sternberk",
+  "objectData": "499739:989438279:2301648189",
+  "transportData": "a11b116b8e6de40d4ef2bd1246d13890a4281e6c08c7cf11ef1c649da55a9e1a",
+  "routes": [
+   {
+    "id": "route:legacy-mission",
+    "name": "Road",
+    "role": "mission",
+    "revision": 0,
+    "kind": "road",
+    "acousticSourceId": "acoustic:legacy-mission",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2644.2,
+       "y": 2453.8,
+       "z": 242.53284000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 4699,
+       "y": 5512.5,
+       "z": 365.6
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2646.9,
+       "y": 3503.2,
+       "r": 1500
+      },
+      {
+       "x": 3212.8,
+       "y": 4153.7,
+       "r": 1000
+      },
+      {
+       "x": 3452.5,
+       "y": 4769.9,
+       "r": 800,
+       "speed": 70
+      },
+      {
+       "x": 3466.1,
+       "y": 5342.5,
+       "r": 360,
+       "speed": 70
+      },
+      {
+       "x": 4574.1,
+       "y": 5350,
+       "r": 340,
+       "speed": 70
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 242.53284000000002,
+        "r": null
+       },
+       {
+        "s": 470.8209533365316,
+        "z": 252.54030222222224,
+        "r": null
+       },
+       {
+        "s": 706.2314300047974,
+        "z": 261.54403333333335,
+        "r": null
+       },
+       {
+        "s": 1177.052383341329,
+        "z": 261.55149555555556,
+        "r": null
+       },
+       {
+        "s": 1647.8733366778606,
+        "z": 285.5589577777778,
+        "r": null
+       },
+       {
+        "s": 2354.104766682658,
+        "z": 306.57015111111116,
+        "r": null
+       },
+       {
+        "s": 2589.515243350924,
+        "z": 307.57388222222227,
+        "r": null
+       },
+       {
+        "s": 2824.9257200191896,
+        "z": 314.5776133333334,
+        "r": null
+       },
+       {
+        "s": 3060.3361966874554,
+        "z": 327.5813444444445,
+        "r": null
+       },
+       {
+        "s": 3295.746673355721,
+        "z": 330.5850755555556,
+        "r": null
+       },
+       {
+        "s": 4001.9781033605186,
+        "z": 351.5962688888889,
+        "r": null
+       },
+       {
+        "s": 4237.388580028784,
+        "z": 365.6,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    },
+    "specification": {
+     "kind": "road",
+     "policy": "legacy-road",
+     "legalClass": "I",
+     "crossSection": "S11.5",
+     "designSpeed": 90,
+     "operations": {
+      "aadt": 10453,
+      "heavyShare": 0.086,
+      "speed": 90,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i46-sternberk:i46-sternberk-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Olomouc",
+     "position": {
+      "x": 2644.2,
+      "y": 2453.8,
+      "z": 242.53284000000002
+     }
+    },
+    {
+     "id": "b",
+     "name": "Opava",
+     "position": {
+      "x": 4699,
+      "y": 5512.5,
+      "z": 365.6
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "road"
+     ],
+     "maxTravelMin": 3.6,
+     "demand": {
+      "kind": "road",
+      "aadt": 10453
+     }
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,53 @@
+/* twists (src/ui/twists.ts): the HUD card, the news from the site, the reveal */
+.chip.twists.pending { color: #6b7079; }
+#twists .tw-goal { margin: 0 0 6px; font-size: 12px; color: #3b4450; }
+#twists .tw-goal small { color: #778; }
+#twists .tw-none { margin: 0 0 6px; font-size: 12px; color: #667; }
+#twists ul.tw-list { list-style: none; margin: 0; padding: 0; }
+#twists ul.tw-list > li { display: flex; gap: 6px; padding: 4px 0; border-top: 1px solid #eef0f3; font-size: 12px; }
+#twists ul.tw-list > li:first-child { border-top: 0; }
+#twists .tw-mark { width: 14px; flex: none; font-weight: 700; }
+#twists li.ok .tw-mark { color: #17663a; }
+#twists li.bad .tw-mark { color: #a3200f; }
+#twists .tw-status { color: #555; }
+#twists li.bad .tw-status { color: #a3200f; }
+#twists .tw-issue, #twists .tw-news div { margin-top: 2px; color: #3b4450; }
+#twists .tw-news { margin-top: 3px; color: #7a3d00; }
+#twists button.link { background: none; border: 0; padding: 0; color: #1a5fb4; text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; }
+#twists .tw-act { margin-top: 4px; font-size: 12px; }
+#twists ul.tw-choose { list-style: none; margin: 0 0 6px; padding: 0; }
+#twists ul.tw-choose li { padding: 4px 0; border-top: 1px solid #eef0f3; font-size: 12px; }
+#twists ul.tw-choose label { display: grid; grid-template-columns: 18px 1fr; column-gap: 4px; cursor: pointer; }
+#twists ul.tw-choose small { grid-column: 2; color: #667; }
+
+.news-card { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 30; width: min(420px, calc(100% - 32px));
+  background: #fffdf6; border: 2px solid #c46a00; border-radius: 10px; padding: 10px 14px 10px; box-shadow: 0 6px 22px rgba(60,30,0,0.3); font-size: 13px; color: #2b2b2b; }
+.news-card.fresh { animation: news-in 0.35s ease-out; }
+@keyframes news-in { from { opacity: 0; transform: translate(-50%, -12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.news-kicker { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #c46a00; }
+.news-head { display: block; font-size: 15px; margin: 2px 0 3px; }
+.news-story, .news-ask { margin: 0 0 4px; }
+.news-ask { font-weight: 600; color: #7a3d00; }
+.news-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.news-foot a { font-size: 11px; color: #778; }
+.news-foot button { font-size: 12px; }
+
+.reveal { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(20, 26, 32, 0.42); }
+.reveal-card { width: min(520px, calc(100% - 32px)); background: #fff; border-radius: 14px; padding: 20px 24px 18px; box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  animation: reveal-in 0.45s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes reveal-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+.reveal-kicker { font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #17663a; margin-bottom: 10px; }
+.reveal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.reveal-col { border-radius: 10px; padding: 10px 12px; background: #f3f5f8; display: flex; flex-direction: column; gap: 2px; }
+.reveal-col.yours { background: #e6f4ea; }
+.reveal-col small { color: #556; font-size: 11px; }
+.reveal-col b { font-size: 22px; }
+.reveal-col.yours b { color: #17663a; }
+.reveal-col span { font-size: 12px; color: #445; }
+.reveal-real { margin: 0 0 6px; font-size: 13px; }
+.reveal-real small { display: block; color: #667; }
+.reveal-story { margin: 0 0 10px; font-size: 14px; font-style: italic; color: #2b3440; }
+ul.reveal-twists { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+ul.reveal-twists li { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 11px; background: #e6f4ea; color: #17663a; }
+.reveal-btns { text-align: right; }
+.reveal-btns .primary { font-size: 14px; padding: 6px 16px; background: #17663a; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }

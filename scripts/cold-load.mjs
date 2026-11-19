@@ -14,6 +14,7 @@
 // Timed: run under `flock -x /tmp/trapla-browser.lock` (AGENTS.md).
 import { chromium } from 'playwright-core';
 import { serveStatic } from './static-serve.mjs';
+import { passTwists } from './lib/browser.mjs';
 
 const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i < 0 ? d : process.argv[i + 1] ?? d; };
 const dist = arg('--dist', 'dist'), runs = Number(arg('--runs', 3)), scenario = arg('--scenario', 'd3-0302');
@@ -61,6 +62,8 @@ try {
       await page.waitForTimeout(read); row.click = Date.now() - t0;
       const start = page.locator('[data-start-here] button').first();
       await start.click();
+      // (its twist screen, taken as it comes: the map downloads meanwhile)
+      await passTwists(page);
     } else {
       const page2 = page; t0 = Date.now();
       await page2.goto(`${server.url}?scenario=${scenario}${preset ? `&preset=${preset}` : ''}`, { waitUntil: 'commit' });
