@@ -221,6 +221,13 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
 };
 
+/** What the line is in the player's words (terms.ts OurLine): a four-lane class I road built like a motorway is "our road". */
+export function lineOf(c: Pick<Category, 'mode' | 'motorwayByLaw'>): 'road' | 'railway' | 'motorway' {
+  return c.mode === 'railway' ? 'railway' : c.mode === 'motorway' && c.motorwayByLaw ? 'motorway' : 'road';
+}
+/** A paired corridor's name in the player's words: "Motorway", "Four-lane road". */
+export const pairedName = (c: PairedCategoryId) => CATEGORIES[c].motorwayByLaw ? 'Motorway' : 'Four-lane road';
+
 /** The paired corridor a category belongs to (itself, or the corridor of one direction); none for other roads. */
 export function pairedCategoryOf(id: CategoryId): PairedCategoryId | undefined {
   const c = CATEGORIES[id];

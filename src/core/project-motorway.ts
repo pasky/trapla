@@ -6,7 +6,7 @@ import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
 import type { VPI } from './vertical';
 import { GRADE_PIN_TOLERANCE, type GradePin } from './grade-pins';
 import { evaluate } from './evaluate';
-import { CATEGORIES, pairedCategoryOf, type CategoryId, type PairedCategoryId } from './data/categories';
+import { CATEGORIES, pairedCategoryOf, pairedName, type CategoryId, type PairedCategoryId } from './data/categories';
 import { designSpeeds } from './data/norms';
 import { modeCapability } from './mode-policy';
 import type { CorridorDesign, DrawnPart, ProjectDesign, RouteDesign, RoadOperations, SeparateStretch, XYZ } from './project';
@@ -251,7 +251,7 @@ export function createMotorwayProject(base: ProjectDesign, d: Design, operations
   const port = (e: typeof a) => base.mission.ports.find(p => p.id === (e.anchor as { portId?: string }).portId)?.name ?? '';
   return addMotorwayCorridor({ ...structuredClone(base), routes: [], connections: [], corridors: [], mission: motorwayMission(base.mission) },
     { a, b }, d, operations, { corridorId: 'corridor:motorway', forward: 'route:motorway-forward', reverse: 'route:motorway-reverse',
-      acoustic: id => `acoustic:${id}` }, 'mission', { forward: `Motorway towards ${port(b)}`, reverse: `Motorway towards ${port(a)}` });
+      acoustic: id => `acoustic:${id}` }, 'mission', { forward: `${pairedName(d.category as PairedCategoryId)} towards ${port(b)}`, reverse: `${pairedName(d.category as PairedCategoryId)} towards ${port(a)}` });
 }
 
 /** A paired motorway corridor between two ends added to a project: the corridor plus its two direction

@@ -1,0 +1,43 @@
+{
+  "scenario": "i35-jicin",
+  "purpose": "Motorway near the mapped reference, not the official motorway design or surveyed profile",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 3317.4,
+        "y": 9118.4,
+        "r": null
+      },
+      {
+        "x": 3957.3,
+        "y": 7777.3,
+        "r": null
+      },
+      {
+        "x": 5196.1,
+        "y": 6828.1,
+        "r": null
+      },
+      {
+        "x": 6492,
+        "y": 5636.4,
+        "r": null
+      },
+      {
+        "x": 8006.7,
+        "y": 4332.7,
+        "r": null
+      },
+      {
+        "x": 10314.8,
+        "y": 3298.9,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

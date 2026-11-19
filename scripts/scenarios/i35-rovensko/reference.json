@@ -1,0 +1,63 @@
+{
+  "scenario": "i35-rovensko",
+  "purpose": "Motorway near the mapped reference, not the official motorway design or surveyed profile; bends every ~1.0 km (every 1.5 km, as the other references, crosses a pond near Stebno lengthwise at km 0.6\u20130.9, where a bridge would need piers in the water, which the game does not build)",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 3787.6,
+        "y": 9708.7,
+        "r": null
+      },
+      {
+        "x": 4745.5,
+        "y": 9541.4,
+        "r": null
+      },
+      {
+        "x": 5588.7,
+        "y": 8818.8,
+        "r": null
+      },
+      {
+        "x": 6171.6,
+        "y": 7805.1,
+        "r": null
+      },
+      {
+        "x": 6919.5,
+        "y": 7149.7,
+        "r": null
+      },
+      {
+        "x": 7945.6,
+        "y": 6668.7,
+        "r": null
+      },
+      {
+        "x": 8031.3,
+        "y": 5518.6,
+        "r": null
+      },
+      {
+        "x": 7548.3,
+        "y": 4205.1,
+        "r": null
+      },
+      {
+        "x": 6904.9,
+        "y": 3458.8,
+        "r": null
+      },
+      {
+        "x": 7053.1,
+        "y": 2501.6,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

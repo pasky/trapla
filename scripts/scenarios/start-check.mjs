@@ -24,7 +24,8 @@ try {
   const only = process.env.ONLY?.split(',');
   const D3 = 'The D3 south of Prague';
   for (const [title, chip, id] of [[D3, 'Praha → Jílové', 'd3-0301'], [D3, 'Jílové → Hostěradice', 'd3-0302'], [D3, 'Hostěradice → Václavice', 'd3-0303'], [D3, 'Václavice → Voračice', 'd3-0304'],
-    [D3, 'Voračice → Nová Hospoda', 'd3-0305'], [D3, 'Whole route', 'd3-full'], ['The D35 to Mohelnice', 'Whole link', 'd35-full'], ['Trutnov → Polish border', 'Motorway D11', 'd11-motorway'], ['Šternberk bypass', null, 'i46-sternberk']].filter(([, , id]) => !only || only.includes(id))) {
+    [D3, 'Voračice → Nová Hospoda', 'd3-0305'], [D3, 'Whole route', 'd3-full'], ['The D35 to Mohelnice', 'Whole link', 'd35-full'], ['Trutnov → Polish border', 'Motorway D11', 'd11-motorway'], ['Šternberk bypass', null, 'i46-sternberk'],
+    ['Turnov → Úlibice through Český ráj', 'Turnov → Valdštejnsko', 'i35-turnov'], ['Turnov → Úlibice through Český ráj', 'Whole route', 'i35-full']].filter(([, , id]) => !only || only.includes(id))) {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
     await context.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
     const page = await context.newPage();

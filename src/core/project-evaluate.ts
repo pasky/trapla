@@ -1,7 +1,7 @@
 // Project publication boundary. Legacy single-road semantics remain exact; unimplemented interactions
 // expose proposed geometry with null project total, never a sum of independently completed road bills.
 import { ourWords, type OurLine } from './terms';
-import { CATEGORIES, type CategoryId } from './data/categories';
+import { CATEGORIES, lineOf, type CategoryId } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
 import { KIND } from './structures';
 import type { EvalContext, EvalOptions, Result } from './evaluate';
@@ -26,7 +26,7 @@ import { thisRoadWords } from './terms';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
 import { stationIndex } from './range';
-import { routeCategory } from './route-section';
+import { motorwayCategory, routeCategory } from './route-section';
 import { structureSurcharge, surchargeRate } from './cost';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
@@ -191,7 +191,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
   // the kernel names the mission's ends A and B and calls the designed road "our road"; every other road's
   // card and map say its start and end, and "this road" ("our road" there is the mission road)
   if (legacy && route.role !== 'mission') {
-    const own = (text: string) => thisRoadWords(endWords(route, text), route.kind);
+    const own = (text: string) => thisRoadWords(endWords(route, text), routeLine(route));
     for (const v of new Set([...legacy.violations, ...legacy.inherited ?? [], ...legacy.crossings.flatMap(c => c.issues ?? [])])) {
       v.title = own(v.title); v.fix = own(v.fix); if (v.detail) v.detail = own(v.detail);
     }
@@ -287,7 +287,9 @@ const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
   Object.defineProperty(record, id, { value, enumerable: true, configurable: true, writable: true });
 /** The kernel names the mission's ends A and B; any other road's ends are its start and end. */
 const endWords = (route: RouteDesign, text: string) => ourWords(route.role === 'mission' ? text
-  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end'), route.kind);
+  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end'), routeLine(route));
+/** What a route is in the player's words: a four-lane class I road on the paired corridor is "our road". */
+const routeLine = (route: RouteDesign): OurLine => route.kind === 'motorway' ? lineOf(CATEGORIES[motorwayCategory(route)]) : route.kind;
 const issueKey = (i: ProjectIssue) => JSON.stringify([i.code, i.violation?.title, i.violation?.fix, i.locations.map(l => [l.s0, l.s1])]);
 /** Problems already in the words of the road they belong to, which also name another road (heldChecks). */
 const WORDED = new WeakSet<object>();
@@ -500,7 +502,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
       const corridorId = corridorOfRoute(design, route.id)?.id, kept = corridorId ? corridorCache.get(corridorId) : undefined;
       if (corridorId) corridorCache.delete(corridorId);
       const again = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, turned.flatMap(heldBands), endsOf, routeClear(route));
-      if (again.route.legacy && heldChecks(again.route.legacy, turned, route.kind).violations.length < heldChecks(proposal.route.legacy!, holds, route.kind).violations.length) {
+      if (again.route.legacy && heldChecks(again.route.legacy, turned, routeLine(route)).violations.length < heldChecks(proposal.route.legacy!, holds, routeLine(route)).violations.length) {
         proposal = again; holds = turned;
         for (const h of turned) if (h.over) h.crossing.above = true;
       } else if (corridorId && kept) corridorCache.set(corridorId, kept);
@@ -508,7 +510,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
     const own = proposal.route.legacy;
     if (own && holds.length) {
-      const { violations, credits } = heldChecks(own, holds, route.kind);
+      const { violations, credits } = heldChecks(own, holds, routeLine(route));
       if (violations.length) { own.violations.push(...violations); own.valid = false; }
       if (credits.length) ownWorks.set(route.id, [...ownWorks.get(route.id) ?? [], ...credits]);
     }

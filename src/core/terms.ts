@@ -294,6 +294,8 @@ export const DIRECTIONS_TEXT = {
 export const HAIRPIN_NOTE = 'A departure from the road standard: needs the road authority\'s approval, as the hairpins on I/44 Červenohorské sedlo did.';
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
 /** Automatic on a railway: no level crossing anywhere along it (game rule, M1). */
+/** The same on a four-lane class I road built like a motorway (no level junctions either). */
+export const FOUR_LANE_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over our road, an underpass through a high enough embankment or a reroute to a nearby crossing. This road has no junctions with the roads it crosses.';
 export const RAILWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the railway, an underpass through a high enough embankment or a reroute to a nearby crossing. A new railway has no level crossings.';
 
 /** A mapped road's card where another road's earthworks cover it (ui/mapped-road.ts): `by` is "our road" or a road's name. */
@@ -439,13 +441,13 @@ export interface EndConnection {
   section?: string;
 }
 /** The end's card: a title and short lines, plain words. */
-export function endCard(info: EndConnection, end: 'a' | 'b'): { title: string; lines: string[] } {
+export function endCard(info: EndConnection, end: 'a' | 'b', line: OurLine = 'motorway'): { title: string; lines: string[] } {
   if (info.kind === 'continues') return { title: `Goes on as ${info.with}`, lines: ['That part is not in this job.'] };
   if (info.kind === 'roundabout') return { title: `Joins the roundabout on ${info.with}`,
     lines: ['Our road gets its own arm into it here, with a splitter island, priced as a junction; the roundabout itself stays as it is.'] };
   if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`It carries on as ${info.with} here; that road is not part of this job.`] };
   return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
-    ...(info.section ? [end === 'b' ? `The motorway goes on as ${info.section}.` : `The motorway comes from ${info.section}.`] : [])] };
+    ...(info.section ? [end === 'b' ? `The ${line} goes on as ${info.section}.` : `The ${line} comes from ${info.section}.`] : [])] };
 }
 
 /** What a stream culvert's card says (its size, length and price are the bill's: WaterResult). */

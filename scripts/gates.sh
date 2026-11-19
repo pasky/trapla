@@ -26,7 +26,7 @@ cd "$(dirname "$0")/.."
 LOCK=${TRAPLA_BROWSER_LOCK:-/tmp/trapla-browser.lock}
 # the browser scripts start at PORT (the next free one if it is taken): one per checkout, 10 apart per browser gate
 export PORT=${PORT:-$((5300 + $(pwd | cksum | cut -d' ' -f1) % 600))}
-PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-paka i46-sternberk"
+PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-paka i46-sternberk i35-turnov i35-rovensko i35-jicin i35-full"
 branch=$(git rev-parse --abbrev-ref HEAD | tr '/' '-')
 log=${GATES_LOG:-/tmp/trapla-gates-$branch}
 
@@ -48,6 +48,7 @@ vc-overlap|node|full|npx tsx scripts/vc-overlap-audit.ts
 bridge-ends|node|full|npx tsx scripts/bridge-ends-audit.ts
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 scenario-d11-motorway|node|full|env SCENARIO=d11 PRESET=d11-motorway node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts
+$(for p in i35-turnov i35-rovensko i35-jicin i35-full; do echo "scenario-$p-road|node|full|env SCENARIO=$p PRESET=$p-road node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m unittest discover -s pipeline -p 'test_*.py'
 smoke|browser|full|PORT=\$((PORT + 10)) node scripts/smoke.mjs
 playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/playtest.mjs
@@ -58,6 +59,7 @@ toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-la
 start-screen|browser|full|DIST=dist PORT=\$((PORT + 70)) node scripts/release-shots.mjs --check
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 $(for m in road link; do echo "drag-d11-motorway-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d11 --preset d11-motorway --mode $m"; done)
+$(for m in bend road link; do echo "drag-i35-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-full --preset i35-full-road --mode $m"; done)
 EOF
 }
 

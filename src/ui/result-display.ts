@@ -3,7 +3,7 @@
 // cards, the decorations of the other roads and the score. Also when the game counts as settled / idle, and
 // the provisional profile shown while the worker lags behind a drag. Moved out of main.ts verbatim; what
 // is asked of the workers and which replies count is the EvalClient's (eval-client.ts).
-import { CATEGORIES } from '../core/data/categories';
+import { CATEGORIES, lineOf } from '../core/data/categories';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId, RouteResult } from '../core/project';
@@ -181,7 +181,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
     }
     app.revalidate(r, rd);
     const cat = CATEGORIES[rd.category];
-    app.profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[app.scenario.terrainClass] ?? app.scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
+    app.profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[app.scenario.terrainClass] ?? app.scenario.maxGradient, perMille: cat.mode === 'railway', line: lineOf(cat) });
     app.profile.setResult(r, r.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
     syncApart(r);
     app.profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');

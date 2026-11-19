@@ -1,0 +1,48 @@
+{
+  "scenario": "i35-turnov",
+  "purpose": "Fresh motorway mission (starter)",
+  "design": {
+    "category": "S21.5",
+    "speed": 110,
+    "pis": [
+      {
+        "x": 2115.2,
+        "y": 3958.9,
+        "r": null
+      },
+      {
+        "x": 2672.8,
+        "y": 3509.4,
+        "r": null
+      },
+      {
+        "x": 3360.8,
+        "y": 3198.4,
+        "r": null
+      },
+      {
+        "x": 3748.5,
+        "y": 2641.7,
+        "r": null
+      },
+      {
+        "x": 4259,
+        "y": 2303.6,
+        "r": null
+      },
+      {
+        "x": 5004.7,
+        "y": 2056.5,
+        "r": null
+      },
+      {
+        "x": 5555.7,
+        "y": 1798.3,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

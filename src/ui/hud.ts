@@ -9,7 +9,7 @@ import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
 import { aloneText, billChangeText, lineBills, listProjectIssues, projectBadge, StepResults, unpricedText, type ListedIssue } from './project-issues';
 import { trainsPerDay } from '../core/project-railway';
-import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
+import { CATEGORIES, lineOf, pairedCategoryOf, pairedName, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
 import { DIRECTIONS_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
@@ -64,10 +64,10 @@ const RAIL_ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => st
   surcharge: () => `SPOŽES 2026 markups for a new line at study stage: +${Math.round(100 * SPOZES.markup.substructure)} % on earthworks and the sleeper bed, +${Math.round(100 * SPOZES.markup.bridges)} % on bridges and tunnels, none on track and systems`,
 };
 /** what a motorway's crossing line contains (no junctions on the way: its ends are interchanges) */
-const motorwayCrossings = () => `Roads we cross and roads our earthworks cover. No junctions on the way (the motorway's ends are its interchanges): each road gets the cheapest of a bridge over us with earth ramps, an underpass, or a reroute along our earthworks to a nearby crossing, priced by its measured length × the SPK 2026 road price. Roads our earthworks cover are rebuilt beside them, closed when other roads already connect their ends, or held back by retaining walls. These works get the other-objects surcharge. Roads at least ${CROSSING_RULES.overHeight} m below our road pass under our bridges (under Bridges).`;
+const motorwayCrossings = () => `Roads we cross and roads our earthworks cover. No junctions on the way (its ends are interchanges): each road gets the cheapest of a bridge over us with earth ramps, an underpass, or a reroute along our earthworks to a nearby crossing, priced by its measured length × the SPK 2026 road price. Roads our earthworks cover are rebuilt beside them, closed when other roads already connect their ends, or held back by retaining walls. These works get the other-objects surcharge. Roads at least ${CROSSING_RULES.overHeight} m below our road pass under our bridges (under Bridges).`;
 /** a breakdown line's tooltip for the line being built (road / motorway / railway) */
 export const rowHelp = (id: string, c: CostBreakdown, sc: ScenarioParams, line = 'road') =>
-  (line === 'railway' ? RAIL_ROW_HELP[id] : line === 'motorway' && id === 'crossings' ? motorwayCrossings : undefined)?.(c, sc) ?? ROW_HELP[id](c, sc);
+  (line === 'railway' ? RAIL_ROW_HELP[id] : (line === 'motorway' || sc.mode === 'motorway') && id === 'crossings' ? motorwayCrossings : undefined)?.(c, sc) ?? ROW_HELP[id](c, sc);
 
 /** what each line of the breakdown contains (shown as a tooltip) */
 export const ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => string> = {
@@ -162,7 +162,7 @@ export class Hud {
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
     // no total: say which change holds it back, and keep what IS priced in view (each road alone, never added up)
-    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups) : '';
+    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk, `our ${this.ourLine}`, groups) : '';
     // a live ≈ price says what it does not count yet (QA: the whole D3 moved by 0.9 bn when the drag settled)
     const estimate = pending && (liveTotal !== null || (!priced && !!ownPrice?.approx));
     this.$('perkm').textContent = estimate ? ESTIMATE.short : !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names, groups)}${others ? `. ${others}` : ''}` : this.goalText;
@@ -233,7 +233,7 @@ export class Hud {
     if (!result || result === this.recorded) return;
     const total = result.cost.total ?? null;
     this.recorded = result;
-    this.recordedBills = total === null ? null : lineBills(result, ours, names, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups);
+    this.recordedBills = total === null ? null : lineBills(result, ours, names, `our ${this.ourLine}`, groups);
     this.steps.record(`${result.epoch}:${result.revision}`, total, this.recordedBills);
   }
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
@@ -245,6 +245,8 @@ export class Hud {
   /** what the active line is (road / motorway / railway): the bill's words follow it */
   private line = 'road';
   setLine(line: string) { this.line = line; }
+  /** what the mission's line is in the player's words ("our road", "our motorway") */
+  private get ourLine() { return this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? lineOf(CATEGORIES[this.sc.initial?.category ?? 'D27.5']) : 'road'; }
   constructor(private root: HTMLElement, private sc: ScenarioParams) {
     const minCat = minCategoryForTraffic(sc.traffic);
     root.innerHTML = `
@@ -298,7 +300,7 @@ export class Hud {
         </ul>
         <div class="btns"><button type="button" id="show-intro">Show the intro</button> <a href="about.html" target="_blank" rel="noopener">About Trapla and its data</a></div>`)}`;
     this.goalText = sc.mode === 'motorway'
-      ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
+      ? `Goal: cheapest valid ${this.ourLine === 'motorway' ? 'motorway' : 'four-lane road'} · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
       : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(trainsPerDay(sc.railTraffic))} trains a day`
       : `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
@@ -390,7 +392,7 @@ export class Hud {
       catSelect.innerHTML = types.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('');
       catSelect.disabled = types.length < 2;
       speedSelect.innerHTML = speeds.map((s) => `<option value="${s}">${s} km/h</option>`).join('');
-      this.$('design-h').textContent = cat.mode === 'motorway' ? 'Motorway' : cat.mode === 'railway' ? 'Railway' : 'Road';
+      this.$('design-h').textContent = cat.mode === 'motorway' ? pairedName(pairedCategoryOf(cat.id) ?? 'D27.5') : cat.mode === 'railway' ? 'Railway' : 'Road';
       this.$('height-h').textContent = cat.mode === 'railway' ? 'Track height' : 'Road height';
     }
     catSelect.value = d.category;

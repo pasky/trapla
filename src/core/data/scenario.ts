@@ -51,8 +51,9 @@ export interface ScenarioParams {
   railTraffic?: { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number };
   /** The start screen's card: what the line is (its length is added) and what you do, in one line each.
    * `section`: the mission is one choice of its corridor's card (`group`), labelled so; `startHere`: the one
-   * mission offered first to a new player; `aside`: a short warning under the card. */
-  picker?: { kind: string; goal: string; section?: string; startHere?: boolean; aside?: string };
+   * mission offered first to a new player; `aside`: a short warning under the card (such cards go last); `note`:
+   * a short fact under it. */
+  picker?: { kind: string; goal: string; section?: string; startHere?: boolean; aside?: string; note?: string };
   /** The corridor the mission belongs to: its sections share one card on the start screen. */
   group?: string;
   /** Superseded mission: not offered on the start screen; a save of one is listed under "Your older saves"
@@ -344,15 +345,52 @@ export const D11_MOTORWAY: ScenarioParams = {
   junctions: { b: { kind: 'merge', osmWayIds: [1171616839, 1171616840], ways: [2267, 2268],
     about: 'The S3 carriageways that start at the border, where OSM ref D11 turns S3' } },
 };
+// The I/35 Turnov – Úlibice through Český ráj (research/89): the former R35, a class I road since 2016, planned by ŘSD as
+// four stages (MÚK Ohrazenice; Ohrazenice – Valdštejnsko ≈ 5.5 km; Valdštejnsko – Čímyšl ≈ 12.5 km; Čímyšl – Úlibice
+// ≈ 14.5 km; the 2023 technical study, 33.0 km, E1 line of the 2021 EIA opinion, revoked 12/2025, new EIA from 2026).
+// Category: S 21.5 at 110 km/h, the real project's to MÚK Žernov (km 12.4); beyond it the real road is the 2+1
+// S 15.25/110, which the game cannot change to mid-route (research/89 §6). Not a motorway in law: CHKO Český ráj's
+// zones III–IV need consent, a note (zákon 114/1992 §26; categories.ts motorwayByLaw). Sections: the pack's A and B
+// on the mapped line (OSM highway=proposed ways 1012219137, 1012219136, 883368325) at the Valdštejnsko (km 5.6) and
+// Čímyšl (km 18.9) interchanges. Traffic: the EIA's 2040 forecast (dokumentace 2020 p. 76), averaged over each
+// stretch's segments by length, its heavy share (NA) the noise model's. Time targets: a mission choice, the mapped
+// line + 10 % at 110 km/h, rounded up to 0.1 min. Starters: mapped-line bends every ≈ 1.5 km, none within 750 m
+// of B (scripts/motorway-starter.ts --mapped=1.5).
+const i35Section = (id: string, title: string, section: string, pis: PI[], traffic: number, heavyShare: number, maxTravelMin: number,
+  labels: ScenarioParams['labels'], goal: string, ends: ScenarioParams['ends']): ScenarioParams => ({
+  id, presetId: `${id}-road`, mode: 'motorway', title, group: 'Český ráj', ends,
+  initial: { category: (process.env.I35CAT ?? 'S21.5') as 'S21.5', speed: 110, pis },
+  picker: { kind: 'Four-lane road', goal, section, note: 'Not a motorway: a motorway may not enter the protected landscape.' },
+  traffic, heavyShare, maxTravelMin, terrainClass: 'hilly', maxGradient: 0.06, labels,
+});
+const I35_OHRAZENICE = { kind: 'interchange', with: 'the D10 and road I/35 to Liberec' } as const;
+const I35_UL = { kind: 'continues', with: 'the D35 to Hradec Králové' } as const;
+export const I35_TURNOV = i35Section('i35-turnov', 'Turnov → Valdštejnsko', 'Turnov → Valdštejnsko', P([[2115.2, 3958.9], [2672.8, 3509.4], [3360.8, 3198.4], [3748.5, 2641.7], [4259, 2303.6], [5004.7, 2056.5], [5555.7, 1798.3]]), 19_505, 0.150, 3.5, // 6.38 km at 110 (mapped 5.80 km)
+  { a: 'Ohrazenice', b: 'Valdštejnsko', official: 'planned I/35', brief: '<b>Ohrazenice</b> to <b>Valdštejnsko</b>, past Turnov' },
+  'Cross the Jizera and pass Turnov at the edge of Český ráj.',
+  { a: I35_OHRAZENICE, b: { kind: 'interchange', with: 'road I/35', section: 'the next stage, to Čímyšl' } });
+export const I35_ROVENSKO = i35Section('i35-rovensko', 'Valdštejnsko → Čímyšl', 'Valdštejnsko → Čímyšl', P([[3000, 9527.5], [3787.6, 9708.7], [4568.1, 9652.5], [5148.6, 9119], [5796.7, 8658], [6082.5, 8070.1], [6366.1, 7476.4], [6919.5, 7149.7], [7599.9, 6941.6], [8042.8, 6491.3], [8031.3, 5518.6], [8037.8, 4804.6], [7548.3, 4205.1], [7054, 3758.4], [6855.9, 3195.2], [6983.2, 2614.9]]), 17_249, 0.164, 7.5, // 13.75 km at 110 (mapped 12.50 km)
+  { a: 'Valdštejnsko', b: 'Čímyšl', official: 'planned I/35', brief: '<b>Valdštejnsko</b> to <b>Čímyšl</b>, round Rovensko under Trosky' },
+  'Climb the sandstone scarps round Rovensko, under Trosky castle.',
+  { a: { kind: 'interchange', with: 'road I/35', section: 'the stage from Turnov' }, b: { kind: 'interchange', with: 'road I/35', section: 'the last stage, to Úlibice' } });
+export const I35_JICIN = i35Section('i35-jicin', 'Čímyšl → Úlibice', 'Čímyšl → Úlibice', P([[2998.4, 9284.6], [3589.5, 8941.6], [3941.6, 8395.2], [3957.3, 7777.3], [4370.5, 7171.4], [5196.1, 6828.1], [5842.7, 6197.2], [6492, 5636.4], [7117.3, 5264.6], [7660.7, 4750.2], [8146.2, 4203.7], [8944.6, 3804.3], [10314.8, 3298.9], [11160.5, 2910.6]]), 11_871, 0.205, 8.5, // 15.53 km at 110 (mapped 14.12 km)
+  { a: 'Čímyšl', b: 'Úlibice', official: 'planned I/35', brief: '<b>Čímyšl</b> to <b>Úlibice</b>, past Jičín to the D35' },
+  'Cross the Cidlina valley and reach the D35 at Úlibice.',
+  { a: { kind: 'interchange', with: 'road I/35', section: 'the stage from Valdštejnsko' }, b: I35_UL });
+export const I35_FULL = i35Section('i35-full', 'Turnov → Úlibice', 'Whole route', P([]), 15_235, 0.175, 19.5, // 35.66 km at 110 (mapped 32.42 km)
+  { a: 'Turnov', b: 'Úlibice', official: 'planned I/35', brief: '<b>Turnov</b> to <b>Úlibice</b>, along the edge of Český ráj' },
+  'Take the road from Turnov to the D35 at Úlibice, round the protected rocks and ponds of Český ráj.',
+  { a: I35_OHRAZENICE, b: I35_UL });
+
 /** Every playable mission, in picker order. */
 export const PRESETS: ScenarioParams[] = [D11_MOTORWAY, D11_SCENARIO, D11_RAIL_KRALOVEC, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
-  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, STERNBERK_SCENARIO, NOVA_PAKA_SCENARIO, D11_RAILWAY];
+  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, I35_FULL, I35_TURNOV, I35_ROVENSKO, I35_JICIN, STERNBERK_SCENARIO, NOVA_PAKA_SCENARIO, D11_RAILWAY];
 
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
  * D11 intentionally retains its exact legacy parameters and default. */
 export const SCENARIOS: Record<string, ScenarioParams> = {
   d11: D11_SCENARIO, d3: D3_SCENARIO, d35: D35_SCENARIO, 'i16-nova-paka': NOVA_PAKA_SCENARIO, 'i46-sternberk': STERNBERK_SCENARIO,
-  'd3-full': D3_FULL, 'd35-full': D35_FULL, 'd3-0301': D3_0301, 'd3-0302': D3_0302, 'd3-0303': D3_0303, 'd3-0304': D3_0304, 'd3-0305': D3_0305,
+  'd3-full': D3_FULL, 'd35-full': D35_FULL, 'i35-full': I35_FULL, 'i35-turnov': I35_TURNOV, 'i35-rovensko': I35_ROVENSKO, 'i35-jicin': I35_JICIN, 'd3-0301': D3_0301, 'd3-0302': D3_0302, 'd3-0303': D3_0303, 'd3-0304': D3_0304, 'd3-0305': D3_0305,
 };
 export const DEFAULT_SCENARIO = 'd11';
 

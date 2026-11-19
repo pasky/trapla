@@ -1,0 +1,49 @@
+{
+  "id": "i35-rovensko",
+  "name": "I/35 Valdštejnsko → Čímyšl",
+  "bbox5514": [
+    -684000,
+    -1006500,
+    -674000,
+    -995000
+  ],
+  "cell": 5,
+  "requireComplete": true,
+  "coherentTransport": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way(id:1012219137,1012219136,883368325);",
+    "ref": "35",
+    "highway": "trunk",
+    "wayIds": [
+      1012219137,
+      1012219136,
+      883368325
+    ],
+    "startNode": 8214867999,
+    "lengthRangeM": [
+      32900,
+      33150
+    ],
+    "publishedProjectLengthM": 33000,
+    "note": "The OSM highway=proposed line of the I/35 Turnov – Úlibice (proposed=trunk, ref 35; the E1 line of the 2021 EIA opinion, 33.0 km as the 2023 ŘSD technical study), from the D10/I/35 at Ohrazenice through the Pelešany tunnel to where the D35 Úlibice bypass starts (research/89)."
+  },
+  "A": {
+    "alongOfficial": 6400,
+    "note": "Valdštejnsko: 6.4 km along the mapped line, past the Valdštejnsko interchange, the railway and road I/35 (km 5.48 / 5.51) and road III/2835 (km 6.13): the stage from Turnov ends here"
+  },
+  "B": {
+    "alongOfficial": 18900,
+    "note": "Čímyšl: at the Čímyšl interchange (OSM ramp at km 18.9), the end of stage Valdštejnsko – Čímyšl (≈ 12.5 km)"
+  },
+  "baselineNote": "Planned, not built (ŘSD: new EIA from 2026, works from about 2032; research/89). The planned line is OSM highway=proposed, outside the road network. Ground depths are uncalibrated regional priors.",
+  "sources": [
+    "https://kraje.rsd.cz/s35/",
+    "https://portal.cenia.cz/eiasea/detail/EIA_MZP462",
+    "https://www.turnov.cz/filemanager/files/1569627.pdf",
+    "https://www.turnov.cz/filemanager/files/3126451.pdf",
+    "https://www.turnov.cz/filemanager/files/1084459.pdf",
+    "https://www.openstreetmap.org/way/1012219137",
+    "https://www.openstreetmap.org/way/883368325"
+  ]
+}
