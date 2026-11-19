@@ -1,5 +1,32 @@
 # Evaluate performance regression
 
+## A reroute's first drag on a whole route is a window (no model version, 2026-11-19)
+
+A reroute's drag (`drag-perf --mode link`) on the whole D3 took ≈ 170 ms from move to shown preview, the whole I/35's
+≈ 70–95 ms (budget 60). Not the route's length as such: its previews were not windows. The first move of a drag makes
+the crossing the player's choice (`setVia` writes `{ type: 'reconnection', via }`), and the preview lineage was keyed by
+the crossing choices, so until a full result with that choice existed (a pause of 150 ms, or the drag's end) no full
+result stood in and every preview of the drag re-solved the whole route (worker ≈ 120 ms on the whole D3). A later drag
+of the same reroute had its base and was a window; the gate's warm-up drag was meant to give the measured drag one, but
+on a loaded host the first moves over a long route (a hover's first picks) took its whole 0.6 s and it never passed the
+5 px that starts a drag, so the measured drag was the reroute's first.
+
+- **Preview base** (`core/preview-window.ts` `baseOf`): the full result of the same lineage, else the newest of the same
+  lineage but for the crossing choices; a crossing whose choice or shape differs from that base's is re-solved in a
+  window from it to the crossing it leads to, as a reshaped reroute was (a crossing the base does not have, or one led
+  elsewhere: the whole route, as before). The full results and their keys are unchanged; `exact.ts`: 243 of 243
+  identical.
+- **drag-perf `--mode link`**: the warm-up makes moves until it has made 12 (and checks that it shaped its reroute), on
+  the next longest reroute of a way crossed once; the measured drag shapes the longest for the first time, as a
+  player's first drag of it. Gates `drag-d3-full-link` and `drag-i35-full-link` (which replaces the last stage's).
+
+Preview latency p50 / p95 (worker p50), GPU, host load 7–9, main dfc5388 → this change: whole D3 172 / 197 (123) →
+28 / 74 (11) ms; whole I/35 69 / 107 (43) → 20 / 29 (10) ms. D11 21 / 31, D11 motorway 17 / 30. On the whole D3 the
+stitch of the window into the full result is ≈ 4 ms of the worker's 11 (per station, whole route) and the preview's
+transfer and the main thread's handling (≈ 11 ms) are most of the rest. Node probe of the same previews (as the
+preview worker: bases handed over slim, no cache of the full evaluation warm): `scripts/dev/link-drag-preview.ts`
+(`FIRST=1` the first drag, `BASES=file` keeps the full results between runs).
+
 ## Protected areas and the 3 % tunnel rule, cost model 45 (2026-11-17)
 
 What runs more on every route: a scan of the protected areas per station in the setup (crown and a dug tunnel end's

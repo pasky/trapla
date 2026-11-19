@@ -173,41 +173,48 @@ if (mode === 'bend') {
   path = (u, size) => ({ x: 0, y: -size * 0.4 * Math.sin(u * 2 * Math.PI) });
 } else if (mode === 'link') {
   // a reroute link (the new road of a cut crossed road), dragged by its middle: every drag adds a bend
-  // point there that follows the pointer (the same loop as a bend drag)
-  const at = await T(() => {
-    const r = window.trapla.result(), c = r.crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links?.some(l => l.length > 6))
-      .sort((a, b) => (b.linkLength ?? 0) - (a.linkLength ?? 0))[0];
-    const link = c.geometry.links.find(l => l.length > 6), q = link[Math.floor(link.length / 2)];
-    // (a reroute is shaped once its crossing is selected, as a click on it would)
-    window.trapla.select({ kind: 'crossing', roadId: c.roadId }); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
-    return { link: [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map(f => link[Math.floor(link.length * f)]) };
-  });
-  await page.waitForTimeout(1500);
-  // its middle, else the nearest point along it clear on screen of a culvert's symbol on our road (a press there
-  // selects the culvert instead)
-  const q = await T((pts) => {
-    const r = window.trapla.result(), screen = (x, y, z) => window.trapla.project(x, y, z);
-    const marks = r.waterCrossings.map(w => { const i = Math.round(w.s / r.ds); return screen(r.x[i], r.y[i], r.grade[i]); });
-    return pts.find(p => { const s = screen(p.x, p.y, p.z); return marks.every(m => Math.hypot(s.sx - m.sx, s.sy - m.sy) > 40); }) ?? pts[0];
-  }, at.link);
+  // point there that follows the pointer (the same loop as a bend drag). The measured drag shapes the longest reroute
+  // for the first time, as a player's first drag of it; the warm-up the next longest (of another way crossed once:
+  // `shapeable`), so that no full result of the measured one's shape is kept yet.
+  const viewIdle = () => T(() => new Promise((resolve) => { const tick = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? tick() : resolve())); tick(); }));
+  const focus = async (rank) => {
+    const at = await T((rank) => {
+      const r = window.trapla.result(), once = (id) => r.crossings.filter(c => c.roadId === id).length === 1;
+      const list = r.crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && c.geometry?.links?.some(l => l.length > 6))
+        .sort((a, b) => (b.linkLength ?? 0) - (a.linkLength ?? 0));
+      const c = rank ? list.find(c => c.roadId !== list[0].roadId && once(c.roadId)) ?? list[0] : list[0];
+      const link = c.geometry.links.find(l => l.length > 6), q = link[Math.floor(link.length / 2)];
+      // (a reroute is shaped once its crossing is selected, as a click on it would)
+      window.trapla.select({ kind: 'crossing', roadId: c.roadId }); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
+      return { roadId: c.roadId, link: [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8].map(f => link[Math.floor(link.length * f)]) };
+    }, rank);
+    await page.waitForTimeout(1500);
+    await viewIdle();
+    // its middle, else the nearest point along it clear on screen of a culvert's symbol on our road (a press there
+    // selects the culvert instead)
+    const q = await T((pts) => {
+      const r = window.trapla.result(), screen = (x, y, z) => window.trapla.project(x, y, z);
+      const marks = r.waterCrossings.map(w => { const i = Math.round(w.s / r.ds); return screen(r.x[i], r.y[i], r.grade[i]); });
+      return pts.find(p => { const s = screen(p.x, p.y, p.z); return marks.every(m => Math.hypot(s.sx - m.sx, s.sy - m.sy) > 40); }) ?? pts[0];
+    }, at.link);
+    return { roadId: at.roadId, q };
+  };
+  const before = await T(() => window.trapla.getDesign().crossingOverrides ?? []);
+  let target = await focus(1);
   grab = async () => {
     // (the link drawn where it is before a press grabs it: on a loaded host the scene of a long route catches up after the
     // camera move or the evaluation)
-    await T(() => new Promise((resolve) => { const tick = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? tick() : resolve())); tick(); }));
-    return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, q);
+    await viewIdle();
+    return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, target.q);
   };
   afterWarmUp = async () => {
-    if (!(await T(() => (window.trapla.getDesign().crossingOverrides ?? []).some(o => o.via)))) throw new Error('the warm-up drag did not shape the reroute');
+    if (!(await T((id) => (window.trapla.getDesign().crossingOverrides ?? []).some(o => o.roadId === id && o.via), target.roadId))) throw new Error('the warm-up drag did not shape its reroute');
   };
-  // after the warm-up drag: back to Auto's crossing as the design had it, so the measured drag is the reroute's first
-  // shaping, as a player's first drag of it
-  const before = await T(() => window.trapla.getDesign().crossingOverrides ?? []);
+  // after the warm-up drag: back to Auto's crossings as the design had them, the longest reroute in view
   beforeMeasure = async () => {
     await T((before) => { const d = window.trapla.getDesign(); d.crossingOverrides = before; window.trapla.setDesign(d); }, before);
     await T(() => window.trapla.whenIdle());
-    // (the link drawn again where it was, and still selected, before the measured drag grabs it: on a loaded host the
-    // scene of a long route catches up after the evaluation)
-    await T(() => new Promise((resolve) => { const tick = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? tick() : resolve())); tick(); }));
+    target = await focus(0);
     await page.waitForTimeout(300);
   };
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });

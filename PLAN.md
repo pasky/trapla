@@ -2427,11 +2427,9 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   railway right under it stands its piers on the track where no frame pier's columns miss it (a 100 m drag on the last
   stage, 1 of 72); Auto takes the Pelešany stretch in cuts and on bridges and buys out homes where the real design
   tunnels under the houses; the interchanges are not built.
-- **A reroute's drag on a whole route is not live** (found here, not new): dragging the longest reroute (a 1.4 km
-  diversion along our embankment at km 14.4 of the whole I/35) takes the preview worker ≈ 50–60 ms (latency p50 80–95
-  ms, budget 60) on a loaded host (load ≈ 9), the whole D3's 140 ms (p50 170 ms); the D11 motorway's 7 ms, the I/35
-  stages' 8 ms. The gates run it on the last stage (`drag-i35-jicin-link`) and the whole route's bend and road drags;
-  `drag-perf --mode link` on `d3-full` shows the same on main. To look at: whether those previews are windowed at all.
+- **A reroute's drag on a whole route was not live** (found here, not new; fixed: "Reroute drags on whole routes"
+  below): dragging the longest reroute (a 1.4 km diversion along our embankment at km 14.4 of the whole I/35) took
+  latency p50 70–95 ms (budget 60), the whole D3's 170 ms: its first drag was never a window.
 
 ## Hand-built interchanges: slip roads; a built road's ends (owner request, cost model 58, 2026-11-19)
 
@@ -2595,3 +2593,18 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   loaded best; Hands off is offered where landmarks are near the line, not only where the starter breaks it (it rules out
   what a cheaper line would take); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
   slip between two.
+
+## Reroute drags on whole routes (no model version, 2026-11-19)
+
+- **Bug:** a reroute's first drag on the whole D3 showed its previews ≈ 170 ms after the pointer (the whole I/35's
+  70–95, budget 60). The first move makes the crossing the player's choice, the preview lineage keyed the crossing
+  choices, so no full result stood in for a window until one with that choice came back (a pause or the drag's end):
+  every preview re-solved the whole route. drag-perf's warm-up was meant to give the measured drag such a base, but on
+  a loaded host it made no move past the 5 px a drag starts with.
+- **Fix** (`core/preview-window.ts` `baseOf`): the full result of the same lineage, else the newest one but for the
+  crossing choices; a crossing whose choice or shape differs is re-solved in a window from it to the crossing it leads
+  to. drag-perf's link warm-up shapes another reroute and checks it did; the measured drag is the longest reroute's
+  first. Latency p50 whole D3 172 → 28 ms, whole I/35 69 → 20 (docs/evaluate-performance.md). Gates
+  `drag-d3-full-link`, `drag-i35-full-link` (the last stage's link gate dropped). Full results unchanged (exact.ts).
+- **Known issues:** a reroute led to another road (`to` / `ends` changed) still previews the whole route; its end is
+  only moved on release (no preview during the drag), so no drag waits for it.

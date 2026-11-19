@@ -207,8 +207,8 @@ on earth, tests/motorway-mode.test.ts).
   on the sampled line. Why the real design tunnels there (the houses, the EIA's condition on the landscape) is a cost
   the game does not see.
 - The interchanges (eight on the real line) and the II/283 feeder to Semily are not built.
-- A reroute's drag on the whole route is not live (≈ 80–95 ms preview latency on a loaded host, budget 60), as on the
-  whole D3; on the stages it is (≈ 12–17 ms). Bend and road drags on the whole route pass (PLAN.md).
+- A reroute's drag on the whole route was not live (≈ 80–95 ms preview latency on a loaded host, budget 60), as on the
+  whole D3: its first drag was never a window. Fixed (PLAN.md "Reroute drags on whole routes"): ≈ 20 ms, gated.
 - The ground is ČGS GEOCR50 with IG rajon fallbacks (no cell unmapped); Kozákov's and Trosky's volcanic rocks
   (basanite, nephelinite, pyroclastics) have no GEOCR50 mapping of their own and take the IG rajon's (ig_Vl, ig_Vk).
 
