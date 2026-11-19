@@ -262,6 +262,6 @@ export function costNote(r: Result): string {
   if (depth < 6) return '';
   const streams = r.waterCrossings.filter(c => c.i >= top.i0 && c.i <= top.i1 && (c.structure === 'pipe' || c.structure === 'box')).length;
   return top.kind === 'fill'
-    ? ` Its largest cost: an embankment up to ${Math.round(depth)} m high over lower ground${streams ? `, ${streams === 1 ? 'a stream' : `${streams} streams`} under it in culverts` : ''}.`
+    ? ` Its largest cost: an embankment up to ${Math.round(depth)} m high over lower ground${streams ? `, ${streams === 1 ? 'a stream under it in a culvert' : `${streams} streams under it in culverts`}` : ''}.`
     : ` Its largest cost: a cutting up to ${Math.round(depth)} m deep.`;
 }
