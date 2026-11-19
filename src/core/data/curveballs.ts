@@ -323,14 +323,14 @@ export const CURVEBALLS: Record<string, Curveball> = {
     cite: { text: 'A game event of a kind real projects meet (nature act 114/1992)' },
     zone: { label: 'Stork’s nest', forbid: KEEP_OUT, shape: { kind: 'circle', x: -740514, y: -1092834, r: 55 } },
   },
-  // GAME EVENT (research/95 "A village's demand"): the reference's stretch nearest Styrov, km 12.99–13.25, 40 m either
-  // side.
-  'd3-0305-quiet': {
-    id: 'd3-0305-quiet', headline: 'Styrov asks for quiet',
-    story: 'Styrov asks for the motorway to pass the village in a cutting, out of sight and quieter.',
-    ask: 'Keep the road in a cutting past Styrov',
-    cite: { text: 'A game event of a kind real projects meet (the EIA hearing: villages ask for a lower line)' },
-    zone: { label: 'Past Styrov', forbid: LOW, shape: { kind: 'polygon', pts: [[-736069, -1102280], [-735830, -1102410], [-735868, -1102480], [-736105, -1102352]] } },
+  // GAME EVENT (research/95 "A gas main"): along the secondary road the reference crosses at km 7.53 (the pack's ways),
+  // 150 m either side, 10 m either side of the road.
+  'd3-0305-gas': {
+    id: 'd3-0305-gas', headline: 'A gas main by the road',
+    story: 'A high-pressure gas main runs beside the road the motorway crosses by Loudilka. Its owner will not have it buried deeper or an embankment put on it.',
+    ask: 'No cutting or embankment over the gas main',
+    cite: { text: 'A game event of a kind real projects meet (energy act 458/2000, protection zones)' },
+    zone: { label: 'Gas main', forbid: SPAN, shape: { kind: 'polygon', pts: [[-739696, -1098513], [-739653, -1098496], [-739500, -1098455], [-739465, -1098451], [-739401, -1098452], [-739400, -1098472], [-739465, -1098471], [-739495, -1098475], [-739647, -1098516], [-739687, -1098531]] } },
   },
   // A real place, a game event (research/95 "A stream for animals"): the AOPK register of migration-significant streams
   // ("Mastník", regional priority corridor); the real design crosses its valley on a 925 m viaduct (ŘSD leaflet 0305/I,

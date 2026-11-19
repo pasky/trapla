@@ -1,7 +1,9 @@
 {
  "preset": "d35-full-motorway",
- "purpose": "Every curveball, under the goal: stitched from D35 stage 1's all-news.json (scripts/twists-stitch.ts), then a search (scripts/twists-check.ts --find --twists curveballs --goal, seed 51)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: stitched from D35 stage 1's all-news.json (scripts/twists-stitch.ts), then searches (scripts/twists-check.ts --find, seeds 51 → 53 → 63)",
  "meets": [
+  "earth",
+  "landmarks",
   "curveballs"
  ],
  "goal": true,
@@ -173,8 +175,8 @@
        "r": null
       },
       {
-       "x": 6827.875333853299,
-       "y": 9184.314852573443,
+       "x": 6893.295258397109,
+       "y": 9243.128229673815,
        "r": null
       },
       {
@@ -228,8 +230,8 @@
        "r": null
       },
       {
-       "x": 22433.008560567843,
-       "y": 7548.163340594321,
+       "x": 22420.326520197832,
+       "y": 7515.622277192915,
        "r": null
       },
       {
@@ -294,8 +296,8 @@
         "z": 448.3
        },
        {
-        "s": 7749,
-        "z": 428.1
+        "s": 11438,
+        "z": 391.7
        },
        {
         "s": 14198,

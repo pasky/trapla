@@ -6,7 +6,7 @@
 // Then D3 Voračice → Nová Hospoda (a game event on a real register's place, then one without), the class I road (no
 // twists) and the whole D3's twist screen.
 //
-//   node scripts/twists-play.mjs [--docs]      --docs: docs/screenshots/640–655 (look at them)
+//   node scripts/twists-play.mjs [--docs]      --docs: docs/screenshots/640–654 (look at them)
 // Untimed: flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/twists-play.mjs (AGENTS.md).
 import { readFileSync } from 'node:fs';
 import { startGame, checker, INTRO_KEY } from './lib/browser.mjs';
@@ -32,7 +32,7 @@ try {
   // ---- the twist screen ----
   await page.locator('.twist-picker').waitFor({ timeout: 30000 });
   const names = await page.locator('.twist-picker-list b').allTextContents();
-  ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
+  ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,Spare the forest,Few bridges,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
   ok(await page.locator('.twist-picker-list input:checked').count() === 3, 'the default three are on');
   ok(/Goal: a valid design under 792 M CZK/.test(await page.locator('.twist-picker-goal').textContent()), 'it says the goal');
   await shot('twist-screen');

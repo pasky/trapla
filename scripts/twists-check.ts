@@ -101,7 +101,12 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
       const i = broken[Math.floor(rand() * broken.length)];
       const z = i.ref?.startsWith('curveball:') && i.s0 !== undefined ? m.setup.curveballs.find(c => c.id === i.ref!.slice(10))?.zone : undefined;
       const use = z && /: our (cutting|embankment) at/.exec(i.text)?.[1];
-      if (use && d.profileMode === 'auto' && rand() < 0.5) {
+      if (use && d.profileMode === 'manual' && d.vpis.length > 2 && rand() < 0.5) {
+        // heights by hand: the nearest height point out of the ground there
+        const at = (i.s0! + i.s1!) / 2, k2 = d.vpis.slice(1, -1).reduce((b, v, k) => Math.abs(v.s - at) < Math.abs(d.vpis[b].s - at) ? k + 1 : b, 1);
+        const j = Math.max(0, Math.min(L.n - 1, Math.round(d.vpis[k2].s / L.ds)));
+        d.vpis[k2] = { ...d.vpis[k2], z: Math.round((use === 'cutting' ? Math.max(d.vpis[k2].z, L.ground[j] + 0.5 + rand() * 4) : Math.min(d.vpis[k2].z, L.ground[j] - 0.5 - rand() * 4)) * 10) / 10 };
+      } else if (use && d.profileMode === 'auto' && rand() < 0.5) {
         // earthworks where a place forbids them: a height pin out of the ground there (above it over a cut, below it under a fill)
         const pins = d.gradePins ?? (d.gradePins = []), at = (i.s0! + i.s1!) / 2 + gauss() * 20, j = Math.max(0, Math.min(L.n - 1, Math.round(at / L.ds)));
         const zz = use === 'cutting' ? Math.max(L.grade[j], L.ground[j] + 0.5 + rand() * 4) : Math.min(L.grade[j], L.ground[j] - 0.5 - rand() * 4);
@@ -124,7 +129,10 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
       const idx = order.filter(o => o.s < L.s[j]).length;
       d.pis.splice(idx, 0, at);
     } else if (kind < 0.6 && d.pis.length) d.pis.splice(Math.floor(rand() * d.pis.length), 1);
-    else if (kind < 0.85 && d.profileMode === 'auto') {
+    else if (kind < 0.85 && d.profileMode === 'manual' && d.vpis.length > 2) {
+      const k2 = 1 + Math.floor(rand() * (d.vpis.length - 2));
+      d.vpis[k2] = { ...d.vpis[k2], z: Math.round((d.vpis[k2].z + gauss() * (0.5 + 3 * heat)) * 10) / 10 };
+    } else if (kind < 0.85 && d.profileMode === 'auto') {
       const pins = d.gradePins ?? (d.gradePins = []);
       if (pins.length && rand() < 0.3) pins.splice(Math.floor(rand() * pins.length), 1);
       else {
