@@ -45,7 +45,7 @@ export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; s
   railway?: boolean;
   /** existing ways this road changes together with another road, as one design: a slip road's junction on the
    * road its motorway crosses there (core/slip-roads.ts), with that motorway's crossing of it */
-  sharedWays?: { routeId: RouteId; way: number }[] }
+  sharedWays?: { routeId: RouteId; way: number; x: number; y: number; r: number }[] }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number;
   /** shared land: where the two roads' land and works come closest, and how many metres further apart
@@ -340,9 +340,13 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const own = new Set([...routes[a].ownWays ?? [], ...routes[b].ownWays ?? []]);
     // (two changes of one way meet where their reaches along it come within the clearance of each other;
     // further apart, each road rebuilds its own piece of it)
-    const together = (id: number) => !!routes[a].sharedWays?.some(w => w.way === id && w.routeId === routes[b].routeId)
-      || !!routes[b].sharedWays?.some(w => w.way === id && w.routeId === routes[a].routeId);
-    for (const [id, here] of ta.roads) if (!own.has(id) && !together(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
+    // (within the interchange only: both changes near the junction and the crossing it is laid out with)
+    const near = (w: { x: number; y: number; r: number }, p: { x: number; y: number }) => Math.hypot(p.x - w.x, p.y - w.y) <= w.r;
+    const together = (id: number, p: { x: number; y: number }, q: { x: number; y: number }) =>
+      !!routes[a].sharedWays?.some(w => w.way === id && w.routeId === routes[b].routeId && near(w, p) && near(w, q))
+      || !!routes[b].sharedWays?.some(w => w.way === id && w.routeId === routes[a].routeId && near(w, p) && near(w, q));
+    for (const [id, here] of ta.roads) if (!own.has(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
+      if (together(id, p, q)) continue;
       const d = Math.hypot(p.x - q.x, p.y - q.y); if (d - p.r - q.r < S.clearance && d < best) { best = d; at = { x: p.x, y: p.y }; }
     }
     // (a closure's detour, and another road's change of a road it could use)

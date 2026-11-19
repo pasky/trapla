@@ -89,11 +89,16 @@ export function createRoutes(app: RoutesContext) {
   const roadEnds = new RoadEnds(document.getElementById('overlay')!, app.view, {
     place: (route, end, clientX, clientY, held) => placeEnd(route, end, clientX, clientY, held),
     drawnAt: (route, end) => drawnEnd(route, end),
-    begin: () => { if (app.projectStore.inTransaction) app.projectStore.commit(); app.projectStore.begin(); },
-    move: (routeId, end, placed) => { if (app.projectStore.inTransaction) app.projectStore.update(d => moveEnd(d, routeId, end, placed)); },
+    begin: routeId => { if (app.projectStore.inTransaction) app.projectStore.commit(); dragStart = structuredClone(app.projectStore.snapshot.design.routes.find(r => r.id === routeId) ?? null); app.projectStore.begin(); },
+    // (each step from the road as it was when the drag began: a detour leaves nothing behind)
+    move: (routeId, end, placed) => { if (app.projectStore.inTransaction && dragStart?.id === routeId) app.projectStore.update(d => {
+      const k = d.routes.findIndex(r => r.id === routeId); if (k < 0) return;
+      d.routes[k] = { ...structuredClone(dragStart!), revision: d.routes[k].revision }; moveEnd(d, routeId, end, placed); }); },
     finish: keep => { if (!app.projectStore.inTransaction) return; if (keep) app.projectStore.commit(); else app.projectStore.cancel(); },
     refuse: why => toast(`${why}: the end stays where it was.`),
   });
+  /** the road whose end is dragged, as it was when the drag began */
+  let dragStart: RouteDesign | null = null;
   const syncEnds = () => { app.links.syncEnds(); roadEnds.sync(app.store.route); };
   /** the motorway direction switch follows the active route */
   const syncDirections = () => {
@@ -194,9 +199,8 @@ export function createRoutes(app: RoutesContext) {
     };
   };
   app.buildTool.onClose = () => app.select(null);
+  app.buildTool.refuse = (a, b) => building.refuse?.(a, b) ?? null;
   app.buildTool.onDone = (a, b) => {
-    const refused = building.refuse?.(a, b);
-    if (refused) { toast(refused); return; }
     if (app.projectStore.inTransaction) app.projectStore.commit();
     let made: ReturnType<typeof buildInProject>;
     try {
@@ -265,7 +269,9 @@ export function createRoutes(app: RoutesContext) {
       if (source) {
         const s = followSource(source, { lo: 0, hi: source.stations[source.stations.length - 1] }, g.x, g.y, anchor.location.s);
         const p = app.links.index.position(source.id, s);
-        if (p && Math.hypot(p.x - g.x, p.y - g.y) <= reach) return kind.onSource(app.links.index, source.id, s);
+        // (not along a stretch another road rebuilds: that is placed as a click there is)
+        const claimed = app.links.claimedSources().some(c => c.sourceId === source.id && s >= c.s0 && s <= c.s1);
+        if (p && !claimed && Math.hypot(p.x - g.x, p.y - g.y) <= reach) return kind.onSource(app.links.index, source.id, s);
       }
     }
     return placeFor(kind, clientX, clientY, g.x, g.y, route.id);

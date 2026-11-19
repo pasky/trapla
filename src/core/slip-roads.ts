@@ -104,7 +104,7 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
   const what = kind === 'exit' ? 'exit lane' : 'entry lane', name = kind === 'exit' ? 'An exit lane' : 'An entry lane';
   const short = s0 < 0 ? -s0 : s1 > line.length ? s1 - line.length : 0;
   if (short > 0.5) violations.push(issue(at.s0, at.s1, `Its ${what} runs off the end of the motorway`,
-    `Move this end at least ${Math.ceil(short / 10) * 10} m further along the motorway`, `${name} on the motorway is ${length} m long (ČSN 73 6102, as a D35 interchange design uses it)`, 'norm')); // research/90 §4
+    `Move this end at least ${Math.ceil(short / 10) * 10} m further along the motorway`, `${name} on the motorway is ${length} m long (ČSN 73 6102 for a 50 km/h slip road on a 130 km/h motorway, as a D35 interchange design uses it; the game uses it for every slip road)`, 'norm')); // research/90 §4
   // its share of full width: an exit opens over its first `taper` m, an entry closes over its last
   const width = (u: number) => Math.min(1, Math.max(0, (kind === 'exit' ? u : length - u) / spec.taper));
   const area = { ground: 0, bridge: 0 }, lines: XYZ[][] = [[], []];
@@ -147,6 +147,11 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
   const at = end === 'a' ? { s0: 0, s1: Math.min(ramp.length, zone) } : { s0: Math.max(0, ramp.length - zone), s1: ramp.length };
   const lane = speedChangeLane(line, line.s[k], direction, kind, speed, terrain, at);
   const violations = [...lane.violations];
+  // (where it leaves or joins the motorway it is on the ground: as Build refuses a bridge or tunnel there)
+  if (line.kind[k] !== KIND.earth) violations.push({ kind: 'crossing', ...at, basis: 'game',
+    title: end === 'a' ? 'It leaves the motorway on a bridge or in a tunnel' : 'It joins the motorway on a bridge or in a tunnel',
+    fix: 'Move this end along the motorway to where it runs on the ground',
+    rule: 'Game rule: a slip road leaves and joins a motorway where it runs on the ground (a wider bridge or tunnel is not built by the game)' });
   // it leaves (joins) along the traffic: its first straight heads the carriageway's way, not against it
   const g = gore(line, line.s[k], direction), sign = end === 'a' ? 1 : -1;
   const q1 = end === 'a' ? Math.min(ramp.n - 1, i + 2) : Math.max(0, i - 2);
@@ -225,12 +230,14 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
  * within this of each other, m. MODELLING ASSUMPTION (no source found for how far a ramp keeps the motorway's
  * level): a gap a person could stand in; beyond it each has its own slopes (and slipRoadAtMotorway checks them). */
 export const MERGE_GAP = 4;
-/** The heights a slip road is held at near its gore (its plan line `xy`, [x0, y0, …] every `step` m from its
- * start; `end`: the end on the motorway `line`): the motorway's height, while their crowns are within MERGE_GAP. */
-export function mergeBands(xy: readonly number[], step: number, end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>): { s: number; min: number; max: number }[] {
+/** The heights a slip road is held at near its gore (its plan line `xy`, [x0, y0, …] from its start; `end`: the
+ * end on the motorway `line`): the motorway's height, while their crowns are within MERGE_GAP. */
+export function mergeBands(xy: readonly number[], end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>): { s: number; min: number; max: number }[] {
   const n = xy.length / 2, out: { s: number; min: number; max: number }[] = [];
   if (n < 2) return out;
   const reach = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening + CATEGORIES['V7.25'].crownWidth / 2 + MERGE_GAP;
+  // (the samples' own stations: the line is sampled at length / ⌈length / step⌉, not at `step`)
+  const along = [0]; for (let p = 1; p < n; p++) along.push(along[p - 1] + Math.hypot(xy[2 * p] - xy[2 * p - 2], xy[2 * p + 1] - xy[2 * p - 1]));
   let k = -1;
   for (let step0 = 0; step0 < n; step0++) {
     const p = end === 'a' ? step0 : n - 1 - step0, x = xy[2 * p], y = xy[2 * p + 1];
@@ -239,7 +246,8 @@ export function mergeBands(xy: readonly number[], step: number, end: 'a' | 'b', 
     for (let j = j0; j <= j1; j++) { const e = Math.hypot(line.x[j] - x, line.y[j] - y); if (e < best) { best = e; kk = j; } }
     k = kk;
     if (best > reach) break;
-    out.push({ s: p * step, min: line.grade[kk] - 0.25, max: line.grade[kk] + 0.25 });
+    // (±0.25 m: PROVISIONAL, half a grade pin's tolerance, so the two pavements meet within a kerb's height)
+    out.push({ s: along[p], min: line.grade[kk] - 0.25, max: line.grade[kk] + 0.25 });
   }
   return out.sort((a, b) => a.s - b.s);
 }

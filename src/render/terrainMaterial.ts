@@ -51,7 +51,8 @@ export function oobTexture(lc: Uint8Array, nx: number, ny: number, oobBit: numbe
 
 export const LC_LEVELS = 4;
 /** size of the `roadSections` table */
-export const ROAD_SECTIONS = 8;
+// (slots 1–6: the single-carriageway sections in category order, then the railway, one-direction and paired slots: disjoint)
+export const ROAD_SECTIONS = 11;
 
 export interface TerrainUniforms {
   [name: string]: THREE.IUniform;

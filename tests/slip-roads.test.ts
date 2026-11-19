@@ -63,4 +63,25 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(r.cost.total! - alone.cost.total!).toBeGreaterThan(100e6);
     expect(r.cost.total! - alone.cost.total!).toBeLessThan(400e6);
   }, 120_000);
+  it('a slip road with both ends on the motorway is a problem and earns no credit (review: it was credited twice)', () => {
+    const d = structuredClone(design), first = d.routes.find(q => q.name === 'Slip road')!;
+    const line = run({ ...d, routes: d.routes.slice(0, 2) }).routes['route:motorway-forward'].legacy!, k = Math.round(4160 / line.ds);
+    const g = gore(line, line.s[k], 1);
+    first.endpoints.b = { position: { x: g.x, y: g.y, z: g.z }, anchor: { kind: 'route', routeId: 'route:motorway-forward', s: g.s }, binding: 'resolved' };
+    if (first.alignment.kind === 'pi') first.alignment.pis = [];
+    const r = run(d);
+    expect(r.routes[first.id].legacy!.violations.map(v => v.title)).toContain('It leaves and joins the motorway');
+    expect(r.works.items.filter(w => w.owner.id === first.id && w.cost < 0)).toEqual([]);
+    expect(r.cost.alone[first.id]).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+describe('a slip road is drawn with its own markings', () => {
+  it('its cross-section has a shader slot of its own, not the railway or motorway ones', async () => {
+    const { CATEGORIES } = await import('../src/core/data/categories');
+    const { ROAD_SECTIONS, RAIL_SECTION, RAIL2_SECTION, CARRIAGEWAY_SECTION, PAIRED_SECTION } = await import('../src/render/terrainMaterial');
+    const sections = Object.values(CATEGORIES).filter(c => c.section).length;
+    expect(sections).toBeLessThan(Math.min(RAIL_SECTION, RAIL2_SECTION, CARRIAGEWAY_SECTION, PAIRED_SECTION));
+    expect(ROAD_SECTIONS).toBe(PAIRED_SECTION + 1);
+  });
 });

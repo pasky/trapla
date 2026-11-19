@@ -14,8 +14,9 @@ export interface RoadEndsContext {
   place(route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number, held: Anchor): Placement | null;
   /** the end as drawn now (an end on another road follows that road as built) */
   drawnAt(route: RouteDesign, end: 'a' | 'b'): { x: number; y: number; z: number };
-  /** a drag starts / the end moves (a live, uncommitted change) / it ends (`keep`: commit, else take it back) */
-  begin(): void;
+  /** a drag of this road's end starts / the end moves (a live, uncommitted change, always from the road as it was
+   * when the drag began) / it ends (`keep`: commit, else take it back) */
+  begin(routeId: string): void;
   move(routeId: string, end: 'a' | 'b', placed: PlacedEnd): void;
   finish(keep: boolean): void;
   /** a refusal said when the end is let go where it cannot go */
@@ -56,10 +57,11 @@ export class RoadEnds {
   }
   private press(event: PointerEvent, end: 'a' | 'b', button: HTMLButtonElement) {
     const route = this.route;
-    if (event.button !== 0 || !route) return;
+    // (one drag at a time: a second pointer does nothing)
+    if (event.button !== 0 || !route || this.moving) return;
     event.preventDefault(); event.stopPropagation(); button.setPointerCapture(event.pointerId);
     const enabled = this.view.controls.enabled; this.view.controls.enabled = false;
-    this.ctx.begin();
+    this.ctx.begin(route.id);
     let changed = false;
     const held = structuredClone(route.endpoints[end].anchor);
     this.moving = { end, at: this.ctx.drawnAt(route, end), placement: null };
@@ -67,7 +69,7 @@ export class RoadEnds {
     const box = this.view.renderer.domElement.getBoundingClientRect(), at = this.view.project(this.moving.at.x, this.moving.at.y, this.moving.at.z);
     const grab = { dx: event.clientX - box.left - at.sx, dy: event.clientY - box.top - at.sy };
     const move = (e: PointerEvent) => {
-      const now = this.route, moving = this.moving; if (!now || !moving) return;
+      const now = this.route, moving = this.moving; if (!now || !moving || e.pointerId !== event.pointerId) return;
       let p = this.ctx.place(now, end, e.clientX - grab.dx, e.clientY - grab.dy, held);
       // (never closer to its other end than a new road may be)
       const other = this.ctx.drawnAt(now, end === 'a' ? 'b' : 'a');
@@ -85,18 +87,23 @@ export class RoadEnds {
       }
       this.position(e); this.view.requestRender();
     };
-    const up = () => {
+    // (Esc, or the pointer taken away: the drag is taken back)
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') up(null, true); };
+    const up = (e: PointerEvent | null, abort = e?.type === 'pointercancel') => {
+      if (e && e.pointerId !== event.pointerId) return;
       button.removeEventListener('pointermove', move); button.removeEventListener('pointerup', up); button.removeEventListener('pointercancel', up);
+      window.removeEventListener('keydown', key, true);
       this.view.controls.enabled = enabled;
       const last = this.moving?.placement; this.moving = null;
       this.ghost?.remove(); this.ghost = null;
-      // let go where it cannot go: the end stays where it was
-      const keep = changed && (!last || last.ok);
+      // let go where it cannot go (or off the map): the end stays where it was
+      const keep = changed && !abort && !!last?.ok;
       this.ctx.finish(keep);
-      if (changed && last && !last.ok) this.ctx.refuse(last.why);
+      if (changed && !abort && last && !last.ok) this.ctx.refuse(last.why);
       this.position();
     };
     button.addEventListener('pointermove', move); button.addEventListener('pointerup', up); button.addEventListener('pointercancel', up);
+    window.addEventListener('keydown', key, true);
   }
   /** what a drag would do, under the pointer: what the end joins there, or why it cannot go there */
   get dragText() { return this.moving?.placement ? (this.moving.placement.ok ? this.moving.placement.label : this.moving.placement.why) : null; }

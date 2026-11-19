@@ -85,8 +85,8 @@ const UNPRICED: Record<'source-needs-network' | 'motorway-needs-interchange' | '
     fix: 'The new line is checked and priced; removing the old track it replaces is not priced yet',
     rule: 'Engine limit: the price of a rebuilt railway stretch lacks taking up the old track.' } },
   'motorway-needs-interchange': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'No interchange at its ends',
-    fix: 'A motorway joins other roads at interchanges, which the game cannot build yet: this motorway is shown, not priced',
-    rule: 'Engine limit: interchanges are not modelled; only a mission motorway (continuing off the map at its ends) is priced.' } },
+    fix: 'Its ends meet no road: this motorway is shown, not priced (slip roads can join it along its length)',
+    rule: 'Engine limit: a new motorway\'s ends are not joined to the road network; only a mission motorway (continuing off the map at its ends) is priced.' } },
   'source-needs-network': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'Replacing the old road is not priced yet',
     fix: 'Its new line is checked; removing the old road and reconnecting its side roads is not priced yet',
     rule: 'Engine limit: the price of a rebuilt stretch still lacks removing the old road and reconnecting the roads that joined it.' } },
@@ -245,7 +245,7 @@ function slipBands(design: ProjectDesign, route: RouteDesign, ends: { a?: XYZ; b
   for (const end of ['a', 'b'] as const) {
     const anchor = route.endpoints[end].anchor, host = anchor.kind === 'route' && carriagewayOf(design, anchor.routeId)?.paired ? legacyOf(anchor.routeId) : undefined;
     if (!host) continue;
-    out.push(...mergeBands(planLine(route, ends, MERGE_STEP), MERGE_STEP, end, host));
+    out.push(...mergeBands(planLine(route, ends, MERGE_STEP), end, host));
   }
   return out;
 }
@@ -490,7 +490,7 @@ function projectStart(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepCl
   /** where two designed roads meet in one work (a junction, a crossing): its land is that work's */
   const designedJunctions = new Map<string, { routeId: string; x: number; y: number; r: number }[]>();
   /** existing ways two designed roads change as one design (a slip road's junction on the road its motorway crosses) */
-  const sharedWays = new Map<string, { routeId: string; way: number }[]>();
+  const sharedWays = new Map<string, { routeId: string; way: number; x: number; y: number; r: number }[]>();
   const evaluated = (id: string) => legacyOf.get(id);
   /** what a road's reroutes keep clear of (a motorway's two directions: both directions') */
   const routeClear = (route: RouteDesign) => {
@@ -608,7 +608,19 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     if (anchor.kind !== 'route' || cyclic.includes(route)) continue;
     const hostRoute = design.routes.find(q => q.id === anchor.routeId), host = legacyOf.get(anchor.routeId);
     // a slip road meeting a carriageway of a motorway: its speed-change lane there, priced and drawn (core/slip-roads.ts)
-    if (hostRoute?.kind === 'motorway' && host && isSlipRoad(route)) { const g = slipRoadEnd(ctx, start, route, legacy, end, hostRoute, host); if (g) gores.push(g); continue; }
+    if (hostRoute?.kind === 'motorway' && host && isSlipRoad(route)) {
+      // (both ends on a motorway: a problem below, and no lane or credit for either: they would credit its metres twice)
+      const other = route.endpoints[end === 'a' ? 'b' : 'a'].anchor;
+      if (other.kind === 'route' && design.routes.find(q => q.id === other.routeId)?.kind === 'motorway') { builtJunctions.add(`${route.id}:${end}`); continue; }
+      const g = slipRoadEnd(ctx, start, route, legacy, end, hostRoute, host); if (g) gores.push(g); continue;
+    }
+    // a slip road has no junction along it (data/categories.ts V7.25 gradeSeparated)
+    if (hostRoute && isSlipRoad(hostRoute) && host) {
+      const i = end === 'a' ? 0 : legacy.n - 1;
+      legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'norm', title: `A slip road cannot be joined: ${hostRoute.name}`,
+        fix: 'End this road on another road', rule: 'ČSN 73 6101: interchange slip roads have no junction or access along them' }); // research/08
+      legacy.valid = false; builtJunctions.add(`${route.id}:${end}`); continue;
+    }
     if (!hostRoute || !host || hostRoute.kind !== 'road' || hostRoute.specification.crossSection === 'existing') continue;
     const spec = hostRoute.specification, crown = CATEGORIES[spec.crossSection as Exclude<typeof spec.crossSection, 'existing'>].crownWidth;
     let stations = junctionsOn.get(hostRoute.id);
@@ -664,9 +676,9 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   const carriageway = carriagewayOf(design, hostRoute.id), i = end === 'a' ? 0 : legacy.n - 1;
   let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
   if (!carriageway?.paired) {
-    legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'engine', title: 'Joins the motorway where its directions run apart',
-      fix: 'Move this end to where both directions of the motorway run side by side',
-      rule: 'Engine limit: a slip road joins a motorway only where its two directions are one body.' });
+    legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'engine', title: 'Joins a motorway whose directions run apart',
+      fix: 'Join the two directions again (every stretch where they run apart), or build it on a motorway that runs as one',
+      rule: 'Engine limit: a slip road joins a motorway only while its two directions run as one line along its whole length.' });
     legacy.valid = false; builtJunctions.add(`${route.id}:${end}`); return null;
   }
   const speed = route.specification.kind === 'road' ? route.specification.designSpeed : 50;
@@ -691,7 +703,7 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   let earth = -at.credit - at.overlap;
   for (let q = 0; q < legacy.n; q++) if (legacy.kind[q] === KIND.earth) for (const key of SHARED_PARTS) earth += legacy.parts[key][q];
   return { corridorId: carriageway.corridorId, length: host.length, s: at.sGore, routeId: route.id, earth: Math.max(0, earth), x: at.gore.x, y: at.gore.y,
-    goreZones: at.goreZones };
+    goreZones: at.goreZones, direction: carriageway.direction, lane: [at.lane.s0, at.lane.s1], kind: at.kind, end, legacy };
 }
 /** A slip road's other end joining a road its motorway crosses near the interchange (the road to the motorway's
  * bridge, or under it): its junction there and the motorway's crossing of that road are one interchange, laid out
@@ -728,10 +740,8 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
         }
         let shared = sharedWays.get(routeId); if (!shared) sharedWays.set(routeId, shared = []);
         let zones = designedJunctions.get(routeId); if (!zones) designedJunctions.set(routeId, zones = []);
-        for (const id of [corridor.children.forward, corridor.children.reverse]) {
-          shared.push({ routeId: id, way });
-          zones.push({ routeId: id, x: (legacy.x[i] + c.x) / 2, y: (legacy.y[i] + c.y) / 2, r: d / 2 + reach + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance });
-        }
+        const zone = { x: (legacy.x[i] + c.x) / 2, y: (legacy.y[i] + c.y) / 2, r: d / 2 + reach + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance };
+        for (const id of [corridor.children.forward, corridor.children.reverse]) { shared.push({ routeId: id, way, ...zone }); zones.push({ routeId: id, ...zone }); }
       }
     }
   }
@@ -739,13 +749,27 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
 /** A slip road's gore on a motorway of the project, for the interchange allowance. */
 interface SlipGore { corridorId: string; length: number; s: number; routeId: string; earth: number; x: number; y: number;
   /** its first metres inside the motorway's formation: there the other carriageway's slip roads' works meet it in the motorway's body */
-  goreZones: { x: number; y: number; r: number }[] }
+  goreZones: { x: number; y: number; r: number }[];
+  /** its carriageway, its lane's stations along the motorway's line, exit or entry, which of its ends, its result */
+  direction: 1 | -1; lane: [number, number]; kind: 'exit' | 'entry'; end: 'a' | 'b'; legacy: Result }
 /** The motorway's own price already includes earth-built ramps of one interchange every 7 km (SPK, core/slip-roads.ts
  * SLIP_ROAD.allowance): the interchanges built by hand (gores within SLIP_ROAD.interchangeReach along one motorway),
  * up to that many, are credited one interchange's allowance each, at most what their slip roads build on earth,
  * shared among its slip roads by what each builds there. */
 function interchangeAllowance(start: ReturnType<typeof projectStart>, gores: SlipGore[]) {
-  const { ownWorks, designedJunctions } = start;
+  const { ownWorks, designedJunctions, design } = start;
+  // two slip roads' lanes on one carriageway overlapping: one would be built over the other (the later one's problem)
+  for (let a = 0; a < gores.length; a++) for (let b = a + 1; b < gores.length; b++) {
+    const p = gores[a], q = gores[b];
+    if (p.corridorId !== q.corridorId || p.direction !== q.direction || !(p.lane[0] < q.lane[1] && q.lane[0] < p.lane[1])) continue;
+    const later = design.routes.findIndex(r => r.id === p.routeId) > design.routes.findIndex(r => r.id === q.routeId) ? p : q, other = later === p ? q : p;
+    const need = Math.ceil((Math.min(p.lane[1], q.lane[1]) - Math.max(p.lane[0], q.lane[0])) / 10) * 10, i = later.end === 'a' ? 0 : later.legacy.n - 1;
+    later.legacy.violations.push({ kind: 'crossing', s0: later.legacy.s[i], s1: later.legacy.s[i], basis: 'game',
+      title: `Its ${later.kind === 'exit' ? 'exit' : 'entry'} lane overlaps another slip road's ${other.kind === 'exit' ? 'exit' : 'entry'} lane`,
+      fix: `Move this end at least ${need} m further along the motorway, away from the other`,
+      rule: 'Game rule: one speed-change lane at a time on a carriageway (a lane joining two slip roads is not built by the game)' });
+    later.legacy.valid = false;
+  }
   // slip roads meeting the same motorway: inside its body their works are the motorway's, not land they share
   for (const g of gores) for (const o of gores) if (o.routeId !== g.routeId && o.corridorId === g.corridorId)
     for (const z of g.goreZones) designedJunctions.get(g.routeId)!.push({ routeId: o.routeId, ...z });
