@@ -2427,9 +2427,9 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   8. leaving against the traffic, crossing the motorway, no or two motorway ends → problems;
   9. the mission ends' interchange card: "Shown only: its slip roads are not built or billed here. The motorway's
      price per km already includes earth-built slip roads of one interchange every 7 km."
-- **Result:** the D3 0304 diamond (four slip roads, two terminals each side ≥ 70 m apart): 10.3192 bn, valid
-  (+289 M: slip roads 66–127 M each incl. their 25 M junctions, lanes 0.6–0.9 M, credits −77 M allowance and
-  −46 M overlap); `tests/slip-roads.test.ts`, `scripts/interchange-scene.mjs` (a full gate). D3 0303 km 3.06:
+- **Result:** the D3 0304 diamond (four slip roads, two terminals each side ≥ 70 m apart): 10.3362 bn, valid
+  (+306 M: slip roads 62–147 M each incl. their 25 M junctions, lanes 0.6–0.9 M, less the 77 M allowance and what
+  the two bodies share); `tests/slip-roads.test.ts`, `scripts/interchange-scene.mjs` (a full gate). D3 0303 km 3.06:
   valid except one slip road crossing tracks the motorway moves aside ("two roads change the same old road").
 - **Known gaps:** a loop over or under its own motorway (trumpet, cloverleaf) is not engineered (a problem); two
   slip roads cannot share one junction (each is its own T, ≥ 70 m apart); interchange spacing (4 km, medium-low

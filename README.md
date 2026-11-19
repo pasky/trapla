@@ -349,7 +349,7 @@ exit), end it there to join it (an entry); the side clicked picks the carriagewa
 (a junction or a roundabout, as Build → Road's). It leaves along the traffic through one bend; the motorway
 gets its exit or entry lane (234 / 295 m on the hard shoulder, drawn and priced), the slip road keeps the
 motorway's level by its gore, and where their slopes overlap that earth is billed once. Four of them make a
-diamond (D3 0304 at road II/114: valid, +289 M CZK, `tests/fixtures/interchange/d3-0304-diamond.json`). Its
+diamond (D3 0304 at road II/114: valid, +306 M CZK, `tests/fixtures/interchange/d3-0304-diamond.json`). Its
 gore slides along the motorway like any end (its bend goes with it). Slip roads already in the motorway's price
 (earth-built ones of one interchange every 7 km, SPK) are credited. Not yet: a slip road over or under its own
 motorway (a trumpet's or cloverleaf's loop), two slip roads sharing one junction, interchange spacing
