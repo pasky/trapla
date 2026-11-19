@@ -21,6 +21,7 @@ import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
 import { KIND, TUNNEL_TOO_STEEP, tunnelGrade, type Run } from '../core/structures';
+import { groundShares } from './ground-words';
 import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
@@ -431,6 +432,7 @@ export class Inspector {
       ${method}
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
+        ${sel.piece === 'cut' ? this.groundLine(r, i0, i1) : ''}
         ${near || !open ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
         <div class="ctx-lbl">${CATEGORIES[d.category].mode === 'railway' ? 'Track' : 'Road'} height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
@@ -438,6 +440,14 @@ export class Inspector {
         ${this.costLines(r, i0, i1)}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
+  }
+
+  /** what a cut is dug in, by the geological map, in plain words (none where it is not mapped; ui/ground-words.ts) */
+  private groundLine(r: Result, i0: number, i1: number) {
+    const shares = groundShares(r.geology, i0, i1).filter((w) => w.share >= 0.05).slice(0, 3);
+    if (!shares.length) return '';
+    const list = shares.length === 1 && shares[0].share > 0.95 ? shares[0].name : shares.map((w) => `${w.name} ${Math.round(w.share * 100)} %`).join('; ');
+    return `<div class="sub">Mapped ground: ${esc(list)}.</div>`;
   }
 
   /** the bill of cells i0…i1 by component, largest first */

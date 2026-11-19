@@ -1,4 +1,4 @@
-// The small details (research/96–98): each one clicked or played as a player would, its screenshot taken, what it says
+// The small details (research/96–99): each one clicked or played as a player would, its screenshot taken, what it says
 // asserted. Real mouse where a player would use one.
 //   node scripts/eggs-shots.mjs [--gpu] [--docs] [--only lore,records,signs,fly,…]   (--docs: docs/screenshots/660…, else /tmp/trapla-eggs)
 //   flock -x /tmp/trapla-browser.lock node scripts/eggs-shots.mjs --gpu --only fly --frames   (the fly-along's frame times)
@@ -128,6 +128,31 @@ try {
     await page.mouse.click(view.x + view.width / 2, view.y + view.height / 2); await page.waitForTimeout(300);
     assert.equal(await T(() => document.getElementById('overlay').classList.contains('flying')), false, 'a click stops it');
     assert.equal(JSON.stringify(await T(() => window.trapla.cameraPose())), pose0);
+  }
+  // 5. the mapped ground (ui/ground-words.ts, research/99): off by default; the key's toggle draws its band under the
+  //    ground line and lists it; a cut's More names what it is dug in
+  if (want('ground')) {
+    await game.open('scenario=d11&preset=d11-motorway');
+    await page.locator('#key-toggle').click();
+    assert.equal(await page.locator('#ground-band').isChecked(), false, 'off by default');
+    await page.locator('#ground-band').check(); await game.frames(2);
+    const listed = await page.locator('#ground-key').innerText();
+    assert.ok(listed.split('\n').length >= 2, `the key lists the ground: ${listed}`);
+    await shot(674, 'ground-band-key');
+    await page.locator('#key-toggle').click(); await page.locator('#zoom-in').click(); await page.locator('#zoom-in').click(); await page.waitForTimeout(600); await game.frames(3);
+    assert.equal(await page.locator('#profile-key').isHidden(), true);
+    await shot(675, 'ground-band');
+    await T(() => window.trapla.profileFit());
+    // the deepest cut's card, More
+    const cut = await T(() => { const r = window.trapla.result(); let best = null, i = 0;
+      while (i < r.n) { if (r.kind[i] === 0 && r.grade[i] < r.ground[i] - 1) { let j = i, d = 0; while (j + 1 < r.n && r.kind[j + 1] === 0 && r.grade[j + 1] < r.ground[j + 1] - 1) { j++; d = Math.max(d, r.ground[j] - r.grade[j]); } if (!best || d > best.d) best = { s: (r.s[i] + r.s[j]) / 2, d }; i = j + 1; } else i++; }
+      return best; });
+    await T((s) => window.trapla.selectPiece(s), cut.s); await idle(300);
+    if (!/Less ▴/.test(await inspector())) await page.locator('#inspector .more-t').click();
+    assert.match(await inspector(), /Mapped ground: /);
+    await shot(676, 'ground-cut-card');
+    await page.locator('#inspector .more-t').click(); // (More back as it was)
+    await page.locator('#key-toggle').click(); await page.locator('#ground-band').uncheck(); await page.locator('#key-toggle').click();
   }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

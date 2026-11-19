@@ -348,6 +348,7 @@ button.primary:hover:not(:disabled) { background: #1a5fd0 !important; }
 .profile-key .key-col > div { margin: 2px 0; white-space: nowrap; }
 .profile-key small { color: #889; }
 .profile-key .sw { margin: 0 5px 0 0; }
+.profile-key .key-check { display: flex; gap: 5px; align-items: center; max-width: 190px; margin-bottom: 4px; }
 .cost-key { display: grid; grid-template-columns: auto auto; column-gap: 14px; }
 .sw.yours { width: 14px; height: 6px; background: none; border: 2px dashed #2f6fcf; border-bottom: 0; border-radius: 0; }
 .sw.xing { width: 9px; height: 6px; border: 1.2px solid #222; background: #fff; border-radius: 0; }
