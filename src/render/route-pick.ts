@@ -11,11 +11,13 @@ export function perspectiveFraction(t: number, a?: number, b?: number): number {
 
 /** stations per culling box (pickRoute) */
 const CHUNK = 64;
-/** each route's plan extent per CHUNK stations (x0, y0, x1, y1), by its x array (results are not changed once made) */
-const planBoxes = new WeakMap<object, Float64Array>();
+/** each route's plan extent per CHUNK stations (x0, y0, x1, y1), by its x array, for those y and n (results are not
+ * changed once made; a copy of a result shares its arrays) */
+const planBoxes = new WeakMap<object, { y: unknown; n: number; boxes: Float64Array }>();
 function boxesOf(r: PickRoute['result']): Float64Array {
-  let b = planBoxes.get(r.x);
-  if (b) return b;
+  const kept = planBoxes.get(r.x);
+  if (kept && kept.y === r.y && kept.n === r.n) return kept.boxes;
+  let b: Float64Array;
   const chunks = Math.ceil((r.n - 1) / CHUNK);
   b = new Float64Array(4 * chunks);
   for (let c = 0; c < chunks; c++) {
@@ -26,7 +28,7 @@ function boxesOf(r: PickRoute['result']): Float64Array {
     }
     b[4 * c] = x0; b[4 * c + 1] = y0; b[4 * c + 2] = x1; b[4 * c + 3] = y1;
   }
-  planBoxes.set(r.x, b);
+  planBoxes.set(r.x, { y: r.y, n: r.n, boxes: b });
   return b;
 }
 

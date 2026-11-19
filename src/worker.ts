@@ -50,7 +50,7 @@ function previewBuffers(r: Result): ArrayBuffer[] {
 function leanPreview(route: RouteResult): RouteResult {
   const lean = (r: Result): Result => { const { faceL: _l, faceR: _r, ...rest } = r; return rest; };
   return { ...route, ...(route.legacy ? { legacy: lean(route.legacy), surface: null } : {}),
-    ...(route.drawn ? { drawn: route.drawn.map(p => ({ ...p, result: lean(p.result) })) } : {}) };
+    ...(route.drawn ? { drawn: route.drawn.map(p => ({ ...p, result: lean(p.result) })) } : {}), ...(route.shared ? { shared: lean(route.shared) } : {}) };
 }
 
 /** A full result as the main thread takes it: a road with a result of its own without its transport surface (drawn,

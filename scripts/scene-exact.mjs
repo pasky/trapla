@@ -1,8 +1,9 @@
 // Bit-exactness check of the 3D scene for render refactors (as scripts/exact.ts is for the evaluators): every mesh,
-// line and point set of the map's world after a settled evaluation, hashed in full (each geometry's attributes and
-// index, its object's name, place in the tree, transform, visibility, draw order and material kind; data textures
-// such as the shared terrain mask). Cases: missions as the game starts them, then edits made through the game
-// (a bend moved, a bend added, a reroute shaped) so that a rebuild after a change is covered, not only a first build.
+// line and point set of the map's world after a settled evaluation, hashed in full (each geometry's attributes with
+// their layout and index, its object's name, place in the tree, transform, visibility, draw order and material kind;
+// CPU-side data textures). Not covered: what is drawn on the GPU into render targets (the shared terrain mask), and
+// uniforms. Cases: each mission with a saved design set on it, then edits (a bend moved, a bend added, a reroute
+// shaped, back) so that a rebuild after a change is covered, not only a first build.
 //
 //   node scripts/scene-exact.mjs --out /tmp/scene-before.json [--root <older checkout>] [--only d3-full,d11]
 //   node scripts/scene-exact.mjs --compare /tmp/scene-before.json
@@ -23,6 +24,7 @@ const CASES = [
   ['i35-full', 'i35-full', 'i35-full-road', 'scripts/scenarios/i35-full/i35-full-road.json'],
   ['d3-full', 'd3-full', null, 'scripts/scenarios/d3-full/default.json'],
 ].filter(([id]) => !only || only.includes(id));
+if (!CASES.length) { console.error(`no case among ${only}`); process.exit(2); }
 
 /** the world's digest (run in the page): one entry per drawn object, in tree order */
 function digest() {
@@ -36,7 +38,9 @@ function digest() {
     const e = { path: here, type: o.type, visible: o.visible, order: o.renderOrder, matrix: arr(new Float64Array(o.matrix.elements)) };
     if (o.geometry) {
       const g = o.geometry;
-      e.attrs = Object.fromEntries(Object.entries(g.attributes).map(([k, a]) => [k, `${a.itemSize}:${a.normalized}:${arr(a.array)}`]));
+      // (an interleaved attribute: its offset and stride in the shared buffer, hashed once per buffer)
+      e.attrs = Object.fromEntries(Object.entries(g.attributes).map(([k, a]) => [k, a.isInterleavedBufferAttribute
+        ? `${a.itemSize}:${a.normalized}:@${a.offset}/${a.data.stride}:${arr(a.data.array)}` : `${a.itemSize}:${a.normalized}:${arr(a.array)}`]));
       e.index = g.index ? arr(g.index.array) : null;
       e.groups = JSON.stringify(g.groups); e.draw = JSON.stringify(g.drawRange);
       if (g.instanceCount !== undefined && g.instanceCount !== Infinity) e.instances = g.instanceCount;
@@ -109,7 +113,7 @@ else {
   let diffs = 0;
   for (const name of Object.keys(result)) {
     const a = before[name], b = result[name];
-    if (!a) { console.log(`NEW ${name}`); continue; }
+    if (!a) { diffs++; console.log(`DIFF ${name}: not in the snapshot`); continue; }
     const key = (e) => JSON.stringify(e);
     const was = a.entries.map(key), now = b.entries.map(key);
     const lines = [];
@@ -118,7 +122,9 @@ else {
     if (JSON.stringify(a.textures) !== JSON.stringify(b.textures)) lines.push('data textures differ');
     if (lines.length) { diffs++; console.log(`DIFF ${name}\n    ${lines.join('\n    ')}`); }
   }
-  console.log(diffs ? `${diffs} of ${Object.keys(result).length} scenes differ` : `identical: ${Object.keys(result).length} scenes`);
+  // (a scene of these cases the snapshot has and this run did not make, e.g. a reroute no longer shaped)
+  for (const name of Object.keys(before)) if (!(name in result) && CASES.some(([id]) => name.startsWith(`${id} `))) { diffs++; console.log(`DIFF ${name}: not made`); }
+  console.log(diffs ? `${diffs} scenes differ` : `identical: ${Object.keys(result).length} scenes`);
   process.exit(diffs ? 1 : 0);
 }
 function diffKeys(a, b) {

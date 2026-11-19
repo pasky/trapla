@@ -95,5 +95,11 @@ describe('route picking passes over stretches far from the pointer', () => {
     }
     expect(hits).toBeGreaterThan(20);
   });
+  it('keeps each route’s boxes apart when two routes share their x array', () => {
+    const x = Float64Array.of(0, 20), shared = (id: string, y: number): PickRoute => ({ id, result: { n: 2, x, y: Float64Array.of(y, y),
+      s: Float64Array.of(0, 20), grade: Float64Array.of(5, 5), ground: Float64Array.of(5, 5), kind: Uint8Array.of(KIND.earth, KIND.earth) } });
+    expect(pickRoute([shared('a', 0)], 10, 0, 4, project, drape)?.routeId).toBe('a');
+    expect(pickRoute([shared('b', 100)], 10, 100, 4, project, drape)?.routeId).toBe('b');
+  });
 });
 

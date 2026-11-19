@@ -66,8 +66,16 @@ await page.addInitScript(() => {
       .observe({ type: 'longtask', buffered: false });
   } catch { /* unsupported */ }
 });
-page.on('pageerror', (e) => console.log('pageerror', e.message));
-page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text().slice(0, 300)); });
+// (an evaluation or a 3D rebuild that fails during the measured drag fails the check: the work it would have cost
+// was not done)
+let measuring = false;
+const failures = [];
+page.on('pageerror', (e) => { console.log('pageerror', e.message); if (measuring) failures.push(e.message); });
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  console.log('console', m.text().slice(0, 300));
+  if (measuring && /worker error|3D rebuild failed/.test(m.text())) failures.push(m.text().slice(0, 120));
+});
 await page.goto(url);
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 180000 });
 await page.evaluate(() => window.trapla.whenIdle());
@@ -267,12 +275,17 @@ if (allocOut) { await cdp.send('HeapProfiler.enable'); await cdp.send('HeapProfi
 if (profileOut) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
 if (traceOut) await browser.startTracing(page, { path: traceOut, categories: ['devtools.timeline', 'v8', 'v8.execute', 'disabled-by-default-devtools.timeline', 'blink.user_timing', 'gpu'] });
 const programsBefore = await page.evaluate(() => window.trapla.programs?.() ?? []);
+const rebuildBefore = await page.evaluate(() => JSON.stringify(window.trapla.rebuildStats?.() ?? null));
+measuring = true;
 const moves = await drag(seconds, 80, shot, 0, () => page.evaluate(() => { window.__drag.on = true; window.__drag.start = performance.now(); }));
 if (!(await page.evaluate(() => window.__drag.posts.size))) throw new Error(`the ${mode} drag changed nothing (no evaluation requested)`);
 const tUp = await page.evaluate(() => performance.now());
 await page.evaluate(() => window.trapla.whenIdle());
 const tIdle = await page.evaluate(() => performance.now());
 const rebuild = await page.evaluate(() => window.trapla.rebuildStats?.());
+measuring = false;
+// (the full result after release drawn: its 3D rebuild committed, a new one's stats)
+const redrawn = rebuild === undefined || JSON.stringify(rebuild) !== rebuildBefore;
 await page.waitForTimeout(300);
 const programsAfter = await page.evaluate(() => window.trapla.programs?.() ?? []);
 // three.js numbers programs in creation order: any id above the highest before the drag was
@@ -347,6 +360,8 @@ if (check) {
   if (afterLong.length) fails.push(`${afterLong.length} long task(s) ≥ 50 ms after release`);
   over('longest gap between displayed results', resultGap, env('DRAG_RESULT_GAP', gpu ? 250 : 1000));
   if (compiled.length) fails.push(`shader programs compiled during the drag: ${compiled.join(', ')}`);
+  if (failures.length) fails.push(`errors during the drag: ${failures.join('; ')}`);
+  if (!redrawn) fails.push('the full result after release was not drawn (no 3D rebuild committed)');
   if (fails.length) { console.log('FAIL:', fails.join('; ')); process.exitCode = 1; }
   else console.log('OK');
 }
