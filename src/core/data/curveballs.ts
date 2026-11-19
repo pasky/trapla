@@ -549,4 +549,160 @@ export const CURVEBALLS: Record<string, Curveball> = {
     budget: 0.88,
   },
   // ---- end d3-full-motorway ----
+  // ---- i35-turnov-road (places: research/95) ----
+  // The real story (research/89 §2: the EIA opinion revoked 10 Dec 2025; the new review "tunelové varianty spjaté s trasou
+  // okolo Turnova"; the real line tunnels 900 m under Pelešany) with a game event: the homes our starter buys out at
+  // Nudvojovice (pack buildings 1677, 1703, 1937, km 2.94–3.03) refuse to sell; their hull, 20 m round.
+  'i35-nudvojovice': {
+    id: 'i35-nudvojovice', headline: 'Nudvojovice will not sell',
+    story: 'The road’s approval was revoked and the new review weighs tunnels round Turnov. The families at Nudvojovice refuse to sell: pass deep under their houses, or round them.',
+    ask: 'Keep clear of the houses at Nudvojovice: a deep tunnel may pass under',
+    cite: { text: 'ŘSD, 13 Nov 2026 (the new review and its tunnels; the refusal is a game event)', url: 'https://kraje.rsd.cz/s35/2026/11/13/nove-posouzeni-eia-pro-i-35-mezi-turnovem-a-ulibicemi-potrva-zhruba-dva-a-pul-roku-a-pul-roku/' },
+    zone: { label: 'Nudvojovice homes', forbid: KEEP_OUT, shape: { kind: 'polygon', pts: [[-684044, -995942], [-684041, -995951], [-684043, -995961], [-684048, -995969], [-684057, -995973], [-684069, -995972], [-684102, -995956], [-684136, -995870], [-684136, -995861], [-684131, -995850], [-684116, -995845], [-684103, -995851]] } },
+  },
+  // GAME EVENT on a real place (research/95 "Protected landscape"): a class I road in a CHKO's zone III needs the nature
+  // authority's consent (Act 114/1992 §44, research/75); the refusal is the game's. The place: the AOPK polygon of CHKO
+  // Český ráj zone III within 250 m of the starter (its works there at km 4.51–4.68, research/89 §7).
+  'i35-zone-iii': {
+    id: 'i35-zone-iii', headline: 'No consent in zone III',
+    story: 'The protected landscape’s office will not consent to piers or earthworks in the corner of zone III at Valdštejnsko. Span it.',
+    ask: 'No pier or earthworks in zone III',
+    cite: { text: 'A game event of a kind real projects meet, on a place in the AOPK map of protected areas', url: 'https://gis.nature.cz/arcgis/rest/services/Aplikace/Opendata/MapServer' },
+    zone: { label: 'CHKO zone III', forbid: NO_PIERS, shape: { kind: 'polygon', pts: [[-682605, -996900], [-682668, -996802], [-682705, -996769], [-682760, -996727], [-682822, -996694], [-682726, -996521], [-682719, -996519], [-682203, -996890], [-682168, -996929], [-682147, -996960], [-682343, -996954], [-682418, -996948], [-682474, -996939], [-682547, -996920]] } },
+  },
+  // A real EIA condition (the 2021 opinion: the Libuňka floodplain bridged over its whole Q100 area, 5.5 m over dry
+  // ground; research/89 §3); the place: the Libuňka (OSM 130774650) 120 m either side of the starter's crossing, 60 m
+  // either side of it (the game has no flood map).
+  'i35-libunka': {
+    id: 'i35-libunka', headline: 'The Libuňka’s floodplain stays open',
+    story: 'The approval’s conditions want the Libuňka’s floodplain bridged over, 5.5 m clear, not filled.',
+    ask: 'No cutting or embankment on the Libuňka’s floodplain',
+    cite: { text: 'EIA opinion, 4 Aug 2021', url: 'https://www.turnov.cz/filemanager/files/1569627.pdf' },
+    zone: { label: 'Libuňka floodplain', forbid: SPAN, shape: { kind: 'polygon', pts: [[-684366, -995798], [-684388, -995817], [-684468, -995728], [-684421, -995688], [-684384, -995673], [-684350, -995674], [-684335, -995678], [-684264, -995717], [-684246, -995732], [-684228, -995757], [-684221, -995777], [-684219, -995800], [-684240, -995764], [-684243, -995862], [-684230, -995861], [-684270, -995872], [-684298, -995866], [-684327, -995842], [-684338, -995813]] } },
+  },
+  // A real EIA condition (the 2021 opinion: the Jizera bridge sized by a flood study; research/89 §3); the place: the
+  // Jizera (OSM 143223142) 120 m either side of the starter's crossing, 60 m either side of it.
+  'i35-jizera': {
+    id: 'i35-jizera', headline: 'The Jizera’s banks stay open',
+    story: 'A flood study sizes the Jizera bridge: no embankment or cutting on the river’s banks.',
+    ask: 'No cutting or embankment on the Jizera’s banks',
+    cite: { text: 'EIA opinion, 4 Aug 2021', url: 'https://www.turnov.cz/filemanager/files/1569627.pdf' },
+    zone: { label: 'Jizera banks', forbid: SPAN, shape: { kind: 'polygon', pts: [[-684335, -995498], [-684369, -995548], [-684406, -995588], [-684525, -995674], [-684595, -995576], [-684485, -995497], [-684463, -995474], [-684435, -995431]] } },
+  },
+  // GAME EVENT (research/95 "Money"): the cap is the game's, 88 % of the starting bill (the goal is 90 %); it comes last.
+  'i35-turnov-money': {
+    id: 'i35-turnov-money', headline: 'Less money for roads',
+    story: 'The state road fund has less money next year. The Turnov stage must cost less to keep its place.',
+    ask: 'Keep the bill under 88 % of the planned line’s',
+    cite: { text: 'A game event of a kind real projects meet (the state road fund is set year by year)' },
+    budget: 0.88,
+  },
+  // ---- end i35-turnov-road ----
+  // ---- i35-rovensko-road (places: research/95) ----
+  // A real EIA condition (the 2021 opinion: the supra-regional biocorridor K31B kept by a big-mammal crossing or the
+  // bridge at km 7.037; research/89 §3) on its real place: the AOPK ÚSES polygon (a supra-regional corridor, TYP_KORID MB)
+  // the starter cuts at km 0.39–0.54, within 100 m of it.
+  'i35-k31b': {
+    id: 'i35-k31b', headline: 'Leave the biocorridor open',
+    story: 'The approval’s conditions keep the big biocorridor across the line open for deer and wolves: bridge it, no embankment or cutting in it.',
+    ask: 'No cutting or embankment in the biocorridor',
+    cite: { text: 'EIA opinion, 4 Aug 2021', url: 'https://www.turnov.cz/filemanager/files/1569627.pdf' },
+    zone: { label: 'Biocorridor', forbid: SPAN, shape: { kind: 'polygon', pts: [[-681182, -997002], [-681282, -996960], [-681122, -996811], [-681077, -996827], [-681016, -996840]] } },
+  },
+  // A real EIA condition (the 2021 opinion: "terénní zlomy … prověřit možnost překrytí obou zářezů komunikace ekodukty",
+  // the cuts at km 11.5 and 15.8; research/89 §3); the place: the starter's deep cut nearest mapped km 11.5 (our km 5.01),
+  // 120 m either side of our km 4.83, 40 m either side.
+  'i35-scarp-11-5': {
+    id: 'i35-scarp-11-5', headline: 'A green bridge over the scarp',
+    story: 'The approval’s conditions want the cut through the sandstone scarp roofed by a green bridge. Keep the road down in it.',
+    ask: 'Keep the road in a cutting through the scarp',
+    cite: { text: 'EIA opinion, 4 Aug 2021', url: 'https://www.turnov.cz/filemanager/files/1569627.pdf' },
+    zone: { label: 'Scarp cut', forbid: LOW, shape: { kind: 'polygon', pts: [[-677757, -998674], [-677653, -998887], [-677723, -998925], [-677829, -998708]] } },
+  },
+  // A real EIA condition (the 2021 opinion: "terénní zlomy … prověřit možnost překrytí obou zářezů komunikace ekodukty",
+  // the cuts at km 11.5 and 15.8; research/89 §3); the place: the starter's deep cut nearest mapped km 15.8 (our km 9.21),
+  // 120 m either side of our km 9.95, 40 m either side.
+  'i35-scarp-15-8': {
+    id: 'i35-scarp-15-8', headline: 'A green bridge over the scarp',
+    story: 'The approval’s conditions want the cut through the sandstone scarp roofed by a green bridge. Keep the road down in it.',
+    ask: 'Keep the road in a cutting through the scarp',
+    cite: { text: 'EIA opinion, 4 Aug 2021', url: 'https://www.turnov.cz/filemanager/files/1569627.pdf' },
+    zone: { label: 'Scarp cut', forbid: LOW, shape: { kind: 'polygon', pts: [[-676700, -1002574], [-676832, -1002693], [-676869, -1002735], [-676931, -1002685], [-676888, -1002636], [-676754, -1002514]] } },
+  },
+  // GAME EVENT (research/95 "Archaeology"): open field near Václaví where the starter cuts 5–9 m (km 4.5–4.7), a 70 m
+  // circle.
+  'i35-vaclavi-graves': {
+    id: 'i35-vaclavi-graves', headline: 'Graves under the field',
+    story: 'Archaeologists found an old burial ground in the field by Václaví. It is to stay where it lies, under the road.',
+    ask: 'No cutting into the burial ground',
+    cite: { text: 'A game event of a kind real projects meet (heritage act 20/1987)' },
+    zone: { label: 'Burial ground', forbid: NO_CUT, shape: { kind: 'circle', x: -677845, y: -998582, r: 70 } },
+  },
+  // GAME EVENT on a real place (research/95 "A landslide"): the ČGS register of slope deformations, point 77 (Rovensko pod
+  // Troskami), 10 m round it; the starter cuts 8 m deep 47 m from it (km 7.95).
+  'i35-rovensko-slope': {
+    id: 'i35-rovensko-slope', headline: 'A creeping slope by Rovensko',
+    story: 'The slope north of Rovensko is a known slow landslide. Cutting into its foot would set it moving.',
+    ask: 'No cutting into the Rovensko slope',
+    cite: { text: 'A game event of a kind real projects meet, on a place in the ČGS register of slope deformations', url: 'https://mapy.geology.cz/arcgis/rest/services/Geohazardy/svahove_nestability/MapServer' },
+    zone: { label: 'Rovensko slope', forbid: NO_CUT, shape: { kind: 'polygon', pts: [[-676075, -1000811], [-676050, -1000818], [-676035, -1000825], [-676027, -1000835], [-676013, -1000865], [-676005, -1000935], [-676009, -1000962], [-676028, -1000989], [-676039, -1000993], [-676085, -1000998], [-676112, -1000992], [-676148, -1000977], [-676199, -1000940], [-676209, -1000922], [-676213, -1000882], [-676199, -1000851], [-676172, -1000831], [-676129, -1000814], [-676097, -1000810]] } },
+  },
+  // ---- end i35-rovensko-road ----
+  // ---- i35-jicin-road (places: research/95) ----
+  // The real story (research/89 §2: the documentation returned for rework 30 Jul 2026, the protected species' sites and
+  // habitats per stretch) with a game place (research/95 "A nest"): open land near Dílce, a 60 m circle 30 m off the
+  // starter at km 8.1.
+  'i35-species': {
+    id: 'i35-species', headline: 'A protected species’ site',
+    story: 'The ministry sent the review back for its biology: surveyors now map a protected species’ site by Dílce. Keep out of it.',
+    ask: 'Keep out of the protected species’ site',
+    cite: { text: 'CENIA, the review’s record (sent back 30 Jul 2026; the site is a game event)', url: 'https://portal.cenia.cz/eiasea/detail/EIA_MZP462' },
+    zone: { label: 'Species site', forbid: KEEP_OUT, shape: { kind: 'circle', x: -670435, y: -1009618, r: 60 } },
+  },
+  // GAME EVENT (research/95 "Archaeology"): open field near Jinolice where the starter cuts 5–7 m (km 5.1–5.6), a 70 m
+  // circle.
+  'i35-jinolice-graves': {
+    id: 'i35-jinolice-graves', headline: 'A Bronze Age settlement',
+    story: 'Archaeologists found the pits of an old settlement in the field by Jinolice. It is to stay where it lies, under the road.',
+    ask: 'No cutting into the settlement',
+    cite: { text: 'A game event of a kind real projects meet (heritage act 20/1987)' },
+    zone: { label: 'Old settlement', forbid: NO_CUT, shape: { kind: 'circle', x: -672598, y: -1007873, r: 70 } },
+  },
+  // GAME EVENT (research/95 "A gas main"): along road I/35 the starter crosses at km 3.0 (the pack's ways), 150 m either
+  // side, 10 m either side of the road.
+  'i35-gas': {
+    id: 'i35-gas', headline: 'A gas main by the road',
+    story: 'A high-pressure gas main runs beside road I/35 by Kněžnice. Its owner will not have it buried deeper or an embankment put on it.',
+    ask: 'No cutting or embankment over the gas main',
+    cite: { text: 'A game event of a kind real projects meet (energy act 458/2000, protection zones)' },
+    zone: { label: 'Gas main', forbid: SPAN, shape: { kind: 'polygon', pts: [[-674065, -1006320], [-674089, -1006305], [-674155, -1006272], [-674188, -1006262], [-674185, -1006242], [-674147, -1006254], [-674080, -1006287], [-674054, -1006304], [-673934, -1006409], [-673947, -1006424]] } },
+  },
+  // GAME EVENT (research/95 "A village's demand"): the starter's stretch nearest Soběraz, km 10.75–10.95, 40 m either
+  // side.
+  'i35-soberaz-quiet': {
+    id: 'i35-soberaz-quiet', headline: 'Soběraz asks for quiet',
+    story: 'Soběraz asks for the road to pass the village in a cutting, out of sight and quieter.',
+    ask: 'Keep the road in a cutting past Soběraz',
+    cite: { text: 'A game event of a kind real projects meet (the EIA hearing: villages ask for a lower line)' },
+    zone: { label: 'Past Soběraz', forbid: LOW, shape: { kind: 'polygon', pts: [[-668236, -1010955], [-668038, -1011029], [-668066, -1011103], [-668262, -1011031]] } },
+  },
+  // GAME EVENT (research/95 "Money"): the cap is the game's, 88 % of the starting bill (the goal is 90 %); it comes last.
+  'i35-jicin-money': {
+    id: 'i35-jicin-money', headline: 'Less money for roads',
+    story: 'The state road fund has less money next year. The Jičín stage must cost less to keep its place.',
+    ask: 'Keep the bill under 88 % of the planned line’s',
+    cite: { text: 'A game event of a kind real projects meet (the state road fund is set year by year)' },
+    budget: 0.88,
+  },
+  // ---- end i35-jicin-road ----
+  // ---- i35-full-road (places: research/95) ----
+  // GAME EVENT (research/95 "Money"): the cap is the game's, 88 % of the starting bill (the goal is 90 %); it comes last.
+  'i35-full-money': {
+    id: 'i35-full-money', headline: 'Less money for roads',
+    story: 'The state road fund has less money next year. The road must cost less to keep its place.',
+    ask: 'Keep the bill under 88 % of the planned line’s',
+    cite: { text: 'A game event of a kind real projects meet (the state road fund is set year by year)' },
+    budget: 0.88,
+  },
+  // ---- end i35-full-road ----
 };

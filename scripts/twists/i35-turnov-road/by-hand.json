@@ -1,0 +1,354 @@
+{
+ "preset": "i35-turnov-road",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i35-turnov",
+  "presetId": "i35-turnov-road",
+  "packId": "i35-turnov",
+  "objectData": "675998:2743518988:1435903040",
+  "transportData": "f487940e0ff57ab5374492551c81eedbfcb9f2ed87bcb1c71136f46d44b08066",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Four-lane road towards Valdštejnsko",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 1862.5,
+       "y": 4608.5,
+       "z": 260.3
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 6424.2,
+       "y": 1775.1,
+       "z": 280.424
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 9752.5,
+      "heavyShare": 0.15,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Four-lane road towards Ohrazenice",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 6424.2,
+       "y": 1775.1,
+       "z": 280.424
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 1862.5,
+       "y": 4608.5,
+       "z": 260.3
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 9752.5,
+      "heavyShare": 0.15,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 1862.5,
+       "y": 4608.5,
+       "z": 260.3
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 6424.2,
+       "y": 1775.1,
+       "z": 280.424
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2115.2,
+       "y": 3958.9,
+       "r": null
+      },
+      {
+       "x": 2672.8,
+       "y": 3509.4,
+       "r": null
+      },
+      {
+       "x": 3360.8,
+       "y": 3198.4,
+       "r": null
+      },
+      {
+       "x": 3748.5,
+       "y": 2641.7,
+       "r": null
+      },
+      {
+       "x": 4259,
+       "y": 2303.6,
+       "r": null
+      },
+      {
+       "x": 5004.7,
+       "y": 2056.5,
+       "r": null
+      },
+      {
+       "x": 5555.7,
+       "y": 1798.3,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 260.3,
+        "r": null
+       },
+       {
+        "s": 290.29117124325245,
+        "z": 267.3,
+        "r": null
+       },
+       {
+        "s": 580.5823424865049,
+        "z": 268.3,
+        "r": null
+       },
+       {
+        "s": 870.8735137297574,
+        "z": 259.3,
+        "r": null
+       },
+       {
+        "s": 1161.1646849730098,
+        "z": 256.3,
+        "r": null
+       },
+       {
+        "s": 1451.4558562162622,
+        "z": 258.3,
+        "r": null
+       },
+       {
+        "s": 1741.7470274595148,
+        "z": 250.3,
+        "r": null
+       },
+       {
+        "s": 1975.2128251383358,
+        "z": 246.3,
+        "r": null
+       },
+       {
+        "s": 2208.678622817157,
+        "z": 254.3,
+        "r": null
+       },
+       {
+        "s": 2675.610218174799,
+        "z": 274.3,
+        "r": null
+       },
+       {
+        "s": 2909.0760158536195,
+        "z": 282.3,
+        "r": null
+       },
+       {
+        "s": 3142.5418135324408,
+        "z": 284.3,
+        "r": null
+       },
+       {
+        "s": 3376.0076112112615,
+        "z": 280.4389373821107,
+        "r": null
+       },
+       {
+        "s": 3842.9392065689035,
+        "z": 260.9265145242872,
+        "r": null
+       },
+       {
+        "s": 4075.065413770409,
+        "z": 258.5199751294758,
+        "r": null
+       },
+       {
+        "s": 4307.191620971915,
+        "z": 255.97012987318308,
+        "r": null
+       },
+       {
+        "s": 4771.444035374925,
+        "z": 271.126636768513,
+        "r": null
+       },
+       {
+        "s": 5003.570242576431,
+        "z": 271.26904762282254,
+        "r": null
+       },
+       {
+        "s": 5235.696449777936,
+        "z": 272.6278304249003,
+        "r": null
+       },
+       {
+        "s": 5467.822656979442,
+        "z": 274.63680104235164,
+        "r": null
+       },
+       {
+        "s": 5699.948864180948,
+        "z": 280.424,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i35-turnov:i35-turnov-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Ohrazenice",
+     "position": {
+      "x": 1862.5,
+      "y": 4608.5,
+      "z": 260.3
+     }
+    },
+    {
+     "id": "b",
+     "name": "Valdštejnsko",
+     "position": {
+      "x": 6424.2,
+      "y": 1775.1,
+      "z": 280.424
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 3.5,
+     "demand": {
+      "kind": "road",
+      "aadt": 19505
+     }
+    }
+   ]
+  }
+ }
+}

@@ -262,6 +262,9 @@ else if (args[0] === '--show') {
       console.log(`  runs: ${L.runs.map(u => `${u.kind === KIND.bridge ? 'bridge' : u.kind === KIND.tunnel ? 'tunnel' : u.kind} ${(u.s0 / 1000).toFixed(2)}–${(u.s1 / 1000).toFixed(2)}`).join(', ')}`);
     }
     (outJ.lines as Record<string, unknown>)[name] = rows;
+    // (the homes this design buys out, EPSG:5514)
+    (outJ.homes ??= {} as Record<string, unknown>);
+    (outJ.homes as Record<string, unknown>)[name] = facts(m, d, r).homes.map(h => ({ j: h.j, X: Math.round(h.x + o[0]), Y: Math.round(h.y + o[1]) }));
   }
   if (opt('--json')) writeFileSync(opt('--json')!, JSON.stringify(outJ));
 } else if (args[0] === '--manual') {

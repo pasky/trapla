@@ -253,7 +253,8 @@ valid, meets every twist on and is 10 % under the line you started from (the pla
 the real project, its price and what happened to it ([the reveal](docs/screenshots/646-reveal.png)); *Keep improving*.
 *Nobody moves*, *Spare the forest* and *Few bridges* (along our road) where a reference design gets there under the goal.
 Every mission with twists has 5–8 curveballs: the real project's own where they can be placed (the Luka tunnel, the Pod
-skálou forest, the D11 contract), otherwise game events of kinds real projects meet, and the card says so: an
+skálou forest, the D11 contract, Český ráj's revoked approval and its conditions: the scarps' green bridges, the biocorridor,
+the rivers' banks; Nudvojovice refusing to sell where the real line tunnels under Pelešany), otherwise game events of kinds real projects meet, and the card says so: an
 archaeological find kept in place, a nest, a gas main, a village asking for a cutting, less money; some on real registers'
 places (old mine workings, undermined
 ground and slow landslides from the Czech Geological Survey, streams animals travel along from the nature agency; [a real place](docs/screenshots/650-news-real-place.png),

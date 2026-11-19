@@ -2531,7 +2531,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     Not on the D11 class I road (its starter brings in 9 %).
   - *Hands off the castle*: nothing of ours within 400 m of a castle, 200 m of a church, 100 m of a chapel or monument,
     150 m of a viewpoint (a game rule: Act 20/1987 §17 declares a monument's protection zone one by one, no default);
-    named OSM landmarks (`pipeline/build_landmarks.py` → `src/core/data/landmarks.ts`, 274 points) whose ring comes within
+    named OSM landmarks (`pipeline/build_landmarks.py` → `src/core/data/landmarks.ts`, 479 points, the I/35 region added in round 3) whose ring comes within
     1.5 km of the starter or of the straight line A–B. Rings and names on the map (`src/render/twist-marks.ts`; names close
     up, a broken one always). A view check (no bridge seen from a castle) was not built.
   - *From scratch*: the design begins on the straight line A–B (a Start over while it is on goes there too; turned on
@@ -2595,8 +2595,12 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     The money caps are game numbers, not measurements (research/95 "Less money"): 85 % where the reference with every news
     has room, 88–89 % where it has less (a cap no design can reach would make the news unsolvable); D3 0305 has none (its
     reference is 0.3 % under the goal).
-  - The Český ráj I/35 mission (another agent) had not merged into main: its curveballs (the EIA revoked, zone III, the
-    scarps) are to be added with it.
+  - Český ráj (the I/35 stages and the whole route, research/89): the EIA revoked in 12/2025 and the new review's tunnels
+    round Turnov, with the families of Nudvojovice refusing to sell (a game event on the homes Auto buys out where the real
+    line tunnels under Pelešany: a keep-out a deep tunnel may pass under), the CHKO's zone III at Valdštejnsko (no pier or
+    earthworks), the EIA's conditions (the Libuňka's floodplain and the Jizera's banks bridged, the biocorridor K31B, the
+    green bridges over the scarp cuts at km 11.5 and 15.8), the review's biology sent back (7/2026: a species' site, game
+    place). Landmarks for the I/35 added (`pipeline/build_landmarks.py` region i35: 479 in all).
 - **Where** (round 3): Šternberk (Earth balance, Hands off, Curveballs 5, Spare the forest 4.5 ha, Few bridges 150 m, From
   scratch, By hand); D3 0301 (Earth, Hands off, Curveballs 5, Few bridges 500 m, …), 0302 (Earth, Hands off, Curveballs 5,
   Nobody moves, Spare the forest 5 ha, Few bridges 1,300 m, …), 0303 (… Curveballs 6, Spare the forest 12.5 ha, Few bridges

@@ -1,0 +1,469 @@
+{
+ "preset": "i35-rovensko-road",
+ "purpose": "By hand: the starter with Auto's heights taken as height pins",
+ "meets": [
+  "byHand"
+ ],
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i35-rovensko",
+  "presetId": "i35-rovensko-road",
+  "packId": "i35-rovensko",
+  "objectData": "550906:3633685531:474097479",
+  "transportData": "e89fba39ab58cdad5474b8f0e2a902e482f958f24a139abb50b522309505f46c",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Four-lane road towards Čímyšl",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2424.2,
+       "y": 9775.1,
+       "z": 280.42400000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 7692.4,
+       "y": 1969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 8624.5,
+      "heavyShare": 0.164,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Four-lane road towards Valdštejnsko",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 7692.4,
+       "y": 1969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2424.2,
+       "y": 9775.1,
+       "z": 280.42400000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 8624.5,
+      "heavyShare": 0.164,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2424.2,
+       "y": 9775.1,
+       "z": 280.42400000000004
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 7692.4,
+       "y": 1969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 3000,
+       "y": 9527.5,
+       "r": null
+      },
+      {
+       "x": 3787.6,
+       "y": 9708.7,
+       "r": null
+      },
+      {
+       "x": 4568.1,
+       "y": 9652.5,
+       "r": null
+      },
+      {
+       "x": 5148.6,
+       "y": 9119,
+       "r": null
+      },
+      {
+       "x": 5796.7,
+       "y": 8658,
+       "r": null
+      },
+      {
+       "x": 6082.5,
+       "y": 8070.1,
+       "r": null
+      },
+      {
+       "x": 6366.1,
+       "y": 7476.4,
+       "r": null
+      },
+      {
+       "x": 6919.5,
+       "y": 7149.7,
+       "r": null
+      },
+      {
+       "x": 7599.9,
+       "y": 6941.6,
+       "r": null
+      },
+      {
+       "x": 8042.8,
+       "y": 6491.3,
+       "r": null
+      },
+      {
+       "x": 8031.3,
+       "y": 5518.6,
+       "r": null
+      },
+      {
+       "x": 8037.8,
+       "y": 4804.6,
+       "r": null
+      },
+      {
+       "x": 7548.3,
+       "y": 4205.1,
+       "r": null
+      },
+      {
+       "x": 7054,
+       "y": 3758.4,
+       "r": null
+      },
+      {
+       "x": 6855.9,
+       "y": 3195.2,
+       "r": null
+      },
+      {
+       "x": 6983.2,
+       "y": 2614.9,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "manual",
+      "vpis": [
+       {
+        "s": 0,
+        "z": 280.42400000000004,
+        "r": null
+       },
+       {
+        "s": 534.0662767549372,
+        "z": 290.42400000000004,
+        "r": null
+       },
+       {
+        "s": 801.0994151324059,
+        "z": 292.42400000000004,
+        "r": null
+       },
+       {
+        "s": 1068.1325535098745,
+        "z": 304.42400000000004,
+        "r": null
+       },
+       {
+        "s": 1747.0765668626543,
+        "z": 334.42400000000004,
+        "r": null
+       },
+       {
+        "s": 2199.705909097841,
+        "z": 346.42400000000004,
+        "r": null
+       },
+       {
+        "s": 3104.964593568214,
+        "z": 362.42400000000004,
+        "r": null
+       },
+       {
+        "s": 3331.279264685807,
+        "z": 368.42400000000004,
+        "r": null
+       },
+       {
+        "s": 3599.049732366863,
+        "z": 368.42400000000004,
+        "r": null
+       },
+       {
+        "s": 4134.590667728974,
+        "z": 366.42400000000004,
+        "r": null
+       },
+       {
+        "s": 4670.131603091086,
+        "z": 352.42400000000004,
+        "r": null
+       },
+       {
+        "s": 5205.6725384531965,
+        "z": 328.42400000000004,
+        "r": null
+       },
+       {
+        "s": 5473.443006134253,
+        "z": 322.42400000000004,
+        "r": null
+       },
+       {
+        "s": 5741.213473815309,
+        "z": 326.42400000000004,
+        "r": null
+       },
+       {
+        "s": 6008.983941496364,
+        "z": 324.42400000000004,
+        "r": null
+       },
+       {
+        "s": 6276.75440917742,
+        "z": 329.42400000000004,
+        "r": null
+       },
+       {
+        "s": 6544.524876858475,
+        "z": 331.42400000000004,
+        "r": null
+       },
+       {
+        "s": 6812.2953445395315,
+        "z": 325.42400000000004,
+        "r": null
+       },
+       {
+        "s": 7080.065812220587,
+        "z": 330.42400000000004,
+        "r": null
+       },
+       {
+        "s": 7615.6067475826985,
+        "z": 354.42400000000004,
+        "r": null
+       },
+       {
+        "s": 7888.709206138638,
+        "z": 366.40627764705886,
+        "r": null
+       },
+       {
+        "s": 8161.811664694578,
+        "z": 371.3885552941177,
+        "r": null
+       },
+       {
+        "s": 8434.914123250519,
+        "z": 368.3708329411765,
+        "r": null
+       },
+       {
+        "s": 8708.016581806458,
+        "z": 357.3531105882353,
+        "r": null
+       },
+       {
+        "s": 9254.221498918338,
+        "z": 333.317665882353,
+        "r": null
+       },
+       {
+        "s": 9527.323957474278,
+        "z": 326.29994352941185,
+        "r": null
+       },
+       {
+        "s": 9800.426416030217,
+        "z": 337.28222117647067,
+        "r": null
+       },
+       {
+        "s": 10073.528874586158,
+        "z": 344.2644988235295,
+        "r": null
+       },
+       {
+        "s": 10346.631333142097,
+        "z": 343.2467764705883,
+        "r": null
+       },
+       {
+        "s": 10619.733791698038,
+        "z": 334.22905411764714,
+        "r": null
+       },
+       {
+        "s": 10892.836250253979,
+        "z": 334.21133176470596,
+        "r": null
+       },
+       {
+        "s": 11165.938708809917,
+        "z": 329.19360941176484,
+        "r": null
+       },
+       {
+        "s": 11712.143625921797,
+        "z": 305.1581647058825,
+        "r": null
+       },
+       {
+        "s": 11985.246084477738,
+        "z": 306.1404423529413,
+        "r": null
+       },
+       {
+        "s": 12258.348543033677,
+        "z": 313.12272000000013,
+        "r": null
+       }
+      ],
+      "autoPins": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i35-rovensko:i35-rovensko-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Valdštejnsko",
+     "position": {
+      "x": 2424.2,
+      "y": 9775.1,
+      "z": 280.42400000000004
+     }
+    },
+    {
+     "id": "b",
+     "name": "Čímyšl",
+     "position": {
+      "x": 7692.4,
+      "y": 1969.3,
+      "z": 313.1227200000001
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 7.5,
+     "demand": {
+      "kind": "road",
+      "aadt": 17249
+     }
+    }
+   ]
+  }
+ }
+}

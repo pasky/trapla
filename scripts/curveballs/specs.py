@@ -194,7 +194,7 @@ ALL['d3-0304-motorway'] = d3_0304
 ALL['d3-0305-motorway'] = d3_0305
 
 if __name__ == '__main__':
-    import specs2  # noqa (the other missions)
+    import specs2, specs3  # noqa (the other missions)
     ALL = specs2.ALL
     want = sys.argv[1:] or list(ALL)
     out = {}
