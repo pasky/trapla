@@ -446,7 +446,7 @@ export const SLIP_ROAD_TRAFFIC = 'II';
 /** A new one-way slip road (Build → Slip road, core/slip-roads.ts) between two placed ends, one on a motorway's
  * carriageway: it leaves (joins) the carriageway along the traffic through one bend put 150 m (at most 45 % of the
  * way) along it from the gore; where its other end joins a mapped road, a second bend there turns it to meet that
- * road square (a diamond's slip road, research/90 §1: its terminal a crossroads on the crossing road), else it runs
+ * road square (a diamond's slip road, research/90 §6: its terminal a junction on the crossing road), else it runs
  * straight to its other end. 50 km/h, one lane. */
 export function newSlipRoad(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids: { routeId: string; acousticSourceId: string }): RouteDesign {
   const used = new Set(project.routes.map(r => r.name));
