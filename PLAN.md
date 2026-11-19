@@ -2605,6 +2605,13 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   crossing choices; a crossing whose choice or shape differs is re-solved in a window from it to the crossing it leads
   to. drag-perf's link warm-up shapes another reroute and checks it did; the measured drag is the longest reroute's
   first. Latency p50 whole D3 172 → 28 ms, whole I/35 69 → 20 (docs/evaluate-performance.md). Gates
-  `drag-d3-full-link`, `drag-i35-full-link` (the last stage's link gate dropped). Full results unchanged (exact.ts).
+  `drag-i35-full-link` (the last stage's link gate dropped). Full results unchanged (exact.ts).
 - **Known issues:** a reroute led to another road (`to` / `ends` changed) still previews the whole route; its end is
   only moved on release (no preview during the drag), so no drag waits for it.
+- **Whole D3: long tasks after release (not new; the next performance item).** Any drag on the whole D3 (bend on main
+  dfc5388: 3 of 3 runs; link here: ≈ 6 of 15) misses the "no long task ≥ 50 ms after release" budget, the preview
+  budgets met: a major GC pause of 33–47 ms during the 3D rebuild of both directions (≈ 630 MB allocated on the main
+  thread per settle: `route-scene` build, `view.ts` buildResult; ≈ 1 GB with the drag's previews, `drag-perf --alloc`),
+  and the full result's message, 17–55 ms on the main thread (a ≈ 4.6 MB structured clone of both directions' results,
+  deserialised on first access, plus `showFull` ≈ 20 ms). So no whole-D3 drag is gated yet (`drag-d3-full-link`
+  waits for this).

@@ -18,12 +18,13 @@ on a loaded host the first moves over a long route (a hover's first picks) took 
   identical.
 - **drag-perf `--mode link`**: the warm-up makes moves until it has made 12 (and checks that it shaped its reroute), on
   the next longest reroute of a way crossed once; the measured drag shapes the longest for the first time, as a
-  player's first drag of it. Gates `drag-d3-full-link` and `drag-i35-full-link` (which replaces the last stage's).
+  player's first drag of it. Gate `drag-i35-full-link` (which replaces the last stage's); the whole D3's waits for its long tasks after release (PLAN.md "Reroute drags on whole routes").
 
 Preview latency p50 / p95 (worker p50), GPU, host load 7–9, main dfc5388 → this change: whole D3 172 / 197 (123) →
 28 / 74 (11) ms; whole I/35 69 / 107 (43) → 20 / 29 (10) ms. D11 21 / 31, D11 motorway 17 / 30. On the whole D3 the
 stitch of the window into the full result is ≈ 4 ms of the worker's 11 (per station, whole route) and the preview's
-transfer and the main thread's handling (≈ 11 ms) are most of the rest. Node probe of the same previews (as the
+transfer and the main thread's handling are most of the rest (≈ 11 ms; p95 14–25 → 10–16 ms without the profile's
+dead per-part prefix sums). Node probe of the same previews (as the
 preview worker: bases handed over slim, no cache of the full evaluation warm): `scripts/dev/link-drag-preview.ts`
 (`FIRST=1` the first drag, `BASES=file` keeps the full results between runs).
 
