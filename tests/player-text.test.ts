@@ -14,6 +14,7 @@ import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
 import { ALL_LORE } from '../src/core/data/lore';
+import { RECORDS } from '../src/core/data/records';
 import { ROW_HELP, rowHelp } from '../src/ui/hud';
 import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -88,8 +89,8 @@ describe('player-facing text', () => {
       for (const text of [card.title, ...card.lines, ...(info.lore ? [info.lore] : [])]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
     }
     expect(ends).toBeGreaterThan(8);
-    // local knowledge on mapped ways' cards (research/96): one short sentence each
-    for (const lore of ALL_LORE) for (const text of [lore.line, lore.title]) {
+    // local knowledge on mapped ways' cards (research/96) and records (research/97): one short sentence each
+    for (const lore of [...ALL_LORE, ...RECORDS]) for (const text of [lore.line, 'title' in lore ? lore.title : undefined]) {
       check('local knowledge', text);
       if (text) expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(16);
     }

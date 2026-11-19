@@ -20,7 +20,7 @@ import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls
 import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
-import { KIND, TUNNEL_TOO_STEEP, tunnelGrade } from '../core/structures';
+import { KIND, TUNNEL_TOO_STEEP, tunnelGrade, type Run } from '../core/structures';
 import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
@@ -156,6 +156,8 @@ export class Inspector {
     onRing?: (j: number) => boolean;
     /** a mapped road's own name or number, by its index in the pack's network (ui/road-links.ts), if it has one */
     roadName?: RoadNamer;
+    /** a Czech record this bridge or tunnel of the player's beats, said once (ui/records.ts) */
+    record?: (r: Result, d: Design, run: Run) => string | null;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
     el.addEventListener('click', (e) => this.click(e));
@@ -417,10 +419,11 @@ export class Inspector {
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
     }
+    const run = tunnel ?? bridge, record = run && this.ctx.record?.(r, d, run);
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
-      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}</div>
+      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}${record ? `<div class="sub lore">${esc(record)}</div>` : ''}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', this.structureOptions(r, sel.piece, s0, s1, mine), active)}
       ${method}

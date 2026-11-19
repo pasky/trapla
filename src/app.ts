@@ -52,6 +52,7 @@ import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
+import { earnedRecord } from './ui/records';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
@@ -192,6 +193,13 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     maxRadius: (i) => curveEdit.maxRadius(i),
     radiusNote: (i, r) => radiusNotes.get(store.activeRouteId, i, r),
     natureNotes: (r, d, s0, s1) => natureNotes(pack.terrain, r, d, s0, s1),
+    // a record beaten, only where the player made the structure (against the start and the From scratch straight)
+    record: (r, d, run) => {
+      const now = store.readIn(projectStore.snapshot.design);
+      if (!now) return null;
+      const starters = () => [initialProject(), straightProject()].map(p => store.readIn(p)).filter((x): x is NonNullable<typeof x> => !!x);
+      return earnedRecord(r, d, lineOf(CATEGORIES[d.category]), run, now, starters);
+    },
     together: (j) => {
       const receiver = session.projectFull?.complete ? session.projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
       if (!receiver) return null;

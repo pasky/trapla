@@ -32,6 +32,13 @@ export class ActiveRouteStore {
     this.cached = { project, id, one, design };
     return design;
   }
+  /** the active route as it is in another design of the project (a starting one), with its ends; null: not there */
+  readIn(project: ProjectDesign): { design: Design; a: { x: number; y: number }; b: { x: number; y: number } } | null {
+    const id = this.activeRouteId, route = id && project.routes.find(r => r.id === id);
+    if (!id || !route) return null;
+    try { return { design: legacyDesignForRoute(project, id, { oneDirection: this.directionEdit(id) }), a: route.endpoints.a.position, b: route.endpoints.b.position }; }
+    catch { return null; }
+  }
   get design(): Design {
     const design = this.read();
     if (!design) throw new Error('This route cannot be edited with road bend controls');

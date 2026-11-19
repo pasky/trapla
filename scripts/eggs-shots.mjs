@@ -54,5 +54,24 @@ try {
     assert.match(await inspector(), /Poland’s S3 has run all the way to Szczecin since July 2024/);
     await shot(665, 'lore-s3');
   }
+  // 2. a record, said once: not on the starter's own 3 km D35 tunnel; once the player moves the line over it, yes
+  if (want('records')) {
+    await game.open('scenario=d35&preset=d35-stage1-motorway');
+    const tunnel = () => T(() => window.trapla.result().runs.filter(q => q.kind === 2).sort((p, q) => q.length - p.length)[0]);
+    let t = await tunnel();
+    assert.ok(t.length > 2168, `the starter's tunnel is ${t.length} m`);
+    await T((s) => window.trapla.selectPiece(s), (t.s0 + t.s1) / 2); await idle(300);
+    assert.match(await inspector(), /^Tunnel/); assert.doesNotMatch(await inspector(), /Panenská/, 'not on the starter');
+    // the player moves the bend nearest the tunnel's middle 30 m aside
+    const d = await T(() => window.trapla.getDesign()), mid = await T((s) => { const r = window.trapla.result(), i = r.s.findIndex(q => q >= s); return { x: r.x[i], y: r.y[i] }; }, (t.s0 + t.s1) / 2);
+    const pi = d.pis.reduce((b, p) => Math.hypot(p.x - mid.x, p.y - mid.y) < Math.hypot(b.x - mid.x, b.y - mid.y) ? p : b);
+    pi.x += 30; pi.y += 10;
+    await T((d) => window.trapla.setDesign(d), d); await idle();
+    t = await tunnel();
+    await T((s) => window.trapla.selectPiece(s), (t.s0 + t.s1) / 2); await idle(300);
+    const text = await inspector();
+    assert.ok(t.length <= 2168 || /Longer than any motorway tunnel open in Czechia \(Panenská, D8, about 2.2 km\)/.test(text), `the player's ${t.length} m tunnel: ${text}`);
+    await shot(666, 'record-tunnel');
+  }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }
