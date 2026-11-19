@@ -37,6 +37,20 @@ describe('scenario-declared endpoint junctions', () => {
     expect(r.conflicts.some(c => c.roadId === 1 && c.action !== 'junction')).toBe(true);
     expect(r.conflicts.some(c => c.roadId === 2 && c.action !== 'junction')).toBe(true);
   });
+  // Šternberk A (bend 1 dragged): the I/46 our road leaves forks off at a small angle and stays under our earthworks
+  // a few metres past the merge's zone; that mouth is rebuilt with the junction. A road running along us further
+  // past it stays a conflict.
+  it('the joined road forking off just past the zone is the junction\'s mouth, a longer stretch is not', () => {
+    const merge: FootprintJunction = { end: 'b', kind: 'merge', ways: new Set([0]), ...ENDPOINT_JUNCTIONS.merge };
+    const fork = (dy: number) => footprintConflicts(route([merge]), terrain,
+      new RoadNet({ cls: ['primary'], ways: [[0, 1100, 250, 900, 250 + dy]] }), [], []).conflicts.filter(c => c.roadId === 0);
+    // leaves our 20 m slopes (+ its half width) ≈ 105 m before the end: ≈ 15 m past the 90 m zone
+    const mouth = fork(47.1);
+    expect(mouth.map(c => c.action)).toEqual(['junction']);
+    expect(mouth[0].length).toBeGreaterThan(90);
+    // ≈ 250 m along our slopes: 160 m past the zone, a road to move aside
+    expect(fork(20).some(c => c.action !== 'junction')).toBe(true);
+  });
   it('bills the junction even when its edge stays clear of the joined road', () => {
     const far = new RoadNet({ cls: ['primary'], ways: [[0, 1150, 200, 1150, 300]] });
     const r = footprintConflicts(route([{ ...arm([0]), end: 'b' }]), terrain, far, [], []);

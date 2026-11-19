@@ -2382,11 +2382,16 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   Olomouc south of the town to the I/46 to Opava past the Domašov turn; S 11.5 at 90 km/h, its last three bends at
   70 as the real project past km 2.0; traffic 10,453 a day, the length-weighted ŘSD 2025 count through the town (a
   town count, not a forecast); 3.6 min. Both ends are declared merges with the I/46 way they lie on (without them
-  Auto bridged the I/46 over our own end). Starter VALID on its own: 870 M (ŘSD's estimate 2.04 bn builds two
+  Auto bridged the I/46 over our own end). Starter VALID on its own: 880 M (ŘSD's estimate 2.04 bn builds two
   interchanges, six more bridges, climbing lanes and walls the game does not; research/88).
 - **Nová Paka** is retired (`retired: true`): offered only under "Your older saves" to a player with a save; its pack
   and fixtures stay, and its gate still runs.
 - **Start screen:** "Design roads and railways on real terrain"; the line under it names roads, motorways and
   railways; the D3 section chips are place names (Praha → Jílové …), the D35's first section too; a card's
   description is its goal alone (no "title: …" prefix). `scripts/release-shots.mjs` checks all four.
+- **A joined road forking off at a small angle** (Šternberk A, the I/46 at 13°) that stays under our earthworks just
+  past the junction's zone: up to 30 m of it past the zone, touching what the junction rebuilds on that way, is the
+  junction's mouth (`JUNCTION_TIE_IN`, as a side road's end rejoined to a rebuilt junction), not a road to move aside
+  (it could not be: its end lies in our junction). Small drags of bend 1: 4 of 12 invalid → 0. No other pack's result
+  changed (`scripts/exact.ts`); tests/endpoint-junction.test.ts.
 - **End cards:** "Joins …" says "It carries on as … here" (it said "Our motorway" on a road mission too).

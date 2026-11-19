@@ -340,6 +340,19 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     if (cached) cached.raster.forEach(visitRaster);
     else protectedRasterCells(terrain, cell, visitRaster);
   }
+  // The joined road where it leaves our earthworks just past the junction's zone (a road forking off at a small angle):
+  // its mouth is rebuilt with the junction, as a side road's end rejoined to a rebuilt junction (JUNCTION_TIE_IN), not
+  // a road to move aside. Only earth over it, touching what the junction rebuilds on that way.
+  for (const junction of r.junctions ?? []) for (const [way, works] of junctionWorks.get(junction) ?? []) {
+    const group = roadHits.get(`${way}:earth`);
+    if (!group) continue;
+    const rebuilt = union(works.map(([a, b]) => ({ a, b, i: 0, j: 0 })));
+    const mouth = union([...group.hits]).filter(h => rebuilt.some(w => h.a <= w.b + 0.5 && h.b >= w.a - 0.5)
+      && subtract([h.a, h.b], rebuilt.map(w => [w.a, w.b] as [number, number])).reduce((m, [a, b]) => m + b - a, 0) <= JUNCTION_TIE_IN);
+    if (!mouth.length) continue;
+    works.push(...mouth.map(h => [h.a, h.b] as [number, number]));
+    group.hits = group.hits.filter(h => !mouth.some(m => h.a >= m.a - 1e-9 && h.b <= m.b + 1e-9));
+  }
   for (const junction of r.junctions ?? []) {
     const i = junction.end === 'a' ? 0 : r.n - 1, byWay = junctionWorks.get(junction);
     let covered = 0;

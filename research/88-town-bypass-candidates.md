@@ -100,20 +100,24 @@ Runner-up: I/57 Valašské Meziříčí – Jarcová (busier town, bigger story,
 - **Time target:** a mission choice, the mapped line + 10 % at the real project's speeds: 2.0 km at 90 and 2.23 km at
   70 → 3.57 → **3.6 min**.
 - **Starter:** the mapped line's five curves as bends at its tangent intersections, radii near the mapped ones
-  (R 1,500 / 1,000 / 800 / 360 / 340 m; the last two at the norm's limit for their spacing), bend 1 moved 10 m east
-  so that our earthworks clear the I/46 the road leaves at A (a 13° fork). VALID on its own, Auto grade.
+  (R 1,500 / 1,000 / 800 / 360 / 340 m; the last two at the norm's limit for their spacing). VALID on its own, Auto
+  grade. At A the I/46 forks off at 13° and stays under our slopes a few metres past the merge's 90 m zone; that
+  mouth is now rebuilt with the junction (up to 30 m past the zone, as a side road's end rejoined to a rebuilt
+  junction, `JUNCTION_TIE_IN`; footprint.ts). Before, the starter needed bend 1 moved 10 m, and 4 of 12 small drags of
+  bend 1 broke on it (`scripts/small-drag-audit.ts --at 1000 --n 12 --radius 25`; now 0 of 12; km 2.5 and 3.5: 0 of 12).
+  No other result of any pack changed (`scripts/exact.ts`, 186 of 191 identical, the 5 others this starter).
 
 ### Our bill of the starter against the ŘSD estimate (context, not a target)
 
-Cost model 56, S 11.5, Auto grade (`scripts/scenarios/i46-sternberk/default.json`): **870 M CZK**, 4.23 km, 206 M/km,
-3.2 min: road base 219, earthworks 49, bridges 178 (one 240 m viaduct over the Sprchový potok valley, km 3.89–4.13),
-crossings 118 (2 tracks over us, 1 under, 6 moved), other objects 156, buildings 87 (38, most of them sheds of the
-allotments the real line goes through too), land 43, noise walls 17 (634 m), forest 3. The mapped line sampled every
+Cost model 56, S 11.5, Auto grade (`scripts/scenarios/i46-sternberk/default.json`): **880 M CZK**, 4.24 km, 208 M/km,
+3.2 min: road base 219, earthworks 56, bridges 178 (one 240 m viaduct over the Sprchový potok valley, km 3.89–4.13),
+crossings 118 (2 tracks over us, 1 under, 6 moved, the two merges), other objects 159, buildings 84 (38, most of them
+sheds of the allotments the real line goes through too), land 45, noise walls 18 (590 m), forest 3. The mapped line sampled every
 1.5 km with Auto's radii (`reference.json`): 1,266 M (a 480 m bridge).
 
 ŘSD's estimate is **2,037 M** (07/2025). What the real project builds that ours does not: two interchanges with
 2,620 m of branches (the split at the start and Olomoucká street at km 2.056), six more bridges (520 m in all: the
 branch crossing 83 m, the Aleš stream and the chalet road 56 m, a ravine 42 m, …), climbing lanes, 1,560 m of noise
 walls, 1,186 m of retaining walls, temporary connections at both ends and 85 objects in all (utilities, field
-roads). Our line keeps close to the ground (cuts up to 6.6 m, fills up to 8.2 m, 11 m at the viaduct's end) and fills the ravine at km
+roads). Our line keeps close to the ground (cuts up to 6.6 m, fills up to 8.1 m, 11 m at the viaduct's end) and fills the ravine at km
 3.2 that the real one bridges. So ours is −57 % on a project with much more in it; the card shows only our bill.

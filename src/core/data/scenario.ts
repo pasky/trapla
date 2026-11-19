@@ -163,11 +163,11 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
 // 753 / 1,335 m), averaged over their lengths: 10,453 a day, 898 heavy (8.6 %, used as the noise model's heavy
 // share). Time target: a mission choice, the mapped line + 10 % at the real project's speeds (2.0 km at 90, 2.23 km
 // at 70: 3.57 → 3.6 min). Starter: the mapped line's five curves as bends at its tangent intersections, radii
-// near the mapped ones, the three past km 2.0 at 70 km/h as the real project.
+// near the mapped ones, the three past km 2.0 at 70 km/h as the real project; VALID as placed (880 M).
 export const STERNBERK_SCENARIO: ScenarioParams = {
   id: 'i46-sternberk', presetId: 'i46-sternberk-road', title: 'Šternberk bypass', group: 'I/46',
   initial: { category: 'S11.5', speed: 90, pis: [
-    { x: 2656.9, y: 3503.2, r: 1500 }, { x: 3212.8, y: 4153.7, r: 1000 }, { x: 3452.5, y: 4769.9, r: 800, speed: 70 },
+    { x: 2646.9, y: 3503.2, r: 1500 }, { x: 3212.8, y: 4153.7, r: 1000 }, { x: 3452.5, y: 4769.9, r: 800, speed: 70 },
     { x: 3466.1, y: 5342.5, r: 360, speed: 70 }, { x: 4574.1, y: 5350, r: 340, speed: 70 },
   ] },
   picker: { kind: 'Class I road', goal: 'Take the I/46 around the town, over a wooded valley and up towards Opava.' },
