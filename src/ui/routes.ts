@@ -3,7 +3,6 @@
 // end may go, making it), the road list, and what follows every change of the design (the store's
 // listener: the map, the cards, the next evaluation). Moved out of main.ts verbatim; the ends of the line
 // being edited live in the Session, the kind being built here.
-import type { RouteId } from '../core/project';
 import { autoFollowingCorridor, corridorOfRoute, rejoinStretch } from '../core/project-motorway';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Result } from '../core/evaluate';
@@ -29,6 +28,10 @@ import type { ResultDisplay } from './result-display';
 import type { RoadLinks } from './road-links';
 import type { RouteBar } from './route-bar';
 import { buildInProject, registeredBuildKinds, type BuildKind } from './route-kinds';
+import { RoadEnds } from './road-ends';
+import type { PlacedEnd } from './road-edit';
+import { followSource } from './source-editor';
+import type { Anchor, ProjectDesign, RouteDesign, RouteId } from '../core/project';
 import { activeSelection, qualifySelection } from './route-selection';
 import { hideToast, toast } from './toast';
 
@@ -54,11 +57,36 @@ export interface RoutesContext {
   routeAt: MapPicks['routeAt']; sourceAt: MapPicks['sourceAt'];
 }
 
+/** A dragged end keeps to the road it joins while the pointer is this close to it, px (a click while building
+ * joins a road within 10 px: an end already on one leaves it only when pulled clearly off). UI choice. */
+const END_STICK = 36;
+/** The project with a road's end put somewhere else: a junction form chosen for it goes with the road it was on. */
+export function moveEnd(design: ProjectDesign, routeId: string, end: 'a' | 'b', placed: PlacedEnd) {
+  const route = design.routes.find(r => r.id === routeId); if (!route) return;
+  const sameRoad = (p: Anchor, q: Anchor) => p.kind === q.kind && (p.kind === 'route' ? p.routeId === (q as typeof p).routeId
+    : p.kind === 'source' ? p.location.sourceId === (q as typeof p).location.sourceId : p.kind !== 'free');
+  if (!sameRoad(route.endpoints[end].anchor, placed.anchor) && route.alignment.kind === 'pi' && route.alignment.controls.junctionForms?.[end]) {
+    const forms = { ...route.alignment.controls.junctionForms }; delete forms[end];
+    route.alignment.controls.junctionForms = forms;
+  }
+  route.endpoints[end] = { position: { ...placed.position }, anchor: structuredClone(placed.anchor), binding: 'resolved' };
+}
+
 /** Wires the road list, Build and the store's listener, and shows the active line's directions. */
 export function createRoutes(app: RoutesContext) {
   const { evals, requestEval, sceneIdle, syncDecorations, activeLegacy, frameLine, showActiveResult } = app.results;
-  const { ensure: ensureTransport, syncEnds, legacyRoadAt } = app.links;
+  const { ensure: ensureTransport, legacyRoadAt } = app.links;
   const ends = app.session.ends;
+  /** a built road's end handles (ui/road-ends.ts), next to a rebuilt stretch's (ui/stretch-ends.ts) */
+  const roadEnds = new RoadEnds(document.getElementById('overlay')!, app.view, {
+    place: (route, end, clientX, clientY) => placeEnd(route, end, clientX, clientY),
+    drawnAt: (route, end) => drawnEnd(route, end),
+    begin: () => { if (app.projectStore.inTransaction) app.projectStore.commit(); app.projectStore.begin(); },
+    move: (routeId, end, placed) => { if (app.projectStore.inTransaction) app.projectStore.update(d => moveEnd(d, routeId, end, placed)); },
+    finish: keep => { if (!app.projectStore.inTransaction) return; if (keep) app.projectStore.commit(); else app.projectStore.cancel(); },
+    refuse: why => toast(`${why}: the end stays where it was.`),
+  });
+  const syncEnds = () => { app.links.syncEnds(); roadEnds.sync(app.store.route); };
   /** the motorway direction switch follows the active route */
   const syncDirections = () => {
     { const r = app.store.activeRouteId ? activeLegacy(app.session.projectFull?.routes[app.store.activeRouteId]) : undefined; frameLine(r?.length ?? 0, !!r); }
@@ -177,15 +205,18 @@ export function createRoutes(app: RoutesContext) {
     if (app.pack.transportMeta) void ensureTransport(); // ends may join mapped lines
   };
   /** where a click while building puts a road end: on a road (joins it), else free ground */
-  const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => {
+  const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => placeFor(building, clientX, clientY, x, y);
+  /** where an end of a line of this kind goes with the pointer there (`exclude`: the line itself, whose end is dragged) */
+  const placeFor = (building: BuildKind, clientX: number, clientY: number, x: number, y: number, exclude?: RouteId): Placement => {
     // A railway or motorway joins only lines of its own kind: a road picked near the click (at an overview, one
     // is near every click) is not where it ends; it ends on the ground there (roads are crossed, not joined).
     const joins = (kind: string | undefined) => building.kind === 'road' || kind === building.kind;
-    const hit = app.routeAt(clientX, clientY, 10), rr = hit && app.session.projectFull?.routes[hit.routeId];
+    const hit = app.routeAt(clientX, clientY, 10, exclude), rr = hit && app.session.projectFull?.routes[hit.routeId];
     const route = hit && app.projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
     if (hit && rr && route && joins(route.kind)) return building.onRoute(route, rr, hit.s);
     // on a road's carriageway or earthworks beside its centreline: that road, never "open ground"
     const under = footprintHit(Object.values(app.session.projectFull?.routes ?? {}).flatMap(r => {
+      if (r.routeId === exclude) return [];
       const legacy = r.routeId === app.store.activeRouteId && app.session.last ? app.session.last : r.legacy;
       return legacy ? [{ id: r.routeId, result: legacy }] : [];
     }), x, y);
@@ -197,6 +228,37 @@ export function createRoutes(app: RoutesContext) {
     if (app.pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
     if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: app.pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
+  };
+  /** A built road's end dragged to the pointer: it keeps to the road it joins while the pointer is within
+   * END_STICK px of it (along it, as far as that road goes), else it goes where a click while building would put it. */
+  const placeEnd = (route: RouteDesign, end: 'a' | 'b', clientX: number, clientY: number): Placement | null => {
+    const kind = registeredBuildKinds().find(k => k.kind === route.kind);
+    const g = app.view.pick(clientX, clientY);
+    if (!kind || !g) return null;
+    const anchor = route.endpoints[end].anchor, reach = END_STICK * app.view.metresPerPixel;
+    if (anchor.kind === 'route') {
+      const host = app.projectStore.snapshot.design.routes.find(r => r.id === anchor.routeId), rr = host && app.session.projectFull?.routes[host.id], r = rr?.legacy;
+      if (host && rr && r) {
+        let k = 0, best = Infinity;
+        for (let i = 0; i < r.n; i++) { const d = Math.hypot(r.x[i] - g.x, r.y[i] - g.y); if (d < best) { best = d; k = i; } }
+        if (best <= reach) return kind.onRoute(host, rr, r.s[k]);
+      }
+    } else if (anchor.kind === 'source' && app.links.index) {
+      const source = app.links.index.source(anchor.location.sourceId);
+      if (source) {
+        const s = followSource(source, { lo: 0, hi: source.stations[source.stations.length - 1] }, g.x, g.y, anchor.location.s);
+        const p = app.links.index.position(source.id, s);
+        if (p && Math.hypot(p.x - g.x, p.y - g.y) <= reach) return kind.onSource(app.links.index, source.id, s);
+      }
+    }
+    return placeFor(kind, clientX, clientY, g.x, g.y, route.id);
+  };
+  /** an end as drawn: on another designed road where that road is built now, else where it was placed */
+  const drawnEnd = (route: RouteDesign, end: 'a' | 'b') => {
+    const e = route.endpoints[end], r = e.anchor.kind === 'route' ? app.session.projectFull?.routes[route.id]?.legacy : undefined;
+    if (!r) return { ...e.position };
+    const i = end === 'a' ? 0 : r.n - 1;
+    return { x: r.x[i], y: r.y[i], z: r.grade[i] };
   };
   // a road chosen in the list comes into view when none of it is on screen
   app.routeBar.onSelect = id => {

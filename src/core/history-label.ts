@@ -49,7 +49,7 @@ function routeChange(a: RouteDesign, b: RouteDesign): string | null {
     if (!same(ca.wallOverrides, cb.wallOverrides)) return 'noise walls';
     if (!same(ca.junctionForms, cb.junctionForms)) return 'a junction';
   }
-  if (!same(a.endpoints, b.endpoints)) return 'moving an end';
+  if (!same(a.endpoints, b.endpoints)) return same(a.endpoints.a, b.endpoints.a) ? 'moving the end' : same(a.endpoints.b, b.endpoints.b) ? 'moving the start' : 'moving the ends';
   if (!same(a.source, b.source)) return 'the stretch rebuilt';
   if (!same(a.specification, b.specification)) {
     const sa = a.specification as unknown as Record<string, unknown>, sb = b.specification as unknown as Record<string, unknown>;
