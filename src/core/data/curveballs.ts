@@ -445,6 +445,16 @@ export const CURVEBALLS: Record<string, Curveball> = {
     cite: { text: 'A game event of a kind real projects meet (nature act 114/1992)' },
     zone: { label: 'Stork’s nest', forbid: KEEP_OUT, shape: { kind: 'circle', x: -629496, y: -1005846, r: 55 } },
   },
+  // A real event (the D11 1109 contract, 8 Oct 2024: CZK 11.71 bn against the 13.07 bn estimate, research/94
+  // contract-price-ceiling); the cap is the game's (our bill does not hold what the contract does): 89 % of the starting
+  // bill, the goal is 90 %, what the reference with every news reaches. It comes last.
+  'd11-contract': {
+    id: 'd11-contract', headline: 'The works are let',
+    story: 'The contract was signed 10 % under the estimate. The design must now keep within it.',
+    ask: 'Keep the bill under 89 % of the planned line’s',
+    cite: { text: 'ŘSD leaflet, 04/2026 (the contract, 10/2024)', url: 'https://apdos-v2.creativesound.cz/media/stavba/747/leaflet/infoletak_d11-trutnov-hranice-2etapa.pdf' },
+    budget: 0.89,
+  },
   // ---- end d11-motorway ----
   // ---- d11-rail-kralovec (places: research/95) ----
   // GAME EVENT on a real place (research/95 "A landslide"): the ČGS register of slope deformations, CGS0342191 (Libeč),
