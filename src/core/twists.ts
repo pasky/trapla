@@ -66,7 +66,7 @@ export function segmentTouches(shape: Shape, ax: number, ay: number, bx: number,
 /** The stretches where our line (its body across to where its slopes meet the ground) does one of `forbid` in the
  * place. Cheap: a box test per station, the shape test only near it. */
 export function zoneRuns(r: Result, routeId: RouteId, shape: Shape, forbid: readonly Use[], deckHalf = 7): ZoneRun[] {
-  const [x0, y0, x1, y1] = bbox(shape), reach = 150, out: ZoneRun[] = [];
+  const [x0, y0, x1, y1] = bbox(shape), reach = 200, out: ZoneRun[] = [];
   let open: ZoneRun | null = null;
   for (let i = 0; i < r.n; i++) {
     const x = r.x[i], y = r.y[i];
@@ -86,14 +86,16 @@ export function zoneRuns(r: Result, routeId: RouteId, shape: Shape, forbid: read
     } else if (open) { out.push(open); open = null; }
   }
   if (open) out.push(open);
-  // the piers, where they stand (as drawn: at their stations, else evenly spaced)
+  // the piers, where they stand (as drawn: at their stations, else evenly spaced), and the abutments at the deck's ends;
+  // each a slab across the deck, a few metres thick along it
   if (forbid.includes('pier')) for (const run of r.runs) {
     if (run.kind !== KIND.bridge) continue;
     const length = run.s1 - run.s0, spans = Math.max(1, Math.round(length / bridgeLayout(length).span));
-    for (const s of run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans)) {
-      const i = Math.max(0, Math.min(r.n - 2, Math.floor(s / r.ds))), t = s / r.ds - i;
+    const supports = [run.s0, ...(run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans)), run.s1];
+    for (const s of supports) for (const ds of [-2, 0, 2]) {
+      const at = Math.max(0, Math.min(r.s[r.n - 1], s + ds)), i = Math.max(0, Math.min(r.n - 2, Math.floor(at / r.ds))), t = at / r.ds - i;
       const x = r.x[i] + (r.x[i + 1] - r.x[i]) * t, y = r.y[i] + (r.y[i + 1] - r.y[i]) * t, nx = -r.ty[i], ny = r.tx[i];
-      if (segmentTouches(shape, x + nx * deckHalf, y + ny * deckHalf, x - nx * deckHalf, y - ny * deckHalf)) out.push({ routeId, s0: s, s1: s, use: 'pier', x, y });
+      if (segmentTouches(shape, x + nx * deckHalf, y + ny * deckHalf, x - nx * deckHalf, y - ny * deckHalf)) { out.push({ routeId, s0: s, s1: s, use: 'pier', x, y }); break; }
     }
   }
   return out;
@@ -174,7 +176,9 @@ export function checkTwists(on: readonly TwistId[], f: TwistFacts, t: TwistTerms
     switch (id) {
       case 'earth': {
         // fill brought in, as a share of the fill; dug earth trucked away, as a share of what is dug
-        const limit = t.earthShare ?? 0.1, share = earthShare(f), pct = `${Math.round(share * 100)} %`, max = `at most ${Math.round(limit * 100)} %`;
+        const limit = t.earthShare ?? 0.1, share = earthShare(f), max = `at most ${Math.round(limit * 100)} %`;
+        // (a share just over the limit says so: 10.4 %, not 10 %)
+        const pct = `${Math.round(share * 100) === Math.round(limit * 100) && share !== limit ? (share * 100).toFixed(1) : Math.round(share * 100)} %`;
         const what = f.deficit / Math.max(1, f.fill) >= f.surplus / Math.max(1, f.cut) ? 'of the fill brought in' : 'of the dug earth trucked away';
         push(share <= limit, share <= limit ? `Balanced: ${pct} (${max})` : `${pct} ${what} (${max})`,
           share <= limit ? [] : [{ text: /brought/.test(what) ? 'Lower the road where it runs high, or bridge the biggest embankments' : 'Raise the road where it cuts deep, or tunnel', x: NaN, y: NaN }]);
@@ -196,8 +200,8 @@ export function checkTwists(on: readonly TwistId[], f: TwistFacts, t: TwistTerms
         const issues: TwistIssue[] = [], broken = new Set<string>();
         for (const c of extra.curveballs) {
           const before = issues.length;
-          if (c.budget !== undefined && f.cost !== null && f.cost > c.budget * extra.startBill)
-            issues.push({ text: `${c.ask}: ${money(f.cost)} is over ${money(c.budget * extra.startBill)}`, x: NaN, y: NaN, ref: `curveball:${c.id}` });
+          if (c.budget !== undefined && (f.cost === null || f.cost > c.budget * extra.startBill))
+            issues.push({ text: `${c.ask}: ${f.cost === null ? 'the bill is not known yet' : `${money(f.cost)} is over ${money(c.budget * extra.startBill)}`}`, x: NaN, y: NaN, ref: `curveball:${c.id}` });
           if (c.zone) for (const { id: rid, r } of f.results) for (const run of zoneRuns(r, rid, c.zone.shape, c.zone.forbid, extra.deckHalf)) {
             // the structure that clears it: a bridge where neither deck nor piers are kept out (over earthworks), else a tunnel
             const fix = run.use === 'tunnel' || run.use === 'cover' ? undefined : !c.zone.forbid.includes('bridge') && !c.zone.forbid.includes('pier') && run.use !== 'bridge' ? 'bridge' as const

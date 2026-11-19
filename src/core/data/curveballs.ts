@@ -61,7 +61,7 @@ export const CURVEBALLS: Record<string, Curveball> = {
   // game's guess: military ranges often keep the grassland such butterflies need).
   'sternberk-butterflies': {
     id: 'sternberk-butterflies', headline: 'Protected butterflies on the route',
-    story: 'Surveyors found protected butterflies on the open land by the shooting range. Their meadow stays as it is.',
+    story: 'Surveyors found protected butterflies in the way. Where is not published: here, their meadow is by the shooting range.',
     ask: 'Keep out of the butterflies’ meadow',
     cite: { text: 'zdopravy.cz, 16 Nov 2026', url: 'https://zdopravy.cz/nejdriv-historicka-vila-ted-chraneni-motyli-priprava-obchvatu-sternberka-se-znovu-zasekla-307213/' },
     zone: { label: 'Butterflies', forbid: KEEP_OUT, shape: { kind: 'circle', x: -542700, y: -1109400, r: 90 } },

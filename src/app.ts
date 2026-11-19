@@ -266,7 +266,8 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     get A() { return ends.a; }, get B() { return ends.b; },
     get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
     routeCard: () => routeCard(), directionsState: () => directionsState(),
-    afterFull: (result) => { applyByHand(result); twists?.afterFull(result); },
+    // (By hand's pins just laid: the next result is the one to check)
+    afterFull: (result) => { if (!applyByHand(result)) twists?.afterFull(result); },
   });
   const { evals, requestEval, settled, sceneIdle } = results;
 
@@ -352,37 +353,47 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
 
   // ---- twists: the challenges the player picked (ui/twists.ts) ----
-  /** By hand was asked for: our road's heights go to the ground (every 500 m) once a result says where that is */
+  /** By hand was asked for at a new start: our road's heights go to the ground (every 500 m) once a result says where */
   let byHandWanted = false;
-  const applyByHand = (result?: ProjectResult) => {
+  /** …applied to the result of the design as it is now (a From scratch start replaced the line); true: it changed the design */
+  const applyByHand = (result?: ProjectResult): boolean => {
     const r = session.lastFull, mission = missionRouteId(), now = projectStore.snapshot;
-    // (only from the result of the design as it is now: a From scratch start replaced the line)
-    if (!byHandWanted || !r || !result || result.epoch !== now.epoch || result.revision !== now.revision || store.activeRouteId !== mission) return;
+    if (!byHandWanted || !r || !result || result.epoch !== now.epoch || result.revision !== now.revision || store.activeRouteId !== mission) return false;
     byHandWanted = false;
-    if (store.design.profileMode === 'manual') return;
+    if (store.design.profileMode === 'manual') return false;
     const step = 500, n = Math.max(1, Math.round(r.length / step)), at = (s: number) => r.ground[Math.min(r.n - 1, Math.round(s / r.ds))];
     const pins = Array.from({ length: n - 1 }, (_, k) => { const s = r.length * (k + 1) / n; return { s: Math.round(s), z: Math.round(at(s) * 10) / 10, r: null }; });
     store.update((d) => { d.profileMode = 'manual'; d.vpis = normalizeVpis([r.vpis[0], ...pins, r.vpis[r.vpis.length - 1]].map(v => ({ ...v })), r.length, r.vpis[0].z, r.vpis[r.vpis.length - 1].z); });
     toast('By hand: our road now lies on the ground. Drag its ◆ height pins in the profile.');
+    return true;
   };
+  /** a stretch of a road of ours: that road made the active one first */
+  const onRoute = (routeId: string, then: () => void) => { if (routeId === store.activeRouteId || switchRoute(routeId)) then(); };
   twists = createTwists({
     scenario, presetId, pack, ends: { a: positionA, b: positionB }, view, overlay: document.getElementById('overlay')!,
     chip: hud.twists.chip, card: hud.twists.card, section: hud.twists.section, revealHud: () => hud.reveal('twists'),
     design: () => projectStore.snapshot.design, subscribe: (fn) => { projectStore.subscribe((_, committed) => fn(committed)); },
+    busy: () => projectStore.inTransaction,
     startFromScratch: () => {
       select(null);
       wantStraight = true; store.reset(); wantStraight = false;
       view.resetCamera(); profile.fit();
       toast('Started from the straight line.', 'Undo', () => store.undo());
-      if (twists?.state.on.includes('byHand')) byHandWanted = true;
     },
-    setByHand: (on) => { if (on) { byHandWanted = true; applyByHand(session.projectFull ?? undefined); } twists?.syncAutoButton(); },
-    showStretch: (routeId, s0, s1) => { if (routeId === store.activeRouteId || twists === null) selectPiece((s0 + s1) / 2, true); else switchRoute(routeId); },
+    setByHand: (on, fresh) => {
+      byHandWanted = on && fresh;
+      // turned on mid-game: the heights as they are now become the pins (as the Road card's By hand does)
+      if (on && !fresh && store.design.profileMode === 'auto' && session.last && settled()) store.update((d) => { takeProfile(d); });
+      if (byHandWanted) applyByHand(session.projectFull ?? undefined);
+      twists?.syncAutoButton();
+    },
+    showStretch: (routeId, s0, s1) => onRoute(routeId, () => selectPiece((s0 + s1) / 2, true)),
     showPlace: (x, y) => view.flyTo(x, y, 900),
-    build: (kind, routeId, s0, s1, style) => { if (routeId === store.activeRouteId) setStructure(kind === 'bridge' ? KIND.bridge : KIND.tunnel, s0, s1, style); },
+    build: (kind, routeId, s0, s1, style) => onRoute(routeId, () => setStructure(kind === 'bridge' ? KIND.bridge : KIND.tunnel, s0, s1, style)),
   }, twistChoice);
-  // Start over with From scratch on goes to the straight line; without it the design began from the starter
-  { const reset = store.reset.bind(store); store.reset = () => { reset(); twists?.noteScratch(!!twists?.scratchOn); }; }
+  // Start over: to the straight line while From scratch is on (else the design began from the starter); By hand on: its
+  // heights on the ground again
+  { const reset = store.reset.bind(store); store.reset = () => { reset(); twists?.noteScratch(!!twists?.scratchOn); if (twists?.state.on.includes('byHand')) byHandWanted = true; }; }
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }

@@ -35,8 +35,10 @@ export interface TwistsContext {
   subscribe: (fn: (committed: boolean) => void) => void;
   /** start the design again from the straight line A–B (undoable) */
   startFromScratch: () => void;
-  /** our road's heights by hand: from the ground, or from what Auto has now */
-  setByHand: (on: boolean) => void;
+  /** our road's heights by hand: `fresh`, laid on the ground (a new start); else from what Auto has now */
+  setByHand: (on: boolean, fresh: boolean) => void;
+  /** a drag (or another edit) is under way: its full results are provisional */
+  busy: () => boolean;
   /** show a stretch of our road (select it), or a place */
   showStretch: (routeId: RouteId, s0: number, s1: number) => void;
   showPlace: (x: number, y: number) => void;
@@ -68,8 +70,14 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   for (const ev of ['pointerdown', 'keydown', 'wheel']) window.addEventListener(ev, () => { lastInput = performance.now(); }, { passive: true, capture: true });
   let tick = performance.now();
   window.setInterval(() => {
-    const now = performance.now(), dt = now - tick; tick = now;
-    if (document.visibilityState === 'visible' && now - lastInput < IDLE_MS) { state.playMs += dt; if (Math.round(state.playMs / 1000) % 10 === 0) save(); }
+    // (a timer held back while the page was hidden credits no more than its own second)
+    const now = performance.now(), dt = Math.min(2000, now - tick); tick = now;
+    if (document.visibilityState !== 'visible' || now - lastInput >= IDLE_MS) return;
+    const before = state.playMs;
+    state.playMs += dt; if (Math.floor(state.playMs / 10_000) !== Math.floor(before / 10_000)) save();
+    // the pace's time comes round after its edits: the news may come now, on the design as it stands
+    const due = state.firedAtMs + CURVEBALL_EVERY_MS;
+    if (before < due && state.playMs >= due && last && !app.busy()) api.afterFull(last.result);
   }, 1000);
   app.subscribe((committed) => { if (committed) { state.editsSince++; save(); } });
 
@@ -78,7 +86,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const was = new Set(state.on);
     state.on = choice.on.filter(t => offer.includes(t)); state.chosen = true; save();
     if (choice.started && state.on.includes('scratch') && !(was.has('scratch') && state.scratch)) { state.scratch = true; save(); app.startFromScratch(); }
-    if (choice.started && state.on.includes('byHand')) app.setByHand(true);
+    if (choice.started && state.on.includes('byHand')) app.setByHand(true, true);
   }
 
   const ours = (d: ProjectDesign): RouteId[] => {
@@ -150,10 +158,11 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     if (!t) return;
     state.on = TWIST_ORDER.filter(x => x === t ? input.checked : state.on.includes(x));
     state.chosen = true; save();
-    if (t === 'byHand') app.setByHand(input.checked);
+    if (t === 'byHand') app.setByHand(input.checked, false);
     if (t === 'scratch' && input.checked) toast('From scratch counts from a design that begins at the straight line.', 'Start from it', () => { state.scratch = true; save(); app.startFromScratch(); });
-    if (last) last = { result: last.result, checks: evaluateTwists(last.result) };
-    syncAutoButton(); drawMarks(); render();
+    syncAutoButton();
+    // (what is met now may already be news-worthy or a win)
+    if (last) api.afterFull(last.result); else { drawMarks(); render(); }
   });
   app.chip.addEventListener('click', () => app.revealHud());
   const show = (i: TwistIssue) => { if (i.routeId !== undefined && i.s0 !== undefined) app.showStretch(i.routeId, i.s0, i.s1 ?? i.s0); else app.showPlace(i.x, i.y); };
@@ -229,11 +238,13 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   }
 
   syncAutoButton(); render();
-  return {
+  const api = {
     /** a full project result is on screen */
     afterFull(result: ProjectResult) {
       const checks = evaluateTwists(result);
       last = { result, checks }; pendingReveal = false;
+      // a full result while a drag is held is provisional: no news, no reveal on it
+      if (app.busy()) { drawMarks(); render(); return; }
       if (result.valid && !state.firstValid) { state.firstValid = true; save(); }
       const total = result.cost.total;
       const triumph = result.valid && total !== null && total <= goal && checks.every(c => c.met);
@@ -245,7 +256,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
         if (fire()) {
           last = { result, checks: evaluateTwists(result) }; drawMarks(); render();
           // (news the design meets already: the reveal follows once it is read)
-          pendingReveal = triumph && last.checks.every(c => c.met);
+          pendingReveal = triumph && !state.revealed && last.checks.every(c => c.met);
           return;
         }
       }
@@ -258,6 +269,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     noteScratch(fromStraight: boolean) { state.scratch = fromStraight; save(); },
     syncAutoButton,
   };
+  return api;
 }
 
 function middle(shape: { kind: 'circle'; x: number; y: number } | { kind: 'polygon'; pts: readonly (readonly [number, number])[] }) {

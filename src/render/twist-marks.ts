@@ -72,7 +72,7 @@ export class TwistMarks {
   }
 
   private place() {
-    const c0 = this.view.camera, key = `${c0.matrixWorld.elements.join(',')}|${c0.projectionMatrix.elements[0]}|${this.overlay.clientWidth}x${this.overlay.clientHeight}`;
+    const c0 = this.view.camera, key = `${c0.matrixWorld.elements.join(',')}|${c0.projectionMatrix.elements[0]}|${this.view.world.scale.y}|${this.overlay.clientWidth}x${this.overlay.clientHeight}`;
     if (key === this.placedFor) return;
     this.placedFor = key;
     const mpp = this.view.metresPerPixel, taken: number[][] = [];
