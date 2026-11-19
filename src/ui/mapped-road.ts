@@ -14,6 +14,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const node = document.createElement(tag); node.textContent = text; return node;
 };
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const TOO_SHORT = 'Too short to change here: pick it further from its junctions or from the map edge.';
 
 export class MappedRoadCard {
   private hit: SourceHit | null = null;
@@ -32,6 +33,20 @@ export class MappedRoadCard {
   clear() {
     if (this.hit) this.view.setSourceSelection(null);
     this.hit = null; this.interval = null; this.path = []; this.lineKind = null;
+  }
+  /** What a drag of this mapped line at station s would rebuild: the stretch and the kind that rebuilds it, or why it
+   * cannot (the card's own words), with the line's name. */
+  stretchAt(sourceId: string, s: number): ({ ok: true; interval: SourceInterval; lineKind: MappedLineKind; becomes: string } | { ok: false; why: string }) & { name: string } {
+    const source = this.base.source(sourceId);
+    if (!source) return { ok: false, why: 'This road’s map data is incomplete.', name: 'the road' };
+    const name = mappedRoadName(source.tags, ROAD_CLASSES[source.tags.highway ?? '']?.label ?? (source.kind === 'railway' ? 'railway' : 'road'));
+    const { kind, verdict: what } = mappedLineKindFor(this.base, source.id);
+    if (!what.ok || !kind) return { ok: false, why: what.ok ? 'This line cannot be changed yet.' : what.why, name };
+    const covered = this.covered(source.id), under = covered.find(c => s >= c.s0 && s <= c.s1);
+    if (under) return { ok: false, why: coveredText(under.by), name };
+    const interval = derivedStretch(this.base, source.id, s, [...this.claimed(), ...covered]);
+    if (!interval) return { ok: false, why: TOO_SHORT, name };
+    return { ok: true, interval, lineKind: kind, becomes: what.becomes, name };
   }
   show(hit: SourceHit) {
     this.clear(); this.hit = hit;
@@ -57,7 +72,7 @@ export class MappedRoadCard {
     root.append(header);
     if (!what.ok) { root.append(el('p', what.why)); return; }
     if (under) { root.append(el('p', coveredText(under.by))); return; }
-    if (!this.interval) { root.append(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }
+    if (!this.interval) { root.append(el('p', TOO_SHORT)); return; }
     const how = el('p', 'Drag it to change its line.'); how.className = 'mapped-how';
     const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.becomes}.`);
     stretch.className = 'sub';

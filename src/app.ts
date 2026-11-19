@@ -50,6 +50,7 @@ import { createProjectScore } from './ui/project-score';
 import { installMapWindow } from './ui/map-window';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
+import { createCrossingDrag } from './ui/crossing-drag';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { hudEvents } from './ui/hud-events';
@@ -308,8 +309,14 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
   // ---- map gestures: click, drag to bend / rebuild / shape, double click (ui/map-gestures.ts) ----
   const lastClient = { x: 0, y: 0 };
-  const { events: mapEvents, mappedGrab, releaseGrab } = createMapGestures({
-    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
+  const crossingDrag = createCrossingDrag({
+    get transportIndex() { return links.index; }, get sourceEditor() { return links.editor; }, roadNet: pack.roadNet,
+    get projectFull() { return session.projectFull; }, get activeRouteId() { return store.activeRouteId; },
+    get routes() { return projectStore.snapshot.design.routes; },
+  });
+  const { events: mapEvents, mappedGrab, crossingPlan, releaseGrab } = createMapGestures({
+    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, sourceAt, thingAt, crossingDrag,
+    get last() { return session.last; },
     get A() { return ends.a; }, get B() { return ends.b; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get sourceEditor() { return links.editor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
@@ -334,7 +341,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get roadSelected() { return selection.roadSelected; }, get selectedCrossing() { return session.sel?.kind === 'crossing' ? session.sel.roadId : null; },
-    ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
+    ensureTransport, placeAt, mappedGrab, crossingPlan, mappedRoadNear, bendLabel,
   });
 
   // map → profile: the part of the route the map shows (ui/map-window.ts)
