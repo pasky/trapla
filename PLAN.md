@@ -2441,8 +2441,8 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     Šternberk and 0305, 3 on Královec; D3 0303 and D35 stage 1 take none already, D11 28).
   - Not offered, and why: *Keep every village connected* (no starter closes a public road: nothing to ask), *Quiet
     nights* (a valid design already keeps every home under the night limit; a stricter limit would need the player to
-    paint walls house by house), *Faster* (every starter is already 10 % under the time goal), *Real price* (only on D35
-    stage 1, the one mission whose real price is under our starter's).
+    paint walls house by house), *Faster* (every starter is already 10 % under the time goal). *Real price* is offered on
+    D35 stage 1 only: the D11's real contract (11.71 bn) is under our starter too, but no reference gets that low (12.24 bn).
 - **The goal and the reveal.** The goal is the starting design's bill less 10 % (`GOAL_SHARE`). The starter is the real
   project's line on every mission but the Královec railway (a game proposal there: "the starting line"), priced by the
   game. The real prices are not a fair goal: they include what the game does not build (interchanges, climbing lanes,
@@ -2463,7 +2463,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     a bridge as the real design has it (56 m, ŘSD leaflet); no money in the 2026 budget (zdopravy.cz 21 Dec 2025; the bill
     under 88 % of the planned line's). The Sprchový valley floor as a no-fill place was tried and dropped: a band along the
     stream also made the valley's sides a place to bridge, too close to the ground for a valid bridge on most lines.
-  - **Every mission** (round 3, research/95): 5–8 curveballs each, in `MISSION_TWISTS[…].curveballs` order. Where history
+  - **Every mission with twists** (round 3, research/95): 5–8 curveballs each, in `MISSION_TWISTS[…].curveballs` order. Where history
     gives a located event it is used with its source: the D3 0302 Luka tunnel (its crest only: the whole 1.8 km tunnel puts
     the goal out of reach at the game's prices; the trial gallery begun 3/2025), the D3 0303 side-valley bridge (117 m at
     real km 15.5), the D35 Pod skálou protection zone (the EIA's portal condition, the AOPK polygon), the D11 contract (a

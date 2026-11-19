@@ -12,6 +12,7 @@ import { paintOverride } from '../src/core/overrides';
 import { KIND } from '../src/core/structures';
 
 const args = process.argv.slice(2), out = args[args.indexOf('--out') + 1];
+if (!args.includes('--out') || !out?.endsWith('.json')) throw new Error('--out <file.json> is needed');
 const whole = mission(args[0]), o = whole.pack.meta.origin as [number, number];
 const files = args.slice(1).filter(a => a.endsWith('.json') && a !== out);
 const routeOf = (d: Fixture['design']) => d.routes.find(r => r.role === 'mission')!.id;
@@ -52,7 +53,10 @@ const painted = args.includes('--painted') ? args[args.indexOf('--painted') + 1]
 const structureOverrides = sections.flatMap(q => (q.d.structureOverrides ?? []).filter(so => painted === 'all' || (painted === 'tunnels' && so.kind === KIND.tunnel))
   .map(so => ({ ...so, s0: sOn(q, so.s0), s1: sOn(q, so.s1) })));
 // --manual: the sections' own grade lines as the whole's heights by hand (where their pins do not solve on the whole line)
-const vpis = sections.flatMap(q => q.L.vpis.map(v => ({ ...v, s: sOn(q, v.s) }))).sort((a, b) => a.s - b.s)
+// (where no section covers the line, the starter's own heights, re-measured on the stitched line)
+const covered = (s: number) => sections.some(q => s >= sOn(q, 0) - 1 && s <= sOn(q, q.L.s[q.L.n - 1]) + 1);
+const starterVpis = L0.vpis.map(v => ({ ...v, s: nearestS(L1, ...(Object.values(at(L0, v.s)) as [number, number])) })).filter(v => !covered(v.s));
+const vpis = [...sections.flatMap(q => q.L.vpis.map(v => ({ ...v, s: sOn(q, v.s) }))), ...starterVpis].sort((a, b) => a.s - b.s)
   .filter((v, i, a) => i === 0 || v.s - a[i - 1].s > 5);
 // --boundary W: within W m of where two sections meet, the starter's own heights (the crossings just past a section's end
 // were never in its design)

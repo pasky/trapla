@@ -88,6 +88,8 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
   };
   let cur = start, curR = evalDesign(m, cur), curS = score(cur, curR);
   let best = { d: cur, s: curS, r: curR };
+  // (the cheapest design that meets everything asked, kept apart: a cheaper one that breaks something never replaces it)
+  let bestMet = curS.met ? best : null;
   const log = (k: number, s: typeof curS, r: ProjectResult) => console.log(`${k} ${(s.p / 1e6).toFixed(0)} M · cost ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} · valid ${r.valid} (${r.issues.length}${r.issues.length ? ": " + r.issues.slice(0, 2).map(i => i.violation?.title ?? i.code).join("; ") : ""}) · ${s.checks.map(c => `${c.id}:${c.met ? '✓' : '✗'} ${c.status}`).join(' | ')}${s.met ? ' · MET' : ''}`);
   log(0, curS, curR);
   for (let k = 1; k <= iters; k++) {
@@ -151,8 +153,10 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     const accept = s.p < curS.p || rand() < Math.exp(-(s.p - curS.p) / (0.01 * bill * heat + 1));
     if (accept) { cur = next; curR = r; curS = s; }
     if (s.p < best.s.p) { best = { d: next, s, r }; log(k, s, r); }
-    if (k % 50 === 0) { cur = best.d; curR = best.r; curS = best.s; save(best); }
+    if (s.met && (!bestMet || (r.cost.total ?? Infinity) < (bestMet.r.cost.total ?? Infinity))) bestMet = { d: next, s, r };
+    if (k % 50 === 0) { cur = best.d; curR = best.r; curS = best.s; save(bestMet ?? best); }
   }
+  best = bestMet ?? best;
   save(best);
   function save(b: typeof best) {
     mkdirSync(out.replace(/\/[^/]+$/, ''), { recursive: true });
@@ -231,7 +235,7 @@ else if (args[0] === '--show') {
   console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(1)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).join('; '));
   for (const c of check(m, fx.design, r, process.env.ALL ? TWIST_ORDER : m.setup.mission.offer)) console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.map(i => `\n      ${i.text}`).join('')}`);
 } else if (args[0] === '--survey') {
-  // where to put a curveball: the starter's and the given designs' lines every 25 m in EPSG:5514 (what the line does there,
+  // where to put a curveball: the starter's and the given designs' lines about every 25 m (the nearest whole number of stations) in EPSG:5514 (what the line does there,
   // its height over the ground, the land cover, the ground's cross slope, the nearest village); `--json f` writes them
   const m = mission(args[1]), o = m.pack.meta.origin as [number, number], T = m.pack.terrain, places = m.pack.overlays.places as { name: string; kind: string; x: number; y: number }[];
   const files = args.slice(2).filter(a => a.endsWith('.json') && a !== opt('--json'));

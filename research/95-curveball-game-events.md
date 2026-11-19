@@ -29,7 +29,8 @@ derived is reproducible from the pack (lines, land cover, ways, buildings) and t
   [rm.coe.int/168007bd25](https://rm.coe.int/168007bd25). Real finds on these corridors: the D11 war graves between Studenec
   and Střítež (12/2025, research/94, off our map), the D35 rescue surveys over the whole footprint (10/2024, 2/2025,
   research/93, no find published).
-- **Game rule:** a find kept in place: no cutting into it (an embankment over it or a bridge). PROVISIONAL as a rule: real
+- **Game rule:** a find kept in place: no cutting into it and no tunnel dug from the surface (an embankment over it, a
+  bridge, or a mined tunnel under it). PROVISIONAL as a rule: real
   finds are mostly dug and recorded, then built over; keeping one in place is the exception the convention prefers.
 - **Placement:** open land (pack land cover "none") within 1.5 km of a village where the starter and the reference both cut
   1.5–9 m, a 60–70 m circle between the two lines (so a design like either breaks it, and raising the line there meets it).
@@ -96,7 +97,7 @@ derived is reproducible from the pack (lines, land cover, ways, buildings) and t
 
 ### Less money (a cap on the bill)
 - **Kind:** the State Transport Infrastructure Fund's budget is set year by year; a project not in it waits (the real case:
-  Šternberk left out of the 2026 budget, research/91). The cap is the game's: 85–89 % of the starting bill (the goal is 90 %), where the reference with every news has room for it (D3 0305 and the whole D3 have none),
+  Šternberk left out of the 2026 budget, research/91). The cap is the game's: 85–89 % of the starting bill (the goal is 90 %), where the reference with every news has room for it (D3 0305 has none; the whole D3 88 %, D11 89 %),
   the last curveball of each mission.
 
 ### A stream animals travel along (rule SPAN on its banks) — a real register's place
@@ -130,9 +131,9 @@ reference (`scripts/twists-check.ts --survey`), kept within 400 m.
 | D3 0302 | Luka crest (real design: its crest only), creeping Sázava valley side (game), Rakousy in a cutting (game), eagle owl (game), money (game) |
 | D3 0303 | side-valley bridge (real design, km 15.5 of the leaflet), settlement by Dunávice (game), Dunávice in a cutting (game), gas main (game), eagle owl (game), money (game) |
 | D3 0304 | burial ground by Maršovice (game), listed farm at Strnadice (game), Šebáňovice in a cutting (game), gas main (game), stork's nest (game), money (game) |
-| D3 0305 | Divišovice uranium workings (real place), burial ground by Dědkov (game), stork's nest (game), gas main (game), the Mastník's banks (real register's place) |
+| D3 0305 | the Mastník's banks (real register's place), burial ground by Dědkov (game), stork's nest (game), Divišovice uranium workings (real place), gas main (game) |
 | whole D3 | five of the sections' (0301 graves, 0302 Luka and the valley side, 0303 valley, 0305 uranium), money (game) |
 | D35 stage 1 | Pod skálou protection zone (real EIA condition), Radišov slope (real place), settlement by Radišov (game; the rescue survey is real), Dětřichov in a cutting (game), stork's nest (game), money (game) |
 | whole D35 | stage 1's four, and on the second section a burial ground by Řepová, a stork's nest by Javoří, Podolí in a cutting (game), money |
-| D11 motorway | Starý Rokytník shaft (real place), Poříčí slope (real place), Zlatá Olešnice slope (real place), soldiers' graves by Lampertice (game; the kind is real on the D11), stork's nest (game), the contract (real event, game cap) |
+| D11 motorway | Starý Rokytník copper shaft (real place), Poříčí slope (real place), Zlatá Olešnice slope (real place), soldiers' graves by Lampertice (game; the kind is real on the D11), stork's nest (game), the contract (real event, game cap) |
 | Královec railway | Libeč slope (real place), Křenov slope (real place), soldiers' graves by Bernartice (game), eagle owl (game), money (game) |

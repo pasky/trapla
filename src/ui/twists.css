@@ -29,7 +29,7 @@
 .news-story, .news-ask { margin: 0 0 4px; }
 .news-ask { font-weight: 600; color: #7a3d00; }
 .news-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
-.news-foot a, .news-foot .news-source { font-size: 11px; color: #778; }
+.news-foot a, .news-foot .news-source { font-size: 11px; color: #555b66; }
 .news-foot button { font-size: 12px; }
 
 .reveal { position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: rgba(20, 26, 32, 0.42); }

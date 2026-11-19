@@ -24,8 +24,9 @@ export interface Curveball {
 
 /** keep out: nothing of ours there, on the ground or over it on a bridge; a mined tunnel deep under it is fine */
 export const KEEP_OUT: readonly Use[] = ['cut', 'fill', 'bridge', 'cover'];
-/** no open cut: a tunnel through it (or a bridge, or an embankment) */
-export const NO_CUT: readonly Use[] = ['cut'];
+/** no digging from the surface: neither a cutting nor a tunnel dug and covered again; a mined tunnel under it, a bridge or
+ * an embankment over it */
+export const NO_CUT: readonly Use[] = ['cut', 'cover'];
 /** nothing of ours on the ground there: a bridge may pass over it, its piers outside */
 export const NO_PIERS: readonly Use[] = ['cut', 'fill', 'cover', 'pier'];
 /** leave the ground as it is: a bridge over it or a mined tunnel under it, no cutting or filling */
@@ -129,14 +130,14 @@ export const CURVEBALLS: Record<string, Curveball> = {
   // ---- end d3-0301-motorway ----
   // ---- d3-0302-motorway (places: research/95) ----
   // The real design (ŘSD leaflet 0302, 09/2025: "Tunel Luka délky 1843 m" ... "raženého tunelu Luka délky 1260 m, kterým
-  // podchází lesní masiv"; the detailed survey by a trial gallery begun 5 Mar 2025; research/92) tunnels the wooded hill
-  // the starter and the reference cut 20–29 m deep; the place: its crest only, km 1.6–1.96 of both lines, 60 m either side
-  // (the whole tunnel would put the goal out of reach at the game's prices).
+  // podchází lesní masiv"; the trial gallery's digging begun, ŘSD 17 Jul 2026, research/51 and research/92) tunnels the
+  // wooded hill the starter and the reference cut 20–29 m deep; the place: its crest only, km 1.6–1.96 of both lines, 60 m
+  // either side (the whole tunnel would put the goal out of reach at the game's prices).
   'd3-0302-luka': {
     id: 'd3-0302-luka', headline: 'A tunnel under Luka',
     story: 'Miners have begun a trial gallery for the Luka tunnel. The design review wants the wooded crest crossed in a tunnel, as the real design has it.',
     ask: 'No open cut through the crest at Luka',
-    cite: { text: 'ŘSD leaflet, 09/2025 (the trial gallery, 3/2025)', url: 'https://apdos.roadmedia.cz/Upload/Stavby/44/infoletak_d3-0302-jilove-hosteradice.pdf' },
+    cite: { text: 'ŘSD, 17 Jul 2026', url: 'https://kraje.rsd.cz/stredocesky/blog/2026/07/17/zacala-razba-pruzkumne-stoly-budouciho-tunelu-luka-na-dalnici-d3/' },
     zone: { label: 'Luka crest', forbid: NO_CUT, shape: { kind: 'polygon', pts: [[-742271, -1066525], [-742175, -1066807], [-742289, -1066847], [-742385, -1066561]] } },
   },
   // GAME EVENT (research/95 "A landslide"): the steep (1:3) wooded north side of the Sázava valley the reference fills at
@@ -177,9 +178,9 @@ export const CURVEBALLS: Record<string, Curveball> = {
   // ---- end d3-0302-motorway ----
   // ---- d3-0303-motorway (places: research/95) ----
   // The real design (ŘSD leaflet 0303, 09/2025: "V km 15,5 je navržen dálniční most přes údolí o délce 117 m"; research/92
-  // krnany-valley-bridge) bridges the valley at real km 15.5, our km ≈ 1.5 (0303 starts at real km 14.0); the place: the
-  // valley floor, where the starter and the reference fill 11–18 m deep, km 1.45–1.56 of both lines, 40 m either side (the
-  // bridge's 117 m).
+  // krnany-valley-bridge) bridges the valley at real km 15.5, our km ≈ 1.6 (0303 starts at real km 13.9); the place: the
+  // floor of the valley nearest that km, where the starter and the reference fill 11–18 m deep, km 1.45–1.56 of both
+  // lines, 40 m either side (the bridge's 117 m).
   'd3-0303-valley': {
     id: 'd3-0303-valley', headline: 'A bridge over the side valley',
     story: 'The design review wants the side valley near the start bridged, as the real design has it, not filled.',
@@ -391,7 +392,8 @@ export const CURVEBALLS: Record<string, Curveball> = {
   // ---- end d35-stage1-motorway ----
   // ---- d11-motorway (places: research/95) ----
   // GAME EVENT on a real place (research/95 "Undermined ground"): the ČGS register of mine workings, "šachtice Starý
-  // Rokytník" (an old shaft, notice 2919), 40 m round it; both lines pass within 40 m (km 0.75).
+  // Rokytník" (an old shaft for copper ore, worked until the 19th century, notice 2919), 40 m round it; both lines pass
+  // within 40 m (km 0.75).
   'd11-shaft': {
     id: 'd11-shaft', headline: 'An old shaft by Starý Rokytník',
     story: 'The survey found an old copper mine shaft under the line. Nothing of ours may go near it.',
@@ -439,9 +441,9 @@ export const CURVEBALLS: Record<string, Curveball> = {
   // contract-price-ceiling); the cap is the game's (our bill does not hold what the contract does): 89 % of the starting
   // bill, the goal is 90 %, what the reference with every news reaches. It comes last.
   'd11-contract': {
-    id: 'd11-contract', headline: 'The works are let',
-    story: 'The contract was signed 10 % under the estimate. The design must now keep within it.',
-    ask: 'Keep the bill under 89 % of the planned line’s',
+    id: 'd11-contract', headline: 'The contract is signed',
+    story: 'The works were let for 11.71 bn, 10 % under the estimate. The ministry wants the design trimmed as well.',
+    ask: 'Keep the bill under 89 % of the planned line’s (the game’s limit)',
     cite: { text: 'ŘSD leaflet, 04/2026 (the contract, 10/2024)', url: 'https://apdos-v2.creativesound.cz/media/stavba/747/leaflet/infoletak_d11-trutnov-hranice-2etapa.pdf' },
     budget: 0.89,
   },
@@ -486,7 +488,7 @@ export const CURVEBALLS: Record<string, Curveball> = {
   'kralovec-money': {
     id: 'kralovec-money', headline: 'Less money for roads',
     story: 'The state road fund has less money next year. The railway must cost less to keep its place.',
-    ask: 'Keep the bill under 88 % of the planned line’s',
+    ask: 'Keep the bill under 88 % of the starting line’s',
     cite: { text: 'A game event of a kind real projects meet (the state road fund is set year by year)' },
     budget: 0.88,
   },

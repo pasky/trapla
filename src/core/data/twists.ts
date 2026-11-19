@@ -46,8 +46,8 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
     real: { price: 2_037e6, priceText: 'ŘSD estimate, 07/2025, with two interchanges, climbing lanes and walls',
       story: 'Designed and ready, but a listed villa’s garden and protected butterflies have stopped the permit until 2027.' },
   },
-  // ---- the other missions: earth balance and landmarks where the starter breaks / passes them (curveballs: research/92–94).
-  // The whole D3 and the whole D35 have none yet: the reference search there takes hours (4.7 / 2 s an evaluation).
+  // ---- the other missions (curveballs: research/92–95; the whole routes' references stitched from their sections',
+  // scripts/twists-stitch.ts)
   'd3-0301-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'bridges', 'scratch', 'byHand'], startBill: 5_082e6, terms: { earthShare: EARTH_SHARE, bridgeM: 500 }, curveballs: ['d3-0301-graves', 'd3-0301-gas', 'd3-0301-farm', 'd3-0301-nest', 'd3-0301-money'],
     real: { price: 12_900e6, priceText: 'ŘSD estimate, 09/2025, with the 1.7 km Kamenná Vrata tunnel', story: 'The first stretch has its planning decision; an exploratory gallery is probing the rock for its tunnel.' } },
   'd3-0302-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'homes', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 6_761e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1300, forestHa: 5.0 }, curveballs: ['d3-0302-luka', 'd3-0302-slope', 'd3-0302-quiet', 'd3-0302-nest', 'd3-0302-money'],
