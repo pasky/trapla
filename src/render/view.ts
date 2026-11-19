@@ -598,7 +598,7 @@ export class View {
     return material;
   }
 
-  private makeLine(points: number[], colors: number[] | null, width: number, opts: Partial<{ color: number; opacity: number; depthTest: boolean; dashed: boolean; dashSize: number; gapSize: number; order: number }> = {}) {
+  private makeLine(points: number[] | Float32Array, colors: number[] | Float32Array | null, width: number, opts: Partial<{ color: number; opacity: number; depthTest: boolean; dashed: boolean; dashSize: number; gapSize: number; order: number }> = {}) {
     const g = new LineGeometry();
     g.setPositions(points);
     if (colors) g.setColors(colors);
@@ -1399,14 +1399,15 @@ export class View {
 
   /** Centreline (screen-space width so it reads at any zoom) and its see-through ghost. */
   private centreline(r: Result, bad: Uint8Array): THREE.Object3D[] {
-    const cp: number[] = [], cc: number[] = [], v = new THREE.Vector3();
+    // (typed: a long route's is redrawn on every drag preview)
+    const cp = new Float32Array(3 * r.n), cc = new Float32Array(3 * r.n), v = new THREE.Vector3(), drape = (x: number, y: number) => this.drapeHeight(x, y);
     for (let i = 0; i < r.n; i++) {
       const tun = r.kind[i] === KIND.tunnel;
-      const z = routeIndicationHeight(r, i, (x, y) => this.drapeHeight(x, y));
+      const z = routeIndicationHeight(r, i, drape);
       this.local(r.x[i], r.y[i], z, v);
-      cp.push(v.x, v.y, v.z);
+      cp[3 * i] = v.x; cp[3 * i + 1] = v.y; cp[3 * i + 2] = v.z;
       const c = bad[i] ? COL.bad : r.kind[i] === KIND.bridge ? COL.bridge : tun ? COL.tunnel : COL.earth;
-      cc.push(c.r, c.g, c.b);
+      cc[3 * i] = c.r; cc[3 * i + 1] = c.g; cc[3 * i + 2] = c.b;
     }
     const line = this.makeLine(cp, cc, 3.5, { order: 4 });
     line.name = 'centre';

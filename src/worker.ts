@@ -7,7 +7,7 @@ import type { EvalContext, Result } from './core/evaluate';
 import { adoptFull, previewBase } from './core/preview-window';
 import { RoadNet } from './core/roadnet';
 import { Terrain } from './core/terrain';
-import type { ProjectEnvironment, ProjectResult } from './core/project';
+import type { ProjectEnvironment, ProjectResult, RouteResult } from './core/project';
 import { evaluateProject, previewProjectRoute } from './core/project-evaluate';
 import type { NoiseBandOut } from './core/project-protocol';
 import { noiseBand } from './core/noise';
@@ -44,6 +44,15 @@ function previewBuffers(r: Result): ArrayBuffer[] {
   return [...buffers];
 }
 
+/** What of a preview the main thread shows (the centreline, the profile, the score): without the slopes' face samples
+ * (`faceL` / `faceR`: ten thousand small arrays on a whole-D3 preview, drawn only from a full result) and the
+ * transport surface of a road it has the result of (drawn and picked from the full result's). */
+function leanPreview(route: RouteResult): RouteResult {
+  const lean = (r: Result): Result => { const { faceL: _l, faceR: _r, ...rest } = r; return rest; };
+  return { ...route, ...(route.legacy ? { legacy: lean(route.legacy), surface: null } : {}),
+    ...(route.drawn ? { drawn: route.drawn.map(p => ({ ...p, result: lean(p.result) })) } : {}) };
+}
+
 function runBand() {
   const job = band!;
   band = null;
@@ -67,7 +76,7 @@ function run() {
     if (!projectEnvironment) throw new Error('Project environment missing from worker init');
     const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays, ...(railPaths ? { railPaths } : {}) };
     if (job.type === 'project-preview') {
-      const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, { materialValue: job.materialValue, structureValue: job.structureValue }, lastProject);
+      const result = leanPreview(previewProjectRoute(projectContext, job.snapshot, job.routeId, { materialValue: job.materialValue, structureValue: job.structureValue }, lastProject));
       post({ type: 'project-preview', id: job.id,
         identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, routeId: job.routeId, routeRevision: result.revision, result,
         ...(job.gesture ? { gesture: job.gesture } : {}) }, result.legacy ? previewBuffers(result.legacy) : []);
