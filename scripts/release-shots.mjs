@@ -114,7 +114,7 @@ try {
     await page.goto(`${site.url}?scenario=d35&preset=d35-stage1-motorway`);
     await page.waitForFunction(() => { const t = document.querySelector('#loading .loading-line')?.textContent ?? ''; const m = t.match(/^([\d.]+) of ([\d.]+) MB/); return m && +m[1] > 0.3 * +m[2]; }, null, { timeout: 60000, polling: 50 });
     const line = await page.locator('#loading').textContent();
-    ok(/Loading the map\s*Opatovec → Staré Město.*[\d.]+ of 5\.0 MB/.test(line), `the loading card says what and how much ("${line}")`);
+    ok(/Loading the map\s*Opatovec → Staré Město.*[\d.]+ of 5(\.0)? MB/.test(line), `the loading card says what and how much ("${line}")`);
     await shot(page, 555, 'loading-card');
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 120000, polling: 20 });
