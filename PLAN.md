@@ -2702,8 +2702,8 @@ validity unchanged. `node scripts/eggs-shots.mjs [--docs] [--only …]` plays ea
   `release-shots.mjs` checks two of them on the built site.
 - **Fly along** (`ui/fly-along.ts`, `View.holdCamera`): from an end's card; max(ground + 26, deck + 15) m, smoothed;
   45 m/s, at most ≈ 2 min; markers, labels, the planned line and bought-out marks hidden; Esc, a press or a wheel stops
-  it and restores the view. Frame times (`eggs-shots.mjs --gpu --only fly --frames`, the whole D3 0302 flight, 5,713
-  frames, land cover streaming): median 16.7, p95 16.7, max 16.8 ms. Not a cab view (no tunnel inside).
+  it and restores the view. Frame times (`eggs-shots.mjs --gpu --only fly --frames`, the whole D3 0302 flight, 5,711
+  frames, land cover streaming, ce0443c): median 16.7, p95 16.7, max 16.8 ms. Not a cab view (no tunnel inside).
 - **Ground band** (`ui/ground-words.ts`, research/99): Key ▾ → Ground (off by default, remembered), a 6 px band under the
   ground line in muted colours, the classes listed; a cut's More "Mapped ground: …". Unmapped ground: nothing.
 - **Watershed** (`core/basins.ts`, `pipeline/build_basins.py` → a pack's `basins.json`, research/100): each end of a tunnel
