@@ -211,13 +211,18 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   }
 
   // ---- the reveal ----
+  /** how long the player's design took against the real one's years (research/96 §8): play time, whole minutes */
+  const tookLine = (ms: number, year: number) => {
+    const min = Math.max(1, Math.round(ms / 60_000));
+    return `Yours took ${min} minute${min === 1 ? '' : 's'}. The real one was in environmental review by ${year}.`;
+  };
   let revealEl: HTMLElement | null = null;
   /** the reveal waits while news is on screen */
   let pendingReveal = false;
   function reveal(again: boolean) {
     const r = last?.result, total = r?.cost.total ?? state.revealed?.cost ?? null;
     if (total === null) return;
-    if (!again) { state.revealed = { cost: total, on: [...state.on] }; save(); render(); }
+    if (!again) { state.revealed = { cost: total, on: [...state.on], playMs: state.playMs }; save(); render(); }
     revealEl?.remove();
     const el = revealEl = document.createElement('section');
     el.className = 'reveal';
@@ -233,6 +238,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
       </div>
       ${real.price ? `<p class="reveal-real">The real project: <b>${money(real.price)}</b> <small>${esc(real.priceText)}</small></p>` : `<p class="reveal-real"><small>${esc(real.priceText)}</small></p>`}
       <p class="reveal-story">${esc(real.story)}</p>
+      ${real.reviewBy && state.revealed?.playMs ? `<p class="reveal-took">${esc(tookLine(state.revealed.playMs, real.reviewBy))}</p>` : ''}
       ${metList ? `<ul class="reveal-twists">${metList}</ul>` : '<p class="reveal-twists"><small>No twists on.</small></p>'}
       <div class="reveal-btns"><button type="button" class="primary">Keep improving</button></div></div>`;
     el.querySelector<HTMLButtonElement>('button.primary')!.onclick = () => { el.remove(); revealEl = null; };

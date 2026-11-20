@@ -56,13 +56,14 @@ smoke|browser|full|PORT=\$((PORT + 10)) node scripts/smoke.mjs
 playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/playtest.mjs
 toolbar|browser|full|PORT=\$((PORT + 30)) node scripts/toolbar-layout.mjs --out $log/toolbar-shots
 interchange|browser|full|PORT=\$((PORT + 80)) node scripts/interchange-scene.mjs
+crossing-drag|browser|full|PORT=\$((PORT + 90)) node scripts/crossing-drag-scene.mjs
 smoke-dist|browser|full|DIST=dist PORT=\$((PORT + 40)) node scripts/smoke.mjs
 playtest-dist|browser|full|DIST=dist PORT=\$((PORT + 50)) OUT=$log/playtest-dist-shots node scripts/playtest.mjs
 toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-layout.mjs --out $log/toolbar-dist-shots
 start-screen|browser|full|DIST=dist PORT=\$((PORT + 70)) node scripts/release-shots.mjs --check
-$(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
+$(for m in road radius pin vpi link crossing; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 $(for m in road link; do echo "drag-d11-motorway-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d11 --preset d11-motorway --mode $m"; done)
-$(for m in bend road link; do echo "drag-i35-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-full --preset i35-full-road --mode $m$([ $m = road ] && echo ' --bend 20')"; done)
+$(for m in bend road link crossing; do echo "drag-i35-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario i35-full --preset i35-full-road --mode $m$([ $m = road ] && echo ' --bend 20')"; done)
 $(for m in bend road link; do echo "drag-d3-full-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --scenario d3-full --mode $m"; done)
 EOF
 }

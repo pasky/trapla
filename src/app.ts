@@ -1,7 +1,7 @@
 // The game itself, loaded while the start screen is up (src/main.ts): the pack, the 3D view, the workers, the
 // panels and every event between them.
 import { CATEGORIES, lineOf } from './core/data/categories';
-import { scenarioParams } from './core/data/scenario';
+import { PRESETS, scenarioParams } from './core/data/scenario';
 import { missionProject } from './core/project-mission';
 import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
@@ -16,7 +16,7 @@ import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped rai
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
 import { DecisionList } from './ui/build-tools';
-import { buildingInfo, Inspector } from './ui/inspector';
+import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -27,7 +27,7 @@ import type { PickedScenario } from './ui/scenario-picker';
 import { startEvalWorkers } from './eval-workers';
 import { newSession } from './session';
 import { openProjectStore } from './project-store';
-import { makeLegacyProjectContext } from './core/project-legacy';
+import { legacyDesignForRoute, makeLegacyProjectContext } from './core/project-legacy';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -35,7 +35,7 @@ import { type StorageGuard, showStorageNotice } from './ui/storage-guard';
 import { RouteBar } from './ui/route-bar';
 import { CurveEditor } from './ui/curve-edit';
 import { Hud } from './ui/hud';
-import { noLinksCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
+import { noLinksCard, officialCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
 import { ProfilePanel } from './ui/profile';
 import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
@@ -50,8 +50,18 @@ import { createProjectScore } from './ui/project-score';
 import { installMapWindow } from './ui/map-window';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
+import { createCrossingDrag } from './ui/crossing-drag';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
+import { earnedRecord } from './ui/records';
+import { slipDrive } from './ui/slip-sweep';
+import { MISSION_TWISTS } from './core/data/twists';
+import { MINED_TUNNEL_LORE, OFFICIAL_LORE, mappedLore } from './core/data/lore';
+import { bridgeSheetSvg, printBridgeSheet } from './ui/bridge-print';
+import { waterWidth } from './core/watercourses';
+import { shownRange, shownS } from './ui/chainage';
+import { watershedLine, type BasinData } from './core/basins';
+import { createFlyAlong } from './ui/fly-along';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
@@ -62,8 +72,8 @@ import { Intro } from './ui/intro';
 import { createTwists } from './ui/twists';
 import type { TwistId } from './core/twists';
 import type { ProjectResult } from './core/project';
-import { normalizeVpis } from './core/evaluate';
-import { KIND } from './core/structures';
+import { normalizeVpis, type Result } from './core/evaluate';
+import { KIND, type Run } from './core/structures';
 import { toast } from './ui/toast';
 
 const status = document.getElementById('status')!;
@@ -188,11 +198,29 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   /** shaping reroutes on the map (constructed once the store hooks exist) */
   let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined, mappedNet: RoadNet | undefined;
+  /** which sea each place drains to: loaded on first need (undefined: not asked yet) */
+  let basins: BasinData | null | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
     radiusNote: (i, r) => radiusNotes.get(store.activeRouteId, i, r),
     natureNotes: (r, d, s0, s1) => natureNotes(pack.terrain, r, d, s0, s1),
+    minedTunnel: () => MINED_TUNNEL_LORE[scenario.id],
+    // the ends of a tunnel or a cut in different seas' basins (core/basins.ts; loaded on the first such card)
+    watershed: (r, i0, i1, s0, s1) => {
+      if (basins === undefined) { basins = null; void pack.loadBasins().then(b => { basins = b; if (b) inspector.render(); }); return null; }
+      if (!basins) return null;
+      // (the km as the card shows them: counted from the line's own start, the nearer end first)
+      const ends = [{ x: r.x[i0], y: r.y[i0], s: shownS(s0) }, { x: r.x[i1], y: r.y[i1], s: shownS(s1) }].sort((p, q) => p.s - q.s);
+      return watershedLine(basins, ends[0], ends[1]);
+    },
+    // a record beaten, only where the player made the structure (against the start and the From scratch straight)
+    record: (r, d, run) => {
+      const now = store.readIn(projectStore.snapshot.design);
+      if (!now) return null;
+      const starters = () => [initialProject(), straightProject()].map(p => store.readIn(p)).filter((x): x is NonNullable<typeof x> => !!x);
+      return earnedRecord(r, d, lineOf(CATEGORIES[d.category]), run, now, starters);
+    },
     together: (j) => {
       const receiver = session.projectFull?.complete ? session.projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
       if (!receiver) return null;
@@ -209,14 +237,18 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
   let namesAsked = false;
   // ---- road links: the transport graph, loaded on first need (ui/road-links.ts) ----
-  const links = createRoadLinks({ session, store, projectStore, pack, view, transportData, worker, previewWorker, select: next => select(next) });
+  const links = createRoadLinks({ session, store, projectStore, pack, view, scenario, transportData, worker, previewWorker, select: next => select(next) });
   const { ensure: ensureTransport, claimedSources, mappedRoadNear, legacyRoadAt } = links;
   // A saved project that already rebuilds mapped roads needs the graph before its first scene.
   if (claimedSources().length) await ensureTransport();
   view.onNeedTransport = () => { void ensureTransport(); };
   if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
   const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
+  /** what a drag of the selection would rebuild, prepared while the player looks (ui/map-gestures.ts; set below) */
+  let prepareDrag: ((next: Sel | null) => void) | undefined;
   // ---- the selection (ui/selection.ts) ----
+  /** the slip roads already drawn once */
+  const swept = new Set<string>();
   const selection = createSelection({
     session, store, projectStore, pack, view, profile, extras, hud, inspector, annotations, intro, buildTool, activeEndpoints,
     get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
@@ -225,6 +257,15 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     // A first-time player (the intro is up) finds our road selected, so the first drag bends it as the intro
     // says; a returning player's drags move the map until a click selects a road.
     startSelected: intro.visible,
+    // a finished slip road, the first time it is selected: one stroke in its driving direction (ui/slip-sweep.ts)
+    onRoadSelected: () => {
+      const id = store.activeRouteId, full = session.projectFull;
+      if (!id || swept.has(id) || !full?.complete) return;
+      const r = full.routes[id]?.legacy, pts = r && slipDrive(projectStore.snapshot.design, id, r);
+      if (!pts) return;
+      swept.add(id); view.sweepLine(pts);
+    },
+    onSelected: next => prepareDrag?.(next),
   });
   const { selectedPi, select, selectPiece, revalidate, deselect, selectRoad } = selection;
   view.onEndClick = (end) => select({ kind: 'end', end });
@@ -248,14 +289,51 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const showSource = (hit: SourceHit) => {
     if (!links.editor) return;
     deselect(); inspector.host(); links.editor.show(hit); hud.revealContext('inspector');
+    if (links.editor.interval && links.editor.lineKind) prepareRebuild(links.editor.interval, links.editor.lineKind);
   };
   const showNoLinks = () => { deselect(); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
+  const showOfficial = () => {
+    deselect();
+    // (the dashed line is the mapped project of this map, a road or motorway: on the railway mission its price is the
+    // motorway's, not "no such railway")
+    const own = scenario.mode === 'railway' ? PRESETS.find(p => p.id === scenario.id && p.mode !== 'railway' && MISSION_TWISTS[p.presetId ?? p.id]) : scenario;
+    const real = own ? MISSION_TWISTS[own.presetId ?? own.id]?.real : undefined;
+    officialCard(() => inspector.host(), () => select(null), { label: scenario.labels.official, real, lore: OFFICIAL_LORE[scenario.id] });
+    hud.revealContext('inspector');
+  };
 
   // ---- edits (ui/design-edits.ts) ----
   const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, setEnd, inspectorEvents, decisionEvents } = createDesignEdits({
     store, profile, get last() { return session.last; }, select: (next, fly) => select(next, fly), deselect: () => deselect(),
   });
-  inspector.ev = inspectorEvents;
+  // a bridge printed as a card for the desk (ui/bridge-print.ts): what the game built, over what passes under it
+  const printBridge = async (r: Result, run: Run) => {
+    // (what is drawn is taken now, before the map's names load: a road switched meanwhile does not mix in)
+    const design = projectStore.snapshot.design, full = session.projectFull, active = store.activeRouteId;
+    const mid = { x: r.x[Math.round((run.i0 + run.i1) / 2)], y: r.y[Math.round((run.i0 + run.i1) / 2)] };
+    const decks = Object.entries(full?.routes ?? {}).flatMap(([id, q]) => {
+      const lr = id === active ? r : q.legacy; if (!lr) return [];
+      let half = 5; try { half = CATEGORIES[legacyDesignForRoute(design, id).category].crownWidth / 2; } catch { /* not a road the widgets edit */ }
+      return lr.runs.filter(d => d.kind === KIND.bridge && Math.hypot(lr.x[d.i0] - mid.x, lr.y[d.i0] - mid.y) < run.length + 400).map(d => ({ r: lr, run: d, half }));
+    });
+    let high = 0; for (let i = run.i0; i <= run.i1; i++) high = Math.max(high, r.grade[i] - r.ground[i]);
+    const [a, b] = shownRange(run.s0, run.s1), m0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const sub = `Your bridge · km ${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)} · ${m0(run.length)} m long · up to ${m0(high)} m high`;
+    await links.ensure().catch(() => undefined);
+    const names = await pack.loadWaterNames();
+    const net = pack.roadNet?.ways ?? [], widths: Record<string, number> = { motorway: 27.5, trunk: 11.5, primary: 9.5, secondary: 8, tertiary: 7 };
+    const svg = bridgeSheetSvg({ title: scenario.title, sub, r, run, decks,
+      roads: net.map((w, j) => ({ xy: w.slice(1), width: widths[pack.roadNet!.cls[w[0]]] ?? 4, name: j < (pack.overlays.net?.ways.length ?? 0) ? links.wayName(j) : undefined })),
+      railways: (links.graph?.sources ?? []).filter(q => q.kind === 'railway').map(q => ({ xy: q.xy, tunnel: q.tunnel,
+        name: mappedLore(scenario.id, q.id, q.tags)?.title ?? (q.tunnel ? 'railway, in a tunnel' : 'railway') })),
+      water: (pack.terrain.watercourses?.data.reaches ?? []).map(w => ({ points: w.points, width: waterWidth(w), name: names.get(w.id) })),
+      credit: 'Trapla · your design · terrain © ČÚZK, DMR 5G, CC BY 4.0 · map © OpenStreetMap contributors, ODbL' });
+    printBridgeSheet(svg);
+  };
+  // fly along the line from an end (ui/fly-along.ts): only when asked, the map's markers hidden meanwhile (made
+  // before the shortcuts: its Esc goes first)
+  const flyAlong = createFlyAlong(view, document.getElementById('overlay')!, (x, y) => pack.terrain.heightAt(x, y));
+  inspector.ev = { ...inspectorEvents, fly: (r, from) => flyAlong.start(r, from), printBridge: (r, run) => { void printBridge(r, run); } };
   decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });
@@ -301,7 +379,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
 
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----
   // what is under the pointer (ui/map-picks.ts)
-  const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt } = createMapPicks({
+  const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt, officialAt } = createMapPicks({
     view, pack, extras, buildingPicker, transportData,
     get projectFull() { return session.projectFull; }, get last() { return session.last; }, get activeRouteId() { return store.activeRouteId; },
     get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
@@ -309,15 +387,21 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
   // ---- map gestures: click, drag to bend / rebuild / shape, double click (ui/map-gestures.ts) ----
   const lastClient = { x: 0, y: 0 };
-  const { events: mapEvents, mappedGrab, releaseGrab } = createMapGestures({
-    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
+  const crossingDrag = createCrossingDrag({
+    get transportIndex() { return links.index; }, get sourceEditor() { return links.editor; }, roadNet: pack.roadNet,
+    get projectFull() { return session.projectFull; }, get activeRouteId() { return store.activeRouteId; },
+    get routes() { return projectStore.snapshot.design.routes; },
+  });
+  const { events: mapEvents, mappedGrab, crossingPlan, releaseGrab, prepareFor, prepareRebuild } = createMapGestures({
+    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, sourceAt, thingAt, crossingDrag,
+    get last() { return session.last; },
     get A() { return ends.a; }, get B() { return ends.b; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get sourceEditor() { return links.editor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
     get roadSelected() { return selection.roadSelected; }, get sel() { return session.sel; },
-    ensureTransport, select, selectPiece, deselect, selectRoad, switchRoute, showSource, showNoLinks, deletePi, placeAt, legacyRoadAt,
+    ensureTransport, select, selectPiece, deselect, selectRoad, switchRoute, showSource, showNoLinks, showOfficial, deletePi, placeAt, legacyRoadAt,
   });
-  view.ev = mapEvents;
+  view.ev = mapEvents; prepareDrag = prepareFor;
 
   // ---- profile: the same verbs (ui/profile-events.ts) ----
   profile.ev = profileEvents({
@@ -331,11 +415,11 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
 
   // ---- hover links between the map and the profile, the map's cursor (ui/map-hover.ts) ----
   const { highlightBend } = installMapHover({
-    view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
+    view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, officialAt,
     get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get roadSelected() { return selection.roadSelected; }, get selectedCrossing() { return session.sel?.kind === 'crossing' ? session.sel.roadId : null; },
-    ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
+    ensureTransport, placeAt, mappedGrab, crossingPlan, mappedRoadNear, bendLabel,
   });
 
   // map → profile: the part of the route the map shows (ui/map-window.ts)
@@ -411,7 +495,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
 
   // ---- debug / automation API (src/automation.ts) ----
   installAutomation({
-    store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A: ends.a, B: ends.b, handlerTiming,
+    store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A: ends.a, B: ends.b, handlerTiming, flyAlong,
     get last() { return session.last; }, get projectFull() { return session.projectFull; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; }, get sourceEditor() { return links.editor; },
     get sel() { return session.sel; }, get qualifiedSelection() { return session.qualifiedSelection; },

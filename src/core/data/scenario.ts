@@ -339,7 +339,8 @@ export const D11_MOTORWAY: ScenarioParams = {
   picker: { kind: 'Motorway', goal: 'Take the D11 over the hills to the Polish S3.', section: 'Motorway D11' },
   traffic: 13_000, heavyShare: MOTORWAY_TRAFFIC.heavyShare, maxTravelMin: 12.6,
   labels: { ...D11_SCENARIO.labels, brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border, where the S3 goes on)' },
-  ends: { a: { kind: 'joins', with: 'the D11 from Jaroměř' }, b: { kind: 'continues', with: 'the S3 in Poland' } },
+  ends: { a: { kind: 'joins', with: 'the D11 from Jaroměř' }, b: { kind: 'continues', with: 'the S3 in Poland',
+    lore: 'Across the border, Poland’s S3 has run all the way to Szczecin since July 2024.' } }, // research/96 §5
   // B: the S3 carriageways that start there (OSM ways 1171616839 into B, 1171616840 out of it; ref S3, both mapped
   // motorway) are our motorway's continuation: met at B, not a road our earthworks cover (as the D3 0305/I joins
   // the open D3). The road mission keeps the pack's plain end.

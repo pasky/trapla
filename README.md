@@ -266,6 +266,28 @@ A mission without twists says so ([the class I road](docs/screenshots/653-no-twi
 ([the whole D3](docs/screenshots/654-whole-route-twists.png)). Each twist is offered only where a reference design meets it
 (`npx tsx scripts/twists-check.ts`, PLAN.md "Twists and curveballs").
 
+### Small details
+
+A few quiet, sourced lines on cards you already open, never a pop-up (research/96–101, PLAN.md "Small details"): a mapped
+road or railway that has a story says it in one grey line (the Ecce Homo hill-climb on Opavská, [Šternberk](docs/screenshots/660-lore-ecce-homo.png);
+[the Žampach viaduct](docs/screenshots/661-lore-zampach.png); [the Hřebeč tunnel](docs/screenshots/662-lore-hrebec.png);
+[R35](docs/screenshots/663-lore-r35.png); [trains on to Lubawka](docs/screenshots/664-lore-kralovec.png); the D11's end,
+[the Polish S3](docs/screenshots/665-lore-s3.png)). A bridge or tunnel of yours that beats a Czech record says so once
+([longer than Panenská](docs/screenshots/666-record-tunnel.png)), never on the starter's own. The failure screens carry a
+Czech road sign ([http](docs/screenshots/667-sign-insecure.png), [no WebGL](docs/screenshots/668-sign-webgl.png),
+[small window](docs/screenshots/669-sign-small.png), [download failed](docs/screenshots/670-sign-loading-failed.png)).
+*Fly along* on an end's card flies 28 m over the line ([a cut](docs/screenshots/671-fly-along-1124.png),
+[the Sázava bridge](docs/screenshots/672-fly-along-2356.png), [over the hill where it tunnels](docs/screenshots/673-fly-along-over-tunnel.png));
+Esc or a click stops it. Key ▾ → *Ground* draws the mapped ground under the profile's ground line
+([key](docs/screenshots/674-ground-band-key.png), [band](docs/screenshots/675-ground-band.png)); a cut's More names it
+([card](docs/screenshots/676-ground-cut-card.png)). A tunnel or cut whose ends drain to different seas says so
+([the D35 under the Hřebeč ridge](docs/screenshots/677-watershed-tunnel.png)); St Barbara at the real Poříčí portal, on a mined tunnel's card on the
+D11 ([card](docs/screenshots/678-barbara-tunnel.png)); the reveal says how long yours took ([reveal](docs/screenshots/679-reveal-took.png));
+a slip road is drawn once in its driving direction when first selected ([stroke](docs/screenshots/680-slip-road-stroke.png));
+the dashed planned line answers a click ([card](docs/screenshots/681-official-line-card.png)); and a bridge's More →
+*Print bridge card* prints one A4 to fold and stand on a desk ([the Sázava bridge](docs/screenshots/682-bridge-card-d3-0302.png),
+[Šternberk](docs/screenshots/683-bridge-card-i46-sternberk.png)). `node scripts/eggs-shots.mjs` plays them all.
+
 ### Scenarios
 
 The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),
@@ -406,6 +428,22 @@ Also: [the diamond from the south-west](docs/screenshots/626-diamond-oblique.png
 crossroads on road II/114](docs/screenshots/628-slip-road-junction-on-road-ii-114.png), [the D3 0303
 diamond](docs/screenshots/632-d3-0303-diamond-overview.png), [its slip road past the tracks the motorway
 moves aside](docs/screenshots/633-d3-0303-slip-road-over-moved-track.png).
+
+A selected crossing's parts drag too (select first, then drag): its ring slides where the crossed road crosses ours
+along our road (the road rebuilt around the crossing, its angle kept; undo "moving where … crosses"), its lit works bend
+that road, a reroute's new road reshapes; what cannot move says why on hover. A selected mapped road's open dead end
+has an End handle: dragged back, the piece beyond is taken up (billed, nothing regraded; a home it was the only road to
+is a problem). Real-mouse check: `node scripts/crossing-drag-scene.mjs [--docs]` (screenshots 700–709).
+
+| The ring of Nudvojovická's crossing, selected | Slid along our road |
+|---|---|
+| ![Ring](docs/screenshots/700-crossing-ring-hover.png) | ![Slid](docs/screenshots/702-crossing-slid-its-card.png) |
+| A dead end's handle | Taken up: the home it served is a problem |
+| ![Dead end](docs/screenshots/707-dead-end-handle.png) | ![Taken up](docs/screenshots/709-dead-end-taken-up.png) |
+
+Also: [the slide's live preview](docs/screenshots/701-crossing-ring-sliding.png), [a drag on its works](docs/screenshots/703-crossed-road-works-bent.png),
+[D11 road III/3012](docs/screenshots/704-d11-iii-3012-ring.png) [slid](docs/screenshots/705-d11-iii-3012-slid.png),
+[a cut way's ring says why](docs/screenshots/706-cut-way-ring-says-why.png), [the dead end dragged back](docs/screenshots/708-dead-end-dragged-back.png).
 
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|

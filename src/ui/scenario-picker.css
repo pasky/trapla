@@ -51,3 +51,5 @@ body > .scenario-picker-return { position: fixed; top: 10px; left: 10px; z-index
   .scenario-picker-grid { grid-template-columns: 1fr; gap: 14px; }
   .scenario-picker-card { padding: 20px; }
 }
+/* a road sign above a device notice's heading (ui/signs.ts) */
+.device-notice .notice-sign-box { margin: 18px 0 2px; line-height: 0; }

@@ -2716,6 +2716,56 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   bands, preview bases), and its typed arrays are the cheap part of the message (objects are most of its decode).
 
 
+## Small details (owner request "fun non-cringe but delightful easter eggs", no model version, 2026-11-20)
+
+A board of three models brainstormed and cross-examined (memo of 2026-11-19); this is the slate built. Quiet, earned,
+true: no pop-up, no emoji, nothing in the drag path; every fact sourced like a price (research/96–101). Bills and
+validity unchanged. `node scripts/eggs-shots.mjs [--docs] [--only …]` plays each one and asserts it (screenshots 660–683).
+
+- **Local knowledge** (`core/data/lore.ts`, research/96): one grey line, last on the card a mapped way already opens
+  (before every early return of `MappedRoadCard.show()`): Ecce Homo on III/44423, the Žampach viaduct (its own title),
+  the Hřebeč tunnel (on the I/35 ways either side: the tunnel way is not drawn), R35 on the I/35 in Český ráj, trains on
+  to Lubawka and Sędzisław (title "Trutnov – Lubawka railway"); the D11's end B card: the Polish S3. A railway's `ref`
+  ("625 00", a track code) is never its name. `tests/player-text.test.ts` checks each line (≤ 18 words).
+- **Records** (`core/data/records.ts`, `ui/records.ts`, research/97): above the larger published figure only (Panenská
+  2,168 m, Ejpovice 4,150 m, Radotín 2,291 m, Negrelli 1,120 m, Žďákov 90 m), dated 11/2026; never on the unedited
+  starter nor on a starter's structure the player has not touched (plan moved over it, a pin, a painted structure,
+  By hand), against both the start and From scratch. Recheck when the Plasy bridge (2028) or a longer tunnel opens.
+- **Failure screens' signs** (`ui/signs.ts`, research/98): Z 2, A 6a, IP 10a, IS 11c, aria-hidden;
+  `release-shots.mjs` checks two of them on the built site.
+- **Fly along** (`ui/fly-along.ts`, `View.holdCamera`): from an end's card; max(ground + 26, deck + 15) m, smoothed;
+  45 m/s, at most ≈ 2 min; markers, labels, the planned line and bought-out marks hidden; Esc, a press or a wheel stops
+  it and restores the view. Frame times (`eggs-shots.mjs --gpu --only fly --frames`, the whole D3 0302 flight, 5,711
+  frames, land cover streaming, ce0443c): median 16.7, p95 16.7, max 16.8 ms. Not a cab view (no tunnel inside).
+- **Ground band** (`ui/ground-words.ts`, research/99): Key ▾ → Ground (off by default, remembered), a 6 px band under the
+  ground line in muted colours, the classes listed; a cut's More "Mapped ground: …". Unmapped ground: nothing.
+- **Watershed** (`core/basins.ts`, `pipeline/build_basins.py` → a pack's `basins.json`, research/100): each end of a tunnel
+  or cut on DIBAVOD A10; the D35 tunnel under the Hřebeč ridge (North Sea / Black Sea). The official line also puts the
+  D11's and the railway's last km in the Odra basin (the board's own flood test said not). The i35 packs have no file
+  (their cached inputs differ from their manifests): nothing said there.
+- **St Barbara** (research/96 §7): a mined tunnel's More on the D11 map. **The reveal's minutes** (research/96 §8):
+  "Yours took N minutes. The real one was in environmental review by YEAR." (CENIA's earliest dated document; none on the
+  railway). **A slip road's stroke** (`ui/slip-sweep.ts`, `View.sweepLine`): the first selection of a finished slip road,
+  once a session. **The planned line's card** (`ui/route-cards.ts` officialCard): what it is, OpenStreetMap, the real
+  price (data/twists.ts), the D11's Opevnění name; a pointer over it.
+- **Print bridge card** (`ui/bridge-print.ts`, `pipeline/build_water_names.py` → `water-names.json`, research/101): beam and
+  long-span bridges (no arch yet); both faces at one true scale; checked as PDF, not yet on paper (the owner's print and
+  fold decides whether it stays).
+
+New pack sidecars (gitignored, like `structures.json`): `basins.json` and `water-names.json`; copy them with the packs, or
+run `uv run --with pyshp --with shapely python pipeline/build_basins.py` and `uv run python pipeline/build_water_names.py`
+on a pack built without them (the main checkout's packs need it once). Without them the watershed line and the card's
+stream names are simply absent. The i35 packs are left without both for now (no `basins.json`: their cached inputs
+differ from their manifests; no `water-names.json`: no cached watercourse snapshot); rebuilding them would add both.
+
+Ideas left for the owner: **carbon-3c** "Hear the level difference" (an opt-in sound on a house's noise card: a fixed
+sourced traffic sample at the floor's level with and without walls; the game's first sound, needs the EN 1793-3 table
+in research/ and the owner wanting sound). **Second wave:** the curated camera views "Look from here" at hand-checked
+lookouts (fable-9: they read at Raisova and Žampach, not at Trosky or Máj; overlays and the scene's own lines hidden;
+"over the terrain, trees not drawn"), clickable viewpoints with the Cimrman lookout entry (carbon-1 card), place-name
+glosses (Dakota / Toronto), read-only structure names (fable-2, needs river names, now in `water-names.json`), the
+specimen envelope (astra-2, the rival of the ground band).
+
 ## A pin the player set is honoured (owner request, cost model 59, 2026-11-20)
 
 **The owner's report** (I/35 Turnov → Valdštejnsko): a pin 256.0 m at km 0.29, where our road crosses the Liberec
@@ -2802,3 +2852,54 @@ pinned evaluation with such a pin solves more (Auto's line without it, the spans
 every pass of the evaluation): the Královec project with the pin 441.9 m or 439.5 m ≈ 3.0–3.4 s, without a pin ≈ 0.5 s,
 main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before; drag-perf pin mode within its budgets.
 `scripts/exact.ts`: all 243 results of 16 packs identical to main.
+
+## A selected crossing's parts drag; a dead end cut back (owner report, no model version, 2026-11-20)
+
+- **Bug (owner, I/35 Turnov → Valdštejnsko, Photo view):** Nudvojovická (class III) carried over us at km 1.67, its card
+  open: "anywhere I click on the segment (the big circle, elsewhere), it just drags the landscape". Confirmed: a press on
+  the crossing's ring (it lets the pointer through to the map) or on its lit works selected or kept the crossing, which
+  had no drag, so the press was the camera's (a reroute's new road alone had one, `link-edit.ts`).
+- **Fix (select first, then drag; no modifiers; `ui/crossing-drag.ts`, `ui/map-gestures.ts`):** once a crossing is
+  selected, a drag of
+  - **its ring** slides where the crossed road crosses ours along our road: a mapped road is rebuilt (the any-road
+    editing: its stretch between junctions becomes a project road) and its piece around the crossing is moved across
+    its own direction, so that it keeps its angle to ours and crosses under the pointer (the bends whose curve comes
+    within 60 m of the crossing move together, or two new bends 20–60 m either side on a straight; corrected three
+    times where its curves make the first guess miss: UI choices, the norm then checks what was built). A road of the
+    project (the slid road the second time, a new railway) has its own bends moved alike. Undo "moving where
+    Nudvojovická crosses" (undo steps may now carry a label, `ProjectStore.commit(label)`);
+  - **its works** (ramps, deck, box, rebuilt piece) bends the crossed road as a drag on it selected does; the road's
+    card then shows (its bend card);
+  - **a reroute's new road** keeps its shaping and end handles.
+  The hover says what a drag does ("class III road · drag to move where it crosses", "drag to bend Nudvojovická") or
+  why not: a cut way's ring ("Cut here: pick how it crosses in the card"), a mapped bridge or tunnel ("Bridges and
+  tunnels of existing roads cannot be changed yet": a structure is a source of its own, and a rebuilt stretch is one
+  source between junctions, so the engine cannot rebuild the bridge with the road either side yet), a stretch a road
+  of the project ends on ("A road you built joins it here: …"; slip roads join outside the stretch between junctions:
+  D3 0303's II/105 slides between them, its slip roads stay). Mapped railways are raster obstacles with no crossing
+  card (nothing to drag).
+- **Live:** the first drag of a mapped road converted its line (≈ 70 ms of `fitRoad`) in the first move: the conversion
+  is now prepared at an idle moment after the selection (a crossing's ring stretch, a mapped road's card), used once.
+  A drag preview no longer runs the fix texts' radius searches (≈ 150 ms on a rebuilt road with a curve problem, every
+  move; the full result after release has them; bills unchanged). `drag-perf --mode crossing` (D11, I/35 whole route)
+  in the full gates: preview p50 10–12 ms.
+- **A dead end cut back (owner, same session):** a local road ending at our embankment near I/35 km 3.0 could not be
+  shortened. A selected mapped road's open dead end (no other way meets it, on the map, not a motorway, bridge or
+  tunnel, not rebuilt) now has an **End** handle (`ui/dead-end.ts`; hover "drag to shorten"); dragged back along the
+  road (no further than 5 m short of its last junction, so no other way loses its road; forward past where it ended:
+  nothing) the piece beyond is **taken up** (`ProjectDesign.takenUp`, `core/taken-up.ts`): gone from every road's network
+  (a trim of its way: what is left keeps the way's number, so crossing choices keep their ways) and from the map,
+  billed with our road at a rebuilt stretch's removal rates (OTSKP 113131 / 11333 / 18231 / 18242, layers PROVISIONAL,
+  research/30), nothing regraded. A house (no shed or garage) within 30 m of the piece and not within 30 m of any road
+  left is a problem ("A home loses its road · Leave more of the local road, or buy it out"; the rule of a track cut at
+  our road, STUB_HOUSE); bought out, it is settled. Undo "shortening Local road"; dragged out to where it ended, the road
+  is whole again.
+- **Finding (not fixed here):** that local road's last 3 m under our embankment hold the Auto grade up: with them taken
+  up the starter is 961 M cheaper (5.63 → 4.67 bn; with 120 m taken up, as in the check, the 480 m bridge at km
+  2.42–2.90 and a 70 m one at km 2.97–3.04 become 100 m and 180 m ones), with nothing about that way in the crossings or
+  footprint conflicts. Auto should end
+  such a dead end at our works itself (as it removes a dead end wholly under our earthworks) rather than build over it.
+- **Checked:** `scripts/crossing-drag-scene.mjs [--docs]` (gate `crossing-drag`; screenshots 700–709): both owner cases
+  and D11 road III/3012 with the real mouse (no camera move, the crossing where it was dragged, undo labels), a second
+  slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
+  (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.

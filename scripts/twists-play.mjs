@@ -78,6 +78,7 @@ try {
   ok(await reveal.count() === 1, 'valid, every twist met and under the goal: the reveal');
   const text = await reveal.textContent();
   ok(/You beat the planned line/.test(text) && /2\.04 bn CZK/.test(text) && /880 M CZK/.test(text), 'it shows ours, the planned line priced the same way and the real 2.04 bn');
+  ok(/Yours took \d+ minutes?\. The real one was in environmental review by 2003\./.test(text), 'and how long yours took against the real one’s years');
   await shot('reveal');
   await reveal.getByRole('button', { name: 'Keep improving' }).click();
   // ---- the next news at its pace: 5 minutes of play and 8 edits later ----

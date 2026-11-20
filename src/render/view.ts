@@ -2063,6 +2063,63 @@ export class View {
   get selectedPi() { return this.selected; }
   /** the orbit target in local map coordinates (diagnostics) */
   get target() { const t = this.controls.target; return { x: t.x + this.cx, y: this.cy - t.z }; }
+  private sweep: { line: Line2; raf: number } | null = null;
+  /** One stroke drawn along `points` (local metres) from its first to its last over `ms`, then faded away and gone
+   * (a slip road shown once in its driving direction, ui/slip-sweep.ts). Nothing stays in the scene. */
+  sweepLine(points: readonly { x: number; y: number; z: number }[], ms = 1400) {
+    this.stopSweep();
+    if (points.length < 2) return;
+    const flat: number[] = [], v = new THREE.Vector3();
+    // (a child of the world, which carries the relief's exaggeration itself)
+    for (const p of points) { this.local(p.x, p.y, p.z, v); flat.push(v.x, v.y, v.z); }
+    const line = this.makeLine(flat, null, 5, { color: 0xffffff, opacity: 0.95, depthTest: false, order: 30 });
+    line.name = 'sweep';
+    const geometry = line.geometry as LineGeometry, segments = points.length - 1, material = line.material as LineMaterial;
+    geometry.instanceCount = 0;
+    this.world.add(line);
+    const t0 = performance.now(), fade = 450;
+    const step = () => {
+      const t = performance.now() - t0, k = Math.min(1, t / ms);
+      geometry.instanceCount = Math.max(1, Math.round(segments * (1 - (1 - k) ** 2)));
+      material.opacity = 0.95 * (t <= ms ? 1 : Math.max(0, 1 - (t - ms) / fade));
+      this.dirty = true;
+      if (t < ms + fade) { this.sweep!.raf = requestAnimationFrame(step); return; }
+      this.stopSweep();
+    };
+    this.sweep = { line, raf: requestAnimationFrame(step) };
+  }
+  get sweeping() { return !!this.sweep; }
+  stopSweep() {
+    if (!this.sweep) return;
+    cancelAnimationFrame(this.sweep.raf);
+    this.world.remove(this.sweep.line); this.sweep.line.geometry.dispose(); this.retire(this.sweep.line.material);
+    this.sweep = null; this.dirty = true;
+  }
+  private cameraHeld = false;
+  /** what holdCamera hid (put back as it was on release) */
+  private heldHidden: THREE.Object3D[] = [];
+  /** Hold the camera at `eye` looking at `target` (local metres; a fly-along sets it every frame, ui/fly-along.ts):
+   * no orbit, no glide meanwhile. `null`: the orbit back, about the target as it is. */
+  holdCamera(eye: { x: number; y: number; z: number } | null, target?: { x: number; y: number; z: number }) {
+    this.flight++;
+    // the map's own marks in the scene (the planned line, proposals, bought-out diamonds) go with the markers
+    if (eye && !this.cameraHeld) {
+      this.heldHidden = this.world.children.filter(o => o.visible && (/^official|^proposal/.test(o.name) || o === this.takenMarkers?.pts));
+      for (const o of this.heldHidden) o.visible = false;
+    } else if (!eye && this.cameraHeld) { for (const o of this.heldHidden) o.visible = true; this.heldHidden = []; }
+    this.cameraHeld = !!eye;
+    if (!eye || !target) { this.controls.enabled = true; this.controls.update(); this.dirty = true; return; }
+    this.controls.enabled = false;
+    this.local(target.x, target.y, target.z * this.exag, this.controls.target);
+    this.local(eye.x, eye.y, eye.z * this.exag, this.camera.position);
+    this.camera.lookAt(this.controls.target);
+    this.dirty = true;
+  }
+  /** the camera and its target now (local metres), for holdCamera */
+  get eyeTarget() {
+    const c = this.camera.position, t = this.controls.target;
+    return { eye: { x: c.x + this.cx, y: this.cy - c.z, z: c.y / this.exag }, target: { x: t.x + this.cx, y: this.cy - t.z, z: t.y / this.exag } };
+  }
   /** where the camera is and looks (for automation): its height above the ground under it, the target's
    * height above the ground under it, and how far above the horizon it looks down, degrees */
   get pose() {

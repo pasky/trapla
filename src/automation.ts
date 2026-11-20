@@ -20,6 +20,7 @@ import type { BuildRoadTool, Placement } from './ui/build-road';
 import type { CurveEditor } from './ui/curve-edit';
 import type { Sel } from './ui/inspector';
 import type { MappedRoadCard } from './ui/mapped-road';
+import type { FlyAlong } from './ui/fly-along';
 import type { ProfilePanel } from './ui/profile';
 import { mappedLineKindFor } from './ui/route-kinds';
 import type { RouteSelection } from './ui/route-selection';
@@ -37,6 +38,7 @@ export interface AutomationContext {
   readonly last: Result | null; readonly projectFull: ProjectResult | null;
   readonly transportIndex: ProjectTransportIndex | null; readonly transportGraph: TransportGraphData | null;
   readonly sourceEditor: MappedRoadCard | null;
+  readonly flyAlong: FlyAlong;
   readonly sel: Sel | null; readonly qualifiedSelection: RouteSelection | null;
   /** the active road is selected (a drag on it bends it) */
   readonly roadSelected: boolean;
@@ -122,6 +124,9 @@ export function installAutomation(c: AutomationContext): void {
       .sort((p, q) => q.stations[q.stations.length - 1] - p.stations[p.stations.length - 1]).map(q => q.id),
     sourceScreen: (id: string, s: number) => { const p = c.transportIndex?.position(id, s); return p ? c.view.project(p.x, p.y, c.view.drape(p.x, p.y)) : null; },
     sourceSelection: () => c.sourceEditor?.selection ?? null,
+    /** a mapped way's length (m) and tags */
+    sourceLength: (id: string) => { const q = c.transportIndex?.graph.sources.find(q => q.id === id); return q ? q.stations[q.stations.length - 1] : 0; },
+    sourceTags: (id: string) => c.transportIndex?.graph.sources.find(q => q.id === id)?.tags ?? null,
     /** the road links are loaded and parsed (they load on first need) */
     transportLoaded: () => !!c.transportGraph,
     /** the screen point (px inside the view) of the drawn ground at x, y */
@@ -153,7 +158,7 @@ export function installAutomation(c: AutomationContext): void {
     setProject: (design: ProjectDesign) => {
       c.select(null);
       if (c.projectStore.inTransaction) c.projectStore.cancel();
-      c.projectStore.begin(); c.projectStore.update(draft => Object.assign(draft, structuredClone(design))); c.projectStore.commit();
+      c.projectStore.begin(); c.projectStore.update(draft => { for (const key of Object.keys(draft)) if (!(key in design)) delete (draft as unknown as Record<string, unknown>)[key]; Object.assign(draft, structuredClone(design)); }); c.projectStore.commit();
     },
     result: () => c.last,
     summary: () => c.last && {
@@ -165,6 +170,11 @@ export function installAutomation(c: AutomationContext): void {
     /** parse the lazily loaded transport graph now (base-road hooks below need it) */
     whenTransport: () => c.ensureTransport().then(() => !!c.transportGraph),
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => c.view.lookAt(x, y, dist, bearing, elev),
+    /** the fly-along held `run` metres from end `from` (Esc lets go), or flying on (no `run`) */
+    flyAlong: (from: 'a' | 'b', run?: number) => { if (c.last) c.flyAlong.start(c.last, from, run); },
+    flying: () => c.flyAlong.flying,
+    /** a slip road's one-off stroke is being drawn (ui/slip-sweep.ts) */
+    sweeping: () => c.view.sweeping,
     screenOf: (x: number, y: number, z: number) => c.view.project(x, y, z),
     resetCamera: () => c.view.resetCamera(),
     /** select something (as a click would): a bend, pin, crossing, building, stretch or piece at a station */

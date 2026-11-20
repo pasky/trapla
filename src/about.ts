@@ -5,8 +5,8 @@ import './ui/scenario-picker.css';
 import './ui/about.css';
 import { megabytes, packBase, PACKS } from './packs';
 
-/** the pack files made from OpenStreetMap data (pipeline/build_pack.py, vectors.py, hydrology.py, transport.py, build_structures.py) */
-const OSM = new Set(['meta.json', 'overlays.json', 'vector.bin.gz', 'landcover.u8.gz', 'watercourses.json.gz', 'transport.json.gz', 'transport-meta.json', 'structures.json']);
+/** the pack files made from OpenStreetMap data (pipeline/build_pack.py, vectors.py, hydrology.py, transport.py, build_structures.py, build_water_names.py) */
+const OSM = new Set(['meta.json', 'overlays.json', 'vector.bin.gz', 'landcover.u8.gz', 'watercourses.json.gz', 'transport.json.gz', 'transport-meta.json', 'structures.json', 'water-names.json']);
 const list = document.getElementById('pack-list')!;
 list.replaceChildren(...Object.values(PACKS).map((pack) => {
   const item = document.createElement('li');

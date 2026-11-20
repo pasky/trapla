@@ -20,7 +20,8 @@ import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls
 import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
-import { KIND, TUNNEL_TOO_STEEP, tunnelGrade } from '../core/structures';
+import { KIND, TUNNEL_TOO_STEEP, tunnelGrade, type Run } from '../core/structures';
+import { groundShares } from './ground-words';
 import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
@@ -46,6 +47,10 @@ export type Sel =
 
 export interface InspectorEvents {
   close?: () => void;
+  /** print this bridge as a card to fold and stand on a desk (ui/bridge-print.ts) */
+  printBridge?: (r: Result, run: Run) => void;
+  /** fly along our line from this end (ui/fly-along.ts) */
+  fly?: (r: Result, from: 'a' | 'b') => void;
   select?: (sel: Sel) => void;
   /** bridge / tunnel / earthwork / Auto (null) on a station range; a tunnel's method ('cut': cut and cover) or
    * a bridge's style */
@@ -156,6 +161,12 @@ export class Inspector {
     onRing?: (j: number) => boolean;
     /** a mapped road's own name or number, by its index in the pack's network (ui/road-links.ts), if it has one */
     roadName?: RoadNamer;
+    /** a mined tunnel's line under More on this map (core/data/lore.ts MINED_TUNNEL_LORE), if any */
+    minedTunnel?: () => string | undefined;
+    /** where a tunnel's or cut's ends (stations i0, i1) drain to different seas, the card's line (core/basins.ts) */
+    watershed?: (r: Result, i0: number, i1: number, s0: number, s1: number) => string | null;
+    /** a Czech record this bridge or tunnel of the player's beats, said once (ui/records.ts) */
+    record?: (r: Result, d: Design, run: Run) => string | null;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
     el.addEventListener('click', (e) => this.click(e));
@@ -417,22 +428,35 @@ export class Inspector {
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
     }
+    const run = tunnel ?? bridge, record = run && this.ctx.record?.(r, d, run);
+    const shed = sel.piece === 'tunnel' || sel.piece === 'cut' ? this.ctx.watershed?.(r, tunnel?.i0 ?? i0, tunnel?.i1 ?? i1, s0, s1) : null;
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
-      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}</div>
+      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}${shed ? `<div class="sub lore">${esc(shed)}</div>` : ''}${record ? `<div class="sub lore">${esc(record)}</div>` : ''}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', this.structureOptions(r, sel.piece, s0, s1, mine), active)}
       ${method}
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
+        ${sel.piece === 'cut' ? this.groundLine(r, i0, i1) : ''}
+        ${tunnel && tunnel.method !== 'cut' && tunnel.length - (tunnel.cutCoverM ?? 0) > 0 && this.ctx.minedTunnel?.() ? `<div class="sub lore">${esc(this.ctx.minedTunnel()!)}</div>` : ''}
         ${near || !open ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
         <div class="ctx-lbl">${CATEGORIES[d.category].mode === 'railway' ? 'Track' : 'Road'} height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
           : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height pin here</button></div>`}
         ${this.costLines(r, i0, i1)}
+        ${bridge && bridge.style !== 'arch' ? `<div class="ctx-row"><button type="button" data-print-bridge="${bridge.s0}" title="One A4 sheet: fold it along the middle and stand it on a desk. The side view on one half, the view from above on the other, both to scale.">Print bridge card</button></div>` : ''}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
+  }
+
+  /** what a cut is dug in, by the geological map, in plain words (none where it is not mapped; ui/ground-words.ts) */
+  private groundLine(r: Result, i0: number, i1: number) {
+    const shares = groundShares(r.geology, i0, i1).filter((w) => w.share >= 0.05).slice(0, 3);
+    if (!shares.length) return '';
+    const list = shares.length === 1 && shares[0].share > 0.95 ? shares[0].name : shares.map((w) => `${w.name} ${Math.round(w.share * 100)} %`).join('; ');
+    return `<div class="sub">Mapped ground: ${esc(list)}.</div>`;
   }
 
   /** the bill of cells i0…i1 by component, largest first */
@@ -589,7 +613,8 @@ export class Inspector {
     if (!info) return '';
     const card = endCard(info, end, this.d ? lineOf(CATEGORIES[this.d.category]) : 'motorway');
     return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
-      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>${info.lore ? `<div class="sub lore">${esc(info.lore)}</div>` : ''}
+      <div class="ctx-foot"><button type="button" data-fly="${end}" title="Fly along it to the other end, low over the ground. Esc or a click stops.">Fly along</button></div>`;
   }
 
   // ---- a stream culvert ----
@@ -815,6 +840,8 @@ export class Inspector {
       try { localStorage.setItem(MORE_KEY, this.more ? '1' : '0'); } catch { /* private mode */ }
       this.render(); return;
     }
+    if (b.dataset.printBridge) { const run = r.runs.find((q) => q.kind === KIND.bridge && q.s0 === Number(b.dataset.printBridge)); if (run) this.ev.printBridge?.(r, run); return; }
+    if (b.dataset.fly) { this.ev.fly?.(r, b.dataset.fly as 'a' | 'b'); return; }
     if (b.dataset.roadCard) { this.ev.select?.({ kind: 'crossing', roadId: Number(b.dataset.roadCard) }); return; }
     if (b.dataset.stretch) { const [s0, s1] = b.dataset.stretch.split(',').map(Number); this.ev.select?.({ kind: 'stretch', s0, s1 }); return; }
     if (b.dataset.piece) { const [s0, s1, kind] = b.dataset.piece.split(','); this.ev.select?.({ kind: 'stretch', s0: Number(s0), s1: Number(s1), piece: kind as PieceKind }); return; }

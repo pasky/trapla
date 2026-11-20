@@ -76,6 +76,8 @@ export function historyLabel(before: ProjectDesign, after: ProjectDesign): strin
   if (removed.length && !added.length) return `removing ${nameOf(removed[0])}`;
   if (added.length || removed.length) return 'the roads';
   if (!same(before.buildingOverrides, after.buildingOverrides)) return 'a building';
+  // (the card's step says which road: ui/mapped-road.ts)
+  if (!same(before.takenUp ?? [], after.takenUp ?? [])) return 'shortening a road';
   const changed = after.routes.flatMap(r => { const q = before.routes.find(p => p.id === r.id)!; const c = routeChange(q, r); return c ? [{ r, c }] : []; });
   const corridors = (d: ProjectDesign) => d.corridors.map(c => ({ ...c, revision: 0 }));
   if (!same(corridors(before), corridors(after)) && changed.length !== 1) {
