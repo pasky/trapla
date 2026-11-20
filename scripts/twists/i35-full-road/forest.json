@@ -1,6 +1,6 @@
 {
  "preset": "i35-full-road",
- "purpose": "Spare the forest (at most 8 ha) under the goal: the stages' forest.json stitched (scripts/twists-stitch.ts, STITCH_GAP=2000, --repair 4), searched (--find --twists forest --goal, seeds 31 → 32), one of two bends too close dropped by hand (--edit … del:9), searched again (seed 33); for cost model 61 the pin at km 0.79 taken off by hand (--edit … unpin:780,800: Auto's own line there now passes under the railway at km 0.46 on its new bridge, and the pin held it at neither level)",
+ "purpose": "Spare the forest (at most 8 ha) under the goal: the stages' forest.json stitched (scripts/twists-stitch.ts, STITCH_GAP=2000, --repair 4), searched (--find --twists forest --goal, seeds 31 → 32), one of two bends too close dropped by hand (--edit … del:9), searched again (seed 33); for cost model 62 the pin at km 0.79 taken off by hand (--edit … unpin:780,800: Auto's own line there now passes under the railway at km 0.46 on its new bridge, and the pin held it at neither level)",
  "meets": [
   "forest"
  ],

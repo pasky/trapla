@@ -92,7 +92,10 @@ function slice(path: readonly WayPoint[], a: number, b: number): WayPoint[] {
   if (b <= a || path.length < 2) return [];
   return [along(path, a), ...path.filter(p => p.d > a && p.d < b), along(path, b)];
 }
-interface CrossingSource { path: WayPoint[]; intervals: RoadSourceInterval[]; targets: CrossingPoint[] }
+interface CrossingSource { path: WayPoint[]; intervals: RoadSourceInterval[]; targets: CrossingPoint[];
+  /** the old stretches its plan gives up (a reconnection's or diversion's severed stretch, a moved or squared way's old
+   * line): not its ties, nor a stretch kept on its line at another level */
+  removed: RoadSourceInterval[] }
 const crossingSources = new WeakMap<CrossingGeometry, { roads: RoadNet; source: CrossingSource }>();
 function mergeIntervals(intervals: RoadSourceInterval[]): RoadSourceInterval[] {
   intervals.sort((a, b) => a.way - b.way || a.a - b.a);
@@ -136,19 +139,40 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
     path = slice(raw, Math.max(raw[0].d, a), Math.min(raw[raw.length - 1].d, b));
     targets = [...(g.links ?? []).flat(), ...(g.keptEnds ?? []).flat()];
   } else return;
-  const intervals: RoadSourceInterval[] = [];
+  const intervals: RoadSourceInterval[] = [], removed: RoadSourceInterval[] = [];
+  // (the old line given up: a severed stretch, or a moved or squared way's old line; a stretch kept at its line is not)
+  const gone = (piece: WayPoint[]) => piece === old || ((c.type === 'reconnection' || c.type === 'diversion') && !c.moved);
   for (const piece of path === old ? [path] : [path, old]) for (let i = 1; i < piece.length; i++) {
     const span = roads.sourceInterval(piece[i - 1], piece[i]);
-    if (span) intervals.push({ way: span.way, a: Math.min(span.a, span.b), b: Math.max(span.a, span.b) });
+    if (!span) continue;
+    const interval = { way: span.way, a: Math.min(span.a, span.b), b: Math.max(span.a, span.b) };
+    intervals.push(interval); if (gone(piece)) removed.push({ ...interval });
   }
   // Side roads regraded to meet a junction approach or ramp are rebuilt by the crossing too.
   for (const tie of g.ties ?? []) for (let i = 1; i < tie.path.length; i++) {
     const span = roads.sourceInterval(tie.path[i - 1], tie.path[i]);
     if (span) intervals.push({ way: span.way, a: Math.min(span.a, span.b), b: Math.max(span.a, span.b) });
   }
-  const source = { path, intervals: mergeIntervals(intervals), targets };
+  const source = { path, intervals: mergeIntervals(intervals), targets, removed: mergeIntervals(removed) };
   crossingSources.set(g, { roads, source });
   return source;
+}
+
+/** What a crossing of ours does to the crossed road's plan, for a road built with ours on the same ground (a slip road,
+ * project-evaluate.ts movedByMotorway): the old stretches of mapped ways it gives up (`removed`: a reconnection's or
+ * diversion's severed stretch, a way moved aside or squared: its old line), the new pieces in their place (`pieces`: the
+ * links, the moved or squared line; none where a way is closed), and how far its works reach from the crossing (`reach`).
+ * Undefined where its plan stays (our bridge over it, a road raised over us or lowered under us on its own line, a kept
+ * mapped structure) or its geometry is not known. */
+export function crossingChange(c: CrossingResult, roads: RoadNet): { removed: RoadSourceInterval[]; pieces: CrossingPoint[][]; reach: number } | undefined {
+  const g = c.geometry, source = crossingSource(c, roads);
+  if (!g || !source?.removed.length) return undefined;
+  // (a squared or moved-on-its-line way: its new line between where it leaves the old one; a reconnection's links)
+  const within = (p: CrossingPoint) => p.d === undefined || !g.removed || (p.d >= g.removed[0] - 1e-6 && p.d <= g.removed[1] + 1e-6);
+  const pieces = c.type === 'reconnection' || c.type === 'diversion' || c.moved ? (g.links ?? []).filter(l => l.length > 1)
+    : c.type !== 'junction' && g.road && g.road.length > 1 ? [g.road.filter(within)].filter(l => l.length > 1) : [];
+  const reach = Math.max(0, ...[...source.path, ...pieces.flat()].map(q => Math.hypot(q.x - c.x, q.y - c.y)));
+  return { removed: source.removed, pieces, reach };
 }
 
 /** Add these exact connected-way intervals to the caller's crossing coverage BEFORE collecting

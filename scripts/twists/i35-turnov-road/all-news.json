@@ -1,6 +1,6 @@
 {
  "preset": "i35-turnov-road",
- "purpose": "Hands off the castle and every curveball, under the goal: round 3's search (seeds 1 → 11) with its bends 1 and 2 moved 254 m north-east by hand, clear of the church of St John the Baptist (--edit … move:1:130,220 move:2:130,220 unpin:1300,2700 unpaint:1300,2600), then searched (scripts/twists-check.ts --find, seeds 2 → 3 → 8); for cost model 61 (no earth balance offered: the starter balances its earth) its pins taken off (--edit … unpin:0,6000) and searched again (--find --twists landmarks,curveballs --goal, seeds 4 → 7: 4.87 → 3.71 bn)",
+ "purpose": "Hands off the castle and every curveball, under the goal: round 3's search (seeds 1 → 11) with its bends 1 and 2 moved 254 m north-east by hand, clear of the church of St John the Baptist (--edit … move:1:130,220 move:2:130,220 unpin:1300,2700 unpaint:1300,2600), then searched (scripts/twists-check.ts --find, seeds 2 → 3 → 8); for cost model 62 (no earth balance offered: the starter balances its earth) its pins taken off (--edit … unpin:0,6000) and searched again (--find --twists landmarks,curveballs --goal, seeds 4 → 7: 4.87 → 3.71 bn)",
  "meets": [
   "landmarks",
   "curveballs"

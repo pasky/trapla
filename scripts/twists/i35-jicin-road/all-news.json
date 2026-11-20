@@ -1,6 +1,6 @@
 {
  "preset": "i35-jicin-road",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 3's search (scripts/twists-check.ts --find, seed 2) led round the Studeňany village protection zone by hand (--edit … del:14 del:13 add:11400,3520 add:12100,3150 unpin:11000,14000: its last bends north and east of the zone), then searched (--find --twists earth,landmarks,curveballs --goal, seed 7); searched again from it for cost model 61 (seed 1: 4.34 → 4.16 bn, its earth balanced again)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 3's search (scripts/twists-check.ts --find, seed 2) led round the Studeňany village protection zone by hand (--edit … del:14 del:13 add:11400,3520 add:12100,3150 unpin:11000,14000: its last bends north and east of the zone), then searched (--find --twists earth,landmarks,curveballs --goal, seed 7); searched again from it for cost model 62 (seed 1: 4.34 → 4.16 bn, its earth balanced again)",
  "meets": [
   "earth",
   "landmarks",

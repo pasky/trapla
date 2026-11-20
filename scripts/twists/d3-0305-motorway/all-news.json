@@ -1,6 +1,6 @@
 {
  "preset": "d3-0305-motorway",
- "purpose": "Earth balance and every curveball, under the goal: a search from earth.json (scripts/twists-check.ts --find, seeds 1 → 11 → 21 → 72); searched again from it for cost model 61 (seeds 1 → 11)",
+ "purpose": "Earth balance and every curveball, under the goal: a search from earth.json (scripts/twists-check.ts --find, seeds 1 → 11 → 21 → 72); searched again from it for cost model 62 (seeds 1 → 11)",
  "meets": [
   "earth",
   "curveballs"

@@ -204,3 +204,33 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(r.cost.total! - alone.cost.total!).toBeGreaterThan(100e6);
   }, 120_000);
 });
+
+describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`public/scenarios/i35-turnov/${f}`)))('slip roads where our road leads a road it cuts elsewhere', async () => {
+  const { projectContext } = await import('../scripts/eval-project');
+  const { crossingChange } = await import('../src/core/road-realignment');
+  const design = JSON.parse(readFileSync('tests/fixtures/interchange/i35-nudvojovicka-diamond.json', 'utf8')) as ProjectDesign;
+  const { ctx, pack } = projectContext(design);
+  const run = (d: ProjectDesign) => evaluateProject(ctx, { epoch: 'e', revision: 1, design: d });
+  it('I/35 km 1.67, Nudvojovická (built in the game): valid and priced; its exit crosses the local road our road cuts on our road\'s new link of it', () => {
+    const r = run(design);
+    // (it was "two roads change the same old road": the exit crossed the local road's old line where our road takes it out)
+    expect(r.issues.map(i => i.violation.title)).toEqual([]);
+    expect(r.valid).toBe(true);
+    expect(r.cost.total).not.toBeNull();
+    const roads = pack.roads!, ours = r.routes['route:motorway-forward'].legacy!, led = ours.crossings.find(c => c.type === 'reconnection' && Math.abs(c.s - 1811) < 30)!;
+    const gone = crossingChange(led, roads)!.removed;
+    const slips = design.routes.filter(q => q.name.startsWith('Slip road')).map(q => r.routes[q.id].legacy!.crossings);
+    // no slip road crosses a stretch our road takes out …
+    for (const c of slips.flat()) if (c.roadId !== undefined && c.roadId < roads.wayCount) {
+      const d = roads.wayStation(c.roadId, c.x, c.y);
+      expect(gone.some(i => i.way === c.roadId && d > i.a + 1 && d < i.b - 1)).toBe(false);
+    }
+    // … the north-east exit (Slip road 3) crosses that local road on one of our road's new links of it
+    const seg = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
+      const dx = b.x - a.x, dy = b.y - a.y, u = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(p.x - a.x - u * dx, p.y - a.y - u * dy);
+    };
+    const onLink = slips[2].filter(c => c.cls === led.cls).map(c => (led.geometry!.links ?? []).some(l => l.slice(1).some((q, k) => seg(c, l[k], q) < 3)));
+    expect(onLink).toEqual([true]);
+  }, 120_000);
+});

@@ -2545,8 +2545,43 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   houses along Přepeřská), `tests/fixtures/interchange/i35-turnov-diamond.json`, `tests/slip-roads.test.ts`,
   `scripts/interchange-scene.mjs` section 4 (screenshots 710–719).
 - **Known gaps:** as for the motorway's (above); the noise model's barrier still stands at the crown edge where a lane widens
-  it (drawn moved out); the motorway crossing's reroutes are still not seen by its slip roads (a slip road crossing a way the
-  motorway reconnects is "two roads change the same old road": I/35 km 1.67, a diamond on the class III Nudvojovická).
+  it (drawn moved out; see "Slip roads see our road's crossings").
+
+## Slip roads see our road's crossings (owner request, cost model 61, 2026-11-20)
+
+- **Gap:** a slip road saw its motorway's footprint relocations but not what the motorway's crossings do to the roads they
+  cross. At Nudvojovická (I/35 km 1.67) our road cuts a local road at km 1.81 and leads both its ends to Nudvojovická: an
+  exit leaving the carriageway just past it crossed the local road's old line where our road takes it out (an underpass of a
+  road that is not there) and the screen said "two roads change the same old road" (the project unpriced).
+- **Now** (`project-evaluate.ts movedByMotorway`, `crossingChanges`; `road-realignment.ts crossingChange`): a slip road is
+  built against the roads as our road's crossings leave them, as against its relocations: where a crossing gives up a
+  road's old line (a reconnection's or diversion's severed stretch, also a closure's; a way moved aside or squared: its old
+  line; not its regraded ties, nor a road only raised over us or lowered under us on its own line) that stretch is cut from
+  the slip road's network (measured as on our road's network: from a dead end's new start where the player cut it back) and
+  its new pieces (the links, the moved or squared line) are ground ways of it, in our road's order (every slip road of the
+  interchange numbers them alike; worked out once per evaluated motorway); each such stretch is a zone where the slip
+  road's changes of that road are one design with ours (`ScreenRoute.sharedWays`). A slip road's end on a stretch our road
+  takes out is a problem ("It joins a stretch of road the four-lane road takes out"). Every frozen bill, starter and saved
+  design identical; D3 0303 and 0304 identical; the I/35 Turnov diamond 6.2054996382 bn (+0.00009 CZK: its north-east
+  exit's network no longer has the service way our road closes at km 1.18).
+- **Result:** the Nudvojovická diamond, built with the mouse (`scripts/interchange-scene.mjs --only nudvojovicka`,
+  screenshots 727–731): gores 430 m before the bridge on both sides, 450 m after it on the forward side, the north-east exit
+  200 m after it, just past the local road; crossroads on Nudvojovická 290 m south-west and 185 m north of the bridge as
+  roundabouts (the sight lines along it are short). The south-west entry, which Build runs along Nudvojovická (the road
+  runs nearly towards its gore, so Build gives no square bend), dragged off it square; the north-east exit's square bend,
+  too close to its end, removed on its card. 5.9445 bn valid (+315 M); the north-east exit crosses the local road on our
+  road's new link of it (an overbridge), not its old line. On the old engine: "two roads change the same old road".
+  `tests/fixtures/interchange/i35-nudvojovicka-diamond.json`, `tests/slip-roads.test.ts`.
+- **Not done: the noise barrier along a lane.** The motorway's noise (its walls, their height, the houses bought out) is
+  solved in its own evaluation, before its slip roads exist; the lanes come from the slip roads, built against the finished
+  motorway. Moving the barrier out with the lane means re-solving the motorway's noise after its slip roads (or the lanes
+  before them): not small. Drawn, the wall stands beyond the lane (2.5 m further out on S 21.5, 0.5 m on D 27.5); billed and
+  heard at the crown edge.
+- **Known gaps:** a cut road's remnant beyond the cut is a new way of the slip road's network (as a relocation's is), so a
+  choice on a slip road's crossing of it is not kept, and a choice saved on that way before is no longer applied there; a
+  crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road); a road only raised
+  over our road or lowered under it near a slip road is still two changes of one road (the slip road sees its ground line,
+  not our ramp); Build gives no square bend where the road runs nearly towards the gore (the player drags one).
 
 ## Twists and curveballs (owner request, no model version, 2026-11-20)
 
@@ -2959,7 +2994,7 @@ Performance item, measured on D11 (`scenario=d11`, the demo design, Start over f
 Not a player-facing problem on real hardware. It slows and destabilises the SwiftShader browser gates. Open: find what
 those two frames draw (the overview's buildings / terrain at full detail, or buffer uploads) before changing it.
 
-## Dead ends at our works; the railway carried over our road (cost model 61, 2026-11-20)
+## Dead ends at our works; the railway carried over our road (cost model 62, 2026-11-20)
 
 Two engine gaps (owner, after the dead-end cut-back): a mapped dead end under our works held Auto's line up, and the
 crossing engine could not carry an existing railway over our road.
@@ -3033,7 +3068,7 @@ weighs it with its walls nearest our crown, RETAINING_RULES.minimumOffset). E.g.
   (`render/crossings.ts`); in the profile a rail mark at the rails' level and the deck over our road. Billed in our
   crossings (SPOŽES rows with their own mark-up: no construction surcharge).
 
-**Bills (model 61; scripts/exact.ts against main 68f6d5b: 232 of 243 results changed).** Frozen D11 fixtures: straight
+**Bills (model 62; scripts/exact.ts against main 68f6d5b: 232 of 243 results changed).** Frozen D11 fixtures: straight
 8,761.2 → 8,681.8 M (−79.4: the railway at km 14.13 carried over our cutting on a new 20 m bridge, 26.9 M, instead of
 our bridge over it; a track's and a service road's dead ends at km 4.32 and 5.52 taken up; the bridge at km 4.87–5.79 no
 longer held over a dead end under its crown, a fill with walls in its middle, +14 M as the structure choice does not see

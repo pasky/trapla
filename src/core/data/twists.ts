@@ -65,7 +65,7 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
   'd35-full-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'scratch', 'byHand'], startBill: 32_614e6, terms: { earthShare: EARTH_SHARE }, curveballs: ['d35-pod-skalou', 'd35-radisov-slope', 'd35-graves', 'd35-repova-graves', 'd35-javori-nest', 'd35-podoli-quiet', 'd35-quiet', 'd35-full-money'],
     real: { priceText: 'No construction price is public: the PPP bid of 71.3 bn covers 22 years of service too', story: 'Both sections have their permits; a private partner chosen in 10/2026 is to build and run them.', reviewBy: 2006 } },
   // ---- Český ráj: the I/35 Turnov – Úlibice (research/89; curveballs research/95)
-  // (no earth balance: the starter balances its earth since model 61, the dead end at km 3.0 no longer held up)
+  // (no earth balance: the starter balances its earth since model 62, the dead end at km 3.0 no longer held up)
   'i35-turnov-road': { offer: ['landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 4_481e6, terms: { earthShare: EARTH_SHARE, forestHa: 0.6, bridgeM: 700 }, curveballs: ['i35-nudvojovice', 'i35-zone-iii', 'i35-libunka', 'i35-jizera', 'i35-turnov-money'],
     real: { price: 7_255e6, priceText: 'ŘSD study 03/2023 (2022 prices), with the Pelešany and Přepeře tunnels', story: 'Its approval was revoked in December 2025; a new environmental review, with tunnels round Turnov, takes until about 2029.', reviewBy: 2016 } },
   'i35-rovensko-road': { offer: ['earth', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 4_386e6, terms: { earthShare: EARTH_SHARE, forestHa: 5.0, bridgeM: 350 }, curveballs: ['i35-k31b', 'i35-scarp-11-5', 'i35-scarp-15-8', 'i35-vaclavi-graves', 'i35-rovensko-slope'],

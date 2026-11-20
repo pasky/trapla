@@ -1,6 +1,6 @@
 {
  "preset": "i35-full-road",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 4's whole-route reference with the Turnov and Jičín stages' all-news.json (searched again for cost model 61) stitched in (scripts/twists-stitch.ts … --base all-news.json --manual --repair 8, STITCH_GAP=2000), then searched (scripts/twists-check.ts --find, seed 3); heights by hand, its four height points at km 21.37–22.51 raised 2 m by hand (the search's line met the railway at km 22.03 on the level)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 4's whole-route reference with the Turnov and Jičín stages' all-news.json (searched again for cost model 62) stitched in (scripts/twists-stitch.ts … --base all-news.json --manual --repair 8, STITCH_GAP=2000), then searched (scripts/twists-check.ts --find, seed 3); heights by hand, its four height points at km 21.37–22.51 raised 2 m by hand (the search's line met the railway at km 22.03 on the level)",
  "meets": [
   "earth",
   "landmarks",

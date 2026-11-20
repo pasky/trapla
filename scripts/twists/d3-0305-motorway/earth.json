@@ -1,6 +1,6 @@
 {
  "preset": "d3-0305-motorway",
- "purpose": "Earth balance: a search from the starter (scripts/twists-check.ts --find, seed 9); also at most 900 m of bridges (Few bridges) (no longer under the goal at cost model 61: the starter is cheaper)",
+ "purpose": "Earth balance: a search from the starter (scripts/twists-check.ts --find, seed 9); also at most 900 m of bridges (Few bridges) (no longer under the goal at cost model 62: the starter is cheaper)",
  "meets": [
   "earth",
   "bridges"
