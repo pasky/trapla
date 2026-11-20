@@ -11,7 +11,17 @@ export const DEFAULT_TWISTS: readonly TwistId[] = ['earth', 'landmarks', 'curveb
  * round it, or a heritage area (a protection zone, a heritage reserve or zone) itself. */
 export type LandmarkKind = MonumentKind | 'zone';
 /** `x`, `y`: the monument, or where a zone's name stands (inside it); `rings`: a zone's polygons (pack metres) */
-export interface Landmark { name: string; kind: LandmarkKind; x: number; y: number; rings?: readonly (readonly (readonly [number, number])[])[] }
+export interface Landmark { name: string; kind: LandmarkKind; x: number; y: number; rings?: readonly (readonly (readonly [number, number])[])[];
+  /** its ÚSKP number */
+  code?: string;
+  /** a monument the mission puts in play with its wider setting ring (data/twists.ts SETTING_RING) */
+  setting?: boolean }
+/** what a landmark is, in the player's words */
+export const LANDMARK_KIND_WORDS: Record<LandmarkKind, string> = { castle: 'castle', fort: 'fort', church: 'church', chapel: 'chapel', cross: 'cross or statue',
+  memorial: 'memorial', technical: 'technical monument', zone: 'heritage area' };
+/** a landmark's name, kind and ring in a few words ("Chapel of St Roch, Staré Město · chapel · 600 m ring") */
+export const landmarkWords = (l: Pick<Landmark, 'name' | 'kind'> & { ring: number }) =>
+  `${l.name} · ${LANDMARK_KIND_WORDS[l.kind]}${l.kind === 'zone' ? '' : ` · ${l.ring.toLocaleString('en-US')} m ring`}`;
 
 /** What a mission's twists are measured with (data/twists.ts). */
 export interface TwistTerms {

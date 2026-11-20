@@ -4,7 +4,7 @@
 import type { ScenarioParams } from './data/scenario';
 import { zoneRings, type HeritageData } from './heritage';
 import { CURVEBALLS } from './data/curveballs';
-import { LANDMARK_REACH, LANDMARK_RING, missionTwists, type MissionTwists } from './data/twists';
+import { LANDMARK_REACH, LANDMARK_RING, missionTwists, SETTING_RING, type InPlay, type MissionTwists } from './data/twists';
 import { packShape, type CurveballCheck, type Landmark, type TwistTerms } from './twists';
 
 export interface PackFrame { origin: readonly [number, number]; width: number; height: number; a: { x: number; y: number }; b: { x: number; y: number } }
@@ -61,8 +61,11 @@ const zoneDist = (rings: readonly (readonly (readonly [number, number])[])[], pt
 const END_REACH = 50;
 
 /** The listed monuments whose ring, and the heritage areas that, come near the starting line or the straight line A–B
- * (the pack's heritage.json, in its own metres), inside the map. */
-export function missionLandmarks(scenario: Pick<ScenarioParams, 'initial'>, frame: PackFrame, heritage: HeritageData | null | undefined): (Landmark & { ring: number })[] {
+ * (the pack's heritage.json, in its own metres), inside the map. `inPlay` (data/twists.ts): the ones the mission names, by
+ * their ÚSKP number, with the name it gives them; a monument there marked `setting` keeps its setting's ring (SETTING_RING). */
+export function missionLandmarks(scenario: Pick<ScenarioParams, 'initial'>, frame: PackFrame, heritage: HeritageData | null | undefined,
+  inPlay: readonly InPlay[] = []): (Landmark & { ring: number })[] {
+  const named = new Map(inPlay.map(p => [p.code, p]));
   const starter = [frame.a, ...(scenario.initial?.pis ?? []).map(p => ({ x: p.x, y: p.y })), frame.b], straight = [frame.a, frame.b];
   const out: (Landmark & { ring: number })[] = [];
   // (one that takes in an end of the mission, or comes within its body's reach of it, no design can keep clear of: the
@@ -72,14 +75,14 @@ export function missionLandmarks(scenario: Pick<ScenarioParams, 'initial'>, fram
     const rings = zoneRings(z);
     if (Math.min(zoneDist(rings, starter), zoneDist(rings, straight)) > LANDMARK_REACH) continue;
     if (atEnd(p => zoneDist(rings, [p, p])) || insideRings(rings, frame.a) || insideRings(rings, frame.b)) continue;
-    out.push({ name: z.name, kind: 'zone', ...labelPoint(rings), ring: 0, rings });
+    out.push({ name: named.get(z.code)?.name ?? z.name, kind: 'zone', ...labelPoint(rings), ring: 0, rings, code: z.code });
   }
-  for (const { name, kind, x, y } of heritage?.monuments ?? []) {
-    const ring = LANDMARK_RING[kind];
+  for (const { name, kind, x, y, code } of heritage?.monuments ?? []) {
+    const p = named.get(code), ring = p?.setting ? SETTING_RING[kind] : LANDMARK_RING[kind];
     if (x < 0 || y < 0 || x > frame.width || y > frame.height) continue;
     if (Math.min(lineDist(x, y, starter), lineDist(x, y, straight)) - ring > LANDMARK_REACH) continue;
     if (atEnd(p => Math.hypot(p.x - x, p.y - y) - ring)) continue;
-    out.push({ name, kind, x, y, ring });
+    out.push({ name: p?.name ?? name, kind, x, y, ring, code, ...(p?.setting ? { setting: true } : {}) });
   }
   return out;
 }
@@ -93,7 +96,7 @@ export function missionTwistSetup(presetId: string, scenario: Pick<ScenarioParam
   if (!listed) return undefined;
   // (a pack without its listed monuments, or whose file did not load, offers no Hands off: it would be met on nothing)
   const mission = heritage ? listed : { ...listed, offer: listed.offer.filter(t => t !== 'landmarks') };
-  const terms: TwistTerms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: mission.offer.includes('landmarks') ? missionLandmarks(scenario, frame, heritage) : [] };
+  const terms: TwistTerms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: mission.offer.includes('landmarks') ? missionLandmarks(scenario, frame, heritage, mission.inPlay) : [] };
   const curveballs = mission.curveballs.map(id => {
     const c = CURVEBALLS[id];
     if (!c) throw new Error(`unknown curveball ${id}`);

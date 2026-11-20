@@ -207,6 +207,22 @@ export function checkMission(preset: string, log: (line: string) => void = conso
   }
   if (MISSION_TWISTS[preset].offer.includes('landmarks') && !m.pack.heritage) fail(`Hands off offered, public/scenarios/${m.scenario.id}/heritage.json missing (pipeline/build_heritage.py)`);
   if (mt.offer.includes('landmarks') && !m.setup.terms.landmarks.length) fail('landmarks offered, none near the line');
+  // (the twist screen names the landmarks in play: each is the pack's, of that kind; the starter breaks one of them and
+  // nothing else; a mission without Hands off says why)
+  if (mt.offer.includes('landmarks') === !!mt.noLandmarks) fail(mt.noLandmarks ? 'Hands off offered and said not to be' : 'Hands off not offered: data/twists.ts noLandmarks says why');
+  if (mt.offer.includes('landmarks')) {
+    if (!mt.inPlay?.length) fail('Hands off offered: data/twists.ts inPlay names none');
+    const lm = m.setup.terms.landmarks;
+    for (const p of mt.inPlay ?? []) {
+      const l = lm.find(x => x.code === p.code);
+      if (!l) fail(`in play: ${p.code} (${p.name}) is not near the line in public/scenarios/${m.scenario.id}/heritage.json`);
+      else if (l.kind !== p.kind) fail(`in play: ${p.name} is a ${l.kind}, not a ${p.kind}`);
+      else console.log(`  in play: ${p.name} (${l.kind}, ring ${l.ring} m${p.setting ? ', its setting' : ''})`);
+    }
+    const broken = (check(m, m.starter, r0, ['landmarks'])[0]?.issues ?? []).map(i => lm[Number(i.ref?.slice(9))]);
+    const named = new Set(mt.inPlay?.map(p => p.code));
+    for (const l of broken) if (!named.has(l?.code ?? '')) fail(`the starter breaks ${l?.name}, not named in data/twists.ts inPlay`);
+  }
   const dir = `scripts/twists/${preset}`, files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.json')).sort() : [];
   const claimed = new Set<TwistId>();
   let reveal = false;
