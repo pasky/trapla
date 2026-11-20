@@ -22,12 +22,20 @@ import { roadRealignmentCrossingIntervals, severedCrossingIntervals } from './ro
 import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../render/crossing-surface';
 
 /** The network each full result was engineered against (a road of the project: the network as the player edited it,
- * project-roadnet.ts editedNetwork). Kept beside the result, never posted with it. */
-const evaluatedOn = new WeakMap<object, { roads?: RoadNet; crown: number }>();
-export const noteNetwork = (r: object, roads: RoadNet | undefined, crown: number) => { evaluatedOn.set(r, { roads, crown }); };
-export const networkOf = (r: object): RoadNet | undefined => evaluatedOn.get(r)?.roads;
+ * project-roadnet.ts editedNetwork) and its crown width. Kept beside the result, never posted with it; keyed by its line
+ * (the project's passes copy a result's arrays), the last NOTED results only. */
+const NOTED = 64;
+const evaluatedOn = new Map<string, { roads?: RoadNet; crown: number }>();
+const lineKey = (r: Pick<Result, 'x' | 'y'>) => { const n = r.x.length; return `${n}:${r.x[0]}:${r.y[0]}:${r.x[n >> 1]}:${r.y[n >> 1]}:${r.x[n - 1]}:${r.y[n - 1]}`; };
+export const noteNetwork = (r: Pick<Result, 'x' | 'y'>, roads: RoadNet | undefined, crown: number) => {
+  const key = lineKey(r);
+  evaluatedOn.delete(key); evaluatedOn.set(key, { roads, crown });
+  if (evaluatedOn.size > NOTED) evaluatedOn.delete(evaluatedOn.keys().next().value!);
+};
+const noted = (r: Pick<Result, 'x' | 'y'>) => evaluatedOn.get(lineKey(r));
+export const networkOf = (r: Pick<Result, 'x' | 'y'>): RoadNet | undefined => noted(r)?.roads;
 /** the crown width the result was engineered for, m (undefined: not a full result of this process) */
-export const crownOf = (r: object): number | undefined => evaluatedOn.get(r)?.crown;
+export const crownOf = (r: Pick<Result, 'x' | 'y'>): number | undefined => noted(r)?.crown;
 
 export interface WorksClash { path: string; i: number; s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck' | 'ours' | 'road';
   /** the other mapped way buried (what 'road') and its class */ way?: number; wayCls?: string; x: number; y: number; j?: number }
@@ -36,7 +44,7 @@ export interface WorksClash { path: string; i: number; s: number; roadId?: numbe
 export const DRAPED = 0.3;
 
 export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings' | 'roads'>, crownWidth = crownOf(r) ?? 9.5): WorksClash[] {
-  const roads = evaluatedOn.has(r) ? networkOf(r) : ctx.roads;
+  const roads = noted(r) ? networkOf(r) : ctx.roads;
   const natural = (x: number, y: number) => ctx.terrain.heightAt(x, y), base = crossingBaseHeight(r, crownWidth, natural);
   const gone = new Set<number>([...r.demolished.map(d => d.j), ...r.boughtOut.map(d => d.j)]);
   const out: WorksClash[] = [], seen = new Set<string>(), strip = BUILDING_RULES.clearance;
@@ -248,10 +256,10 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
   }
   /** the junctions at our ends (footprint.ts): each joined way's pavement inside the zone is rebuilt at the junction's level
    * as far as a junction can regrade it (junctionRegrade) */
-  const junctions = r.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'junction' && f.roadId !== undefined)
-    .map(f => ({ way: f.roadId!, x: r.x[f.i], y: r.y[f.i], zone: f.s1 - f.s0 }));
+  const junctions = r.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'junction' && f.junction)
+    .map(f => ({ ways: f.junction!.ways, x: r.x[f.i], y: r.y[f.i], zone: f.junction!.zone }));
   const tolerance = (way: number, x: number, y: number) => Math.max(DRAPED,
-    ...junctions.filter(j => j.way === way).map(j => junctionRegrade(j.zone, Math.hypot(x - j.x, y - j.y))));
+    ...junctions.filter(j => j.ways.includes(way)).map(j => junctionRegrade(j.zone, Math.hypot(x - j.x, y - j.y))));
   /** stations of our road where a conflict already settles (or reports) that way */
   const settled = new Map<number, [number, number][]>();
   for (const f of r.footprintConflicts) if (f.feature === 'road' && f.roadId !== undefined && f.action !== 'junction') {
@@ -262,7 +270,18 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
   // (a crossing's way within its own works: the crossing's treatment owns it there)
   for (const c of r.crossings) if (c.roadId !== undefined) for (const way of [c.roadId, c.targetRoadId, ...(c.geometry?.ties ?? []).map(t => t.way)])
     if (way !== undefined) (settled.get(way) ?? settled.set(way, []).get(way)!).push([c.s - CROSSING_REACH, c.s + CROSSING_REACH]);
-  const seen = new Set<string>();
+  const seen = new Set<string>(), ends = new Map<number, Set<number>>();
+  const endWays = (i: number) => {
+    let set = ends.get(i);
+    if (!set) {
+      ends.set(i, set = new Set());
+      roads.nearSegments([r.x[i] - 2, r.y[i] - 2, r.x[i] + 2, r.y[i] + 2], q => {
+        const dx = q.bx - q.ax, dy = q.by - q.ay, t = Math.max(0, Math.min(1, ((r.x[i] - q.ax) * dx + (r.y[i] - q.ay) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(r.x[i] - q.ax - t * dx, r.y[i] - q.ay - t * dy) <= 2) set!.add(q.way);
+      });
+    }
+    return set;
+  };
   for (let i = 0; i < r.n; i++) {
     if (r.kind[i] !== KIND.earth) continue;
     const shift = i === 0 ? r.ds / 4 : i === r.n - 1 ? -r.ds / 4 : 0, along = shift ? r.ds / 4 : r.ds / 2;
@@ -277,6 +296,8 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
     };
     roads.nearSegments([cx - reach, cy - reach, cx + reach, cy + reach], s => {
       if (s.length <= 0 || roads.isDesigned(s.way) || seen.has(`r${s.way}`)) return;
+      // (an end's own cell on a way meeting there: the junction's pavement itself, footprint.ts's endpoint crown cell)
+      if ((i === 0 || i === r.n - 1) && endWays(i).has(s.way)) return;
       if (settled.get(s.way)?.some(([a, b]) => r.s[i] >= a && r.s[i] <= b)) return;
       const half = (ROAD_CLASSES[s.cls]?.width ?? 0) / 2, count = Math.min(400, Math.max(1, Math.ceil(s.length)));
       for (let k = 0; k <= count; k++) {

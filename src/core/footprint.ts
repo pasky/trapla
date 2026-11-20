@@ -27,6 +27,9 @@ export interface FootprintConflict {
   action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked' | 'junction';
   /** junction only: a rebuilt stretch joining its own old road, not a new junction */
   continuation?: boolean;
+  /** junction only: every way meeting there (their pavement inside the zone the junction rebuilds as far as it can regrade
+   * it, junctionRegrade) and its zone, m */
+  junction?: { ways: number[]; zone: number };
   i: number; s0: number; s1: number; x: number; y: number;
   /** Constructed path/barrel length (affected length for blocked features), m. */
   length: number;
@@ -304,15 +307,17 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
    * the crown edge to the daylight point, as walls cut them short) buries a road's pavement along a hit, m: the most at
    * any metre of it (≤ 0: the junction's own works). */
   const buriedDepth = (cell: FootprintCell, segment: RoadSegment, hit: [number, number], j: FootprintJunction) => {
-    const i = cell.i, w = r.crownWidth / 2, z = r.grade[i], end = j.end === 'a' ? 0 : r.n - 1;
+    const i = cell.i, w = r.crownWidth / 2, z = r.grade[i], end = j.end === 'a' ? 0 : r.n - 1, half = existingHalfWidth(segment.cls);
     let deepest = -Infinity;
     const count = Math.max(1, Math.ceil(hit[1] - hit[0]));
     for (let k = 0; k <= count; k++) {
       const t = (hit[0] + (hit[1] - hit[0]) * k / count - segment.d) / (segment.length || 1);
       const x = segment.ax + t * (segment.bx - segment.ax), y = segment.ay + t * (segment.by - segment.ay);
+      // (at its near edge: half its width nearer our centreline)
       const v = -(x - r.x[i]) * r.ty[i] + (y - r.y[i]) * r.tx[i], day = v >= 0 ? r.dayL[i] : r.dayR[i], zDay = v >= 0 ? r.zDayL[i] : r.zDayR[i];
-      const at = Math.abs(v), surface = at <= w || day <= w ? z : z + (zDay - z) * Math.min(1, (at - w) / (day - w));
-      if (at <= day) deepest = Math.max(deepest, Math.abs(surface - terrain.heightAt(x, y)) - junctionRegrade(j.zone, Math.hypot(x - r.x[end], y - r.y[end])));
+      const at = Math.max(0, Math.abs(v) - half), surface = at <= w || day <= w ? z : z + (zDay - z) * Math.min(1, (at - w) / (day - w));
+      const ex = r.x[i] - r.ty[i] * Math.sign(v || 1) * at, ey = r.y[i] + r.tx[i] * Math.sign(v || 1) * at;
+      if (at <= day) deepest = Math.max(deepest, Math.abs(surface - terrain.heightAt(ex, ey)) - junctionRegrade(j.zone, Math.hypot(x - r.x[end], y - r.y[end])));
     }
     return deepest;
   };
@@ -414,7 +419,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     conflicts.push({ id: `junction:${junction.end}`, feature: 'road', action: 'junction', i, s0, s1,
       x: r.x[i], y: r.y[i], length: covered, affectedLength: covered, cost: junction.cost, lumpCost: junction.cost,
       ...(way !== undefined && roads ? { roadId: way, cls: roads.wayClass(way) } : {}),
-      ...(junction.continuation ? { continuation: true } : {}), detail: '', source: junction.source });
+      ...(junction.continuation ? { continuation: true } : {}), junction: { ways: [...junction.ways], zone: junction.zone }, detail: '', source: junction.source });
   }
   // (the old roads accepted plans take up: no road to a building any more, for the plans after them)
   const removedPieces: { way: number; a: number; b: number }[] = [];

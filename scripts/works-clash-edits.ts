@@ -39,8 +39,9 @@ export interface PlayerEdit { name: string; design: ProjectDesign }
 
 /** Every edit, its project as the player would leave it (evaluated by the caller). */
 export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_PACKS, seed = 7): Generator<PlayerEdit> {
-  const rnd = random(seed);
   for (const spec of packs) {
+    // (each pack its own sequence: narrowing EDIT_PACKS keeps its edits)
+    const rnd = random(seed + [...spec].reduce((h, ch) => Math.imul(h, 31) + ch.charCodeAt(0) | 0, 0));
     const [id, presetId] = spec.split(':'), dir = `public/scenarios/${id}`;
     if (!existsSync(`${dir}/meta.json`)) continue;
     const pack = loadPack(dir), sc = scenarioParams(id, presetId), design = packProject(pack, sc, dir).initial();

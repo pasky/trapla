@@ -1,4 +1,5 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
+import { noteNetwork } from './works-clash';
 import { editedNetwork, type MovedWays, type OldLineOf, type ResolvedEnds, type SourceWays } from './project-roadnet';
 import { KIND } from './structures';
 import { evaluate, OLD_ROAD_TIE, type EvalContext, type EvalOptions, type Result } from './evaluate';
@@ -136,6 +137,8 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (kept) {
     if (kept.length !== result.n) throw new Error('Kept cells do not match the road’s stations');
     keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: [oldPath], heightAt: (x, y) => ctx.terrain.heightAt(x, y) }, 'road', !!held);
+    // (its line as drawn: the network it was built against, for the works-clash screen)
+    if (!options.preview) noteNetwork(result, roads, CATEGORIES[design.category].crownWidth);
   }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview

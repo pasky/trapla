@@ -80,6 +80,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`wrote ${KNOWN_FILE}: ${Object.keys(list).length} keys`);
   }
   if (args.includes('--edits')) for (const edit of playerEdits()) {
+    if (process.env.ONLY_EDIT && !edit.name.includes(process.env.ONLY_EDIT)) continue;
+    if (process.env.DUMP) writeFileSync(process.env.DUMP, JSON.stringify(edit.design));
     const { routes } = projectClashes(edit.design), preset = edit.design.presetId ?? edit.design.scenarioId;
     report(edit.name, routes.flatMap(r => r.clashes), routes.flatMap(r => unknownClashes(preset, r.clashes, knownList)));
   }
