@@ -21,6 +21,7 @@ import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
 import type { ProvisionalProfile } from './provisional';
 import type { StationRange } from '../state';
+import { groundShares, groundWords } from './ground-words';
 import { COST_GROUPS, groupLabel, groupShort, perM } from './costgroups';
 import { stationIndex } from '../core/range';
 
@@ -156,6 +157,16 @@ export class ProfilePanel {
     if (key) key.innerHTML = COST_GROUPS.map((g) => `<div><i class="sw" style="background:${g.color}"></i>${groupLabel(g, line)}</div>`).join('');
   }
 
+  /** the mapped ground's band under the ground line (the key's toggle) */
+  private groundBand = false;
+  setGroundBand(on: boolean) { this.groundBand = on; this.groundKey(); this.draw(); }
+  /** the key's list of the mapped ground on this route, with the band on (when the key opens: never in a drag) */
+  groundKey() {
+    const box = document.getElementById('ground-key');
+    if (!box) return;
+    const r = this.r, shares = this.groundBand && r ? groundShares(r.geology, 0, r.n - 1) : [];
+    box.innerHTML = shares.slice(0, 8).map((w) => `<div><i class="sw" style="background:${w.color}"></i>${w.name}</div>`).join('');
+  }
   /** shown on an empty profile (e.g. a proposed change that has no checked heights yet) */
   private emptyNote = '';
   clear(note = '') {
@@ -457,6 +468,31 @@ export class ProfilePanel {
         g.fill();
       }
       i = j + 1;
+    }
+    // the mapped ground under the ground line, a thin band in its colours (off by default: the key's toggle; none where
+    // it is not mapped; ui/ground-words.ts)
+    if (this.groundBand) {
+      const band = 6;
+      for (let i = i0; i < i1;) {
+        let j = i;
+        while (j + 1 < i1 && r.geology.ids[j + 1] === r.geology.ids[i]) j++;
+        const w = groundWords(r.geology.profiles[r.geology.ids[i]]);
+        if (w) {
+          g.fillStyle = w.color;
+          g.beginPath();
+          g.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
+          along(i, j + 1, k => g.lineTo(this.X(r.s[k]), this.Y(r.ground[k])));
+          for (let k = j + 1; k > i; k -= stride) g.lineTo(this.X(r.s[k]), this.Y(r.ground[k]) + band);
+          g.lineTo(this.X(r.s[i]), this.Y(r.ground[i]) + band);
+          g.closePath(); g.fill();
+          // its lower edge, so that it reads apart from the ground's own colour
+          g.strokeStyle = 'rgba(90,70,40,0.35)'; g.lineWidth = 1; g.beginPath();
+          g.moveTo(this.X(r.s[i]), this.Y(r.ground[i]) + band);
+          along(i, j + 1, k => g.lineTo(this.X(r.s[k]), this.Y(r.ground[k]) + band));
+          g.stroke();
+        }
+        i = j + 1;
+      }
     }
     g.strokeStyle = '#8a7148';
     g.lineWidth = 1.2;

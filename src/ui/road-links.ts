@@ -25,7 +25,7 @@ import { toast } from './toast';
 
 export interface RoadLinksContext {
   readonly session: Session;
-  readonly store: ActiveRouteStore; readonly projectStore: ProjectStore; readonly pack: Pack; readonly view: View;
+  readonly store: ActiveRouteStore; readonly projectStore: ProjectStore; readonly pack: Pack; readonly view: View; readonly scenario: { readonly id: string };
   /** the pack's road-link fingerprint; null: a pack without road links */
   readonly transportData: string | null;
   readonly worker: Worker; readonly previewWorker: Worker;
@@ -85,7 +85,8 @@ export function createRoadLinks(app: RoadLinksContext) {
     });
     const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, app.view, transportIndex, claimedSources, covered,
       () => app.projectStore.snapshot.design.takenUp ?? [], deadEndHandles,
-      () => app.projectStore.snapshot.design.routes.flatMap(r => [r.endpoints.a.anchor, r.endpoints.b.anchor]).flatMap(a => a.kind === 'source' ? [{ sourceId: a.location.sourceId, s: a.location.s }] : []));
+      () => app.projectStore.snapshot.design.routes.flatMap(r => [r.endpoints.a.anchor, r.endpoints.b.anchor]).flatMap(a => a.kind === 'source' ? [{ sourceId: a.location.sourceId, s: a.location.s }] : []),
+      () => app.scenario.id);
     editor.onClose = () => app.select(null);
     // (a step, an undo or a redo: the selected road's card as it is now, its station kept on what is left of it)
     app.projectStore.subscribe((_snapshot, committed) => {

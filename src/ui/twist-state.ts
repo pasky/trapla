@@ -14,7 +14,7 @@ export interface TwistState {
   editsSince: number;
   firstValid: boolean;
   /** the reveal was shown; what it showed */
-  revealed?: { cost: number; on: TwistId[] };
+  revealed?: { cost: number; on: TwistId[]; playMs?: number };
   /** this design began from the straight line (From scratch) */
   scratch: boolean;
 }

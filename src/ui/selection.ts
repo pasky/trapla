@@ -41,6 +41,8 @@ export interface SelectionContext {
   routeCard(): void;
   /** our road starts selected (a first-time player: the intro is up) */
   readonly startSelected: boolean;
+  /** the road itself was just selected (ui/slip-sweep.ts) */
+  onRoadSelected?: () => void;
   /** told after each selection (the map's gestures prepare what a drag of it would rebuild) */
   onSelected?(next: Sel | null): void;
 }
@@ -160,6 +162,7 @@ export function createSelection(app: SelectionContext) {
     if (!app.session.last) return;
     const p = pieceAt(app.session.last, s);
     select({ kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind }, fly);
+    app.onRoadSelected?.(); // (a click on the map selects the road by its piece)
   };
   /** after a recompute: drop a selection that no longer exists, refresh a piece's kind */
   const revalidate = (r: Result, d: Design) => {
@@ -190,6 +193,7 @@ export function createSelection(app: SelectionContext) {
     const sel = app.session.sel;
     setRoadSelected(true);
     select(sel && ROAD_KINDS.has(sel.kind) ? sel : null);
+    app.onRoadSelected?.();
   };
   if (app.startSelected) setRoadSelected(true);
   showRoadSelected();

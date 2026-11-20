@@ -13,6 +13,9 @@ import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
+import { ALL_LORE } from '../src/core/data/lore';
+import { RECORDS } from '../src/core/data/records';
+import { watershedLine } from '../src/core/basins';
 import { ROW_HELP, rowHelp } from '../src/ui/hud';
 import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -84,9 +87,17 @@ describe('player-facing text', () => {
       if (!info) continue;
       ends++;
       const card = endCard(info, end);
-      for (const text of [card.title, ...card.lines]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
+      for (const text of [card.title, ...card.lines, ...(info.lore ? [info.lore] : [])]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
     }
     expect(ends).toBeGreaterThan(8);
+    // a tunnel's ends in two seas' basins (research/100)
+    const basins = { version: 1 as const, source: 's', basins: [{ sea: 'north' as const, river: 'Elbe', rings: [[0, 0, 10, 0, 10, 10, 0, 10]] }, { sea: 'black' as const, river: 'Danube', rings: [[10, 0, 20, 0, 20, 10, 10, 10]] }] };
+    check('watershed line', watershedLine(basins, { x: 5, y: 5, s: 4100 }, { x: 15, y: 5, s: 7080 }) ?? 'missing line');
+    // local knowledge on mapped ways' cards (research/96) and records (research/97): one short sentence each
+    for (const lore of [...ALL_LORE, ...RECORDS]) for (const text of [lore.line, 'title' in lore ? lore.title : undefined]) {
+      check('local knowledge', text);
+      if (text) expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(18);
+    }
     // a motorway direction is named after the place it leads to, never with its section note in nested
     // brackets (QA: "Drag this direction (Hostěradice (on to 0303)).")
     for (const sc of PRESETS) for (const label of [sc.labels.a, sc.labels.b]) {

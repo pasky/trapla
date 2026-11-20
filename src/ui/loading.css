@@ -11,3 +11,5 @@
 .loading-line { margin-top: 8px; color: #50645a; font-variant-numeric: tabular-nums; }
 #loading.failed .loading-track { display: none; }
 #loading button { margin-top: 12px; }
+/* a road sign above a failure's text (ui/signs.ts) */
+.notice-sign-box { margin: 4px 0 10px; line-height: 0; }

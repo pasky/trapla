@@ -173,6 +173,7 @@ try {
     const text = await page.locator('.device-notice').textContent();
     ok(/cannot draw the 3D map/.test(text) && await page.locator('.scenario-picker-card').count() === 0, 'without WebGL: a plain notice, no start screen');
     ok(errors.filter((e) => !/WebGL|GPU/i.test(e)).length === 0, `…and no errors (${errors.join('; ')})`);
+    ok(await page.locator('.device-notice svg.notice-sign[aria-hidden="true"]').count() === 1, '…under a dead-end sign, hidden from screen readers');
     await shot(page, 561, 'no-webgl');
     await context.close();
   }
@@ -194,6 +195,7 @@ try {
     await page.waitForSelector('#loading.failed', { timeout: 60000 });
     ok(/could not be loaded/.test(await page.locator('#loading').textContent()) && await page.getByRole('button', { name: 'Try again' }).isVisible(),
       'a failed download: said on the card, with Try again');
+    ok(await page.locator('#loading svg.notice-sign[aria-hidden="true"]').count() === 1, '…under a road-closed barrier');
     await shot(page, 563, 'loading-failed');
     await context.close();
   }
