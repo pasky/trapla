@@ -2704,7 +2704,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   the reference keeps north of it, 12.78 bn, every news, earth 2 %), D3 0302 (the St Joseph gold mine adit and the Žampach
   viaduct: its bends 2–3 moved 30–80 m west with the Sázava bridge painted, then searched: 5.48 bn), 0303 (the chapel of Our
   Lady, Chrášťany: 4.84 bn), I/35 Rovensko (the chapel at Radostná pod Kozákovem: 3.92 bn, 23 M under the goal), the
-  Královec railway (the church of St John of Nepomuk, Trutnov: 9.01 bn); D3 0301 (the chapel of St Wenceslas by Jílové, by
+  Královec railway (the church of St John of Nepomuk, Libeč: 9.01 bn); D3 0301 (the chapel of St Wenceslas by Jílové, by
   the fixed end B) and 0305 (the Křenovice fort site on the Mastník valley's edge) offer it **off at first** (`notDefault`,
   said on hover): their references meet it (0301 4.28 bn with Earth balance, under the goal but over the last news' 85 %
   money; 0305 8.90 bn with Earth balance and every news, over the goal: the line moved ≈ 200 m east over the valley costs

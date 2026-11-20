@@ -116,7 +116,7 @@ I/35 Rovensko, Královec), part of the default difficulty.
   of St Roch above Staré Město), 546 m on D3 0301 (the chapel of St Wenceslas, Jílové), 517 m on 0302 (the St Joseph gold
   mine adit, Jílové; the Žampach viaduct 678 m), 585 m on 0303 (the chapel of Our Lady, Chrášťany), 524 m on 0305 (the
   Křenovice fort site, Vojkov), 476 m on Rovensko (a chapel at Radostná pod Kozákovem; a cross at Karlovice 259 m), 464 m
-  on the Královec railway (the church of St John of Nepomuk, Trutnov; the Bernartice viaduct 104 m, just outside its 100 m).
+  on the Královec railway (the church of St John of Nepomuk, Libeč; the Bernartice viaduct 104 m, just outside its 100 m).
   Šternberk's bypass keeps 669 m from the town's heritage zone, 681 m from the castle's protection zone, 1,197 m from the
   castle itself; the nearest outside both, two crosses, 600 and 698 m (one by the fixed start). The planners kept clear;
   no ring of a monument's own plot reaches them.
@@ -143,7 +143,7 @@ I/35 Rovensko, Královec), part of the default difficulty.
 - **Named per mission** (the starter breaks the first): D35 stage 1 the chapel of St Roch, Staré Město; D3 0301 the chapel
   of St Wenceslas, Jílové u Prahy; 0302 the St Joseph gold mine adit and the Žampach viaduct; 0303 the chapel of Our Lady,
   Chrášťany; 0305 the Křenovice fort site, Vojkov; Rovensko the chapel at Radostná pod Kozákovem; Královec the church of
-  St John of Nepomuk, Trutnov (the Bernartice viaduct, 104 m off, keeps its own 100 m ring: its setting would push a
+  St John of Nepomuk, Libeč (the Bernartice viaduct, 104 m off, keeps its own 100 m ring: its setting would push a
   mountain railway out of its valley).
 - **Šternberk: not here.** No listed place outside the town's zones comes within any ring of a bypass east of the town
   (the castle 1.2 km off, its 1 km setting would still not reach); the villa garden stays a curveball. The twist screen says

@@ -26,7 +26,8 @@ export function loadTwistState(scenarioId: string, presetId: string, offer: read
     const raw = localStorage.getItem(key(scenarioId, presetId));
     if (!raw) return fresh;
     const s = JSON.parse(raw) as TwistState;
-    return { ...fresh, ...s, on: (s.on ?? fresh.on).filter(t => offer.includes(t)), fired: Array.isArray(s.fired) ? s.fired : [] };
+    // (twists never chosen follow the defaults as they are now: a twist newly offered there comes on)
+    return { ...fresh, ...s, on: ((s.chosen ? s.on : null) ?? fresh.on).filter(t => offer.includes(t)), fired: Array.isArray(s.fired) ? s.fired : [] };
   } catch { return fresh; }
 }
 export function saveTwistState(scenarioId: string, presetId: string, s: TwistState) {

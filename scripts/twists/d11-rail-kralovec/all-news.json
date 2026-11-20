@@ -1,6 +1,6 @@
 {
  "preset": "d11-rail-kralovec",
- "purpose": "Earth balance, Hands off the castle (600 m round the church of St John of Nepomuk, Trutnov) and every curveball, under the goal: a search from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seed 2)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the church of St John of Nepomuk, Libeč) and every curveball, under the goal: a search from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seed 2)",
  "meets": [
   "earth",
   "landmarks",
