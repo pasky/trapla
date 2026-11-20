@@ -28,6 +28,7 @@ import { projectContext } from './eval-project';
 /** `project`: the designs are saved projects of one railway mission */
 const SUITES: Record<string, { scenario: string; designs: string[]; n?: number; project?: boolean }> = {
   rail: { scenario: 'd11', designs: ['tests/fixtures/qa-final/rail-kralovec.json'], project: true },
+  i35: { scenario: 'i35-turnov', designs: ['scripts/scenarios/i35-turnov/i35-turnov-road.json'], n: 4 },
   d11: { scenario: 'd11', designs: ['straight', 'scripts/best-design.json', 'scripts/demo-design.json', 'scripts/direct-80-design.json', 'scripts/direct-90-design.json', 'scripts/town-centre-design.json'] },
   'd3-full': { scenario: 'd3-full', designs: ['scripts/scenarios/d3-full/d3-full-motorway.json'], n: 4 },
   'd35-full': { scenario: 'd35-full', designs: ['scripts/scenarios/d35-full/d35-full-motorway.json'], n: 4 },
@@ -49,8 +50,13 @@ const QA: Record<string, Edit[]> = {
   'scripts/scenarios/d3-full/d3-full-motorway.json': [24500, 29500, 18900, 40000, 50500].map(at => ({ kind: 'insert' as const, at, amount: 300, qa: `re-test 4: drag at km ${at / 1000}` })),
   // the bend the QA's 50 px drag put in (tests/fixtures/qa-final/rail-kralovec-drag.json)
   'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6', valid: true },
-    // the profile drag 8 px up at km 2.03: out of reach of the climb from A (said at the pin, nothing else changes)
-    { kind: 'pin', at: 2030, amount: 4.02, z: 441.9, qa: 'sweep 3 re-check: unreachable pin at km 2.03' }],
+    // the profile drag 8 px up at km 2.03: out of reach of the climb from A (honoured: the climb to it steeper than the
+    // norm, said there)
+    { kind: 'pin', at: 2030, amount: 4.02, z: 441.9, qa: 'sweep 3 re-check: pin out of reach of the climb at km 2.03' },
+    // a pin honoured over a stream: the stream at km 2.087 left in the cut (said there, the fix the pin's)
+    { kind: 'pin', at: 2030, amount: 1.6, z: 439.5, qa: 'owner: a pin honoured over a stream at km 2.03' }],
+  // the owner's report: a pin under the Liberec railway's bridge height at km 0.29 (honoured: our bridge too low, said there)
+  'scripts/scenarios/i35-turnov/i35-turnov-road.json': [{ kind: 'pin', at: 290, amount: -10.9, z: 256, qa: 'owner: a pin honoured under the railway at km 0.29' }],
 };
 
 /** Edits whose far change is physics, not the solve's reach (each with why; still a FAIL if the far change grows

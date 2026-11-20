@@ -149,6 +149,7 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     if (v.vpi !== undefined) { const i = vpi(v.vpi); if (i === undefined) delete out.vpi; else out.vpi = i; }
     if (v.target?.wall) out.target = { ...v.target, wall: { ...v.target.wall, s0: s(v.target.wall.s0), s1: s(v.target.wall.s1) } };
     if (v.target?.auto) out.target = { ...out.target, auto: v.target.auto.flatMap(i => { const j = bend(i); return j === null ? [] : [j]; }) };
+    if (v.target?.pin) out.target = { ...out.target, pin: { ...v.target.pin, s: s(v.target.pin.s) } };
     // the player's height pins: by the stitched line's points
     if (v.target?.heightPins || v.target?.movePin || v.target?.smallest !== undefined) {
       const { heightPins, movePin, smallest, ...rest } = out.target!, k = movePin && vpi(movePin.k), m = smallest === undefined ? undefined : vpi(smallest);
