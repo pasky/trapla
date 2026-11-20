@@ -305,9 +305,14 @@ export function createRoutes(app: RoutesContext) {
   // the snapshot each change starts from: the score's change line compares with its full result
   const stepOf = () => `${app.projectStore.snapshot.epoch}:${app.projectStore.snapshot.revision}`;
   let stepBefore = stepOf();
+  // a toast's Undo means what it says until the player's next edit (a gesture under way, a step committed, undone or
+  // redone); an event that moves no step leaves it
+  let movesBefore = app.projectStore.historyMoves;
   app.store.on((d, committed) => {
     if (committed) evals.endGesture();
-    hideToast(); app.hud.noteEdit(committed, stepBefore); stepBefore = stepOf();
+    if (!committed || app.projectStore.historyMoves !== movesBefore) hideToast();
+    movesBefore = app.projectStore.historyMoves;
+    app.hud.noteEdit(committed, stepBefore); stepBefore = stepOf();
     if (committed) {
       const ids = separateStretches();
       if (!historyStep && !app.store.oneDirection && [...stretchIds].some(id => !ids.has(id))) toast(DIRECTIONS_TEXT.togetherAgain, 'Undo', () => app.store.undo());

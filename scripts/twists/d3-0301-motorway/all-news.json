@@ -1,6 +1,6 @@
 {
  "preset": "d3-0301-motorway",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 1 → 12 → 21); searched again from it for cost model 60 (seed 1)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 1 → 12 → 21); searched again from it for cost model 61 (seed 1)",
  "meets": [
   "earth",
   "landmarks",

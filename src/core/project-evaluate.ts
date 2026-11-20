@@ -12,7 +12,8 @@ import type { KeepClear } from './keep-clear';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { takenUpOutcome } from './taken-up';
 import { designedTieIn } from './tie-in';
-import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, slipRoadAtMotorway } from './slip-roads';
+import type { RoadNet } from './roadnet';
+import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, SLIP_SECTIONS, slipHost, slipRoadAtMotorway } from './slip-roads';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
 import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvaluation } from './project-railway';
@@ -269,14 +270,20 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
   }
   return out.cuts.length ? out : undefined;
 }
+/** A paired road in the player's words for a slip road that meets none: the project's own kind where it has one kind. */
+function pairedWord(design: ProjectDesign) {
+  const words = new Set(design.routes.flatMap(r => r.kind === 'motorway' ? [SLIP_SECTIONS[motorwayCategory(r)].word] : []));
+  return words.size === 1 ? [...words][0] : 'motorway';
+}
 /** A slip road at its motorway's level near its gore (core/slip-roads.ts mergeBands): grade bands as a crossing holds. */
 function slipBands(design: ProjectDesign, route: RouteDesign, ends: { a?: XYZ; b?: XYZ } | undefined, legacyOf: (id: string) => Result | undefined) {
   if (!isSlipRoad(route)) return [];
   const out: { s: number; min: number; max: number }[] = [];
   for (const end of ['a', 'b'] as const) {
     const anchor = route.endpoints[end].anchor, host = anchor.kind === 'route' && carriagewayOf(design, anchor.routeId)?.paired ? legacyOf(anchor.routeId) : undefined;
-    if (!host) continue;
-    out.push(...mergeBands(planLine(route, ends, MERGE_STEP), end, host));
+    const paired = anchor.kind === 'route' ? slipHost(design, anchor.routeId) : null;
+    if (!host || !paired) continue;
+    out.push(...mergeBands(planLine(route, ends, MERGE_STEP), end, host, paired.category));
   }
   return out;
 }
@@ -292,7 +299,8 @@ function followEnds(design: ProjectDesign, r: RouteDesign, legacyOf: (id: string
     if (!host) continue;
     const p = r.endpoints[end].position, k = nearestStation(host, p.x, p.y);
     const carriageway = slip && anchor.kind === 'route' ? carriagewayOf(design, anchor.routeId) : null;
-    if (carriageway?.paired) { const g = gore(host, host.s[k], carriageway.direction); out[end] = { x: g.x, y: g.y, z: g.z }; continue; }
+    const paired = carriageway?.paired && anchor.kind === 'route' ? slipHost(design, anchor.routeId) : null;
+    if (paired) { const g = gore(host, host.s[k], carriageway!.direction, paired.category); out[end] = { x: g.x, y: g.y, z: g.z }; continue; }
     out[end] = { x: host.x[k], y: host.y[k], z: host.grade[k] };
   }
   return out.a || out.b ? out : undefined;
@@ -748,14 +756,15 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
   for (const { route, legacy } of engineered) if (isSlipRoad(route)) {
     const on = (['a', 'b'] as const).filter(e => { const x = route.endpoints[e].anchor; return x.kind === 'route' && design.routes.find(q => q.id === x.routeId)?.kind === 'motorway'; });
     if (on.length === 1) continue;
+    const x = route.endpoints[on[0] ?? 'a'].anchor, h = x.kind === 'route' ? slipHost(design, x.routeId) : null, word = h ? SLIP_SECTIONS[h.category].word : pairedWord(design);
     legacy.violations.push({ kind: 'crossing', s0: 0, s1: legacy.length, basis: 'game',
-      title: on.length ? 'It leaves and joins the motorway' : 'It neither leaves nor joins a motorway',
-      fix: on.length ? 'Put one of its ends on a road' : 'Put its start beside a motorway to leave it, or its end to join it',
-      rule: 'Game rule: a slip road leaves or joins a motorway at one end; its other end joins a road.' });
+      title: on.length ? `It leaves and joins the ${word}` : `It neither leaves nor joins a ${word}`,
+      fix: on.length ? 'Put one of its ends on a road' : `Put its start beside a ${word} to leave it, or its end to join it`,
+      rule: `Game rule: a slip road leaves or joins a ${word} at one end; its other end joins a road.` });
     legacy.valid = false;
   }
   interchangeAllowance(start, gores);
-  interchangeTerminals(start, gores);
+  interchangeTerminals(start, gores, ctx.legacy.roads);
   sharedJunctions(start);
   for (const [id, rep] of replacements) ownWorks.set(id, [...ownWorks.get(id) ?? [], ...rep.works]);
   for (const [id, rings] of ringsOf) ownWorks.set(id, [...ownWorks.get(id) ?? [], ...rings]);
@@ -771,32 +780,28 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   const { design, ownWorks, designedJunctions, builtJunctions } = start;
   const carriageway = carriagewayOf(design, hostRoute.id), i = end === 'a' ? 0 : legacy.n - 1;
   let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
+  // (a slip road meets a paired road: its speed-change lane, gore and credit are that cross-section's, core/slip-roads.ts)
+  const paired = slipHost(design, hostRoute.id, host)!, sec = SLIP_SECTIONS[paired.category], the = `the ${sec.word}`;
   if (!carriageway?.paired) {
-    legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'engine', title: 'Joins a motorway whose directions run apart',
-      fix: 'Join the two directions again (every stretch where they run apart), or build it on a motorway that runs as one',
-      rule: 'Engine limit: a slip road joins a motorway only while its two directions run as one line along its whole length.' });
-    legacy.valid = false; builtJunctions.add(`${route.id}:${end}`); return null;
-  }
-  // (its speed-change lane, gore and credit are the D 27.5's widths and price, core/slip-roads.ts)
-  if (hostRoute.kind === 'motorway' && motorwayCategory(hostRoute) !== 'D27.5') {
-    legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'engine', title: 'Slip roads not yet on a four-lane road',
-      fix: 'End this road on another road', rule: 'Engine limit: slip roads are built to the D 27.5 motorway’s widths and price only.' });
+    legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'engine', title: `Joins a ${sec.word} whose directions run apart`,
+      fix: `Join the two directions again (every stretch where they run apart), or build it on a ${sec.word} that runs as one`,
+      rule: `Engine limit: a slip road joins a ${sec.word} only while its two directions run as one line along its whole length.` });
     legacy.valid = false; builtJunctions.add(`${route.id}:${end}`); return null;
   }
   const speed = route.specification.kind === 'road' ? route.specification.designSpeed : 50;
   const at = slipRoadAtMotorway(legacy, end, host, carriageway.direction, speed, ctx.environment.terrainClass,
     q => { let c = 0; for (const key of SHARED_PARTS) c += legacy.parts[key][q]; return c; }, INDEPENDENCE_SCREEN.clearance,
-    (x, y) => ctx.legacy.terrain.heightAt(x, y));
+    (x, y) => ctx.legacy.terrain.heightAt(x, y), paired);
   if (at.violations.length) { legacy.violations.push(...at.violations); legacy.valid = false; }
   const word = at.kind === 'exit' ? 'Exit' : 'Entry';
   list.push({ kind: 'lane', s: legacy.s[i], x: at.gore.x, y: at.gore.y, length: at.lane.length, cost: at.lane.cost, lines: at.lane.lines,
-    label: `${word} lane on the motorway, ${Math.round(at.lane.length)} m (its hard shoulder, paved 0.5 m wider)` });
+    label: `${word} lane on ${the}, ${Math.round(at.lane.length)} m (its hard shoulder, paved ${sec.widening} m wider)` });
   if (at.credit > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: at.insideM, cost: -at.credit,
-    label: `Its first ${Math.round(at.insideM)} m are on the motorway's formation: not built twice` });
+    label: `Its first ${Math.round(at.insideM)} m are on ${the}'s formation: not built twice` });
   if (at.overlap > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: -at.overlap,
-    label: 'Where its slopes and the motorway\'s overlap: that earth and land once' });
+    label: `Where its slopes and ${the}'s overlap: that earth and land once` });
   if (at.dugCost > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: at.dugCost,
-    label: `The ridge between its cutting and the motorway's dug out: one cutting, ${Math.round(at.dug).toLocaleString('en')} m³` });
+    label: `The ridge between its cutting and ${the}'s dug out: one cutting, ${Math.round(at.dug).toLocaleString('en')} m³` });
   let zones = designedJunctions.get(route.id); if (!zones) designedJunctions.set(route.id, zones = []);
   for (const z of at.zones) zones.push({ routeId: hostRoute.id, ...z });
   // (both directions are one body: the other direction's route shares it)
@@ -807,13 +812,13 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   let earth = -at.credit - at.overlap;
   for (let q = 0; q < legacy.n; q++) if (legacy.kind[q] === KIND.earth) for (const key of SHARED_PARTS) earth += legacy.parts[key][q];
   return { corridorId: carriageway.corridorId, length: host.length, s: at.sGore, routeId: route.id, earth: Math.max(0, earth), x: at.gore.x, y: at.gore.y,
-    goreZones: at.goreZones, zones: at.zones, direction: carriageway.direction, lane: [at.lane.s0, at.lane.s1], kind: at.kind, end, legacy };
+    goreZones: at.goreZones, zones: at.zones, direction: carriageway.direction, lane: [at.lane.s0, at.lane.s1], kind: at.kind, end, legacy, word: sec.word };
 }
 /** A slip road's other end joining a road its motorway crosses near the interchange (the road to the motorway's
  * bridge, or under it): its junction there and the motorway's crossing of that road are one interchange, laid out
  * together. Their changes of that road, and the land between the junction and the crossing's works, are not shared
  * by two separate designs. (A junction ON the crossing's rebuilt stretch is its own problem, slip-roads.ts.) */
-function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: SlipGore[]) {
+function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: SlipGore[], roads?: RoadNet) {
   const { design, legacyOf, designedJunctions, sharedWays } = start;
   for (const routeId of new Set(gores.map(g => g.routeId))) {
     const route = design.routes.find(r => r.id === routeId), legacy = legacyOf.get(routeId), g = gores.find(q => q.routeId === routeId)!;
@@ -824,8 +829,10 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
       const i = end === 'a' ? 0 : legacy.n - 1, anchor = route.endpoints[end].anchor;
       const way = anchor.kind === 'source' ? legacy.footprintConflicts.find(f => f.action === 'junction' && f.i === i)?.roadId : undefined;
       if (way === undefined) continue;
+      // (the road it joins: that way and the ways continuing it, a road mapped as several ways where its name or class changes)
+      const road = roads ? roadWays(roads, way, legacy.x[i], legacy.y[i], SLIP_ROAD.interchangeReach / 2) : new Set([way]);
       for (const c of line.crossings) {
-        if (c.roadId !== way || c.shared) continue;
+        if (c.roadId === undefined || !road.has(c.roadId) || c.shared) continue;
         const reach = Math.max((c.span ?? 0) / 2 + (c.approachLength ?? 0) + (c.realignLength ?? 0),
           ...(c.geometry?.road ?? []).map(q => Math.hypot(q.x - c.x, q.y - c.y)));
         const d = Math.hypot(legacy.x[i] - c.x, legacy.y[i] - c.y);
@@ -836,19 +843,33 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
         const near = raised.reduce((m, q) => Math.min(m, Math.hypot(q.x - legacy.x[i], q.y - legacy.y[i])), Infinity);
         if (near < ENDPOINT_JUNCTIONS['tie-in'].zone) {
           const off = raised.reduce((m, q) => Math.max(m, Math.hypot(q.x - c.x, q.y - c.y)), 0) + ENDPOINT_JUNCTIONS['tie-in'].zone;
-          const zone = SLIP_ROAD.exit.taper / 2, at = end === 'a' ? { s0: 0, s1: Math.min(legacy.length, zone) } : { s0: Math.max(0, legacy.length - zone), s1: legacy.length };
+          const zone = SLIP_ROAD.endZone / 2, at = end === 'a' ? { s0: 0, s1: Math.min(legacy.length, zone) } : { s0: Math.max(0, legacy.length - zone), s1: legacy.length };
           legacy.violations.push({ kind: 'crossing', ...at, basis: 'game', title: 'It joins the road on the ramp to its bridge',
-            fix: `Move this end along the road to at least ${Math.ceil(off / 10) * 10} m from the motorway, where the road is back on its ground`,
-            rule: 'Game rule: a junction is built where the road it joins runs on its ground, not on the ramp of a bridge over the motorway or under it' });
+            fix: `Move this end along the road to at least ${Math.ceil(off / 10) * 10} m from the ${g.word}, where the road is back on its ground`,
+            rule: `Game rule: a junction is built where the road it joins runs on its ground, not on the ramp of a bridge over the ${g.word} or under it` });
           legacy.valid = false;
         }
         let shared = sharedWays.get(routeId); if (!shared) sharedWays.set(routeId, shared = []);
         let zones = designedJunctions.get(routeId); if (!zones) designedJunctions.set(routeId, zones = []);
         const zone = { x: (legacy.x[i] + c.x) / 2, y: (legacy.y[i] + c.y) / 2, r: d / 2 + reach + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance };
-        for (const id of [corridor.children.forward, corridor.children.reverse]) { shared.push({ routeId: id, way, ...zone }); zones.push({ routeId: id, ...zone }); }
+        for (const id of [corridor.children.forward, corridor.children.reverse]) {
+          for (const w of new Set([way, c.roadId])) shared.push({ routeId: id, way: w, ...zone });
+          zones.push({ routeId: id, ...zone });
+        }
       }
     }
   }
+}
+/** A mapped road as the ways it is made of along it: from the point x, y on `way` out to `reach` m either way, on over
+ * its straightest continuation where a way ends (RoadNet.connectedCrossingPath: the same class preferred). */
+function roadWays(roads: RoadNet, way: number, x: number, y: number, reach: number): Set<number> {
+  const out = new Set([way]), path = roads.connectedCrossingPath(way, x, y, reach);
+  // (each piece's way: at its middle, off the nodes where ways meet)
+  for (let k = 1; k < path.length; k++) {
+    const w = roads.nearestWay((path[k - 1].x + path[k].x) / 2, (path[k - 1].y + path[k].y) / 2, 1);
+    if (w !== undefined) out.add(w);
+  }
+  return out;
 }
 /** Two slip roads' ends joining a road at one point (Build → Slip road puts the second onto the first's junction,
  * SLIP_ROAD.shareJunction): one junction, a crossroads where the two come from either side, built and billed by the
@@ -902,7 +923,9 @@ interface SlipGore { corridorId: string; length: number; s: number; routeId: str
   /** wherever its works come near the motorway's: there the other carriageway's slip roads' works, across the motorway, meet it in its body */
   zones: { x: number; y: number; r: number }[];
   /** its carriageway, its lane's stations along the motorway's line, exit or entry, which of its ends, its result */
-  direction: 1 | -1; lane: [number, number]; kind: 'exit' | 'entry'; end: 'a' | 'b'; legacy: Result }
+  direction: 1 | -1; lane: [number, number]; kind: 'exit' | 'entry'; end: 'a' | 'b'; legacy: Result;
+  /** the paired road in the player's words */
+  word: string }
 /** The motorway's own price already includes earth-built ramps of one interchange every 7 km (SPK, core/slip-roads.ts
  * SLIP_ROAD.allowance): the interchanges built by hand (gores within SLIP_ROAD.interchangeReach along one motorway),
  * up to that many, are credited one interchange's allowance each, at most what their slip roads build on earth,
@@ -917,7 +940,7 @@ function interchangeAllowance(start: ReturnType<typeof projectStart>, gores: Sli
     const need = Math.ceil((Math.min(p.lane[1], q.lane[1]) - Math.max(p.lane[0], q.lane[0])) / 10) * 10, i = later.end === 'a' ? 0 : later.legacy.n - 1;
     later.legacy.violations.push({ kind: 'crossing', s0: later.legacy.s[i], s1: later.legacy.s[i], basis: 'game',
       title: `Its ${later.kind === 'exit' ? 'exit' : 'entry'} lane overlaps another slip road's ${other.kind === 'exit' ? 'exit' : 'entry'} lane`,
-      fix: `Move this end at least ${need} m further along the motorway, away from the other`,
+      fix: `Move this end at least ${need} m further along the ${later.word}, away from the other`,
       rule: 'Game rule: one speed-change lane at a time on a carriageway (a lane joining two slip roads is not built by the game)' });
     later.legacy.valid = false;
   }
@@ -939,7 +962,7 @@ function interchangeAllowance(start: ReturnType<typeof projectStart>, gores: Sli
       const credit = Math.min(earth, share * SLIP_ROAD.allowance.perInterchange);
       if (!(credit > 0)) continue;
       for (const g of each.values()) if (g.earth > 0) ownWorks.get(g.routeId)!.push({ kind: 'junction', s: 0, x: g.x, y: g.y, length: 0, cost: -credit * g.earth / earth,
-        label: 'Already in the motorway\'s price: earth-built slip roads of one interchange every 7 km' });
+        label: `Already in the ${g.word}'s price: earth-built slip roads of one interchange every 7 km` });
     }
   }
 }
@@ -1370,7 +1393,7 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
     kind: w.kind === 'removal' || w.kind === 'kept' ? 'formation' : w.kind === 'land' ? 'land' : w.kind === 'noise-wall' ? 'noise' : w.kind === 'buyout' ? 'property' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' || w.kind === 'kept' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
     cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s }, ...(w.removes ? { removes: [...w.removes] } : {}),
-    ...(w.lines ? { surfaces: w.lines.map(l => ({ routeId: route.id, revision: route.revision, points: l.map(p => ({ ...p, s: 0, halfWidth: SLIP_ROAD.marking.width / 2, structure: 'ground' as const })) })) } : {}) };
+    ...(w.lines ? { surfaces: w.lines.map(l => ({ routeId: route.id, revision: route.revision, points: l.map(p => ({ ...p, s: 0, halfWidth: p.halfWidth ?? SLIP_ROAD.marking.width / 2, structure: 'ground' as const })) })) } : {}) };
 }
 
 /** Where a higher-ranking road's crossing holds a designed road: a grade band at that point of its line. */

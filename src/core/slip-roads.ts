@@ -6,8 +6,8 @@
 // shoulder's place, the carriageway's paving 0.5 m wider (research/90 §4, D35 design + MD VL 3 sheets 400.11–12).
 // This module is the geometry, bill and checks of that lane and gore; project-evaluate.ts builds them.
 import type { Violation } from './checks';
-import { CATEGORIES, type TerrainClass } from './data/categories';
-import { D275_SECTION } from './data/motorway';
+import { CATEGORIES, pairedName, type PairedCategoryId, type TerrainClass } from './data/categories';
+import { PAIRED_SECTIONS } from './data/motorway';
 import type { Result } from './evaluate';
 import type { ProjectDesign, RouteDesign, XYZ } from './project';
 import { stationIndex } from './range';
@@ -15,32 +15,60 @@ import { KIND } from './structures';
 import { landPerM2 } from './cost';
 import { GRADE_PIN_TOLERANCE } from './grade-pins';
 import { LAND, PRICES } from './data/prices';
+import { speedStretches } from './design-speed';
+import { motorwayCategory } from './route-section';
 
-const d = D275_SECTION;
-/** Through-lanes' outer edge from the motorway's line, m (median half + inner shoulder + two lanes). */
-const THROUGH_EDGE = d.median / 2 + d.innerPavedShoulder + (d.innerLane + d.outerLane);
+/** A slip road's speed-change lane beside the carriageway of a paired road (D 27.5, S 21.5): 3.50 m with 0.25 m guide
+ * strips, the paved shoulder beside it narrowed to 0.25 m (D35 design p. 9; VL 3 sheets 400.11–12 "zpevněná krajnice
+ * na dálnicích a rychlostních silnicích podél připojovacích a odbočovacích pruhů … = 0,25 m", the rychlostní silnice
+ * R 21.5 being today's D / S 21.5), research/90 §4b, §4c. */
+export const LANE = { width: 3.5, guideStrip: 0.25, shoulder: 0.25 };
+/** Where a slip road meets a carriageway of a paired road of category `c`, m from the road's line: the through lanes'
+ * outer edge (`through`), their paved shoulder's (`paved`), the formation's (`half`), the slip road's line at the gore
+ * (`goreOffset`: the speed-change lane's middle), how much wider one carriageway is paved along the lane
+ * (`widening`: D 27.5 (0.5 + 2 × 3.75 + 0.25 + 3.5 + 0.25) − 11.5 = 0.5; S 21.5 (0.5 + 3.25 + 3.5 + 0.25 + 3.5 +
+ * 0.25) − 8.75 = 2.5), and the road in the player's words. */
+export interface SlipSection { through: number; paved: number; half: number; goreOffset: number; widening: number; word: string }
+const slipSection = (c: PairedCategoryId): SlipSection => {
+  const d = PAIRED_SECTIONS[c], through = d.median / 2 + d.innerPavedShoulder + (d.innerLane + d.outerLane);
+  return { through, paved: through + d.outerPavedShoulder, half: CATEGORIES[c].crownWidth / 2,
+    goreOffset: through + LANE.guideStrip + LANE.width / 2,
+    widening: (d.innerPavedShoulder + (d.innerLane + d.outerLane) + LANE.guideStrip + LANE.width + LANE.shoulder)
+      - (d.innerPavedShoulder + (d.innerLane + d.outerLane) + d.outerPavedShoulder),
+    word: pairedName(c).toLowerCase() };
+};
+export const SLIP_SECTIONS: Record<PairedCategoryId, SlipSection> = { 'D27.5': slipSection('D27.5'), 'S21.5': slipSection('S21.5') };
+
+/** The lengths of a speed-change lane (exit: Lv taper + Ld braking; entry: Lod + Lm + Lz, its Lz taper at the far end),
+ * by the paired road's design speed: the row of the slowest tabulated speed at or above it, m (research/90 §4, §4c).
+ * - 120 and up: the D35 design at D 130 for a 50 km/h slip road (exit 100 + 134 = 234 m, its own grade; entry 30 + 175
+ *   + 90 = 295 m, ČSN 73 6102's 120 column); PROVISIONAL the same at 120 km/h and for a 40 km/h slip road.
+ * - 110, 100, 90: Lv and the entry from ČSN 73 6102's tables as the ČVUT K612 course reproduces them (Lv for a 3.50 m
+ *   lane 70 / 80 / 100 m at 90 / 100 / 120; entry 230 / 255 / 295 m at 90 / 100 / 120; no 110 column: the 120 one, the
+ *   longer), Ld = ((0.75 vn)² − vc²) / (26 · (d + s / 10)) with d = 1.7 m/s² on the level (s = 0; the grade term
+ *   not applied), vc the slip road's design speed, rounded up to the metre. */
+const braking = (vn: number, vc: number) => Math.ceil(((0.75 * vn) ** 2 - vc ** 2) / (26 * 1.7));
+const laneRow = (speed: number, lv: number, entry: { length: number; taper: number }) =>
+  ({ speed, exit: { taper: lv, length: { 50: lv + braking(speed, 50), 40: lv + braking(speed, 40) } as Record<number, number> }, entry: { taper: entry.taper, length: { 50: entry.length, 40: entry.length } as Record<number, number> } });
+export const LANE_LENGTHS = [
+  laneRow(90, 70, { length: 230, taper: 70 }),
+  laneRow(100, 80, { length: 255, taper: 80 }),
+  laneRow(110, 100, { length: 295, taper: 90 }),
+  { speed: 120, exit: { taper: 100, length: { 50: 234, 40: 234 } as Record<number, number> }, entry: { taper: 90, length: { 50: 295, 40: 295 } as Record<number, number> } },
+];
+/** The lane lengths' row for a paired road of design speed `speed`. */
+export const laneLengths = (speed: number) => LANE_LENGTHS.find(r => r.speed >= speed) ?? LANE_LENGTHS[LANE_LENGTHS.length - 1];
+
 export const SLIP_ROAD = {
-  /** Speed-change lane: 3.50 m with 0.25 m guide strips; the paved shoulder beside it narrows to 0.25 m, so the
-   * carriageway is paved 12.00 m wide (D35 design p. 9; VL 3 sheets 400.11–12 "zpevněná krajnice … podél
-   * připojovacích a odbočovacích pruhů = 0,25 m"), research/90 §4. */
-  laneWidth: 3.5, guideStrip: 0.25,
-  /** how much wider one carriageway is paved along the lane, m: (0.5 + 2 × 3.75 + 0.25 + 3.5 + 0.25) − 11.5 */
-  widening: (d.innerPavedShoulder + (d.innerLane + d.outerLane) + 0.25 + 3.5 + 0.25) - (d.innerPavedShoulder + (d.innerLane + d.outerLane) + d.outerPavedShoulder),
-  /** Exit (deceleration) lane, whole length incl. its 100 m taper, by the slip road's design speed, m: D35 design
-   * at D 130, ramp 50 km/h 100 + 134 = 234 m (research/90 §4, medium). PROVISIONAL: the same at 120 km/h and for
-   * a 40 km/h slip road (their rows were not found; slower needs longer, so this is a lower bound). */
-  exit: { taper: 100, length: { 50: 234, 40: 234 } as Record<number, number> },
-  /** Entry (acceleration) lane: 30 + 175 + 90 = 295 m for a 50 km/h slip road at D 130, its 90 m taper at the far
-   * end (same source, same PROVISIONAL use). */
-  entry: { taper: 90, length: { 50: 295, 40: 295 } as Record<number, number> },
   /** The V 2b dashed line between the through lane and the speed-change lane (VL 3 sheet 400.12: 1.5 / 1.5 / 0.25 m). */
   marking: { width: 0.25, dash: 1.5, gap: 1.5 },
-  /** The slip road's line at the gore: the speed-change lane's middle, m from the motorway's line. */
-  goreOffset: THROUGH_EDGE + 0.25 + 3.5 / 2,
-  /** Earth-built ramps already in the motorway's price: SPK CN 2026 report p. 7, the D road standard includes
-   * "větve MÚK budované na zemním tělese … za předpokladu 1 MÚK/7 km trasy" (research/33 §3), per interchange
-   * PROVISIONAL the A.4.N standard for one interchange's earth-built ramps in two quadrants, 76,700,900 CZK
-   * (report p. 10: lower class I roads; the motorway's own share is not stated). */
+  /** The stretch of a slip road by its end a problem there is marked on, m (display; the D 130 exit lane's taper). */
+  endZone: 100,
+  /** Earth-built ramps already in a divided road's price: SPK CN 2026 report p. 7, the standard of a divided road
+   * "od kategorie S 20,75 výše" (D 27.5; D 21.5, the row S 21.5 is priced on) includes "větve MÚK budované na zemním
+   * tělese … za předpokladu 1 MÚK/7 km trasy" (research/33 §3, research/90 §7b), per interchange PROVISIONAL the A.4.N
+   * standard for one interchange's earth-built ramps in two quadrants, 76,700,900 CZK (report p. 10: lower class I
+   * roads; the divided road's own share is not stated). */
   allowance: { perKm: 1 / 7, perInterchange: 76_700_900, code: 'A.4.N' },
   /** Gores closer than this along one motorway make one interchange (its four ramps), m. Game rule. */
   interchangeReach: 1500,
@@ -69,11 +97,26 @@ export function sideAt(line: Pick<Result, 'n' | 'ds' | 'x' | 'y' | 'tx' | 'ty'>,
 }
 /** Unit vector to the right of travel on carriageway `direction` at station index k. */
 const rightOf = (line: Pick<Result, 'tx' | 'ty'>, k: number, direction: 1 | -1) => ({ x: direction * line.ty[k], y: -direction * line.tx[k] });
-/** The gore: where the slip road's line meets the carriageway, at the motorway's height there. `travel`: the
- * carriageway's direction of travel there (a slip road leaves and joins along it). */
-export function gore(line: Pick<Result, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'grade'>, s: number, direction: 1 | -1): XYZ & { s: number; travel: { x: number; y: number } } {
-  const k = stationIndex(line, s), r = rightOf(line, k, direction);
-  return { x: line.x[k] + r.x * SLIP_ROAD.goreOffset, y: line.y[k] + r.y * SLIP_ROAD.goreOffset, z: line.grade[k], s: line.s[k],
+/** The paired road a slip road meets: its category (its cross-section, price and word) and design speed (its lanes'
+ * lengths): the road's own, and where its bends are slower, theirs (`stretches`, design-speed.ts speedStretches). */
+export interface SlipHost { category: PairedCategoryId; speed: number; stretches?: readonly { s0: number; s1: number; speed: number }[] }
+/** The design speed of the paired road at its station s. */
+export const hostSpeedAt = (host: SlipHost, s: number) => host.stretches?.find(x => s >= x.s0 && s <= x.s1)?.speed ?? host.speed;
+/** The paired road (a motorway or a four-lane road of the project) `routeId` is a direction of, as a slip road meets it;
+ * `line`: its evaluated body (its bends' speeds). Null: not a paired road of the project. */
+export function slipHost(design: ProjectDesign, routeId: string, line?: Pick<Result, 'curves' | 'length'>): SlipHost | null {
+  const r = design.routes.find(q => q.id === routeId);
+  if (r?.kind !== 'motorway') return null;
+  const category = motorwayCategory(r), speed = r.specification.designSpeed;
+  const c = design.corridors.find(q => q.children.forward === routeId || q.children.reverse === routeId);
+  const pis = c?.mode === 'paired' && c.spine.kind === 'pi' ? c.spine.pis : undefined;
+  return { category, speed, ...(line && pis ? { stretches: speedStretches(line, pis, speed, category) } : {}) };
+}
+/** The gore: where the slip road's line meets the carriageway of a paired road of category `c`, at its height there.
+ * `travel`: the carriageway's direction of travel there (a slip road leaves and joins along it). */
+export function gore(line: Pick<Result, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'grade'>, s: number, direction: 1 | -1, c: PairedCategoryId): XYZ & { s: number; travel: { x: number; y: number } } {
+  const k = stationIndex(line, s), r = rightOf(line, k, direction), off = SLIP_SECTIONS[c].goreOffset;
+  return { x: line.x[k] + r.x * off, y: line.y[k] + r.y * off, z: line.grade[k], s: line.s[k],
     travel: { x: direction * line.tx[k], y: direction * line.ty[k] } };
 }
 /** The bend a new slip road gets so that it leaves (joins) the carriageway along it: `reach` m along the travel
@@ -87,34 +130,40 @@ export interface SpeedChangeLane {
   kind: 'exit' | 'entry';
   /** spine stations it covers (s0 < s1), and its whole length, m */
   s0: number; s1: number; length: number;
-  /** paved area added to the carriageway (the 0.5 m widening; tapers at half), on ground / on bridges, m² */
+  /** paved area added to the carriageway (SlipSection.widening; tapers at half), on ground / on bridges, m² */
   area: { ground: number; bridge: number };
   cost: number;
-  /** the dashed line between it and the through lane, and its taper's edge (drawn; either may be empty) */
-  lines: XYZ[][];
+  /** the dashed line between it and the through lane, its taper's edge, and the paving it adds beyond the paved
+   * shoulder (the middle of that strip, `halfWidth` its half; drawn; any may be empty) */
+  lines: (XYZ & { halfWidth?: number })[][];
+  /** how much wider the formation is on its side, at the paired road's stations `k` (drawn, as billed: `area`) */
+  widen: { k: number; extra: number }[];
+  /** the side of the paired road's line it is on (1: left of the line's direction) */
+  side: 1 | -1;
   violations: Violation[];
 }
 const issue = (s0: number, s1: number, title: string, fix: string, rule: string, basis: Violation['basis'] = 'game'): Violation =>
   ({ kind: 'crossing', s0, s1, title, fix, rule, basis });
 
-/** The speed-change lane of a slip road whose end `end` meets the carriageway `direction` of the motorway `line`
- * at station sGore, for a slip road of design speed `speed`; its violations are worded for the slip road
- * (stations [s0, s1] of the slip road's own line: where it meets the motorway). */
+/** The speed-change lane of a slip road whose end `end` meets the carriageway `direction` of the paired road `line`
+ * (`host`) at station sGore, for a slip road of design speed `speed`; its violations are worded for the slip road
+ * (stations [s0, s1] of the slip road's own line: where it meets the paired road). */
 export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, kind: 'exit' | 'entry', speed: number,
-  terrain: TerrainClass, at: { s0: number; s1: number }): SpeedChangeLane {
-  const spec = SLIP_ROAD[kind], length = spec.length[speed] ?? spec.length[50];
+  terrain: TerrainClass, at: { s0: number; s1: number }, host: SlipHost): SpeedChangeLane {
+  const vn = hostSpeedAt(host, sGore), sec = SLIP_SECTIONS[host.category], spec = laneLengths(vn)[kind], length = spec.length[speed] ?? spec.length[50];
+  const word = `the ${sec.word}`;
   // u: along the travel from the lane's upstream end (an exit: its taper's start; an entry: the gore) to its downstream end
   const upstream = kind === 'exit' ? sGore - direction * length : sGore;
   const s0 = Math.min(upstream, upstream + direction * length), s1 = Math.max(upstream, upstream + direction * length);
   const violations: Violation[] = [];
   const what = kind === 'exit' ? 'exit lane' : 'entry lane', name = kind === 'exit' ? 'An exit lane' : 'An entry lane';
   const short = s0 < 0 ? -s0 : s1 > line.length ? s1 - line.length : 0;
-  if (short > 0.5) violations.push(issue(at.s0, at.s1, `Its ${what} runs off the end of the motorway`,
-    `Move this end at least ${Math.ceil(short / 10) * 10} m further along the motorway`, `${name} on the motorway is ${length} m long (ČSN 73 6102 for a 50 km/h slip road on a 130 km/h motorway, as a D35 interchange design uses it; the game uses it for every slip road)`, 'norm')); // research/90 §4
+  if (short > 0.5) violations.push(issue(at.s0, at.s1, `Its ${what} runs off the end of ${word}`,
+    `Move this end at least ${Math.ceil(short / 10) * 10} m further along ${word}`, `${name} is ${length} m long for a ${speed} km/h slip road on a ${vn} km/h ${sec.word} (after ČSN 73 6102)`, 'norm')); // research/90 §4, §4c
   // its share of full width: an exit opens over its first `taper` m, an entry closes over its last
   const width = (u: number) => Math.min(1, Math.max(0, (kind === 'exit' ? u : length - u) / spec.taper));
-  const area = { ground: 0, bridge: 0 }, lines: XYZ[][] = [[], []];
-  const per = CATEGORIES['D27.5'], perM2 = { ground: per.normPerKm[terrain] / 1000 / per.crownWidth, bridge: per.bridgePerKm / 1000 / per.crownWidth };
+  const area = { ground: 0, bridge: 0 }, lines: SpeedChangeLane['lines'] = [[], [], []], widen: SpeedChangeLane['widen'] = [];
+  const per = CATEGORIES[host.category], perM2 = { ground: per.normPerKm[terrain] / 1000 / per.crownWidth, bridge: per.bridgePerKm / 1000 / per.crownWidth };
   let tunnel = false;
   const steps = Math.max(1, Math.ceil(length / line.ds)), du = length / steps;
   for (let q = 0; q <= steps; q++) {
@@ -123,17 +172,22 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
     const k = stationIndex(line, s), w = width(u);
     if (line.kind[k] === KIND.tunnel) tunnel = true;
     // (the paving each sample stands for: half a step at the ends)
-    const da = SLIP_ROAD.widening * w * (q === 0 || q === steps ? du / 2 : du);
+    const da = sec.widening * w * (q === 0 || q === steps ? du / 2 : du);
     if (line.kind[k] === KIND.bridge) area.bridge += da; else area.ground += da;
     const r = rightOf(line, k, direction), z = line.grade[k];
     // the dashed line at the through lanes' edge where the lane is full width; along the taper its outer edge
-    if (w >= 1 - 1e-9) lines[0].push({ x: line.x[k] + r.x * (THROUGH_EDGE + 0.125), y: line.y[k] + r.y * (THROUGH_EDGE + 0.125), z });
-    else { const off = THROUGH_EDGE + 0.25 + 3.5 * w; lines[1].push({ x: line.x[k] + r.x * off, y: line.y[k] + r.y * off, z }); }
+    if (w >= 1 - 1e-9) lines[0].push({ x: line.x[k] + r.x * (sec.through + 0.125), y: line.y[k] + r.y * (sec.through + 0.125), z });
+    else { const off = sec.through + 0.25 + 3.5 * w; lines[1].push({ x: line.x[k] + r.x * off, y: line.y[k] + r.y * off, z }); }
+    // the paving beyond the paved shoulder, and the formation that much wider (as billed: `da`)
+    const extra = sec.widening * w;
+    if (extra > 1e-6) { const mid = sec.paved + extra / 2; lines[2].push({ x: line.x[k] + r.x * mid, y: line.y[k] + r.y * mid, z, halfWidth: extra / 2 }); }
   }
-  if (tunnel) violations.push(issue(at.s0, at.s1, `Its ${what} runs into a tunnel`, 'Move this end along the motorway, out of the tunnel',
+  for (let k = 0; k < line.n; k++) if (line.s[k] >= s0 && line.s[k] <= s1) widen.push({ k, extra: sec.widening * width(direction * (line.s[k] - upstream)) });
+  if (tunnel) violations.push(issue(at.s0, at.s1, `Its ${what} runs into a tunnel`, `Move this end along ${word}, out of the tunnel`,
     'Game rule: a speed-change lane is built in the open (a wider tunnel is not in the game)'));
   const cost = area.ground * perM2.ground + area.bridge * perM2.bridge;
-  return { kind, s0, s1, length, area, cost, lines, violations };
+  // (the right of travel on the forward carriageway is the line's right)
+  return { kind, s0, s1, length, area, cost, lines, widen, side: direction === 1 ? -1 : 1, violations };
 }
 
 /** A step between the two pavements this small is one body (the height a slip road is held at, MERGE_TOLERANCE), m. */
@@ -162,9 +216,9 @@ export const RIDGE_NOSE = 1.75;
  * across from the motorway's line it is (`d`) and how square the slip road's cross-section runs to the motorway's
  * (`cos`: a distance across the motorway is that much longer across the slip road), and the ground
  * taken out beyond what the two cuttings dig, m² of cross-section (`area`). Billed (slipRoadAtMotorway) and drawn
- * (render/slip-merge.ts) from this one answer. `heightAt`: the ground. */
-export function dugRidges(ramp: Result, line: Result, heightAt: (x: number, y: number) => number) {
-  const n = ramp.n, wm = CATEGORIES['D27.5'].crownWidth / 2, wr = CATEGORIES['V7.25'].crownWidth / 2;
+ * (render/slip-merge.ts) from this one answer. `heightAt`: the ground; `c`: the paired road's category. */
+export function dugRidges(ramp: Result, line: Result, heightAt: (x: number, y: number) => number, c: PairedCategoryId) {
+  const n = ramp.n, wm = SLIP_SECTIONS[c].half, wr = CATEGORIES['V7.25'].crownWidth / 2;
   const out = { k: new Int32Array(n).fill(-1), x: new Float64Array(n).fill(NaN), z: new Float64Array(n).fill(NaN), area: new Float64Array(n),
     mLeft: new Uint8Array(n), rLeft: new Uint8Array(n), d: new Float64Array(n).fill(NaN), cos: new Float64Array(n).fill(1) };
   type At = { kk: number; d: number; nx: number; ny: number; zm: number; zDayM: number; dayM: number; zr: number; zDayR: number; dayR: number; x0: number; x1: number };
@@ -228,6 +282,17 @@ export function dugRidges(ramp: Result, line: Result, heightAt: (x: number, y: n
   return out;
 }
 
+/** The speed-change lane of a slip road's end `end` on carriageway `direction` of the paired road `line` (`host`): at
+ * the line's station nearest that end (`k`; `i` the slip road's), and where on the slip road its problems are marked. */
+export function laneOf(ramp: Pick<Result, 'n' | 'x' | 'y' | 'length'>, end: 'a' | 'b', line: Result, direction: 1 | -1, speed: number,
+  terrain: TerrainClass, host: SlipHost) {
+  const i = end === 'a' ? 0 : ramp.n - 1, kind = end === 'a' ? 'exit' as const : 'entry' as const;
+  let k = 0, best = Infinity;
+  for (let j = 0; j < line.n; j++) { const dd = Math.hypot(line.x[j] - ramp.x[i], line.y[j] - ramp.y[i]); if (dd < best) { best = dd; k = j; } }
+  const zone = SLIP_ROAD.endZone;
+  const at = end === 'a' ? { s0: 0, s1: Math.min(ramp.length, zone) } : { s0: Math.max(0, ramp.length - zone), s1: ramp.length };
+  return { i, k, kind, at, lane: speedChangeLane(line, line.s[k], direction, kind, speed, terrain, at, host) };
+}
 /** What a slip road builds where it meets the motorway (`end` on carriageway `direction` of the paired body `line`):
  * the speed-change lane (a work of the slip road, drawn and billed); what the two bodies build once where they
  * meet (a credit: its first metres on the motorway's formation, `shared(q)` its cost there, and where their slopes
@@ -237,29 +302,26 @@ export function dugRidges(ramp: Result, line: Result, heightAt: (x: number, y: n
  * the interchange's own earthworks, not land two roads share; `goreZones`: those of its first metres on the
  * motorway's formation, where the slip roads of the other carriageway reach too). `heightAt`: the ground. */
 export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, direction: 1 | -1, speed: number, terrain: TerrainClass,
-  shared: (q: number) => number, clearance: number, heightAt: (x: number, y: number) => number) {
-  const i = end === 'a' ? 0 : ramp.n - 1, kind = end === 'a' ? 'exit' as const : 'entry' as const;
-  let k = 0, best = Infinity;
-  for (let j = 0; j < line.n; j++) { const dd = Math.hypot(line.x[j] - ramp.x[i], line.y[j] - ramp.y[i]); if (dd < best) { best = dd; k = j; } }
-  const zone = SLIP_ROAD.exit.taper;
-  const at = end === 'a' ? { s0: 0, s1: Math.min(ramp.length, zone) } : { s0: Math.max(0, ramp.length - zone), s1: ramp.length };
-  const lane = speedChangeLane(line, line.s[k], direction, kind, speed, terrain, at);
+  shared: (q: number) => number, clearance: number, heightAt: (x: number, y: number) => number, host: SlipHost) {
+  const sec = SLIP_SECTIONS[host.category], the = `the ${sec.word}`;
+  const { i, k, kind, at, lane } = laneOf(ramp, end, line, direction, speed, terrain, host);
   const violations = [...lane.violations];
   // (where it leaves or joins the motorway it is on the ground: as Build refuses a bridge or tunnel there)
   if (line.kind[k] !== KIND.earth) violations.push({ kind: 'crossing', ...at, basis: 'game',
-    title: end === 'a' ? 'It leaves the motorway on a bridge or in a tunnel' : 'It joins the motorway on a bridge or in a tunnel',
-    fix: 'Move this end along the motorway to where it runs on the ground',
-    rule: 'Game rule: a slip road leaves and joins a motorway where it runs on the ground (a wider bridge or tunnel is not built by the game)' });
+    title: end === 'a' ? `It leaves ${the} on a bridge or in a tunnel` : `It joins ${the} on a bridge or in a tunnel`,
+    fix: `Move this end along ${the} to where it runs on the ground`,
+    rule: `Game rule: a slip road leaves and joins a ${sec.word} where it runs on the ground (its start on a bridge or in a tunnel is not built by the game)` });
   // it leaves (joins) along the traffic: its first straight heads the carriageway's way, not against it
-  const g = gore(line, line.s[k], direction), sign = end === 'a' ? 1 : -1;
+  const g = gore(line, line.s[k], direction, host.category), sign = end === 'a' ? 1 : -1;
   const q1 = end === 'a' ? Math.min(ramp.n - 1, i + 2) : Math.max(0, i - 2);
   const hx = sign * (ramp.x[q1] - ramp.x[i]), hy = sign * (ramp.y[q1] - ramp.y[i]);
   if (hx * g.travel.x + hy * g.travel.y < 0) violations.push({ kind: 'crossing', ...at, basis: 'game',
-    title: end === 'a' ? 'It leaves the motorway against the traffic' : 'It joins the motorway against the traffic',
-    fix: end === 'a' ? 'Turn it to leave the way the traffic goes, or start it on the other side of the motorway'
-      : 'Turn it to join the way the traffic goes, or end it on the other side of the motorway',
+    title: end === 'a' ? `It leaves ${the} against the traffic` : `It joins ${the} against the traffic`,
+    fix: end === 'a' ? `Turn it to leave the way the traffic goes, or start it on the other side of ${the}`
+      : `Turn it to join the way the traffic goes, or end it on the other side of ${the}`,
     rule: 'Game rule: a slip road leaves and joins a carriageway along its traffic, on its right' });
-  const wm = CATEGORIES['D27.5'].crownWidth / 2, wr = CATEGORIES['V7.25'].crownWidth / 2, formation = wm + SLIP_ROAD.widening;
+  // (its formation: the paired road's half, wider along the speed-change lane, which ends at the gore)
+  const wm = sec.half, wr = CATEGORIES['V7.25'].crownWidth / 2, wide = new Map(lane.widen.map(w => [w.k, w.extra]));
   // (each m³ at what the slip road pays for its own earth; one with no cut of its own at the motorway's rate)
   const cutOf = (r: Result) => r.quantities.cut > 0 ? (r.cost.earthDetail.excavation + r.cost.earthDetail.surplusHaul + r.cost.earthDetail.unsuitable) / r.quantities.cut : 0;
   const rate = {
@@ -283,7 +345,7 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     if (dd - mine - theirs > clearance) continue;
     const zone = { x: ramp.x[q], y: ramp.y[q], r: Math.max(mine, dd) + theirs + clearance };
     zones.push(zone);
-    if (inside === step && dd <= formation) { inside = step + 1; credit += shared(q); goreZones.push(zone); continue; }
+    if (inside === step && dd <= wm + (wide.get(kk) ?? 0)) { inside = step + 1; credit += shared(q); goreZones.push(zone); continue; }
     if (ramp.kind[q] !== KIND.earth || line.kind[kk] !== KIND.earth || !(dd > 1e-6)) continue;
     // Across the motorway's line towards the slip road (x from its line, the slip road's line at d): each body's
     // top, its crown then its slope facing the other (as the two directions of a split motorway, splitLedger).
@@ -316,15 +378,15 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     }
   }
   if (across !== null) violations.push({ kind: 'crossing', s0: Math.max(0, across - 20), s1: Math.min(ramp.length, across + 20), basis: 'engine',
-    title: 'It crosses the motorway', fix: 'Keep it on the side of the carriageway it leaves or joins',
-    rule: 'Engine limit: a slip road crossing its own motorway needs a bridge, which the game does not build for it yet.' });
+    title: `It crosses ${the}`, fix: 'Keep it on the side of the carriageway it leaves or joins',
+    rule: `Engine limit: a slip road crossing its own ${sec.word} needs a bridge, which the game does not build for it yet.` });
   for (const c of clashes) violations.push({ kind: 'footprint', basis: 'engine', s0: c.s0, s1: c.s1,
-    title: 'Its slope and the motorway\'s clash',
-    fix: `Move it at least ${Math.ceil(c.need)} m further from the motorway here, or give it the motorway's height`,
-    detail: 'Beside the motorway at another height, the slope of one would stand on the other. Walls between them are not built by the game.',
-    rule: 'Engine limit: a slip road shares the motorway\'s earthworks only at its height; otherwise each needs room for its own slopes.' });
+    title: `Its slope and ${the}'s clash`,
+    fix: `Move it at least ${Math.ceil(c.need)} m further from ${the} here, or give it ${the}'s height`,
+    detail: `Beside ${the} at another height, the slope of one would stand on the other. Walls between them are not built by the game.`,
+    rule: `Engine limit: a slip road shares ${the}'s earthworks only at its height; otherwise each needs room for its own slopes.` });
   // the ridge between two cuttings dug out (and its nose), at what the slip road pays for a m³ of its cut
-  const ridge = dugRidges(ramp, line, heightAt);
+  const ridge = dugRidges(ramp, line, heightAt, host.category);
   for (let q = 0; q < ramp.n; q++) if (ridge.area[q] > 0) { dug += ridge.area[q] * ramp.ds; dugCost += ridge.area[q] * ramp.ds * (rate.cut + rate.haul); }
   const insideM = Math.min(ramp.length, inside * ramp.ds);
   return { kind, lane, violations, zones, goreZones, credit, insideM, overlap: Math.max(0, overlap), dug, dugCost, gore: g, sGore: line.s[k] };
@@ -343,13 +405,14 @@ export const MERGE_SLOPE = 2.5, MERGE_REACH = 30;
  * missed between its steps). PROVISIONAL: the crossfall that joins the two pavements is not modelled. */
 export const MERGE_TOLERANCE = GRADE_PIN_TOLERANCE;
 /** The heights a slip road is held at near its gore (its plan line `xy`, [x0, y0, …] from its start; `end`: the
- * end on the motorway `line`): the motorway's height while their crowns are within MERGE_GAP, then within a low
+ * end on the paired road `line` of category `c`): the motorway's height while their crowns are within MERGE_GAP, then within a low
  * slope's fall of it across the gap between them (as designers keep a slip road beside the motorway's body until it
  * has room for its own slopes), until the gap is MERGE_REACH. */
-export function mergeBands(xy: readonly number[], end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>): { s: number; min: number; max: number }[] {
+export function mergeBands(xy: readonly number[], end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>, c: PairedCategoryId): { s: number; min: number; max: number }[] {
   const n = xy.length / 2, out: { s: number; min: number; max: number }[] = [];
   if (n < 2) return out;
-  const edges = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening + CATEGORIES['V7.25'].crownWidth / 2, reach = edges + MERGE_REACH;
+  // (beside its gore the paired road's own crown: its speed-change lane ends there)
+  const edges = SLIP_SECTIONS[c].half + CATEGORIES['V7.25'].crownWidth / 2, reach = edges + MERGE_REACH;
   // (the samples' own stations: the line is sampled at length / ⌈length / step⌉, not at `step`)
   const along = [0]; for (let p = 1; p < n; p++) along.push(along[p - 1] + Math.hypot(xy[2 * p] - xy[2 * p - 2], xy[2 * p + 1] - xy[2 * p - 1]));
   let k = -1;

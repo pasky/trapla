@@ -258,7 +258,13 @@
  * 2.087 in the cut), 439.5 m there 10.76 → 10.62 bn, +5 m at km 4.2 10.69 → 10.77 bn, D11 −8 m at km 7.2 3.66 → 3.68 bn,
  * the owner's I/35 pin 256.0 m at km 0.29 5.63 → 5.36 bn, all not valid; nothing beyond 10 km of a pin changes (PLAN.md
  * "A pin the player set is honoured").
- * Model 60: a mapped dead end serving nothing beyond our works is ended there by Auto (core/dead-ends.ts): never bridged
+ * Model 60: slip roads on any divided road (the four-lane S 21.5: its own lanes, speeds, price); a speed-change lane's
+ * length by the paired road's design speed at its gore (below 120 km/h shorter: ČSN 73 6102); a slip road credited
+ * for the paired road's formation only where it is (wider by the lane up to the gore only: past it a slip road beside
+ * the carriageway was credited as on it) and held at its level from its crown's edge there. Hand-built diamonds:
+ * D3 0303 5.7349 → 5.7382 bn, D3 0304 10.2330 → 10.2377 bn; every frozen bill, starter and saved design unchanged
+ * (scripts/exact.ts: 243 of 243 identical). PLAN.md "Slip roads on any divided road".
+ * Model 61: a mapped dead end serving nothing beyond our works is ended there by Auto (core/dead-ends.ts): never bridged
  * for under our crown, cut back to a turning area whose old road beyond keeps its own grade (a track just ends), its piece
  * taken up billed beyond our earthworks at the taken-up rates and gone from the map, a building it was the only road to
  * bought out where our earthworks bury its way in; an existing railway may be carried over our road on a new bridge
@@ -266,7 +272,7 @@
  * the railway's card, offered by a pin's fix. Frozen D11: straight −79.4 M, direct-80 −1.5, town-centre and town-controls
  * −2.7, the others unchanged; starters: I/35 Turnov 5.63 → 4.49 bn, D35 stage 1 19.46 → 18.88 bn (PLAN.md "Dead ends at
  * our works; the railway carried over our road"). */
-export const COST_MODEL_VERSION = 60;
+export const COST_MODEL_VERSION = 61;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

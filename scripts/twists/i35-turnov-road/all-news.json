@@ -1,6 +1,6 @@
 {
  "preset": "i35-turnov-road",
- "purpose": "Every curveball, under the goal: a search from the starter (scripts/twists-check.ts --find, seeds 1 → 11); searched again from it for cost model 60 (seed 1)",
+ "purpose": "Every curveball, under the goal: a search from the starter (scripts/twists-check.ts --find, seeds 1 → 11); searched again from it for cost model 61 (seed 1)",
  "meets": [
   "curveballs"
  ],

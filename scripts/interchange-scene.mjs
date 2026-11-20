@@ -8,11 +8,17 @@
 //     exit's junction (one crossroads, billed once).
 //  3. D3 0303 at km 3.06, road II/105 (saved from the game): VALID and priced where the motorway moves aside tracks
 //     a slip road crosses.
-// node scripts/interchange-scene.mjs [--gpu] [--docs]   (--docs: docs/screenshots/620–633)
-import { mkdirSync, readFileSync } from 'node:fs';
+//  4. The I/35 Turnov stage at km 0.98, road II/610 (Přepeřská) over the four-lane road S 21.5: Build → Slip road four
+//     times, a diamond VALID and priced on the S 21.5's own lanes (110 km/h: exit 198 m, entry 295 m, its paved shoulder
+//     2.5 m wider), the formation and paving drawn wider along each lane; a gore dragged along it.
+// node scripts/interchange-scene.mjs [--gpu] [--docs] [--only i35] [--save-i35 <file>]
+//   (--docs: docs/screenshots/620–633 and 710–719; --save-i35: the I/35 diamond's project, tests/fixtures/interchange)
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { checker, startGame } from './lib/browser.mjs';
 
 const out = process.argv.includes('--docs') ? 'docs/screenshots' : '/tmp/trapla-interchange';
+const arg = (k) => { const i = process.argv.indexOf(k); return i < 0 ? null : process.argv[i + 1] ?? null; };
+const only = arg('--only'), saveI35 = arg('--save-i35');
 mkdirSync(out, { recursive: true });
 const { ok } = checker();
 const game = await startGame();
@@ -49,6 +55,7 @@ const dragEnd = async (end, target, { shotName, steps = 14 } = {}) => {
 const routePoint = (id, s) => page.evaluate(([id, s]) => { const r = window.trapla.projectResult().routes[id].legacy, i = Math.round(s / r.ds); return { x: r.x[i], y: r.y[i], z: r.grade[i] }; }, [id, s]);
 
 try {
+  if (only !== 'i35') {
   // ---- 1. a built road's ends (Šternberk) ----
   await game.open('scenario=i46-sternberk');
   await page.evaluate(() => window.trapla.whenTransport());
@@ -117,7 +124,7 @@ try {
   await page.locator('#build-route').click();
   ok((await page.locator('.route-build-choices button').allTextContents()).includes('Slip road'), 'Build offers a slip road');
   await page.locator('.route-build-choices button', { hasText: /^Slip road$/ }).click();
-  ok(/start it beside a motorway to leave it/.test(await page.locator('.inspector.k-build').innerText()), 'its card says how the ends go');
+  ok(/start it beside a motorway or four-lane road to leave it/.test(await page.locator('.inspector.k-build').innerText()), 'its card says how the ends go');
   // (on each side the entry starts where the exit ends: one crossroads on road II/114)
   const slips = [
     { name: 'exit towards Voračice', a: await gore(site.s - 450, 1), b: await road(site.at + 140) },
@@ -202,5 +209,87 @@ try {
   await shot('632-d3-0303-diamond-overview');
   await page.evaluate(() => window.trapla.lookAt(3560, 7790, 330, 230, 40)); await game.idle(); await game.still();
   await shot('633-d3-0303-slip-road-over-moved-track');
+  }
+
+  // ---- 4. a diamond on the I/35 Turnov stage: slip roads on the four-lane road S 21.5 ----
+  await game.open('scenario=i35-turnov');
+  await page.evaluate(() => window.trapla.whenTransport());
+  const i35 = await issues();
+  ok(i35.valid && i35.total !== null, `the I/35 Turnov starter: ${(i35.total / 1e9).toFixed(2)} bn, valid`);
+  const four = await page.evaluate(() => { const r = window.trapla.projectResult().routes['route:motorway-forward'].legacy;
+    const c = r.crossings.find(c => c.cls === 'secondary' && Math.abs(c.s - 983) < 60); return { s: c.s, x: c.x, y: c.y, type: c.type }; });
+  ok(four.type === 'overbridge', `road II/610 over the four-lane road at km ${(four.s / 1000).toFixed(2)} (${four.type})`);
+  // (its gores 350 m either side of the bridge, on the carriageway's paved shoulder: 10.75 m from the line; its
+  // crossroads on road II/610 where the road is back on its ground past the bridge's ramps, as Build's checks say)
+  const gore4 = (s, dir) => page.evaluate(([s, dir]) => { const r = window.trapla.projectResult().routes['route:motorway-forward'].legacy, k = Math.round(s / r.ds), o = 10.5;
+    return { x: r.x[k] + dir * r.ty[k] * o, y: r.y[k] - dir * r.tx[k] * o, z: r.grade[k] }; }, [s, dir]);
+  const ground = (x, y) => page.evaluate(([x, y]) => ({ x, y, z: window.trapla.groundHeight(x, y) }), [x, y]);
+  const sw = await ground(2167, 3748), ne = await ground(2537, 3835);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 1250, 0, 89), [four.x, four.y]);
+  await game.idle(); await game.still();
+  const slips4 = [
+    { name: 'exit towards Valdštejnsko', a: await gore4(four.s - 350, 1), b: sw },
+    { name: 'entry towards Valdštejnsko', a: sw, b: await gore4(four.s + 350, 1), shared: true },
+    { name: 'exit towards Ohrazenice', a: await gore4(four.s + 350, -1), b: ne },
+    { name: 'entry towards Ohrazenice', a: ne, b: await gore4(four.s - 350, -1), shared: true },
+  ];
+  for (const [k, slip] of slips4.entries()) {
+    await build('Slip road');
+    if (k === 0) ok(/start it beside a motorway or four-lane road/.test(await page.locator('.inspector.k-build').innerText()), 'Build → Slip road: its card names the four-lane road');
+    const ha = await hoverAt(slip.a);
+    if (k === 0) await shot('710-slip-road-start-on-the-four-lane-road');
+    await clickAt(slip.a);
+    const hb = await hoverAt(slip.b);
+    await clickAt(slip.b); await game.idle();
+    ok(/the four-lane road, towards|joins (road II\/610|Přepeřská)/.test(ha ?? '') && /the four-lane road, towards|joins (road II\/610|Přepeřská)/.test(hb ?? ''), `${slip.name}: ${ha} → ${hb}`);
+    if (slip.shared) ok(/at another slip road's junction/.test(ha ?? ''), `${slip.name} starts at the exit's junction (${ha})`);
+    if (k === 0) {
+      const card = await page.locator('#inspector').innerText();
+      ok(/Slip road, one way, from our road to road II\/610/.test(card), 'its card: one way, from our road');
+      ok(/Exit lane on the four-lane road, 198 m \(its hard shoulder, paved 2.5 m wider\)/.test(card), 'its exit lane: the S 21.5 at 110 km/h, 198 m, paved 2.5 m wider');
+      ok(!/not yet on a four-lane road/.test(card), 'no engine limit');
+      await shot('711-first-slip-road-card-four-lane-road');
+    }
+  }
+  const done4 = await issues();
+  ok(done4.valid && done4.total !== null && done4.list.length === 0, `the I/35 diamond is VALID and priced: ${(done4.total / 1e9).toFixed(4)} bn (${done4.list.join('; ') || 'no problems'})`);
+  ok(done4.total - i35.total > 100e6 && done4.total - i35.total < 1.5e9, `the interchange costs ${((done4.total - i35.total) / 1e6).toFixed(0)} M`);
+  const works4 = await page.evaluate(() => window.trapla.projectResult().works.items.map(w => w.label ?? ''));
+  ok(works4.filter(l => /^(Exit|Entry) lane on the four-lane road/.test(l)).length === 4, 'four speed-change lanes on the four-lane road');
+  ok(works4.some(l => /^Already in the four-lane road's price/.test(l)), 'the S 21.5\'s price per km already includes one interchange\'s earth-built slip roads: credited');
+  const drawn = await page.evaluate(() => { const m = window.trapla.debugView().laneMarks; return m ? m.geometry.attributes.position.count : 0; });
+  ok(drawn > 400, `its lanes' lines and the paving they add are drawn (${drawn} vertices)`);
+  if (saveI35) { writeFileSync(saveI35, JSON.stringify(await page.evaluate(() => window.trapla.getProject()), null, 1) + '\n'); console.log(`saved ${saveI35}`); }
+  await page.evaluate(() => window.trapla.setActiveRoute('route:motorway-forward')); await game.idle();
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x + 20, y, 1000, 0, 89), [four.x, four.y]);
+  await game.idle(); await game.still(); await shot('712-i35-diamond-valid-overview');
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 650, 200, 40), [four.x, four.y]);
+  await game.idle(); await game.still(); await shot('713-i35-diamond-oblique');
+  // (the exit lane and the entry lane of the other carriageway end at one pair of gores; the formation wider along them)
+  const g4 = await gore4(four.s - 343, 1);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 45, 200, 30), [g4.x, g4.y]);
+  await game.idle(); await game.still(); await shot('714-i35-exit-lane-and-gore');
+  // (the lanes run over a bridge 150 m before the gores: its twin decks that much wider)
+  const b4 = await gore4(four.s - 493, 1);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 80, 300, 25), [b4.x, b4.y]);
+  await game.idle(); await game.still(); await shot('715-i35-lanes-over-a-bridge');
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 240, 160, 45), [sw.x, sw.y]);
+  await game.idle(); await game.still(); await shot('716-i35-junction-on-road-ii-610');
+  // a gore dragged along the four-lane road: it stays on it, the diamond valid
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 1250, 0, 89), [four.x, four.y]);
+  await game.idle(); await game.still();
+  const first4 = await page.evaluate(() => window.trapla.getProject().routes.find(r => r.name === 'Slip road').id);
+  await page.evaluate((id) => window.trapla.setActiveRoute(id), first4); await game.idle();
+  const t6 = await dragEnd('a', await gore4(four.s - 400, 1), { shotName: '717-i35-gore-dragged-along-the-four-lane-road' });
+  ok(/the four-lane road, towards Valdštejnsko/.test(t6 ?? ''), `the gore slides along the four-lane road (${t6})`);
+  const moved4 = await issues();
+  ok(moved4.valid, `…and the diamond stays valid (${moved4.list.join('; ') || 'no problems'})`);
+  await page.locator('#undo').click(); await game.idle();
+  const ne4 = await gore4(four.s + 300, -1);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 420, 300, 40), [ne4.x, ne4.y]);
+  await game.idle(); await game.still(); await shot('718-i35-north-east-slip-roads');
+  const top4 = await gore4(four.s - 343, 0);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 90, 0, 89), [top4.x, top4.y]);
+  await game.idle(); await game.still(); await shot('719-i35-gores-from-above');
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }

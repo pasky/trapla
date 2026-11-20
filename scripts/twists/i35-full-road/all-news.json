@@ -1,6 +1,6 @@
 {
  "preset": "i35-full-road",
- "purpose": "Earth balance and every curveball, under the goal: stitched from the stages' all-news.json (STITCH_GAP=2000 scripts/twists-stitch.ts … --freeze --repair 4), then searched (scripts/twists-check.ts --find, seeds 33 → 34); heights by hand (frozen); searched again from it for cost model 60 (seed 1)",
+ "purpose": "Earth balance and every curveball, under the goal: stitched from the stages' all-news.json (STITCH_GAP=2000 scripts/twists-stitch.ts … --freeze --repair 4), then searched (scripts/twists-check.ts --find, seeds 33 → 34); heights by hand (frozen); searched again from it for cost model 61 (seed 1)",
  "meets": [
   "earth",
   "curveballs"

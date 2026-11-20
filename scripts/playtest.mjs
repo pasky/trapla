@@ -296,6 +296,10 @@ try {
   const t0 = Date.now();
   await page.click('#reset'); await page.waitForTimeout(100);
   ok((await get()).pis.length === 0 && await visible('#toast'), 'C: Start over goes back to the straight line and offers Undo');
+  // the page busy for longer than the toast's 6 s (a loaded host building the scene after Start over): its Undo is
+  // still there (the 6 s once ran out while the page could not answer the click; the expired timer runs before ours)
+  await T(() => { const t = performance.now(); while (performance.now() - t < 7000); return new Promise((res) => setTimeout(res, 0)); });
+  ok(await visible('#toast button:not(.x)'), 'C: the toast\'s Undo outlasts a page busy for 7 s');
   await page.click('#toast button:not(.x)'); console.log(`(Undo clicked ${Date.now() - t0} ms after Start over)`); await idle(300);
   ok((await get()).pis.length === demo.pis.length, 'C: the toast\'s Undo brings the design back');
 
