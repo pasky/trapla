@@ -121,6 +121,21 @@ export function heldOnOldLine(planned: ArrayLike<number>, kept: ArrayLike<number
 /** `onLine`: the kernel built the stretch on its line as drawn already (heldOnOldLine): only its heights are laid. */
 function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRoad, onLine = false) {
   const far = farFromNew(kept, r.ds);
+  // The kernel's own bridges and tunnels on kept cells (wholly on them: keepWholeStructures) are not built: the old
+  // road lies there as it is, on the ground or on its own old bridge's deck (OldRoad.heightAt), and is drawn so.
+  const dropped = r.runs.filter(u => kept[u.i0] && kept[u.i1]);
+  const kind = dropped.length ? r.kind.slice() : r.kind, laid = new Uint8Array(r.n);
+  for (const u of dropped) for (let i = u.i0; i <= u.i1; i++) { kind[i] = KIND.earth; laid[i] = 1; }
+  if (dropped.length) {
+    const q = r.quantities, bridges = dropped.filter(u => u.kind === KIND.bridge), tunnels = dropped.filter(u => u.kind === KIND.tunnel);
+    const length = (list: typeof dropped) => list.reduce((a, u) => a + u.length, 0);
+    Object.assign(r, { kind, runs: r.runs.filter(u => !dropped.includes(u)),
+      ...r.cones ? { cones: r.cones.filter(c => !laid[c.i]) } : {},
+      ...r.faceL ? { faceL: r.faceL.map((f, i) => laid[i] ? undefined : f) } : {},
+      ...r.faceR ? { faceR: r.faceR.map((f, i) => laid[i] ? undefined : f) } : {},
+      quantities: { ...q, bridges: q.bridges - bridges.length, bridgeLength: q.bridgeLength - length(bridges),
+        tunnels: q.tunnels - tunnels.length, tunnelLength: q.tunnelLength - length(tunnels) } });
+  }
   if (old && old.paths.some(p => p.length > 1) && !onLine) {
     const x = r.x.slice(), y = r.y.slice(), tx = r.tx.slice(), ty = r.ty.slice(), ground = r.ground.slice();
     let moved = false;
@@ -146,7 +161,8 @@ function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRo
   for (let i = 0; i < r.n; i++) {
     if (!kept[i] || r.kind[i] !== KIND.earth) continue;
     wallSurfaceL[i] = NaN; wallSurfaceR[i] = NaN;
-    const w = Math.max(0, 1 - far[i] / TIE_LENGTH), z = r.ground[i] + w * (r.grade[i] - r.ground[i]);
+    // (where the kernel's structure was, the old road's own surface: nothing of the kernel's heights)
+    const w = laid[i] ? 0 : Math.max(0, 1 - far[i] / TIE_LENGTH), z = laid[i] ? old?.heightAt(r.x[i], r.y[i]) ?? r.ground[i] : r.ground[i] + w * (r.grade[i] - r.ground[i]);
     grade[i] = z; cut[i] *= w; fill[i] *= w;
     dayL[i] = crownHalf + w * (r.dayL[i] - crownHalf); dayR[i] = crownHalf + w * (r.dayR[i] - crownHalf);
     zDayL[i] = z + w * (r.zDayL[i] - r.grade[i]); zDayR[i] = z + w * (r.zDayR[i] - r.grade[i]);
@@ -196,11 +212,22 @@ export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' |
   return { kept: p.kept, st: p.st, pis, al: p.al };
 }
 
+/** A bridge or tunnel the kernel built partly on kept cells, partly on cells built anew, is built whole: none of it is
+ * kept (it is drawn and billed as the kernel built it). One wholly on kept cells is not built (layOnGround). */
+function keepWholeStructures(r: Result, kept: Uint8Array) {
+  for (const u of r.runs) {
+    let some = false, all = true;
+    for (let i = u.i0; i <= u.i1; i++) if (kept[i]) some = true; else all = false;
+    if (some && !all) kept.fill(0, u.i0, u.i1 + 1);
+  }
+}
+
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes
  * a note (`inherited`), houses there are untouched, nothing is billed there (the bill and its per-cell
  * parts cover the new parts only) and the road is drawn on the ground there (`crownHalf`: half its paved
  * width, m). Returns the line that says so in the road's works (no amount; null: nothing kept). */
 export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?: OldRoad, line: OurLine = 'road', onLine = false): ReplacementWork | null {
+  keepWholeStructures(r, kept);
   let cells = 0, first = -1;
   for (let i = 0; i < r.n; i++) if (kept[i]) { cells++; if (first < 0) first = i; }
   if (!cells) return null;

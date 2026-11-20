@@ -2,6 +2,7 @@
 // junctions and at a 7 m bridge over a brook. Its stretch is pulled on from one way through a junction and over the
 // bridge (what ui/stretch-ends.ts does with a handle), engineered and billed as one rebuilt road.
 import { describe, expect, it } from 'vitest';
+import { KIND } from '../src/core/structures';
 import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import type { ProjectDesign } from '../src/core/project';
@@ -95,5 +96,25 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a rebuilt stretch over
     const left = evaluateProject(ctx, { epoch: 'e', revision: 3, design: moved });
     const down = works(left).find(w => /^Old bridge taken down: 7 m$/.test(w.label));
     expect(Math.abs(down!.cost / (deck.stations[1] * ROAD_CLASSES.tertiary.width * BRIDGE_DEMOLITION_PER_M2) - 1)).toBeLessThan(0.1);
+  }, 240_000);
+  // The owner's D11 case (crossing-drag-scene.mjs sections 2 and 5): III/3012 slid 75 m along our bridge at km 2.32, so
+  // that it runs on beside our road from its new crossing; then its End pulled through a junction, a way and its 7 m
+  // bridge, 150 m onto the next way.
+  it('slid along our bridge and pulled over its bridge: priced, and nothing drawn where nothing is built', async () => {
+    const { index, ctx } = await setup();
+    const { moveStretchEnds } = await import('../src/ui/road-edit');
+    const { evaluateProject } = await import('../src/core/project-evaluate');
+    const pulled: ProjectDesign = JSON.parse(readFileSync('tests/fixtures/stretch/d11-iii3012-slid-pulled.json', 'utf8'));
+    const id = pulled.routes.find(r => r.source)!.id;
+    const slid = moveStretchEnds(index, pulled, id, [{ ...pulled.routes.find(r => r.id === id)!.source!.intervals[0], s0: 228.22363998839083, s1: 701.7636570937792 }]);
+    for (const design of [slid, pulled]) {
+      const r = evaluateProject(ctx, { epoch: 'e', revision: 1, design });
+      // (its works beside ours are that crossing's: no working strip between them, neither covering the other)
+      expect(r.cost.unpriced).toEqual([]);
+      // (the kernel's own bridge over the brook the old bridge crosses is not built where the line stays on the old road)
+      const L = r.routes[id].legacy!;
+      expect(L.runs.filter(u => L.keptCells?.[u.i0] || L.keptCells?.[u.i1])).toEqual([]);
+      expect(Array.from(L.kind).every((k, i) => !L.keptCells?.[i] || k === KIND.earth)).toBe(true);
+    }
   }, 240_000);
 });
