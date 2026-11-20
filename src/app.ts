@@ -96,6 +96,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
   /** the map's sources (the photo's while it is on) */
   const attribution = (photo: boolean) => ['<a href="about.html" target="_blank" rel="noopener">About the data</a>', ...meta.attribution, ...pack.terrain.protectedAreas ? ['© AOPK ČR (protected areas), CC BY 4.0'] : [],
+    ...pack.heritage ? ['© NPÚ (listed monuments), CC BY 4.0'] : [],
     ...(photo && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
   document.getElementById('attrib')!.innerHTML = attribution(false);
   document.getElementById('attrib')!.title = [document.getElementById('attrib')!.textContent,

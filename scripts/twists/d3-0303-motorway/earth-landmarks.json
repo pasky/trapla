@@ -1,9 +1,8 @@
 {
  "preset": "d3-0303-motorway",
- "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 1); also at most 300 m of bridges (Few bridges)",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 1); also at most 300 m of bridges (Few bridges) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
  "meets": [
   "earth",
-  "landmarks",
   "bridges"
  ],
  "goal": true,
@@ -17,7 +16,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards V\u00e1clavice (on to 0304)",
+    "name": "Motorway towards Václavice (on to 0304)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -68,7 +67,7 @@
    },
    {
     "id": "route:motorway-reverse",
-    "name": "Motorway towards Host\u011bradice (from 0302)",
+    "name": "Motorway towards Hostěradice (from 0302)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -213,7 +212,7 @@
    "ports": [
     {
      "id": "a",
-     "name": "Host\u011bradice (from 0302)",
+     "name": "Hostěradice (from 0302)",
      "position": {
       "x": 2602,
       "y": 10703.8,
@@ -222,7 +221,7 @@
     },
     {
      "id": "b",
-     "name": "V\u00e1clavice (on to 0304)",
+     "name": "Václavice (on to 0304)",
      "position": {
       "x": 9438.8,
       "y": 2713.8,

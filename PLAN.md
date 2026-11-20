@@ -2604,11 +2604,18 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     15 % of the cut is unsuitable whatever the design and is not counted). The starters bring in 9–86 % (Auto buys fill
     where that is cheaper than digging deeper). On every mission offered: the starter breaks it, a reference meets it.
     Not on the D11 class I road (its starter brings in 9 %).
-  - *Hands off the castle*: nothing of ours within 400 m of a castle, 200 m of a church, 100 m of a chapel or monument,
-    150 m of a viewpoint (a game rule: Act 20/1987 §17 declares a monument's protection zone one by one, no default);
-    named OSM landmarks (`pipeline/build_landmarks.py` → `src/core/data/landmarks.ts`, 479 points, the I/35 region added in round 3) whose ring comes within
-    1.5 km of the starter or of the straight line A–B. Rings and names on the map (`src/render/twist-marks.ts`; names close
-    up, a broken one always). A view check (no bridge seen from a castle) was not built.
+  - *Hands off the castle* (round 4, research/102): nothing of ours (cutting, embankment, bridge, tunnel dug from the surface;
+    a mined tunnel under is fine) in a **heritage area** of the state's register (a monument's protection zone, Act 20/1987
+    §17; a heritage reserve or zone, §5–6: NPÚ's polygons), nor within a ring round a **listed monument** outside one (castle
+    400 m, fort or hillfort 200 m, church 200 m, chapel, memorial or technical monument 100 m, cross or statue 50 m: game
+    scales). The data: `pipeline/fetch_heritage.py` (NPÚ geoportal + open data, CC BY 4.0) → `pipeline/build_heritage.py` →
+    each pack's `heritage.json` (`src/core/heritage.ts`; castles, forts, churches, chapels, crosses and statues, memorials,
+    technical monuments; houses, farmsteads and the like left out, so is a monument inside a zone). A mission counts those
+    within 1.5 km of the starter or of the straight line A–B, but none at a fixed end (within 50 m of A or B: the ends are
+    the mission's). **Offered only where the planned line breaks it** (and a reference meets it with the other defaults
+    under the goal). Zones are drawn filled in the twist's plum (red where broken), named on hover ("Trosky castle protection
+    zone"); monuments as rings, named close up (`src/render/twist-marks.ts`). Until round 3: rings round 479 named OSM
+    castles, churches, chapels, monuments and viewpoints (`build_landmarks.py`, removed), mostly far from any line.
   - *From scratch*: the design begins on the straight line A–B (a Start over while it is on goes there too; turned on
     mid-game, the card offers to start from the straight line). Its reference is the starter itself: a line the straight
     one can be bent into.
@@ -2676,6 +2683,19 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     earthworks), the EIA's conditions (the Libuňka's floodplain and the Jizera's banks bridged, the biocorridor K31B, the
     green bridges over the scarp cuts at km 11.5 and 15.8), the review's biology sent back (7/2026: a species' site, game
     place). Landmarks for the I/35 added (`pipeline/build_landmarks.py` region i35: 479 in all).
+- **Where** (round 4: Hands off on the register, the I/35's full set): Hands off is offered on D3 0304 and the whole D3
+  (the ruin of Stejc castle), the whole D35 (the Holy Trinity column at Mohelnice), the D11 motorway (the memorial to the
+  Austrian gunners of 1866), the I/35 Turnov stage (the church of St John the Baptist: its reference moves the line 254 m
+  north-east, under the goal at 4.77 bn), Jičín (the Studeňany village protection zone, declared 1997: its reference
+  goes north and east round it, 4.14 bn) and the whole I/35 (both); not where the planned line keeps clear of every
+  listed monument and zone (Šternberk, D3 0301–0303 and 0305, D35 stage 1, I/35 Rovensko) nor on the Královec railway (its
+  only one, the listed road bridge at Trutnov station, is at its fixed start). The I/35 stages and the whole route: Turnov
+  (Earth, Hands off, Curveballs 5, Spare the forest 0.6 ha, Few bridges 700 m, From scratch, By hand; not Nobody moves: every
+  search left two homes), Rovensko
+  (Earth, Curveballs 5, Spare the forest 5 ha, Few bridges 350 m, …), Jičín (Earth, Hands off, Curveballs 5, Nobody moves,
+  Spare the forest 0.8 ha, Few bridges 250 m, …), the whole I/35 (Earth, Hands off, Curveballs 7, Spare the forest 8 ha,
+  Few bridges 1,600 m, From scratch, By hand). `twists-check.ts --edit` makes a reference by hand
+  (bends moved, added, dropped; pins; painted structures) and says what it meets; the Jičín and Turnov references began so.
 - **Where** (round 3): Šternberk (Earth balance, Hands off, Curveballs 5, Spare the forest 4.5 ha, Few bridges 150 m, From
   scratch, By hand); D3 0301 (Earth, Hands off, Curveballs 5, Few bridges 500 m, …), 0302 (Earth, Hands off, Curveballs 5,
   Nobody moves, Spare the forest 5 ha, Few bridges 1,300 m, …), 0303 (… Curveballs 6, Spare the forest 12.5 ha, Few bridges
@@ -2704,17 +2724,24 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   butterflies at their pace; By hand turned on mid-game; From scratch (the straight line is VALID here, 2.41 bn, through
   three tunnels). Round 3: D3 Voračice → Nová Hospoda, its first news a game event on a real register's place (the
   Mastník's banks, the AOPK link) and the place on the map, red, the next at its pace a game event without one (plain
-  text, no link); the class I road's twist screen (none); the whole D3's.
+  text, no link); the class I road's twist screen (none); the whole D3's. Round 4 (`scripts/heritage-play.mjs --docs`,
+  screenshots 720–726): Start here is the D35 first section; the I/35 Jičín twist screen (its full set); its planned line
+  through the Studeňany village protection zone (red, the card says so), the zone's name on hover, the reference led round
+  it (the zone in plum); the Turnov church's ring the planned line passes; the D11's memorial ring.
 - **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
   mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
   counts the shared body once per direction in Earth balance; the "From scratch" mark survives an Undo of the restart and a
-  loaded best; Hands off is offered where landmarks are near the line, not only where the starter breaks it (it rules out
-  what a cheaper line would take); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
+  loaded best; (fixed in round 4: Hands off is offered only where the starter breaks it); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
   slip between two. Round 3: LOW counts a road at the ground's level (an embankment of 0.2 m) as an embankment, so a village's cutting
   must be a cutting all the way along its stretch; the game events' places are the game's (research/95 says how each was
   placed), their circles' sizes game scales; the money caps were set at what the reference with every news reaches (85–89 %);
   the whole D3's reference is By hand (its stitched heights frozen: the whole-route grade solve misses the sections' pins); the Ostřetina gold pits (ČGS) lie at D3 0301's fixed end and
-  on the whole route needed heights the stitched reference could not reach: not offered.
+  on the whole route needed heights the stitched reference could not reach: not offered. Round 4: a heritage area is checked by its first stretch broken (the card
+  shows where our line enters it, not how far it runs inside); the rings round monuments are game scales, the areas the
+  register's; the Jičín reference keeps out of the Studeňany zone by passing Radim and buying out homes there (the only way
+  round its north-east corner); the whole I/35's reference meets the money news by 27 M; Nobody moves is not offered on
+  Turnov nor the whole I/35 (two homes left by every search, research/102); a monument within 50 m of a mission's end is
+  left out (a game approximation of our body's reach).
 
 ## Reroute drags on whole routes (no model version, 2026-11-19)
 

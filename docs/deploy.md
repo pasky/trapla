@@ -68,18 +68,21 @@ main thread 4× slower (the evaluation workers are not throttled: Chromium throt
 from navigation, the median of 2–3 runs. "map": the mission opened by its link shows its map; "playable": its first
 evaluation has settled.
 
-| build | start screen usable | Jílové → Hostěradice (3.9 MB) by its link: map / playable | the same from *Start here* after reading the start screen for 3 s: map / playable, after the click | Trutnov → Polish border (17 MB) by its link: map / playable |
+| build | start screen usable | the *Start here* mission by its link: map / playable | the same from *Start here* after reading the start screen for 3 s: map / playable, after the click | Trutnov → Polish border (17 MB) by its link: map / playable |
 |---|---|---|---|---|
-| before (main bd42ffe, served at `/`) | 0.59 s | 2.91 s / 3.77 s | ≈ 2.9 s / 3.8 s (the download starts at the click) | 9.9 s / 12.8 s |
-| now | 0.29 s | 2.95 s / 3.90 s | 1.28 s / 2.12 s | 9.8 s / 12.9 s |
+| before (main bd42ffe, served at `/`; Start here Jílové → Hostěradice, 3.9 MB) | 0.59 s | 2.91 s / 3.77 s | ≈ 2.9 s / 3.8 s (the download starts at the click) | 9.9 s / 12.8 s |
+| 2026-11-18 (Jílové → Hostěradice, 3.9 MB) | 0.29 s | 2.95 s / 3.90 s | 1.28 s / 2.12 s | 9.8 s / 12.9 s |
+| now (Start here Opatovec → Staré Město: 5.0 MB of pack before the first frame, 5.2 MB downloaded with the page) | 0.27 s | 3.57 s / 5.32 s | 1.47 s / 3.27 s | 9.9 s / 12.6 s |
 
-(2026-11-18, host load ≈ 7–16.) A load by link is bound by the download (3.9 MB take 1.6 s at 20 Mbit/s, 17 MB
-6.8 s) and then ≈ 1 s (3.9 MB) to ≈ 3 s (17 MB) of 4×-throttled main-thread work: unpacking and decoding the pack,
+(2026-11-18, host load ≈ 7–16; the last row 2026-11-20, host load ≈ 7–26. The D35 first section is the Start here
+mission since 2026-11-20: a bigger map than the Sázava bridge, 5.0 MB against 3.9, and a 17 km line whose first price
+takes ≈ 1.8 s from the map against ≈ 0.9 s; after 3 s of reading its map shows 1.5 s after the click.) A load by link is bound by the download (5.2 MB downloaded take 2.1 s at 20 Mbit/s, 17 MB
+6.8 s) and then ≈ 1.5 s (5.2 MB) to ≈ 3 s (17 MB) of 4×-throttled main-thread work: unpacking and decoding the pack,
 then building the 3D terrain; the first price follows ≈ 1–3 s later from the worker. What changed for a visitor: the
 start screen comes up in half the time (its code is split from the game's, which loads behind it); on a first visit
 the *Start here* mission's map downloads while the visitor reads the start screen (stopped if another mission is
 picked), and any mission's from when the pointer reaches its Start button (at most one fetched ahead). The loading
-card says what loads and how much ("1.3 of 3.9 MB"), then "Drawing the terrain…"; the map is drawn and can be looked
+card says what loads and how much ("1.3 of 5 MB"), then "Drawing the terrain…"; the map is drawn and can be looked
 around before its first price ("Working out the cost…" over the map until then).
 
 ## Host 1: a VPS with Caddy or nginx, copied with rsync
@@ -116,8 +119,8 @@ preview URL. Check the headers once after the first deploy: `curl -sI https://<p
 
 **GitHub Pages** works too, with drawbacks
 ([limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)): a site may be
-1 GB (176 MB now), files under 100 MB, a soft limit of 100 GB of traffic a month (≈ 25,000 first visits of *Start
-here* at 3.9 MB, ≈ 5,500 of the D11 at 18 MB). No custom headers: everything gets `max-age=600`, so for up to ten
+1 GB (176 MB now), files under 100 MB, a soft limit of 100 GB of traffic a month (≈ 19,000 first visits of *Start
+here* at 5.2 MB, ≈ 5,500 of the D11 at 18 MB). No custom headers: everything gets `max-age=600`, so for up to ten
 minutes after a deploy a visitor's cached page can ask for files of the previous build. The packs are not in the
 repository, so the site is pushed as a branch of its own built locally, e.g. an orphan `gh-pages` branch replaced
 on each deploy, from a fresh directory outside `dist/` (Vite keeps a `.git` inside `dist/` across builds):
@@ -142,6 +145,7 @@ short form of each.
 | roads, railways, buildings, land cover, streams, places, the planned lines | OpenStreetMap | ODbL 1.0 | see below |
 | ground classes (25 m) | ČGS GEOČR50 and engineering-geological zoning 1:50 000, queried from ČGS map services and classified | **not settled** | see below |
 | protected nature areas | AOPK ČR open data | CC BY 4.0 | credit "© AOPK ČR": done |
+| listed monuments, heritage protection zones, reserves and zones (`heritage.json`) | NPÚ, Central List of Cultural Monuments (ÚSKP): geoportal.npu.cz and its open data (research/102) | CC BY 4.0 | credit "© NPÚ": done (About, map credits) |
 | traffic of rebuilt roads | ŘSD national traffic census 2025 | **not stated** | see below |
 
 **OpenStreetMap (ODbL 1.0).** The packs are a Derivative Database of OSM (OSMF

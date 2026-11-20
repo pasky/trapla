@@ -4,44 +4,55 @@
 // the reference designs that show each offered twist can be met.
 import type { Result } from './evaluate';
 import type { ProjectResult, RouteId } from './project';
-import { KIND } from './structures';
+import { cutCoverAt, KIND, portalCells } from './structures';
 import { STRUCTURE_RULES } from './data/prices';
+import { cutCoverPitHalfWidth } from './cost';
 import { bridgeLayout } from './bridge';
 import { TWIST_NAMES, TWIST_ORDER, type Landmark, type TwistId, type TwistTerms } from './twist-words';
 export * from './twist-words';
 
-/** A place on the map: a circle or a polygon (pack metres). */
-export type Shape = { kind: 'circle'; x: number; y: number; r: number } | { kind: 'polygon'; pts: readonly (readonly [number, number])[] };
+/** A place on the map: a circle, a polygon or several (`rings`, filled even-odd: a heritage area in parts), pack metres. */
+export type Shape = { kind: 'circle'; x: number; y: number; r: number } | { kind: 'polygon'; pts: readonly (readonly [number, number])[] }
+  | { kind: 'rings'; rings: readonly (readonly (readonly [number, number])[])[] };
 /** What our line does at a station: cuts, fills, bridges, tunnels deep (mined) or near the surface (`cover`: a tunnel dug
  * from the surface and covered again); `pier`: a pier of our bridge stands there (a deck may pass over a place its piers
  * keep out of). */
 export type Use = 'cut' | 'fill' | 'bridge' | 'tunnel' | 'cover' | 'pier';
 export const ALL_USES: readonly Use[] = ['cut', 'fill', 'bridge', 'tunnel', 'cover'];
+/** "Hands off the castle": nothing of ours on the ground or over it; a mined tunnel deep under a monument's setting is
+ * fine (as the curveballs' keep-out, data/curveballs.ts KEEP_OUT) */
+export const LANDMARK_USES: readonly Use[] = ['cut', 'fill', 'bridge', 'cover'];
 
 /** Where our line breaks a place's rule: a run of stations. */
 export interface ZoneRun { routeId: RouteId; s0: number; s1: number; use: Use; x: number; y: number }
 
-const MINED = STRUCTURE_RULES.tunnelMinDepth;
-/** What our line does at station i. A tunnel with less ground over it than a mined one needs is dug from the
- * surface (cut and cover): it digs the place up, though it is no open cut. */
+/** What our line does at station i. A tunnel cell built cut and cover (as the evaluator builds it: too little ground
+ * over it to mine, its portals' blocks, or a tunnel the player chose to dig so: structures.ts cutCoverAt) is dug from
+ * the surface: it digs the place up, though it is no open cut. */
 export function useAt(r: Result, i: number): Use {
   const k = r.kind[i];
   if (k === KIND.bridge) return 'bridge';
-  if (k === KIND.tunnel) return r.ground[i] - r.grade[i] >= MINED ? 'tunnel' : 'cover';
+  if (k === KIND.tunnel) {
+    const run = r.runs.find(u => u.kind === KIND.tunnel && u.i0 <= i && i <= u.i1);
+    if (!run) return r.ground[i] - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth ? 'tunnel' : 'cover';
+    // (station i as the first of a one-station array: the run's ends counted from it)
+    return !cutCoverAt([r.grade[i] - r.ground[i]], run.i0 - i, run.i1 - i, 0, portalCells(r.ds), run.method === 'cut') ? 'tunnel' : 'cover';
+  }
   return r.grade[i] >= r.ground[i] ? 'fill' : 'cut';
 }
 
+/** a polygon shape's outlines */
+export const shapeRings = (shape: Exclude<Shape, { kind: 'circle' }>) => shape.kind === 'rings' ? shape.rings : [shape.pts];
 function bbox(shape: Shape): [number, number, number, number] {
   if (shape.kind === 'circle') return [shape.x - shape.r, shape.y - shape.r, shape.x + shape.r, shape.y + shape.r];
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const [x, y] of shape.pts) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  for (const p of shapeRings(shape)) for (const [x, y] of p) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
   return [x0, y0, x1, y1];
 }
 export function inside(shape: Shape, x: number, y: number): boolean {
   if (shape.kind === 'circle') return Math.hypot(x - shape.x, y - shape.y) <= shape.r;
   let c = false;
-  const p = shape.pts;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++)
+  for (const p of shapeRings(shape)) for (let i = 0, j = p.length - 1; i < p.length; j = i++)
     if ((p[i][1] > y) !== (p[j][1] > y) && x < (p[j][0] - p[i][0]) * (y - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
   return c;
 }
@@ -57,9 +68,9 @@ export function segmentTouches(shape: Shape, ax: number, ay: number, bx: number,
     const t = l2 ? Math.max(0, Math.min(1, ((shape.x - ax) * dx + (shape.y - ay) * dy) / l2)) : 0;
     return Math.hypot(ax + t * dx - shape.x, ay + t * dy - shape.y) <= shape.r;
   }
-  if (inside(shape, ax, ay) || inside(shape, bx, by)) return true;
-  const p = shape.pts;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++) if (segmentsCross(ax, ay, bx, by, p[j][0], p[j][1], p[i][0], p[i][1])) return true;
+  // (its middle too: a segment through two corners of a shape crosses no edge strictly)
+  if (inside(shape, ax, ay) || inside(shape, bx, by) || inside(shape, (ax + bx) / 2, (ay + by) / 2)) return true;
+  for (const p of shapeRings(shape)) for (let i = 0, j = p.length - 1; i < p.length; j = i++) if (segmentsCross(ax, ay, bx, by, p[j][0], p[j][1], p[i][0], p[i][1])) return true;
   return false;
 }
 
@@ -76,7 +87,9 @@ export function zoneRuns(r: Result, routeId: RouteId, shape: Shape, forbid: read
       if (forbid.includes(use)) {
         // across the body: left of travel is (−ty, tx)
         // (a bridge's deck, not the ground's slopes under it)
-        const nx = -r.ty[i], ny = r.tx[i], deck = use === 'bridge' || use === 'tunnel' || use === 'cover', l = deck ? deckHalf : r.dayL[i] || 0, rr = deck ? deckHalf : r.dayR[i] || 0;
+        // (a tunnel dug from the surface: its pit's width at the ground)
+        const nx = -r.ty[i], ny = r.tx[i], deck = use === 'bridge' || use === 'tunnel', pit = use === 'cover' ? cutCoverPitHalfWidth(r.ground[i] - r.grade[i], 2 * deckHalf) : 0;
+        const l = deck ? deckHalf : pit || r.dayL[i] || 0, rr = deck ? deckHalf : pit || r.dayR[i] || 0;
         hit = segmentTouches(shape, x + nx * l, y + ny * l, x - nx * rr, y - ny * rr);
       }
     }
@@ -156,12 +169,10 @@ const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const kmText = (s: number) => `km ${num(s / 1000, 2)}`;
 const money = (v: number) => v >= 1e9 ? `${num(v / 1e9, 2)} bn` : `${num(v / 1e6)} M`;
 const USE_WORDS: Record<Use, string> = { cut: 'our cutting', fill: 'our embankment', bridge: 'our bridge', tunnel: 'our tunnel', cover: 'our tunnel dug from the surface', pier: 'a pier of our bridge' };
-const KIND_WORDS: Record<Landmark['kind'], string> = { castle: 'Castle', church: 'Church', chapel: 'Chapel', monument: 'Monument', viewpoint: 'Viewpoint' };
-/** a landmark's name as the map shows it: its own name, with what it is where the name does not say */
-export function landmarkName(l: Pick<Landmark, 'name' | 'kind'>): string {
-  if (l.kind === 'viewpoint' && /^viewpoint$/i.test(l.name)) return 'Viewpoint';
-  return /hrad|zámek|zamek|kostel|kaple|chrám|klášter|rozhledna|vyhlídka|pomník|památník|sloup|tvrz/i.test(l.name) ? l.name : `${KIND_WORDS[l.kind]} ${l.name}`;
-}
+/** a landmark's name as the map shows it: a monument's register name and place, a zone's name */
+export const landmarkName = (l: Pick<Landmark, 'name'>): string => l.name;
+/** the shape a landmark keeps clear: a zone itself, a ring round a monument */
+export const landmarkShape = (l: Landmark & { ring: number }): Shape => l.rings ? { kind: 'rings', rings: l.rings } : { kind: 'circle', x: l.x, y: l.y, r: l.ring };
 
 /** Where the twists stand. `manual`: every road of ours has its heights by hand; `scratch`: this design began from the
  * straight line; `curveballs`: the news that has arrived; `startBill`: the mission's starting bill (a budget's base). */
@@ -187,10 +198,10 @@ export function checkTwists(on: readonly TwistId[], f: TwistFacts, t: TwistTerms
       case 'landmarks': {
         const issues: TwistIssue[] = [];
         for (const [k, l] of t.landmarks.entries()) for (const { id: rid, r } of f.results) {
-          const runs = zoneRuns(r, rid, { kind: 'circle', x: l.x, y: l.y, r: l.ring }, ALL_USES, extra.deckHalf);
+          const runs = zoneRuns(r, rid, landmarkShape(l), LANDMARK_USES, extra.deckHalf);
           if (!runs.length) continue;
           const run = runs[0];
-          issues.push({ text: `${cap(USE_WORDS[run.use])} within ${num(l.ring)} m of ${landmarkName(l)}`, ...at(run), ref: `landmark:${k}` });
+          issues.push({ text: l.rings ? `${cap(USE_WORDS[run.use])} in the ${landmarkName(l)}` : `${cap(USE_WORDS[run.use])} within ${num(l.ring)} m of ${landmarkName(l)}`, ...at(run), ref: `landmark:${k}` });
           break;
         }
         push(!issues.length, issues.length ? `${issues.length} too close` : `${t.landmarks.length} kept clear`, issues);

@@ -12,6 +12,7 @@ import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
 import { validTrafficCensus, type TrafficCensus } from './core/traffic-census';
 import { validProtectedData, type ProtectedData } from './core/data/protected';
+import { validHeritageData, type HeritageData } from './core/heritage';
 import { objectDataKey } from './core/build-controls';
 import { isMissing, packFile } from './pack-fetch';
 
@@ -90,6 +91,8 @@ export interface Pack {
    * (`structures.json`, pipeline/build_structures.py) as ways after it. `overlays.net` alone is the identity. */
   roadNet?: RoadNetData;
   vectors: VectorPack | null;
+  /** The pack's listed monuments and heritage areas (`heritage.json`, pipeline/build_heritage.py): the twists' only. */
+  heritage: HeritageData | null;
   /** Independent identity; legacy D11 meta/object fingerprints deliberately exclude this graph. */
   transportMeta?: TransportMeta | null;
   /** The additive transport graph is not part of startup: `prefetchTransport` downloads and verifies
@@ -140,12 +143,23 @@ async function protectedSidecar(base: string): Promise<ProtectedData | null> {
   return data;
 }
 
+/** The pack's listed monuments and heritage areas (`heritage.json`, pipeline/build_heritage.py): null when it ships
+ * none or it cannot be read (the twists then know no monuments; the game goes on). */
+async function heritageSidecar(base: string): Promise<HeritageData | null> {
+  try {
+    const data: unknown = await optional(`${base}/heritage.json`);
+    if (data === ABSENT) return null;
+    if (!validHeritageData(data)) throw new Error('Unsupported heritage file');
+    return data;
+  } catch (error) { console.warn('Listed monuments unavailable', error); return null; }
+}
+
 export async function loadPack(base: string): Promise<Pack> {
   const meta = await json<PackMeta>(`${base}/meta.json`);
   const transportMeta = meta.transport ?? await transportSidecar(base);
   if (transportMeta && (transportMeta.version !== 1 || !/^[a-zA-Z0-9_.-]+$/.test(transportMeta.file)))
     throw new Error('Unsupported transport map');
-  const [hb, lb, overlays, vectorData, gb, wb, protectedAreas, structures] = await Promise.all([
+  const [hb, lb, overlays, vectorData, gb, wb, protectedAreas, structures, heritage] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     json<Overlays>(`${base}/overlays.json`),
@@ -157,6 +171,7 @@ export async function loadPack(base: string): Promise<Pack> {
     meta.watercourses ? gunzip(`${base}/${meta.watercourses.file}`) : Promise.resolve(null),
     protectedSidecar(base),
     structuresSidecar(base),
+    heritageSidecar(base),
   ]);
   const vectors = vectorData ? parseVectorPack(vectorData) : null;
   let bytes: Promise<ArrayBuffer | null> | null = null, graph: Promise<TransportGraphData | null> | null = null;
@@ -210,5 +225,5 @@ export async function loadPack(base: string): Promise<Pack> {
   const ownStructures = structures && structures.transport === transportMeta?.fingerprint ? structures : null;
   if (structures && !ownStructures) console.warn('Mapped bridges file is from another build of this map: run pipeline/build_structures.py');
   const roadNet = overlays.net ? withStructures(overlays.net, ownStructures) : undefined;
-  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic, loadBasins, loadWaterNames };
+  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, heritage, transportMeta, prefetchTransport, loadTransport, loadTraffic, loadBasins, loadWaterNames };
 }

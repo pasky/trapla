@@ -3,19 +3,20 @@
 // and only where it asks for something: the starting design breaks it, or it rules out what the cheap designs use.
 // Game rules, not norms: none changes the bill or validity.
 import type { TwistId, TwistTerms } from '../twist-words';
-import type { LandmarkKind } from './landmarks';
+import type { MonumentKind } from '../heritage';
 
 /** Earth balance: at most this share of the fill trucked away or brought in. A game rule: the starters bring in
  * 9–86 % (Auto buys fill where that is cheaper than digging deeper); 10 % asks for a different grade line on every
  * mission it is offered on (PLAN.md "Twists"). */
 export const EARTH_SHARE = 0.1;
-/** "Hands off the castle": nothing of ours within this distance of a landmark, m. A game rule (no Czech norm sets a
- * default distance: a listed monument's protection zone is declared one by one, Act 20/1987 §17): a castle's setting
- * is the hill it stands on, a church's the village green round it, a chapel's, monument's or viewpoint's its own
- * plot and approach. */
-export const LANDMARK_RING: Record<LandmarkKind, number> = { castle: 400, church: 200, chapel: 100, monument: 100, viewpoint: 150 };
-/** Landmarks that count for a mission: their ring within this distance of the starting line or of the straight line
- * from A to B (farther ones no design goes near), m. */
+/** "Hands off the castle": nothing of ours in a heritage area (its declared protection zone, a heritage reserve or zone:
+ * the register's polygons, research/102) nor within this distance of a listed monument that has no zone, m. A game rule:
+ * no Czech norm sets a default distance (a protection zone is declared one by one, Act 20/1987 §17): a castle's setting
+ * is the hill it stands on, a fort's or hillfort's its mound and ditch, a church's the village green round it, a
+ * chapel's, memorial's or technical monument's its own plot and approach, a cross's or a statue's its verge. */
+export const LANDMARK_RING: Record<MonumentKind, number> = { castle: 400, fort: 200, church: 200, chapel: 100, memorial: 100, technical: 100, cross: 50 };
+/** Landmarks that count for a mission: their ring or zone within this distance of the starting line or of the straight
+ * line from A to B (farther ones no design goes near), m. */
 export const LANDMARK_REACH = 1500;
 /** The goal the reveal waits for: the starting design's bill less this share. The starting design is the real
  * project's line on every mission but the railway (a game proposal there), priced by the game: the real prices
@@ -40,7 +41,7 @@ export interface MissionTwists {
 
 export const MISSION_TWISTS: Record<string, MissionTwists> = {
   'i46-sternberk-road': {
-    offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'],
+    offer: ['earth', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'],
     startBill: 880e6,
     terms: { earthShare: EARTH_SHARE, bridgeM: 150, forestHa: 4.5 },
     curveballs: ['sternberk-villa', 'sternberk-butterflies', 'sternberk-ales', 'sternberk-quiet', 'sternberk-money'],
@@ -49,11 +50,11 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
   },
   // ---- the other missions (curveballs: research/92–95; the whole routes' references stitched from their sections',
   // scripts/twists-stitch.ts)
-  'd3-0301-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'bridges', 'scratch', 'byHand'], startBill: 5_082e6, terms: { earthShare: EARTH_SHARE, bridgeM: 500 }, curveballs: ['d3-0301-graves', 'd3-0301-gas', 'd3-0301-farm', 'd3-0301-nest', 'd3-0301-money'],
+  'd3-0301-motorway': { offer: ['earth', 'curveballs', 'bridges', 'scratch', 'byHand'], startBill: 5_082e6, terms: { earthShare: EARTH_SHARE, bridgeM: 500 }, curveballs: ['d3-0301-graves', 'd3-0301-gas', 'd3-0301-farm', 'd3-0301-nest', 'd3-0301-money'],
     real: { price: 12_900e6, priceText: 'ŘSD estimate, 09/2025, with the 1.7 km Kamenná Vrata tunnel', story: 'The first stretch has its planning decision; an exploratory gallery is probing the rock for its tunnel.', reviewBy: 2011 } },
-  'd3-0302-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'homes', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 6_761e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1300, forestHa: 5.0 }, curveballs: ['d3-0302-luka', 'd3-0302-slope', 'd3-0302-quiet', 'd3-0302-nest', 'd3-0302-money'],
+  'd3-0302-motorway': { offer: ['earth', 'curveballs', 'homes', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 6_761e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1300, forestHa: 5.0 }, curveballs: ['d3-0302-luka', 'd3-0302-slope', 'd3-0302-quiet', 'd3-0302-nest', 'd3-0302-money'],
     real: { price: 8_100e6, priceText: 'ŘSD estimate, 09/2025, with a 787 m Sázava bridge and the Luka tunnel', story: 'A 787 m bridge is to clear the Sázava valley; permits are being prepared, works no sooner than 2028.', reviewBy: 2011 } },
-  'd3-0303-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 5_633e6, terms: { earthShare: EARTH_SHARE, bridgeM: 300, forestHa: 12.5 }, curveballs: ['d3-0303-valley', 'd3-0303-pots', 'd3-0303-quiet', 'd3-0303-gas', 'd3-0303-nest', 'd3-0303-money'],
+  'd3-0303-motorway': { offer: ['earth', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 5_633e6, terms: { earthShare: EARTH_SHARE, bridgeM: 300, forestHa: 12.5 }, curveballs: ['d3-0303-valley', 'd3-0303-pots', 'd3-0303-quiet', 'd3-0303-gas', 'd3-0303-nest', 'd3-0303-money'],
     real: { price: 14_500e6, priceText: 'ŘSD estimate, 09/2025', story: 'Tunnels and bridges carry it on through the hills; its permit documents are being prepared.', reviewBy: 2011 } },
   'd3-0304-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'bridges', 'tunnels', 'scratch', 'byHand'], startBill: 10_030e6, terms: { earthShare: EARTH_SHARE, bridgeM: 300 }, curveballs: ['d3-0304-graves', 'd3-0304-farm', 'd3-0304-quiet', 'd3-0304-gas', 'd3-0304-nest', 'd3-0304-money'],
     real: { price: 17_500e6, priceText: 'ŘSD estimate, 09/2025, with the Prostřední vrch tunnel and a green bridge', story: 'A tunnel under Prostřední vrch and a green bridge for wildlife are planned; its rock is being surveyed.', reviewBy: 2011 } },
@@ -64,19 +65,19 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
   'd35-full-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'scratch', 'byHand'], startBill: 33_239e6, terms: { earthShare: EARTH_SHARE }, curveballs: ['d35-pod-skalou', 'd35-radisov-slope', 'd35-graves', 'd35-repova-graves', 'd35-javori-nest', 'd35-podoli-quiet', 'd35-quiet', 'd35-full-money'],
     real: { priceText: 'No construction price is public: the PPP bid of 71.3 bn covers 22 years of service too', story: 'Both sections have their permits; a private partner chosen in 10/2026 is to build and run them.', reviewBy: 2006 } },
   // ---- Český ráj: the I/35 Turnov – Úlibice (research/89; curveballs research/95)
-  'i35-turnov-road': { offer: ['earth', 'curveballs', 'scratch', 'byHand'], startBill: 5_629e6, terms: { earthShare: EARTH_SHARE }, curveballs: ['i35-nudvojovice', 'i35-zone-iii', 'i35-libunka', 'i35-jizera', 'i35-turnov-money'],
+  'i35-turnov-road': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 5_629e6, terms: { earthShare: EARTH_SHARE, forestHa: 0.6, bridgeM: 700 }, curveballs: ['i35-nudvojovice', 'i35-zone-iii', 'i35-libunka', 'i35-jizera', 'i35-turnov-money'],
     real: { price: 7_255e6, priceText: 'ŘSD study 03/2023 (2022 prices), with the Pelešany and Přepeře tunnels', story: 'Its approval was revoked in December 2025; a new environmental review, with tunnels round Turnov, takes until about 2029.', reviewBy: 2016 } },
-  'i35-rovensko-road': { offer: ['earth', 'landmarks', 'curveballs', 'scratch', 'byHand'], startBill: 4_386e6, terms: { earthShare: EARTH_SHARE }, curveballs: ['i35-k31b', 'i35-scarp-11-5', 'i35-scarp-15-8', 'i35-vaclavi-graves', 'i35-rovensko-slope'],
+  'i35-rovensko-road': { offer: ['earth', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 4_386e6, terms: { earthShare: EARTH_SHARE, forestHa: 5.0, bridgeM: 350 }, curveballs: ['i35-k31b', 'i35-scarp-11-5', 'i35-scarp-15-8', 'i35-vaclavi-graves', 'i35-rovensko-slope'],
     real: { price: 6_209e6, priceText: 'ŘSD study 03/2023 (2022 prices), with the feeder road to Semily', story: 'It skirts the protected landscape past Rovensko; its approval was revoked in December 2025 and is being redone.', reviewBy: 2016 } },
-  'i35-jicin-road': { offer: ['earth', 'landmarks', 'curveballs', 'scratch', 'byHand'], startBill: 5_371e6, terms: { earthShare: EARTH_SHARE }, curveballs: ['i35-species', 'i35-jinolice-graves', 'i35-gas', 'i35-soberaz-quiet', 'i35-jicin-money'],
+  'i35-jicin-road': { offer: ['earth', 'landmarks', 'curveballs', 'homes', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 5_371e6, terms: { earthShare: EARTH_SHARE, forestHa: 0.8, bridgeM: 250 }, curveballs: ['i35-species', 'i35-jinolice-graves', 'i35-gas', 'i35-soberaz-quiet', 'i35-jicin-money'],
     real: { price: 5_514e6, priceText: 'ŘSD study 03/2023 (2022 prices), as a 2+1 road', story: 'The last stage meets the D35 at Úlibice, under construction since April 2026; building here is to start no sooner than 2032.', reviewBy: 2016 } },
-  'i35-full-road': { offer: ['earth', 'curveballs', 'scratch', 'byHand'], startBill: 15_158e6, terms: { earthShare: EARTH_SHARE }, curveballs: ['i35-nudvojovice', 'i35-zone-iii', 'i35-jizera', 'i35-scarp-11-5', 'i35-scarp-15-8', 'i35-species', 'i35-full-money'],
+  'i35-full-road': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 15_158e6, terms: { earthShare: EARTH_SHARE, forestHa: 8.0, bridgeM: 1600 }, curveballs: ['i35-nudvojovice', 'i35-zone-iii', 'i35-jizera', 'i35-scarp-11-5', 'i35-scarp-15-8', 'i35-species', 'i35-full-money'],
     real: { price: 18_978e6, priceText: 'ŘSD study 03/2023 (2022 prices), the three road stages, with two tunnels and eight interchanges', story: 'Planned through the edge of the Bohemian Paradise; its approval was revoked in December 2025 and the review starts over.', reviewBy: 2016 } },
-  'd35-stage1-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'budget', 'scratch', 'byHand'], startBill: 19_459e6, terms: { earthShare: EARTH_SHARE, budget: 17_694e6, bridgeM: 400, forestHa: 2.0 }, curveballs: ['d35-pod-skalou', 'd35-radisov-slope', 'd35-graves', 'd35-quiet', 'd35-nest', 'd35-money'],
+  'd35-stage1-motorway': { offer: ['earth', 'curveballs', 'forest', 'bridges', 'budget', 'scratch', 'byHand'], startBill: 19_459e6, terms: { earthShare: EARTH_SHARE, budget: 17_694e6, bridgeM: 400, forestHa: 2.0 }, curveballs: ['d35-pod-skalou', 'd35-radisov-slope', 'd35-graves', 'd35-quiet', 'd35-nest', 'd35-money'],
     real: { price: 17_694e6, priceText: 'ŘSD estimate, 09/2025, with the 4 km Dětřichov tunnel', story: 'Its 4 km tunnel passes under the protected Pod skálou slope; it is to be built by a private partner.', reviewBy: 2006 } },
   'd11-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'bridges', 'scratch', 'byHand'], startBill: 14_029e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1600, forestHa: 16 }, curveballs: ['d11-shaft', 'd11-porici-slope', 'd11-olesnice-slope', 'd11-graves', 'd11-nest', 'd11-contract'],
     real: { price: 11_710e6, priceText: 'the contract signed in 10/2024, 10 % under the estimate', story: 'Being built since October 2024 with two twin tunnels; the Polish S3 has waited at the border since 2024.', reviewBy: 2008 } },
-  'd11-rail-kralovec': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 10_760e6, baseline: 'the starting line', terms: { earthShare: EARTH_SHARE, bridgeM: 1600, forestHa: 5.0 }, curveballs: ['kralovec-libec-slope', 'kralovec-krenov-slope', 'kralovec-graves', 'kralovec-nest', 'kralovec-money'],
+  'd11-rail-kralovec': { offer: ['earth', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], startBill: 10_760e6, baseline: 'the starting line', terms: { earthShare: EARTH_SHARE, bridgeM: 1600, forestHa: 5.0 }, curveballs: ['kralovec-libec-slope', 'kralovec-krenov-slope', 'kralovec-graves', 'kralovec-nest', 'kralovec-money'],
     real: { priceText: 'No such railway is planned', story: 'Today a single unelectrified track winds via Libeč and Bernartice; trains take 26 minutes with four stops.' } },
 };
 

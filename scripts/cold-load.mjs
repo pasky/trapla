@@ -7,7 +7,7 @@
 //                builds without one, the first frame with the terrain drawn)
 //   playable     …and its first evaluation has settled (the score is up, a drag answers)
 //
-//   node scripts/cold-load.mjs [--dist dist] [--scenario d3-0302 --preset d3-0302-motorway] [--runs 3] [--gpu]
+//   node scripts/cold-load.mjs [--dist dist] [--scenario d35 --preset d35-stage1-motorway] [--runs 3] [--gpu]
 //                              [--mbit 20] [--rtt 40] [--cpu 4] [--picker]   (--picker: open the mission from the
 //                              start screen's "Start here" instead of its link; the times then add up;
 //                              --read MS: the visitor reads the start screen that long before the click)
@@ -17,8 +17,8 @@ import { serveStatic } from './static-serve.mjs';
 import { passTwists } from './lib/browser.mjs';
 
 const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i < 0 ? d : process.argv[i + 1] ?? d; };
-const dist = arg('--dist', 'dist'), runs = Number(arg('--runs', 3)), scenario = arg('--scenario', 'd3-0302');
-const preset = arg('--preset', 'd3-0302-motorway'), mbit = Number(arg('--mbit', 20)), rtt = Number(arg('--rtt', 40)), cpu = Number(arg('--cpu', 4));
+const dist = arg('--dist', 'dist'), runs = Number(arg('--runs', 3)), scenario = arg('--scenario', 'd35');
+const preset = arg('--preset', 'd35-stage1-motorway'), mbit = Number(arg('--mbit', 20)), rtt = Number(arg('--rtt', 40)), cpu = Number(arg('--cpu', 4));
 const viaPicker = process.argv.includes('--picker'), gpu = process.argv.includes('--gpu'), read = Number(arg('--read', 0));
 const SOFTWARE = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const GPU = ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan'];

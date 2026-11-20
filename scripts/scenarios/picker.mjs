@@ -21,11 +21,11 @@ try {
   const first = page.locator('[data-start-here]');
   await page.waitForFunction(() => document.querySelector('[data-start-here] button').disabled === false);
   await first.getByRole('button', { name: 'Start', exact: true }).click();
-  assert.deepEqual(await page.evaluate(() => window.chosen), { scenarioId: 'd3-0302', presetId: null, fromPicker: true });
-  assert.ok(page.url().includes('scenario=d3-0302'));
+  assert.deepEqual(await page.evaluate(() => window.chosen), { scenarioId: 'd35', presetId: 'd35-stage1-motorway', fromPicker: true });
+  assert.ok(page.url().includes('scenario=d35'));
   await page.evaluate(async () => {
     const { projectStorageKeys } = await import('/src/project-store-contract.ts');
-    localStorage.setItem(projectStorageKeys({ scenarioId: 'd3-0302', presetId: 'd3-0302-motorway' }).project, 'unrecognized bytes kept for recovery');
+    localStorage.setItem(projectStorageKeys({ scenarioId: 'd35', presetId: 'd35-stage1-motorway' }).project, 'unrecognized bytes kept for recovery');
   });
   await page.getByRole('button', { name: 'Scenarios', exact: true }).click();
   await page.waitForSelector('.scenario-picker-card');
