@@ -219,7 +219,8 @@ export function assertProjectDesign(value: unknown, allowStaleBindings = false):
     if (!list(p.takenUp)) fail('taken-up pieces');
     const pieces = new Set<string>();
     for (const t of p.takenUp as unknown[]) {
-      if (!object(t) || !interval(t.interval) || !choice(t.end, ['a', 'b']) || !xyz(t.at)) fail('taken-up piece');
+      // (a piece from the road's start begins at its station 0)
+      if (!object(t) || !interval(t.interval) || !choice(t.end, ['a', 'b']) || !xyz(t.at) || (t.end === 'a' && (t.interval as Obj).s0 !== 0)) fail('taken-up piece');
       const id = `${((t as Obj).interval as Obj).sourceId as string}:${(t as Obj).end as string}`;
       if (pieces.has(id)) fail('taken-up piece'); pieces.add(id);
     }

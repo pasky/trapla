@@ -9,7 +9,8 @@
 // gesture itself is map-gestures.ts's.
 import type { CrossingResult } from '../core/crossings';
 import type { Result } from '../core/evaluate';
-import type { ProjectResult, RouteDesign, RouteId, SourceInterval } from '../core/project';
+import type { ProjectDesign, ProjectResult, RouteDesign, RouteId, SourceInterval } from '../core/project';
+import { corridorOfRoute } from '../core/project-motorway';
 import type { ProjectTransportIndex } from '../core/project-network';
 import type { RoadNetData } from '../core/roadnet';
 import { ROAD_CLASSES } from '../core/data/urban';
@@ -92,7 +93,18 @@ export function createCrossingDrag(app: CrossingDragContext) {
   };
   /** What a drag of this crossing's ring (`ring`) or of its works at ground point `at` (`works`) would do; null: the
    * road links are not loaded yet (nothing to say) or the press is not on the crossed way. */
+  // (a hover asks on every frame: what a drag there would rebuild is looked up once per crossing, part and 5 m of the
+  // crossed way, for as long as that result and the project's roads stand)
+  const memo = new WeakMap<CrossingResult, { routes: readonly RouteDesign[]; index: ProjectTransportIndex | null; plans: Map<string, CrossingDragPlan | null> }>();
   const plan = (c: CrossingResult, part: 'ring' | 'works', at: XY): CrossingDragPlan | null => {
+    let m = memo.get(c);
+    if (!m || m.routes !== app.routes || m.index !== app.transportIndex) memo.set(c, m = { routes: app.routes, index: app.transportIndex, plans: new Map() });
+    const id = c.roadId !== undefined ? sourceOf(c.roadId) : undefined, on = id && part === 'works' ? stationOn(id, at) : null;
+    const key = part === 'ring' ? 'ring' : on ? `w${Math.round(on.s / 5)}:${on.d > ON_WAY ? 'off' : 'on'}` : `w${Math.round(at.x)}:${Math.round(at.y)}`;
+    if (!m.plans.has(key)) m.plans.set(key, planNow(c, part, at));
+    return m.plans.get(key)!;
+  };
+  const planNow = (c: CrossingResult, part: 'ring' | 'works', at: XY): CrossingDragPlan | null => {
     if (c.roadId === undefined) return null;
     if (part === 'ring' && CUT.has(c.type)) return { ok: false, hover: CROSSING_DRAG_TEXT.cut };
     const hover = (name: string) => part === 'ring' ? CROSSING_DRAG_TEXT.slide : CROSSING_DRAG_TEXT.bend(name);
@@ -119,6 +131,18 @@ export function createCrossingDrag(app: CrossingDragContext) {
   return { plan, sourceOf, label: (c: CrossingResult) => cap(ROAD_CLASSES[c.cls]?.label ?? 'road') };
 }
 export type CrossingDrag = ReturnType<typeof createCrossingDrag>;
+
+/** The player's choice for crossing a mapped way (on our road, `ownerId`), carried over to the road of the project that
+ * rebuilds it there (`routeId`): a slid crossing keeps its treatment. (A cut is no choice for a road of the project; a
+ * reroute's shape and ends belong to the old way.) In place, in the step the rebuild opened. */
+export function carryCrossingChoice(design: ProjectDesign, ownerId: RouteId, roadId: number, routeId: RouteId): void {
+  const corridor = corridorOfRoute(design, ownerId), route = design.routes.find(r => r.id === ownerId);
+  const controls = corridor?.mode === 'paired' && corridor.spine.kind === 'pi' ? corridor.spine.controls : route?.alignment.kind === 'pi' ? route.alignment.controls : undefined;
+  const list = controls?.crossings;
+  const mine = list?.find(c => c.target.kind === 'legacy-way' && c.target.roadId === roadId && c.target.after === undefined && c.target.structure === undefined);
+  if (!list || !mine || mine.choice === 'reconnection' || list.some(c => c.target.kind === 'route' && c.target.routeId === routeId)) return;
+  list.push({ choice: mine.choice, target: { kind: 'route', routeId, s0: 0, s1: 0 }, ...(mine.square !== undefined ? { square: mine.square } : {}) });
+}
 
 type Axis = { x: number[]; y: number[]; s: number[] };
 /** Our road's line around station s (± SLIDE_REACH), with its stations: what a slid ring follows. */
@@ -203,16 +227,27 @@ function crossingOf(sec: SlideSection, pis: PI[], axis: Axis, near: XY): XY | nu
   return hit;
 }
 /** The section's bends moved so that the crossed road crosses our axis at `target` (on the axis): a step across the
- * crossed road's direction, corrected a few times where its curves make the first guess miss. */
+ * crossed road's direction, corrected (secant steps, at most SLIDE_ROUNDS) where its curves make the first guess miss;
+ * never more than SLIDE_STRETCH times the first guess (+ 10 m): a crossing out of reach (a short road's one bend, its
+ * curve cutting the corner) goes as far as that allows; the step that came nearest is kept (one that leaves the road
+ * crossing ours nowhere near: none, the line as it was). */
+const SLIDE_ROUNDS = 6, SLIDE_STRETCH = 1.5;
 export function slideTo(sec: SlideSection, axis: Axis, target: XY): PI[] {
   const move = (alpha: number) => sec.pis.map((q, k) => sec.moving.includes(k) ? { ...q, x: q.x + alpha * sec.n.x, y: q.y + alpha * sec.n.y } : q);
-  let alpha = (target.x - sec.from.x) * sec.n.x + (target.y - sec.from.y) * sec.n.y, near = target;
-  for (let round = 0; round < 3; round++) {
-    const x = crossingOf(sec, move(alpha), axis, near);
-    if (!x) break;
-    const miss = (target.x - x.x) * sec.n.x + (target.y - x.y) * sec.n.y;
-    if (Math.abs(miss) < 0.5) break;
-    alpha += miss; near = x;
+  /** how far across the crossed road's direction the crossing misses the target (null: it crosses ours no more) */
+  const missOf = (alpha: number) => { const x = crossingOf(sec, move(alpha), axis, target); return x ? (target.x - x.x) * sec.n.x + (target.y - x.y) * sec.n.y : null; };
+  let best = { alpha: 0, miss: missOf(0) ?? Infinity };
+  let a0 = 0, m0 = best.miss, a1 = (target.x - sec.from.x) * sec.n.x + (target.y - sec.from.y) * sec.n.y;
+  const bound = SLIDE_STRETCH * Math.abs(a1) + 10, clamp = (a: number) => Math.max(-bound, Math.min(bound, a));
+  for (let round = 0; round < SLIDE_ROUNDS && Math.abs(best.miss) >= 0.5; round++) {
+    const m1 = missOf(a1);
+    if (m1 === null) { a1 = (a0 + a1) / 2; continue; }
+    if (Math.abs(m1) < Math.abs(best.miss)) best = { alpha: a1, miss: m1 };
+    // (the next step: through the last two guesses, else as far again as this one missed)
+    const slope = Number.isFinite(m0) && Math.abs(m1 - m0) > 1e-6 ? (a1 - a0) / (m0 - m1) : 1;
+    const next = clamp(a1 + m1 * Math.max(0.2, Math.min(5, slope)));
+    if (Math.abs(next - a1) < 0.05) break;
+    a0 = a1; m0 = m1; a1 = next;
   }
-  return move(alpha);
+  return move(best.alpha);
 }

@@ -125,7 +125,8 @@ export class ActiveRouteStore {
     this.onHistory?.();
     if (this.project.inTransaction) this.project.commit();
     this.project.begin();
-    this.project.update(draft => Object.assign(draft, structuredClone(best.design)));
+    // (the whole design: a key the best lacks, e.g. dead ends taken up since, goes too)
+    this.project.update(draft => { for (const key of Object.keys(draft)) if (!(key in best.design)) delete (draft as unknown as Record<string, unknown>)[key]; Object.assign(draft, structuredClone(best.design)); });
     this.project.commit();
   }
   undo() { const after = this.onHistory?.(); this.project.undo(); after?.(); }

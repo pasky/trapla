@@ -27,7 +27,7 @@ import type { MapPicks } from './map-picks';
 import type { MappedRoadCard } from './mapped-road';
 import { radiusNotes } from './radius-notes';
 import type { Result } from '../core/evaluate';
-import { axisPoint, axisStation, CROSSING_DRAG_TEXT, slideAxis, slideSection, slideTo, type CrossingDrag, type CrossingDragPlan, type SlideSection } from './crossing-drag';
+import { axisPoint, axisStation, carryCrossingChoice, CROSSING_DRAG_TEXT, slideAxis, slideSection, slideTo, type CrossingDrag, type CrossingDragPlan, type SlideSection } from './crossing-drag';
 import { bendAt } from './road-edit';
 import { toast } from './toast';
 
@@ -99,7 +99,9 @@ export function createMapGestures(app: MapGestureContext) {
   };
   /** A mapped road's stretch becomes a project road (its line converted to bends that follow the old road), the
    * active one, in a step left open for the drag that follows (ONE undo step, committed when it ends). */
-  const rebuild = (interval: SourceInterval, lineKind = app.sourceEditor?.lineKind): boolean => {
+  const rebuild = (interval: SourceInterval, lineKind = app.sourceEditor?.lineKind,
+    /** a crossing of our road (`owner`) with that way (`roadId`): its choice goes with the rebuilt road */
+    carry?: { owner: RouteId; roadId: number }): boolean => {
     if (!app.transportIndex || !lineKind) return false;
     let command;
     const ready = prepared?.key === keyOf(interval) && prepared.index === app.transportIndex ? prepared.command : null;
@@ -112,12 +114,13 @@ export function createMapGestures(app: MapGestureContext) {
     app.projectStore.begin();
     try { app.projectStore.dispatch(command); }
     catch (error) { app.projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return false; }
+    if (carry) app.projectStore.update(d => carryCrossingChoice(d, carry.owner, carry.roadId, id));
     app.switchRoute(id, true);
     return true;
   };
   /** The first drag of a mapped road: it is rebuilt and the drag bends it, all one undo step. */
-  const rebuildByDrag = (interval: SourceInterval, x: number, y: number, lineKind = app.sourceEditor?.lineKind): number | null => {
-    if (!rebuild(interval, lineKind)) return null;
+  const rebuildByDrag = (interval: SourceInterval, x: number, y: number, lineKind = app.sourceEditor?.lineKind, carry?: { owner: RouteId; roadId: number }): number | null => {
+    if (!rebuild(interval, lineKind, carry)) return null;
     const k = bendByDrag(x, y);
     // (the bend this first drag places, or one of the old line's it takes along, is fitted where its curve has
     // room on release: the drag is the conversion's, not yet the player's own placing of a bend)
@@ -145,6 +148,8 @@ export function createMapGestures(app: MapGestureContext) {
   let dragWanted: { i: number; r: (number | null)[] } | null = null;
   /** the bend the drag holds now (its number after any swap) */
   let held: number | null = null;
+  /** How far from a selected crossing a road of the project counts as its works (its ramps and deck), m: UI choice. */
+  const DESIGNED_WORKS = 200;
   /** A drag of a selected crossing's ring or works (ui/crossing-drag.ts), planned at the press */
   let crossingGrab: Extract<CrossingDragPlan, { ok: true }> | null = null;
   /** the selected crossing's part under this point and what a drag there does (null: none of its parts, or a
@@ -157,8 +162,9 @@ export function createMapGestures(app: MapGestureContext) {
     // a road of the project draws (and is picked as) its own body
     const own = app.last.crossings.find(c => c.roadId === sel.roadId && c.designed);
     if (own) {
-      const p = app.crossingDrag.plan(own, 'works', own), hit = app.routeAt(clientX, clientY, 10);
-      return p?.ok && p.target.kind === 'route' && hit?.routeId === p.target.routeId ? p : null;
+      const p = app.crossingDrag.plan(own, 'works', own), hit = app.routeAt(clientX, clientY, 10), g = app.view.pick(clientX, clientY);
+      // (its body near the crossing only: elsewhere it is a road not selected, whose drag moves the map)
+      return p?.ok && p.target.kind === 'route' && hit?.routeId === p.target.routeId && g && Math.hypot(g.x - own.x, g.y - own.y) <= DESIGNED_WORKS ? p : null;
     }
     const w = app.crossingWorksAt(clientX, clientY);
     if (!w || w.crossing.roadId !== sel.roadId || w.link !== undefined) return null;
@@ -168,16 +174,19 @@ export function createMapGestures(app: MapGestureContext) {
    * the stations of the press and of the crossing on it, and the crossed road's name (the undo step's) */
   let slide: { section: SlideSection; axis: ReturnType<typeof slideAxis>; press: number; at: number; name: string } | null = null;
   const dragCrossing = (p: Extract<CrossingDragPlan, { ok: true }>, x: number, y: number): number | null => {
-    const c = p.crossing;
+    const c = p.crossing, owner = app.store.activeRouteId;
+    // (the crossing must still be the one selected: a press let go of before it moved is no drag of it)
+    if (app.sel?.kind !== 'crossing' || app.sel.roadId !== c.roadId || !owner) return null;
+    const carry = c.roadId !== undefined ? { owner, roadId: c.roadId } : undefined;
     app.intro.hide();
     if (p.part === 'works') {
-      if (p.target.kind === 'mapped') return rebuildByDrag(p.target.interval, x, y, p.target.lineKind);
+      if (p.target.kind === 'mapped') return rebuildByDrag(p.target.interval, x, y, p.target.lineKind, carry);
       if (!app.switchRoute(p.target.routeId) || !app.store.read()) return null;
       return bendByDrag(x, y);
     }
     const axis = app.last ? slideAxis(app.last, c.s) : null;
     if (!axis || axis.s.length < 2) return null;
-    if (p.target.kind === 'mapped') { if (!rebuild(p.target.interval, p.target.lineKind)) return null; }
+    if (p.target.kind === 'mapped') { if (!rebuild(p.target.interval, p.target.lineKind, carry)) return null; }
     else if (!app.switchRoute(p.target.routeId) || !app.store.read()) return null;
     const d = app.store.design, section = slideSection(app.A, app.B, d.pis, d.speed, d.category, c);
     // (the bends the slide puts in are in the step it leaves open)

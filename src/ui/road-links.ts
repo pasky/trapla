@@ -84,7 +84,8 @@ export function createRoadLinks(app: RoadLinksContext) {
       },
     });
     const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, app.view, transportIndex, claimedSources, covered,
-      () => app.projectStore.snapshot.design.takenUp ?? [], deadEndHandles);
+      () => app.projectStore.snapshot.design.takenUp ?? [], deadEndHandles,
+      () => app.projectStore.snapshot.design.routes.flatMap(r => [r.endpoints.a.anchor, r.endpoints.b.anchor]).flatMap(a => a.kind === 'source' ? [{ sourceId: a.location.sourceId, s: a.location.s }] : []));
     editor.onClose = () => app.select(null);
     // (a step, an undo or a redo: the selected road's card as it is now, its station kept on what is left of it)
     app.projectStore.subscribe((_snapshot, committed) => {

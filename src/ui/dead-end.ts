@@ -22,8 +22,10 @@ export interface DeadEnd { sourceId: string; end: 'a' | 'b';
   mapped: number; now: number; limit: number }
 
 /** The open dead ends of a mapped road (an end no other way meets, on the map): none for a motorway, a bridge or
- * tunnel, a way that meets nothing at all, or an end a project road rebuilds. */
-export function deadEnds(base: ProjectTransportIndex, sourceId: string, claimed: readonly SourceInterval[], taken: readonly TakenUpPiece[]): DeadEnd[] {
+ * tunnel, a way that meets nothing at all, or an end a project road rebuilds. `joins`: where roads of the project end
+ * on mapped roads (a piece taken up never takes one's junction). */
+export function deadEnds(base: ProjectTransportIndex, sourceId: string, claimed: readonly SourceInterval[], taken: readonly TakenUpPiece[],
+  joins: readonly { sourceId: string; s: number }[] = []): DeadEnd[] {
   const source = base.source(sourceId);
   const row = source?.kind === 'road' ? ROAD_CLASSES[source.tags.highway ?? ''] : undefined;
   if (!source || !row || row.noAtGrade || source.bridge || source.tunnel || source.elevation !== 'terrain') return [];
@@ -40,11 +42,10 @@ export function deadEnds(base: ProjectTransportIndex, sourceId: string, claimed:
     // (nor into another road's rebuilt stretch: claimed between the junction and the end; one over the end: no handle)
     const others = mine.filter(c => !(piece && c.s0 === piece.interval.s0 && c.s1 === piece.interval.s1));
     if (others.some(c => c.s0 <= now + 0.01 && c.s1 >= now - 0.01)) continue;
-    let limit = end === 'a' ? Math.min(...junctions) - DEAD_END_CLEAR : Math.max(...junctions) + DEAD_END_CLEAR;
-    for (const c of others) {
-      if (end === 'a' && c.s1 <= now) limit = Math.max(limit, c.s1 + DEAD_END_CLEAR);
-      if (end === 'b' && c.s0 >= now) limit = Math.min(limit, c.s0 - DEAD_END_CLEAR);
-    }
+    // (back from the end: the first junction, rebuilt stretch or road of the project joining it stops it)
+    const stops = [...junctions, ...others.flatMap(c => [c.s0, c.s1]), ...joins.filter(j => j.sourceId === sourceId).map(j => j.s)];
+    let limit = end === 'a' ? Math.min(...stops.filter(s => s > now + 0.01)) - DEAD_END_CLEAR : Math.max(...stops.filter(s => s < now - 0.01)) + DEAD_END_CLEAR;
+    if (!Number.isFinite(limit)) continue;
     if (end === 'a' ? limit <= 0.5 : limit >= length - 0.5) continue;
     out.push({ sourceId, end, mapped, now, limit });
   }

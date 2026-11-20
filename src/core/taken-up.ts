@@ -16,6 +16,7 @@ import { takenUpTrims, type SourceWays } from './project-roadnet';
 import type { RoadNet } from './roadnet';
 
 type XY = { x: number; y: number };
+type Line = { n: number; x: ArrayLike<number>; y: ArrayLike<number> };
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export interface TakenUpOutcome {
@@ -28,7 +29,9 @@ export interface TakenUpOutcome {
 /** `roads`: the pack's network; `edited`: the network as the project leaves it (the pieces gone, its own roads added);
  * `gone`: houses the project takes anyway; `routeId`: the road that bills the pieces; `stationOf`: where along it. */
 export function takenUpOutcome(design: ProjectDesign, roads: RoadNet, edited: RoadNet, sourceWays: SourceWays | undefined,
-  buildings: BuildingIndex | undefined, gone: ReadonlySet<number>, routeId: RouteId, stationOf: (x: number, y: number) => number): TakenUpOutcome {
+  buildings: BuildingIndex | undefined, gone: ReadonlySet<number>, routeId: RouteId, stationOf: (x: number, y: number) => number,
+  /** roads of the project a house may be reached from too (their built centrelines) */
+  lines: readonly Line[] = []): TakenUpOutcome {
   const out: TakenUpOutcome = { works: [], issues: [] };
   for (const trim of takenUpTrims(roads, design, sourceWays)) {
     const cls = roads.wayClass(trim.way), row = ROAD_CLASSES[cls], width = row?.width ?? 6.5, what = row?.label ?? 'road';
@@ -39,7 +42,7 @@ export function takenUpOutcome(design: ProjectDesign, roads: RoadNet, edited: Ro
     const mid = path[Math.floor(path.length / 2)];
     out.works.push({ kind: 'removal', s: stationOf(mid.x, mid.y), x: mid.x, y: mid.y, length, cost: length * removalPerMetre(width),
       label: `${cap(what)} taken up: ${Math.round(length)} m` });
-    const cut = servedOnly(path, edited, buildings, gone);
+    const cut = servedOnly(path, edited, lines, buildings, gone);
     if (!cut.length) continue;
     const b = buildings!.items[cut[0]], homes = cut.filter(j => buildings!.dwelling[j]).length;
     const who = homes === cut.length ? (homes > 1 ? `${homes} homes` : 'A home') : cut.length > 1 ? `${cut.length} buildings` : 'A building';
@@ -57,7 +60,7 @@ export function takenUpOutcome(design: ProjectDesign, roads: RoadNet, edited: Ro
 /** Houses (no shed or garage) within STUB_HOUSE of the piece that are not within STUB_HOUSE of any road left (a
  * motorway is no way in), the project's own taken houses aside; both measured alike, from the house's outline to the
  * way's line (a house no road came within STUB_HOUSE of before loses nothing). */
-function servedOnly(path: readonly XY[], net: RoadNet, bld: BuildingIndex | undefined, gone: ReadonlySet<number>): number[] {
+function servedOnly(path: readonly XY[], net: RoadNet, lines: readonly Line[], bld: BuildingIndex | undefined, gone: ReadonlySet<number>): number[] {
   if (!bld) return [];
   const found = new Set<number>();
   for (let k = 1; k < path.length; k++) {
@@ -67,7 +70,7 @@ function servedOnly(path: readonly XY[], net: RoadNet, bld: BuildingIndex | unde
       if (!gone.has(j) && bld.kind[j] !== BUILDING_KIND.minor && within(bld, j, a, b, STUB_HOUSE)) found.add(j);
     });
   }
-  return [...found].filter(j => !onRoad(net, bld, j, STUB_HOUSE)).sort((a, b) => a - b);
+  return [...found].filter(j => !onRoad(net, bld, j, STUB_HOUSE) && !lines.some(l => onLine(l, bld, j, STUB_HOUSE))).sort((a, b) => a - b);
 }
 /** building j's outline within `apart` of the segment a–b (at the point of it nearest the building's middle) */
 function within(bld: BuildingIndex, j: number, a: XY, b: XY, apart: number): boolean {
@@ -85,6 +88,15 @@ function nearestText(net: RoadNet, bld: BuildingIndex, j: number): string {
     best = Math.min(best, Math.sqrt(bld.facadeDistanceSq(j, g.ax + t * dx, g.ay + t * dy)));
   });
   return best <= NEAR_SEARCH ? `the nearest road left is ${Math.round(best)} m away` : `no road is left within ${NEAR_SEARCH} m`;
+}
+function onLine(l: Line, bld: BuildingIndex, j: number, apart: number): boolean {
+  const [x, y, r] = bld.items[j], reach = r + apart;
+  for (let i = 1; i < l.n; i++) {
+    const a = { x: l.x[i - 1], y: l.y[i - 1] }, b = { x: l.x[i], y: l.y[i] };
+    if (Math.min(a.x, b.x) > x + reach || Math.max(a.x, b.x) < x - reach || Math.min(a.y, b.y) > y + reach || Math.max(a.y, b.y) < y - reach) continue;
+    if (within(bld, j, a, b, apart)) return true;
+  }
+  return false;
 }
 function onRoad(net: RoadNet, bld: BuildingIndex, j: number, apart: number): boolean {
   const [x, y, r] = bld.items[j];

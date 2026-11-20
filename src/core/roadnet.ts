@@ -223,7 +223,7 @@ export class RoadNet {
       });
     }
     // an edit of an edited network (not used by the game) is rebuilt in full
-    const net = this.override ? new RoadNet({ cls, ways }) : new RoadNet({ cls, ways }, { base: this, changed });
+    const net = this.override ? new RoadNet({ cls, ways }) : new RoadNet({ cls, ways }, { base: this, changed: [...new Set(changed)] });
     (net as { structures: ReadonlyMap<number, MappedStructure> }).structures = this.structures;
     if (extra.length) {
       net.designedWays = { from: this.ways.length, to: this.ways.length + extra.length };

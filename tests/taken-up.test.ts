@@ -17,6 +17,9 @@ it('a trim takes a way\'s end off and leaves the rest its number (no slot, other
   const across = (net: RoadNet, x: number) => net.intersections(2, [0, 20], [x, x], [-10, 10]).map(h => h.way);
   expect(across(head, 200)).toEqual([]);
   expect(across(head, 600)).toEqual([0]);
+  // (each segment left once in the index)
+  let found = 0; head.nearSegments([595, -5, 605, 5], s => { if (s.way === 0) found++; });
+  expect(found).toBe(1);
   const tail = base.edited([{ way: 0, d0: 700, d1: 1000, trim: true }, { way: 1, d0: 50, d1: 150 }], []);
   expect(across(tail, 800)).toEqual([]);
   expect(across(tail, 600)).toEqual([0]);
@@ -26,7 +29,7 @@ it('a trim takes a way\'s end off and leaves the rest its number (no slot, other
 
 describe('a dead end taken up', () => {
   // our road west–east at y 250; a local road from the north ending 100 m short of it, a house 20 m beyond its end
-  function fixture(buy = false) {
+  function fixture(buy = false, links = true) {
     const buildings = new BuildingIndex([[400, 330, 6]]);
     const legacy = { terrain: syntheticTerrain(260, 120, 5, () => 100), scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 },
       roads: new RoadNet({ cls: ['unclassified'], ways: [[0, 400, 560, 400, 350]] }), buildings };
@@ -34,7 +37,7 @@ describe('a dead end taken up', () => {
     const design = projectFromLegacyDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }, context);
     if (buy) design.buildingOverrides = [{ j: 0, action: 'buy' }];
     const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'objects', transportData: 't', terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' },
-      sourceWays: new Map([['osm:way:1', 0]]) };
+      ...(links ? { sourceWays: new Map([['osm:way:1', 0]]) } : {}) };
     const whole = evaluateProject(ctx, { epoch: 'e', revision: 1, design });
     design.takenUp = [{ interval: { transportData: 't', sourceId: 'osm:way:1', s0: 130, s1: 210 }, end: 'b', at: { x: 400, y: 430, z: 100 } }];
     return { whole, cut: evaluateProject(ctx, { epoch: 'e', revision: 2, design }) };
@@ -55,5 +58,11 @@ describe('a dead end taken up', () => {
     expect(issue?.violation.detail).toMatch(/nearest road left is \d+ m away/);
     expect(cut.valid).toBe(false);
     expect(fixture(true).cut.issues.some(i => i.code === 'taken-up-access')).toBe(false);
+  });
+  it('without the road links it is not priced (never left out of the bill unsaid)', () => {
+    const { cut } = fixture(true, false);
+    expect(cut.cost.total).toBeNull();
+    expect(cut.issues.map(i => i.code)).toContain('taken-up-unresolved');
+    expect(cut.acceptedReplacements).toEqual([]);
   });
 });

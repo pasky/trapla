@@ -233,9 +233,10 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   if (owners.some(r => r.kind === 'road' && r.source?.intervals.length && !cuts.some(c => c.slot === rebuiltSlots(design).indexOf(r)))) return null;
   // (after the rebuilt stretches' slots: their remnants keep the numbers every other road sees)
   const rebuilt = rebuiltSlots(design).length;
-  moved?.cuts.forEach((c, k) => cuts.push({ ...c, slot: rebuilt + k }));
-  // dead ends the player cut back (core/taken-up.ts): gone, what is left keeps its way's number
-  const trims = takenUpTrims(roads, design, sourceWays);
+  // dead ends the player cut back (core/taken-up.ts): gone, what is left keeps its way's number (a way cut back from its
+  // start is measured from its new start: what was measured on it, as another road's relocations, is shifted back)
+  const trims = takenUpTrims(roads, design, sourceWays), head = new Map(trims.filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
+  moved?.cuts.forEach((c, k) => { const by = head.get(c.way) ?? 0; cuts.push({ ...c, d0: c.d0 + by, d1: c.d1 + by, slot: rebuilt + k }); });
   const all: Parameters<RoadNet['edited']>[0] = [...cuts, ...trims];
   const slots = designedSlots(design);
   const drawn = slots.map(r => owners.length > 0 && owners.every(o => o !== r && draws(design, o, r)));

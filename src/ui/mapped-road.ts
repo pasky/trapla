@@ -30,7 +30,9 @@ export class MappedRoadCard {
     /** the parts of a mapped road other project roads' earthworks cover (road-edit.ts coveredStretches) */
     private covered: (sourceId: string) => readonly (SourceInterval & { by: string })[] = () => [],
     /** the dead ends the player cut back, and the handles that cut them (ui/dead-end.ts) */
-    private taken: () => readonly TakenUpPiece[] = () => [], private deadEnds?: DeadEndHandles) {}
+    private taken: () => readonly TakenUpPiece[] = () => [], private deadEnds?: DeadEndHandles,
+    /** where roads of the project end on mapped roads */
+    private joins: () => readonly { sourceId: string; s: number }[] = () => []) {}
   get selected() { return this.hit; }
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
@@ -76,7 +78,7 @@ export class MappedRoadCard {
     root.append(header);
     if (!what.ok) { root.append(el('p', what.why)); return; }
     // its open dead ends: a handle each, dragged back to shorten it (ui/dead-end.ts)
-    const taken = this.taken().filter(t => t.interval.sourceId === source.id), ends = deadEnds(this.base, source.id, this.claimed(), taken);
+    const taken = this.taken().filter(t => t.interval.sourceId === source.id), ends = deadEnds(this.base, source.id, this.claimed(), taken, this.joins());
     this.deadEnds?.show(ends, cap(name));
     const cut = taken.reduce((m, t) => m + t.interval.s1 - t.interval.s0, 0);
     const short = cut > 0 ? [el('div', DEAD_END_TEXT.shortened(Math.round(cut)))] : [];
