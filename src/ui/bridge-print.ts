@@ -69,7 +69,9 @@ export function bridgeSheetSvg(b: BridgeSheet): string {
   const ux = (B.x - A.x) / chord, uy = (B.y - A.y) / chord, cy = 52;
   const P = (x: number, y: number): XY => { const dx = x - A.x, dy = y - A.y; return { x: X(run.s0) + (dx * ux + dy * uy) * k, y: cy - (-dx * uy + dy * ux) * k }; };
   const flat = (xy: readonly number[]) => { const out: XY[] = []; for (let i = 0; i + 1 < xy.length; i += 2) out.push(P(xy[i], xy[i + 1])); return out; };
-  const inFrame = (pts: XY[]) => pts.some((p) => p.x > M && p.x < W - M && p.y > 18 && p.y < 88);
+  // (by its extent: a way crossing the whole frame has no point inside it)
+  const inFrame = (pts: XY[]) => pts.length > 1 && Math.max(...pts.map((p) => p.x)) > M && Math.min(...pts.map((p) => p.x)) < W - M
+    && Math.max(...pts.map((p) => p.y)) > 18 && Math.min(...pts.map((p) => p.y)) < 88;
   /** where a polyline passes nearest the deck's middle line inside the frame: its label's place */
   const labelAt = (pts: XY[]) => pts.filter((p) => p.x > M + 8 && p.x < W - M - 8 && p.y > 22 && p.y < 84).sort((p, q) => Math.abs(p.y - cy) - Math.abs(q.y - cy))[0];
   const labels: string[] = [], named = new Set<string>(), placed: XY[] = [];

@@ -1,8 +1,7 @@
 // A record said once, as a fact (core/data/records.ts, research/97), and only where the player earned it: never on the
 // unedited starter, and never on a starter's structure the player has not touched (the D3 0302 starter's bridge stands
 // 146 m over the Sázava; the D35 starters' tunnels are ≈ 3 km long). Touched: our line there is not where the starting
-// line (or the From scratch straight) has it, or a height pin, a painted structure or By hand heights of the player's
-// are on it.
+// line (or the From scratch straight) has it, or a height pin or a painted structure of the player's is on it.
 import type { Design } from '../core/evaluate';
 import type { Result } from '../core/evaluate';
 import type { Run } from '../core/structures';
@@ -22,22 +21,22 @@ const polyDist = (p: XY, poly: readonly XY[]) => { let d = Infinity; for (let k 
 
 /** Did the player change our line over this structure (its plan or its heights) against this starter? */
 export function touched(r: Result, d: Design, ends: { a: XY; b: XY }, starter: Starter, run: Pick<Run, 'i0' | 'i1' | 's0' | 's1'>): boolean {
-  const st = starter.design, near = (s: number) => s >= run.s0 - 200 && s <= run.s1 + 200;
-  if (d.profileMode !== st.profileMode) return true;
+  // (where it is not clear that the player made it, say nothing: By hand alone, which starts from Auto's heights, a
+  // pin or a radius beside it, do not count)
+  const st = starter.design, on = (s: number) => s >= run.s0 && s <= run.s1;
   const same = (p: object) => (q: object) => JSON.stringify(p) === JSON.stringify(q);
-  if ((d.gradePins ?? []).some(p => near(p.s) && !(st.gradePins ?? []).some(same(p)))) return true;
-  if (d.profileMode === 'manual' && d.vpis.some(p => near(p.s) && !st.vpis.some(same(p)))) return true;
+  if ((d.gradePins ?? []).some(p => on(p.s) && !(st.gradePins ?? []).some(same(p)))) return true;
   if ((d.structureOverrides ?? []).some(o => o.s1 > run.s0 && o.s0 < run.s1 && !(st.structureOverrides ?? []).some(same(o)))) return true;
   // the plan: where the bends' lines differ, our line over the structure is nearer one than the other
-  const P = [ends.a, ...d.pis, ends.b], Q = [starter.a, ...st.pis, starter.b];
+  const P = [ends.a, ...d.pis.map(p => ({ x: p.x, y: p.y }))], Q = [starter.a, ...st.pis.map(p => ({ x: p.x, y: p.y }))];
+  P.push(ends.b); Q.push(starter.b);
   if (JSON.stringify(P) === JSON.stringify(Q)) return false;
   const step = Math.max(1, Math.floor((run.i1 - run.i0) / 40));
   for (let i = run.i0; i <= run.i1; i += step) {
     const p = { x: r.x[i], y: r.y[i] };
     if (Math.abs(polyDist(p, P) - polyDist(p, Q)) > 1) return true;
   }
-  // a bend's radius changed near it (the same bend points)
-  return d.pis.some((p, k) => st.pis[k] && p.r !== st.pis[k].r && polyDist(p, [{ x: r.x[run.i0], y: r.y[run.i0] }, { x: r.x[run.i1], y: r.y[run.i1] }]) < 1500);
+  return false;
 }
 
 /** The record line of this bridge or tunnel of ours, if it beats one and the player made it (`starters`: the

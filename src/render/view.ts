@@ -2070,7 +2070,8 @@ export class View {
     this.stopSweep();
     if (points.length < 2) return;
     const flat: number[] = [], v = new THREE.Vector3();
-    for (const p of points) { this.local(p.x, p.y, p.z * this.exag, v); flat.push(v.x, v.y, v.z); }
+    // (a child of the world, which carries the relief's exaggeration itself)
+    for (const p of points) { this.local(p.x, p.y, p.z, v); flat.push(v.x, v.y, v.z); }
     const line = this.makeLine(flat, null, 5, { color: 0xffffff, opacity: 0.95, depthTest: false, order: 30 });
     line.name = 'sweep';
     const geometry = line.geometry as LineGeometry, segments = points.length - 1, material = line.material as LineMaterial;
@@ -2095,12 +2096,17 @@ export class View {
     this.sweep = null; this.dirty = true;
   }
   private cameraHeld = false;
+  /** what holdCamera hid (put back as it was on release) */
+  private heldHidden: THREE.Object3D[] = [];
   /** Hold the camera at `eye` looking at `target` (local metres; a fly-along sets it every frame, ui/fly-along.ts):
    * no orbit, no glide meanwhile. `null`: the orbit back, about the target as it is. */
   holdCamera(eye: { x: number; y: number; z: number } | null, target?: { x: number; y: number; z: number }) {
     this.flight++;
     // the map's own marks in the scene (the planned line, proposals, bought-out diamonds) go with the markers
-    if (this.cameraHeld !== !!eye) for (const o of this.world.children) if (/^official|^proposal/.test(o.name) || o === this.takenMarkers?.pts) o.visible = !eye;
+    if (eye && !this.cameraHeld) {
+      this.heldHidden = this.world.children.filter(o => o.visible && (/^official|^proposal/.test(o.name) || o === this.takenMarkers?.pts));
+      for (const o of this.heldHidden) o.visible = false;
+    } else if (!eye && this.cameraHeld) { for (const o of this.heldHidden) o.visible = true; this.heldHidden = []; }
     this.cameraHeld = !!eye;
     if (!eye || !target) { this.controls.enabled = true; this.controls.update(); this.dirty = true; return; }
     this.controls.enabled = false;

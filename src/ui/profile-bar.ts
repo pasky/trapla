@@ -6,7 +6,7 @@ const GROUND_BAND = 'trapla.ground-band';
 export function installProfileBar(profile: ProfilePanel) {
   // ---- the profile's key (legend) ----
   const keyB = document.getElementById('key-toggle')!, keyBox = document.getElementById('profile-key')!;
-  const showKey = (on: boolean) => { keyBox.hidden = !on; keyB.setAttribute('aria-expanded', String(on)); keyB.classList.toggle('on', on); };
+  const showKey = (on: boolean) => { keyBox.hidden = !on; keyB.setAttribute('aria-expanded', String(on)); keyB.classList.toggle('on', on); if (on) profile.groundKey(); };
   keyB.onclick = () => showKey(!keyB.classList.contains('on'));
   document.addEventListener('pointerdown', (e) => { if (!keyBox.hidden && !keyBox.contains(e.target as Node) && e.target !== keyB) showKey(false); });
   // the mapped ground's band under the ground line: off unless the player turned it on (remembered)

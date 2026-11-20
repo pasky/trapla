@@ -159,6 +159,7 @@ export function createSelection(app: SelectionContext) {
     if (!app.session.last) return;
     const p = pieceAt(app.session.last, s);
     select({ kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind }, fly);
+    app.onRoadSelected?.(); // (a click on the map selects the road by its piece)
   };
   /** after a recompute: drop a selection that no longer exists, refresh a piece's kind */
   const revalidate = (r: Result, d: Design) => {

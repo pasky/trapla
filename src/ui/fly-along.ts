@@ -20,8 +20,16 @@ export function createFlyAlong(view: View, overlay: HTMLElement, ground: (x: num
   let raf = 0, flying = false, before: View['eyeTarget'] | null = null;
   // (installed once, before the game's own shortcuts (app.ts makes this first): while flying, Esc, a press or a
   // wheel stops the flight and does nothing else)
-  const stop = (e: Event) => { if (!flying || (e instanceof KeyboardEvent && e.key !== 'Escape')) return; e.stopImmediatePropagation(); e.preventDefault(); api.stop(); };
+  // (a press that stops it is the stop only: the click it ends in does nothing else either, a HUD button included)
+  let swallow = 0;
+  const stop = (e: Event) => {
+    if (!flying || (e instanceof KeyboardEvent && e.key !== 'Escape')) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    if (e.type === 'pointerdown') swallow = performance.now();
+    api.stop();
+  };
   for (const type of ['keydown', 'pointerdown', 'wheel']) addEventListener(type, stop, { capture: true, passive: false });
+  addEventListener('click', (e) => { if (swallow && performance.now() - swallow < 1500) { e.stopImmediatePropagation(); e.preventDefault(); } swallow = 0; }, { capture: true });
   const api: FlyAlong = {
     get flying() { return flying; },
     start(r, from, hold) {

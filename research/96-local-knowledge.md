@@ -12,7 +12,7 @@ where the line is about the real place (St Barbara). No line where a fact is not
 
 ## 1. Ecce Homo, Šternberk (i46-sternberk: road III/44423)
 
-**Line:** "Part of the Ecce Homo hill-climb course, 7.8 km from Šternberk; first raced in 1905."
+**Line:** "The Ecce Homo hill-climb runs here: a 7.8 km course up from Šternberk, first raced in 1905."
 
 - Course on III/44423: Autoklub ČR, Ecce Homo 2017 supplementary regulations
   ([PDF](https://www.autoklub.cz/wp-content/uploads/2018/11/zav_sternberk_17.pdf)): "Opava na silnici č. III 44423" —
@@ -89,8 +89,8 @@ where the line is about the real place (St Barbara). No line where a fact is not
 
 ## 7. St Barbara at a mined tunnel (D11 motorway mission)
 
-**Line (a mined tunnel's More, d11 only):** "St Barbara, tunnellers’ patron, stands at its portal, as at the real
-Poříčí tunnel here since November 2026."
+**Line (a mined tunnel's More, d11 only):** "A statue of St Barbara, tunnellers’ patron, has stood at the real
+Poříčí tunnel’s portal since November 2026." (the real tunnel's, not the player's: the custom is said, not drawn)
 
 - [Valbek Story, 7 Nov 2026](https://www.valbekstory.com/clanky/detail-clanky/r/svata-barbora-bude-bdit-nad-vystavbou-tunelu-porici):
   "V úterý 3. listopadu se u tunelu Poříčí na dálnici D11 odehrál slavnostní okamžik … Trutnovský farář Ján Kubiš

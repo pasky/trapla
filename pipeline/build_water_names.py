@@ -38,7 +38,10 @@ def names(out: Path, source: Path) -> dict:
     tagged = {el["id"]: el["tags"]["name"] for el in elements
               if el.get("type") == "way" and el.get("tags", {}).get("name")}
     ids = {r["id"] for r in reaches}
-    return {"version": 1, "names": {str(i): tagged[i] for i in sorted(ids) if i in tagged}}
+    # (bound to the watercourses it names: a rebuilt pack's new ones ignore a file left from before)
+    meta = json.loads((out / "meta.json").read_text())
+    return {"version": 1, "watercourses": (meta.get("watercourses") or {}).get("sha256"),
+            "names": {str(i): tagged[i] for i in sorted(ids) if i in tagged}}
 
 
 def publish(sid: str) -> None:
@@ -55,8 +58,9 @@ def publish(sid: str) -> None:
             inputs = {name: hashlib.sha256((CACHE / name).read_bytes()).hexdigest() if (CACHE / name).exists() else None
                       for name in recorded}
             manifest = generation.verify(out, scenario, inputs)
-            (out / "ready.json").unlink()
         data = names(out, source)
+        if complete:
+            (out / "ready.json").unlink()
         (out / FILE).write_text(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
         if complete:
             generation.publish(out, scenario, manifest["inputs"])

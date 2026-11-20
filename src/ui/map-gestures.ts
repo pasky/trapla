@@ -120,7 +120,7 @@ export function createMapGestures(app: MapGestureContext) {
       const t = app.thingAt(clientX, clientY);
       // First click on a base road before the graph is parsed: parse it, then pick the road at the
       // clicked ground point (wherever the camera is by then), unless something else was selected meanwhile.
-      const ground = !t && !app.transportGraph && app.pack.transportMeta ? app.view.pick(clientX, clientY) : null;
+      const ground = (!t || t.kind === 'official') && !app.transportGraph && app.pack.transportMeta ? app.view.pick(clientX, clientY) : null;
       if (t?.kind === 'route-hit') { if (app.switchRoute(t.routeId) && app.store.read()) app.selectPiece(t.s); }
       else if (t?.kind === 'source') app.showSource(t.hit);
       else if (t?.kind === 'official') app.showOfficial();

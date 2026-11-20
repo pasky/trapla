@@ -26,6 +26,10 @@ describe('records', () => {
     expect(say({ ...start, pis: [{ x: 5000, y: 30, r: null }, start.pis[1]] })).toMatch(/Panenská/);
     expect(say({ ...start, gradePins: [{ s: 5000, z: 10 }] })).toMatch(/Panenská/);
     expect(say({ ...start, gradePins: [{ s: 9000, z: 10 }] })).toBeNull();
+    // beside it, or By hand alone (it starts from Auto's heights), or a radius: not the player's for sure, so nothing
+    expect(say({ ...start, gradePins: [{ s: 6650, z: 10 }] })).toBeNull();
+    expect(say({ ...start, profileMode: 'manual', vpis: [{ s: 5000, z: 10, r: null }] })).toBeNull();
+    expect(say({ ...start, pis: [{ ...start.pis[0], r: 900 }, start.pis[1]] })).toBeNull();
     // the far bend moved along the line: the bends' lines over the tunnel are the same
     expect(say({ ...start, pis: [start.pis[0], { x: 8000, y: 0, r: null }] })).toBeNull();
     // a road the player added: nothing to start from

@@ -160,8 +160,8 @@ export class ProfilePanel {
   /** the mapped ground's band under the ground line (the key's toggle) */
   private groundBand = false;
   setGroundBand(on: boolean) { this.groundBand = on; this.groundKey(); this.draw(); }
-  /** the key's list of the mapped ground on this route, with the band on */
-  private groundKey() {
+  /** the key's list of the mapped ground on this route, with the band on (when the key opens: never in a drag) */
+  groundKey() {
     const box = document.getElementById('ground-key');
     if (!box) return;
     const r = this.r, shares = this.groundBand && r ? groundShares(r.geology, 0, r.n - 1) : [];
@@ -183,7 +183,6 @@ export class ProfilePanel {
     this.overrides = overrides;
     this.pins = pins;
     this.wallOverrides = walls;
-    if (this.groundBand && r.geology !== this.r?.geology) queueMicrotask(() => this.groundKey());
     this.r = r; this.emptyNote = '';
     this.vpis = vpis;
     // prefix sums of the bill

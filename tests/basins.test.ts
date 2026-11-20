@@ -22,3 +22,14 @@ describe.skipIf(!built)('basins', () => {
     expect(seaAt(b, 1000, 1000)).toBe('north');
   });
 });
+
+describe('seaAt', () => {
+  it('even-odd over a basin’s rings: a hole is not in it, outside every basin is no sea', () => {
+    const b: BasinData = { version: 1, source: 's', basins: [{ sea: 'black', river: 'Danube', rings: [[0, 0, 100, 0, 100, 100, 0, 100], [40, 40, 60, 40, 60, 60, 40, 60]] },
+      { sea: 'north', river: 'Elbe', rings: [[100, 0, 200, 0, 200, 100, 100, 100]] }] };
+    expect(seaAt(b, 10, 10)).toBe('black');
+    expect(seaAt(b, 50, 50)).toBeNull();
+    expect(seaAt(b, 150, 50)).toBe('north');
+    expect(seaAt(b, 250, 50)).toBeNull();
+  });
+});

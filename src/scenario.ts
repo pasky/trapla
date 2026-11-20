@@ -187,13 +187,18 @@ export async function loadPack(base: string): Promise<Pack> {
     const data: unknown = await optional(`${base}/basins.json`);
     if (data === ABSENT) return null;
     if (!validBasins(data)) throw new Error('Unsupported basins file');
+    // (from a build of this map: one of another extent is left from before, pipeline/build_basins.py)
+    const size = [meta.nx * meta.cell, meta.ny * meta.cell];
+    if (data.origin?.some((v, i) => v !== meta.origin[i]) || data.size?.some((v, i) => Math.abs(v - size[i]) > 1e-6)) { console.warn('Basins file is from another build of this map: run pipeline/build_basins.py'); return null; }
     return data;
   })().catch((error) => { console.warn('Basins unavailable', error); return null; });
   let waterNames: Promise<ReadonlyMap<number, string>> | null = null;
   const loadWaterNames = () => waterNames ??= (async () => {
-    const data = await optional<{ version: number; names: Record<string, string> }>(`${base}/water-names.json`);
+    const data = await optional<{ version: number; watercourses?: string; names: Record<string, string> }>(`${base}/water-names.json`);
     if (data === ABSENT) return new Map<number, string>();
     if (data?.version !== 1 || typeof data.names !== 'object') throw new Error('Unsupported water names file');
+    // (named for these watercourses: a file left from an earlier build names other ones)
+    if (data.watercourses !== meta.watercourses?.sha256) { console.warn('Water names are from another build of this map: run pipeline/build_water_names.py'); return new Map<number, string>(); }
     return new Map(Object.entries(data.names).map(([id, name]) => [Number(id), String(name)]));
   })().catch((error) => { console.warn('Water names unavailable', error); return new Map<number, string>(); });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);

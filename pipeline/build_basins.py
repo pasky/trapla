@@ -67,10 +67,14 @@ def basins(meta: dict) -> dict:
             for ring in [poly.exterior, *poly.interiors]:
                 rings.append([round(v - o, 1) for x, y in ring.coords for v, o in ((x, x0), (y, y0))])
         out.append({"sea": sea[0], "river": sea[1], "rings": rings})
-    if len(out) == 1:
-        out[0]["rings"] = []  # one basin under the whole map: no line to draw
+    covered = len(out) == 1 and next(shape(shp.__geo_interface__) for rec, shp in records
+                                     if SEAS.get(int(rec["RAD_I"]), ("",))[0] == out[0]["sea"]).contains(extent)
+    if covered:
+        out[0]["rings"] = []  # one basin under the whole map (and its margin): nothing on it crosses a divide
     digest = hashlib.sha256(source_zip().read_bytes()).hexdigest()
-    return {"version": 1, "source": "VÚV TGM, DIBAVOD A10 (povodí I. řádu)", "sha256": digest, "basins": out}
+    # (bound to the pack's extent: a rebuilt pack of another extent ignores a file left from before)
+    return {"version": 1, "source": "VÚV TGM, DIBAVOD A10 (povodí I. řádu)", "sha256": digest,
+            "origin": meta["origin"], "size": [w, h], "basins": out}
 
 
 def publish(sid: str) -> None:
@@ -84,8 +88,9 @@ def publish(sid: str) -> None:
             inputs = {name: hashlib.sha256((CACHE / name).read_bytes()).hexdigest() if (CACHE / name).exists() else None
                       for name in recorded}
             manifest = generation.verify(out, scenario, inputs)
+        data = basins(meta)  # (before the ready marker goes: a failed download leaves the pack playable)
+        if complete:
             (out / "ready.json").unlink()
-        data = basins(meta)
         (out / FILE).write_text(json.dumps(data, separators=(",", ":"), ensure_ascii=False))
         if complete:
             generation.publish(out, scenario, manifest["inputs"])

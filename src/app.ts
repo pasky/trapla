@@ -1,7 +1,7 @@
 // The game itself, loaded while the start screen is up (src/main.ts): the pack, the 3D view, the workers, the
 // panels and every event between them.
 import { CATEGORIES, lineOf } from './core/data/categories';
-import { scenarioParams } from './core/data/scenario';
+import { PRESETS, scenarioParams } from './core/data/scenario';
 import { missionProject } from './core/project-mission';
 import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
@@ -57,6 +57,7 @@ import { slipDrive } from './ui/slip-sweep';
 import { MISSION_TWISTS } from './core/data/twists';
 import { MINED_TUNNEL_LORE, OFFICIAL_LORE, mappedLore } from './core/data/lore';
 import { bridgeSheetSvg, printBridgeSheet } from './ui/bridge-print';
+import { waterWidth } from './core/watercourses';
 import { shownRange, shownS } from './ui/chainage';
 import { watershedLine, type BasinData } from './core/basins';
 import { createFlyAlong } from './ui/fly-along';
@@ -256,7 +257,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     onRoadSelected: () => {
       const id = store.activeRouteId, full = session.projectFull;
       if (!id || swept.has(id) || !full?.complete) return;
-      const r = full.routes[id]?.legacy, pts = r && slipDrive(projectStore.snapshot.design, id, r, (q) => full.routes[q]?.legacy);
+      const r = full.routes[id]?.legacy, pts = r && slipDrive(projectStore.snapshot.design, id, r);
       if (!pts) return;
       swept.add(id); view.sweepLine(pts);
     },
@@ -287,7 +288,11 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const showNoLinks = () => { deselect(); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
   const showOfficial = () => {
     deselect();
-    officialCard(() => inspector.host(), () => select(null), { label: scenario.labels.official, real: MISSION_TWISTS[presetId]?.real, lore: OFFICIAL_LORE[scenario.id] });
+    // (the dashed line is the mapped project of this map, a road or motorway: on the railway mission its price is the
+    // motorway's, not "no such railway")
+    const own = scenario.mode === 'railway' ? PRESETS.find(p => p.id === scenario.id && p.mode !== 'railway' && MISSION_TWISTS[p.presetId ?? p.id]) : scenario;
+    const real = own ? MISSION_TWISTS[own.presetId ?? own.id]?.real : undefined;
+    officialCard(() => inspector.host(), () => select(null), { label: scenario.labels.official, real, lore: OFFICIAL_LORE[scenario.id] });
     hud.revealContext('inspector');
   };
 
@@ -297,23 +302,25 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
   // a bridge printed as a card for the desk (ui/bridge-print.ts): what the game built, over what passes under it
   const printBridge = async (r: Result, run: Run) => {
-    await links.ensure().catch(() => undefined);
-    const names = await pack.loadWaterNames(), design = projectStore.snapshot.design, full = session.projectFull;
+    // (what is drawn is taken now, before the map's names load: a road switched meanwhile does not mix in)
+    const design = projectStore.snapshot.design, full = session.projectFull, active = store.activeRouteId;
     const mid = { x: r.x[Math.round((run.i0 + run.i1) / 2)], y: r.y[Math.round((run.i0 + run.i1) / 2)] };
     const decks = Object.entries(full?.routes ?? {}).flatMap(([id, q]) => {
-      const lr = id === store.activeRouteId ? r : q.legacy; if (!lr) return [];
+      const lr = id === active ? r : q.legacy; if (!lr) return [];
       let half = 5; try { half = CATEGORIES[legacyDesignForRoute(design, id).category].crownWidth / 2; } catch { /* not a road the widgets edit */ }
       return lr.runs.filter(d => d.kind === KIND.bridge && Math.hypot(lr.x[d.i0] - mid.x, lr.y[d.i0] - mid.y) < run.length + 400).map(d => ({ r: lr, run: d, half }));
     });
     let high = 0; for (let i = run.i0; i <= run.i1; i++) high = Math.max(high, r.grade[i] - r.ground[i]);
     const [a, b] = shownRange(run.s0, run.s1), m0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const sub = `Your bridge · km ${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)} · ${m0(run.length)} m long · up to ${m0(high)} m high`;
+    await links.ensure().catch(() => undefined);
+    const names = await pack.loadWaterNames();
     const net = pack.roadNet?.ways ?? [], widths: Record<string, number> = { motorway: 27.5, trunk: 11.5, primary: 9.5, secondary: 8, tertiary: 7 };
-    const svg = bridgeSheetSvg({ title: scenario.title, sub: `Your bridge · km ${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)} · ${m0(run.length)} m long · up to ${m0(high)} m high`,
-      r, run, decks,
+    const svg = bridgeSheetSvg({ title: scenario.title, sub, r, run, decks,
       roads: net.map((w, j) => ({ xy: w.slice(1), width: widths[pack.roadNet!.cls[w[0]]] ?? 4, name: j < (pack.overlays.net?.ways.length ?? 0) ? links.wayName(j) : undefined })),
       railways: (links.graph?.sources ?? []).filter(q => q.kind === 'railway').map(q => ({ xy: q.xy, tunnel: q.tunnel,
         name: mappedLore(scenario.id, q.id, q.tags)?.title ?? (q.tunnel ? 'railway, in a tunnel' : 'railway') })),
-      water: (pack.terrain.watercourses?.data.reaches ?? []).map(w => ({ points: w.points, width: w.width ?? (w.kind === 'river' ? 15 : 3), name: names.get(w.id) })),
+      water: (pack.terrain.watercourses?.data.reaches ?? []).map(w => ({ points: w.points, width: waterWidth(w), name: names.get(w.id) })),
       credit: 'Trapla · your design · terrain © ČÚZK, DMR 5G, CC BY 4.0 · map © OpenStreetMap contributors, ODbL' });
     printBridgeSheet(svg);
   };

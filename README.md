@@ -278,7 +278,7 @@ Czech road sign ([http](docs/screenshots/667-sign-insecure.png), [no WebGL](docs
 Esc or a click stops it. Key ▾ → *Ground* draws the mapped ground under the profile's ground line
 ([key](docs/screenshots/674-ground-band-key.png), [band](docs/screenshots/675-ground-band.png)); a cut's More names it
 ([card](docs/screenshots/676-ground-cut-card.png)). A tunnel or cut whose ends drain to different seas says so
-([the D35 under the Hřebeč ridge](docs/screenshots/677-watershed-tunnel.png)); St Barbara at a mined tunnel's portal on the
+([the D35 under the Hřebeč ridge](docs/screenshots/677-watershed-tunnel.png)); St Barbara at the real Poříčí portal, on a mined tunnel's card on the
 D11 ([card](docs/screenshots/678-barbara-tunnel.png)); the reveal says how long yours took ([reveal](docs/screenshots/679-reveal-took.png));
 a slip road is drawn once in its driving direction when first selected ([stroke](docs/screenshots/680-slip-road-stroke.png));
 the dashed planned line answers a click ([card](docs/screenshots/681-official-line-card.png)); and a bridge's More →

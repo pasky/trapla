@@ -125,23 +125,31 @@ export function createMapPicks(app: MapPickContext) {
     // a mapped road before the planned line drawn over it; the planned line before open ground
     return sourceAt(clientX, clientY) ?? (officialAt(clientX, clientY) ? { kind: 'official' } : null);
   };
-  /** the dashed official / planned line under the pointer (drawn 3 m over the ground; within a few pixels of it) */
+  /** the dashed official / planned line under the pointer (drawn 3 m over the ground; within a few pixels of it). Its
+   * points as drawn (≤ 25 m apart, on the map) are made once; a hover projects them only. */
+  let official: { x: number; y: number; z: number }[] | null = null;
   const officialAt = (clientX: number, clientY: number): boolean => {
-    const raw = app.pack.meta.official?.xy as [number, number][] | undefined;
-    if (!raw?.length) return false;
-    const box = canvasBox(), px = clientX - box.left, py = clientY - box.top, reach = 6;
-    let prev: { sx: number; sy: number; vis: boolean } | null = null;
-    for (let i = 0; i < raw.length; i++) {
-      const [x1, y1] = raw[i], [x0, y0] = raw[Math.max(0, i - 1)], m = i ? Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 25)) : 1;
-      for (let k = 1; k <= m; k++) {
-        const x = x0 + (x1 - x0) * k / m, y = y0 + (y1 - y0) * k / m;
-        const q = app.view.project(x, y, app.view.drape(x, y) + 3);
-        if (prev?.vis && q.vis) {
-          const dx = q.sx - prev.sx, dy = q.sy - prev.sy, t = Math.max(0, Math.min(1, ((px - prev.sx) * dx + (py - prev.sy) * dy) / (dx * dx + dy * dy || 1)));
-          if (Math.hypot(px - prev.sx - t * dx, py - prev.sy - t * dy) <= reach) return true;
+    if (!official) {
+      const raw = (app.pack.meta.official?.xy ?? []) as [number, number][], T = app.pack.terrain;
+      official = [];
+      for (let i = 0; i < raw.length; i++) {
+        const [x1, y1] = raw[i], [x0, y0] = raw[Math.max(0, i - 1)], m = i ? Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 25)) : 1;
+        for (let k = 1; k <= m; k++) {
+          const x = x0 + (x1 - x0) * k / m, y = y0 + (y1 - y0) * k / m;
+          if (x >= 0 && y >= 0 && x <= T.width && y <= T.height) official.push({ x, y, z: app.view.drape(x, y) + 3 });
         }
-        prev = q;
       }
+    }
+    if (official.length < 2) return false;
+    const box = canvasBox(), px = clientX - box.left, py = clientY - box.top, reach = 6;
+    let prev = app.view.project(official[0].x, official[0].y, official[0].z);
+    for (let i = 1; i < official.length; i++) {
+      const p = official[i], q = app.view.project(p.x, p.y, p.z);
+      if (prev.vis && q.vis) {
+        const dx = q.sx - prev.sx, dy = q.sy - prev.sy, t = Math.max(0, Math.min(1, ((px - prev.sx) * dx + (py - prev.sy) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(px - prev.sx - t * dx, py - prev.sy - t * dy) <= reach) return true;
+      }
+      prev = q;
     }
     return false;
   };

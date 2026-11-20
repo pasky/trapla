@@ -1,13 +1,14 @@
 // Which sea a place drains to: a pack's `basins.json` (pipeline/build_basins.py, the official 1st-order basins of
 // DIBAVOD A10, research/100), local metres. One basin under the whole map has no rings.
 export type Sea = 'north' | 'baltic' | 'black';
-export interface BasinData { version: 1; source: string; basins: { sea: Sea; river: string; rings: number[][] }[] }
+export interface BasinData { version: 1; source: string; origin?: [number, number]; size?: [number, number]; basins: { sea: Sea; river: string; rings: number[][] }[] }
 
 export const SEA_NAME: Record<Sea, string> = { north: 'the North Sea', baltic: 'the Baltic', black: 'the Black Sea' };
 
 export function validBasins(data: unknown): data is BasinData {
   const d = data as BasinData;
-  return !!d && d.version === 1 && Array.isArray(d.basins) && d.basins.every(b => b.sea in SEA_NAME && Array.isArray(b.rings));
+  return !!d && d.version === 1 && Array.isArray(d.basins) && d.basins.every(b => !!b && b.sea in SEA_NAME && Array.isArray(b.rings)
+    && b.rings.every(r => Array.isArray(r) && r.length % 2 === 0 && r.every(v => typeof v === 'number')));
 }
 
 /** the sea (x, y) drains to; null outside every basin (Poland is not mapped) */

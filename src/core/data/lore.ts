@@ -15,7 +15,7 @@ export const MAPPED_LORE: ReadonlyMap<string, Lore> = new Map([
   // Ecce Homo, Šternberk: III/44423 from the start (Opavská × Sadová) north out of town (research/96 §1)
   ...way([233754777, 260133002, 233754932, 260133001, 1562071054, 233754680, 233757455, 233757456, 233757497, 682525712,
     41552242, 205203355, 23396775, 969799598],
-  { line: 'Part of the Ecce Homo hill-climb course, 7.8 km from Šternberk; first raced in 1905.' }),
+  { line: 'The Ecce Homo hill-climb runs here: a 7.8 km course up from Šternberk, first raced in 1905.' }),
   // the Žampach viaduct, line 210 by the D3 (research/96 §2)
   ...way([30231642], { title: 'Žampach viaduct', line: 'Stone, opened in 1900; its highest arch stands 42 m above the Kocour gorge.' }),
   // the I/35 into the Hřebeč tunnel, both sides (the tunnel way itself is not drawn; research/96 §3)
@@ -41,7 +41,7 @@ export function mappedLore(pack: string | undefined, sourceId: string, tags: { h
 /** A mined tunnel of ours on these maps, under its card's More (research/96 §7: St Barbara at the real D11 tunnels'
  * portals; a trade custom, said as whose it is; no statue drawn). */
 export const MINED_TUNNEL_LORE: Readonly<Record<string, string>> = {
-  d11: 'St Barbara, tunnellers’ patron, stands at its portal, as at the real Poříčí tunnel here since November 2026.',
+  d11: 'A statue of St Barbara, tunnellers’ patron, has stood at the real Poříčí tunnel’s portal since November 2026.',
 };
 
 /** The dashed official / planned line's card on these maps (research/94: ŘSD leaflet 04/2026, "Druhý tunel Opevnění";

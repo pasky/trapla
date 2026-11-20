@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 import { passTwists, startGame } from './lib/browser.mjs';
 
 const docs = process.argv.includes('--docs'), out = docs ? 'docs/screenshots' : '/tmp/trapla-eggs';
@@ -183,7 +184,7 @@ try {
     await T((s) => window.trapla.selectPiece(s), (t.s0 + t.s1) / 2); await idle(300);
     assert.doesNotMatch(await inspector(), /St Barbara/, 'under More only');
     await page.locator('#inspector .more-t').click();
-    assert.match(await inspector(), /St Barbara, tunnellers’ patron, stands at its portal/);
+    assert.match(await inspector(), /A statue of St Barbara, tunnellers’ patron, has stood at the real Poříčí tunnel’s portal/);
     await shot(678, 'barbara-tunnel');
     await page.locator('#inspector .more-t').click();
     // not on another map's mined tunnel
@@ -259,10 +260,10 @@ try {
       await page.waitForFunction(() => window.__printed === 1, null, { timeout: 30000 });
       assert.equal(await page.locator('#print-sheet svg').count(), 1);
       await page.emulateMedia({ media: 'print' });
-      await page.pdf({ path: `${out}/bridge-card-${name}.pdf`, width: '297mm', height: '210mm', printBackground: true });
-      await page.setViewportSize({ width: 1123, height: 794 }); await page.waitForTimeout(300);
-      await page.screenshot({ path: `${out}/${n}-bridge-card-${name}.png` });
-      await page.emulateMedia({ media: 'screen' }); await page.setViewportSize({ width: 1440, height: 900 });
+      mkdirSync("/tmp/trapla-eggs", { recursive: true }); await page.pdf({ path: `/tmp/trapla-eggs/bridge-card-${name}.pdf`, width: '297mm', height: '210mm', printBackground: true });
+      // (the gallery's picture is the PDF itself, at 110 dpi: page.pdf() fires afterprint and the sheet is gone)
+      execFileSync('pdftoppm', ['-r', '110', '-png', '-singlefile', `/tmp/trapla-eggs/bridge-card-${name}.pdf`, `${out}/${n}-bridge-card-${name}`]);
+      await page.emulateMedia({ media: 'screen' });
       await T(() => window.dispatchEvent(new Event('afterprint')));
       assert.equal(await page.locator('#print-sheet').count(), 0, 'gone after the print');
       await page.locator('#inspector .more-t').click();
