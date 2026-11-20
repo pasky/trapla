@@ -16,6 +16,7 @@ import type { BuildRoadTool, Placement } from './build-road';
 import { shapeable } from './link-shape';
 import type { MapPicks } from './map-picks';
 import type { ProfilePanel } from './profile';
+import type { CrossingDragPlan } from './crossing-drag';
 
 export interface MapHoverContext extends Pick<MapPicks, 'routeAt' | 'roadAt' | 'crossingAt' | 'crossingWorksAt' | 'buildingAt' | 'sourceAt'> {
   readonly view: View; readonly pack: Pack; readonly profile: ProfilePanel; readonly extras: RouteExtras; readonly buildTool: BuildRoadTool;
@@ -29,6 +30,8 @@ export interface MapHoverContext extends Pick<MapPicks, 'routeAt' | 'roadAt' | '
   ensureTransport(): Promise<void>;
   placeAt(clientX: number, clientY: number, x: number, y: number): Placement;
   mappedGrab(clientX: number, clientY: number): SourceInterval | null;
+  /** the selected crossing's part under the pointer and what a drag there does (ui/crossing-drag.ts) */
+  crossingPlan(clientX: number, clientY: number): CrossingDragPlan | null;
   mappedRoadNear(x: number, y: number): boolean;
   /** what a drag of the active line bends (the hover label on our road) */
   bendLabel(): string;
@@ -70,19 +73,27 @@ export function installMapHover(app: MapHoverContext): { highlightBend(i: number
         cursor = 'pointer'; key = `c${culvert.s}`;
         if (key !== mapHoverKey) { app.view.setHover(null); app.profile.setHover(culvert.s, true); }
       } else if (cross) {
-        cursor = 'pointer'; key = `x${cross.roadId}`;
-        if (key !== mapHoverKey) { app.view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); app.profile.setHover(cross.s, true); }
+        // (its ring, once selected: a drag there moves where it crosses, or the hover says why it cannot)
+        const plan = app.selectedCrossing === cross.roadId ? app.crossingPlan(at.x, at.y) : null;
+        cursor = plan?.ok ? 'grab' : 'pointer'; key = `x${cross.roadId}${plan ? (plan.ok ? 'g' : 'n') : ''}`;
+        const text = plan?.ok ? `${ROAD_CLASSES[cross.cls].label} · ${plan.hover}` : plan ? plan.hover : ROAD_CLASSES[cross.cls].label;
+        if (key !== mapHoverKey) { app.view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, text); app.profile.setHover(cross.s, true); }
       } else if (k >= 0) {
         const on = app.roadSelected;
         cursor = on ? 'grab' : 'pointer'; key = `r${k}${on ? '' : 'u'}`;
         if (key !== mapHoverKey) { app.view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, on ? app.bendLabel() : SELECT_TEXT.hover); app.profile.setHover(r.s[k], true); }
       } else if (app.routeAt(at.x, at.y, 10)) {
-        cursor = 'pointer'; key = 'other-route';
-        const g = key !== mapHoverKey ? app.view.pick(at.x, at.y) : null; if (g) app.view.setHover({ x: g.x, y: g.y, z: app.view.drape(g.x, g.y) }, SELECT_TEXT.hover);
+        // (the road of the project a selected crossing crosses: a drag bends it)
+        const plan = app.selectedCrossing !== null ? app.crossingPlan(at.x, at.y) : null;
+        cursor = plan?.ok ? 'grab' : 'pointer'; key = plan?.ok ? `other-route-g${plan.name}` : 'other-route';
+        const g = key !== mapHoverKey ? app.view.pick(at.x, at.y) : null; if (g) app.view.setHover({ x: g.x, y: g.y, z: app.view.drape(g.x, g.y) }, plan?.ok ? plan.hover : SELECT_TEXT.hover);
       } else if ((works = app.crossingWorksAt(at.x, at.y))) {
         const c = works.crossing, link = works.link !== undefined && shapeable(app.lastFull, app.design, c.roadId!), on = link && app.selectedCrossing === c.roadId;
-        cursor = on ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}${on ? 's' : ''}`;
-        if (key !== mapHoverKey) { app.view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${on ? ' · drag to reshape' : link ? ` · ${SELECT_TEXT.hover}` : ''}`); app.profile.setHover(c.s, true); }
+        // (the crossed road's own works, once its crossing is selected: a drag bends that road, or the hover says why not)
+        const plan = !link && app.selectedCrossing === c.roadId ? app.crossingPlan(at.x, at.y) : null;
+        cursor = on || plan?.ok ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}${on ? 's' : ''}${plan ? (plan.ok ? 'w' : 'n') : ''}`;
+        const text = plan ? plan.hover : `${ROAD_CLASSES[c.cls].label}${on ? ' · drag to reshape' : link ? ` · ${SELECT_TEXT.hover}` : ''}`;
+        if (key !== mapHoverKey) { app.view.setHover({ x: works.x, y: works.y, z: works.z }, text); app.profile.setHover(c.s, true); }
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (app.extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
       else if (app.sourceAt(at.x, at.y)) {
@@ -100,7 +111,7 @@ export function installMapHover(app: MapHoverContext): { highlightBend(i: number
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     if (key === mapHoverKey) return;
-    if (!key.startsWith('x') && !key.startsWith('r') && !key.startsWith('c') && key !== 'mapped' && key !== 'select-source' && key !== 'other-route') { app.view.setHover(null); app.profile.setHover(null, true); }
+    if (!key.startsWith('x') && !key.startsWith('r') && !key.startsWith('c') && key !== 'mapped' && key !== 'select-source' && !key.startsWith('other-route')) { app.view.setHover(null); app.profile.setHover(null, true); }
     mapHoverKey = key;
   };
   app.view.renderer.domElement.addEventListener('pointermove', (e) => {

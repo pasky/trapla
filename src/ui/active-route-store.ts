@@ -105,7 +105,8 @@ export class ActiveRouteStore {
     catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }
   }
-  commit() { if (!this.cancelled && this.project.inTransaction) this.project.commit(); }
+  /** `label`: the undo step's name where the designs alone would not say it (core/history-label.ts) */
+  commit(label?: string) { if (!this.cancelled && this.project.inTransaction) this.project.commit(label); }
   replace(design: Design) {
     this.update(draft => {
       for (const key of Object.keys(draft)) delete (draft as unknown as Record<string, unknown>)[key];
@@ -124,7 +125,8 @@ export class ActiveRouteStore {
     this.onHistory?.();
     if (this.project.inTransaction) this.project.commit();
     this.project.begin();
-    this.project.update(draft => Object.assign(draft, structuredClone(best.design)));
+    // (the whole design: a key the best lacks, e.g. dead ends taken up since, goes too)
+    this.project.update(draft => { for (const key of Object.keys(draft)) if (!(key in best.design)) delete (draft as unknown as Record<string, unknown>)[key]; Object.assign(draft, structuredClone(best.design)); });
     this.project.commit();
   }
   undo() { const after = this.onHistory?.(); this.project.undo(); after?.(); }
@@ -133,6 +135,8 @@ export class ActiveRouteStore {
   undoLabel() { return this.project.canUndo() ? this.stepLabel('undo') : ''; }
   redoLabel() { return this.project.canRedo() ? this.stepLabel('redo') : ''; }
   private stepLabel(step: 'undo' | 'redo') {
+    const note = this.project.historyNote?.(step);
+    if (note) return note;
     const pair = this.project.historyStep?.(step);
     return pair ? historyLabel(pair[0], pair[1]) : 'edit';
   }

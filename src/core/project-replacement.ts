@@ -24,6 +24,8 @@ export const REMOVAL = {
   restorePerM2: 28.48 + 29.35,
   source: 'OTSKP 2026 rows 113131, 11333, 18231, 18242; layer thicknesses PROVISIONAL',
 } as const;
+/** Taking up a metre of old road this wide (m): its asphalt cover and base removed, its ground restored, CZK. */
+export const removalPerMetre = (width: number) => width * (REMOVAL.coverDepth * REMOVAL.coverPerM3 + REMOVAL.baseDepth * REMOVAL.basePerM3 + REMOVAL.restorePerM2);
 /** An old-road sample lies under the new road within its land-take half-width plus this, m. */
 const UNDER = 1;
 
@@ -90,7 +92,7 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
     }
   }
   if (removed > 0.5) {
-    const perM = width * (REMOVAL.coverDepth * REMOVAL.coverPerM3 + REMOVAL.baseDepth * REMOVAL.basePerM3 + REMOVAL.restorePerM2);
+    const perM = removalPerMetre(width);
     const n = nearest(r, at!.x, at!.y);
     works.push({ kind: 'removal', s: r.s[n.i], x: at!.x, y: at!.y, length: removed, cost: removed * perM,
       label: `Old road removed and its ground restored: ${Math.round(removed)} m` });

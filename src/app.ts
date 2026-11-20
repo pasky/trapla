@@ -16,7 +16,7 @@ import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped rai
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
 import { DecisionList } from './ui/build-tools';
-import { buildingInfo, Inspector } from './ui/inspector';
+import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -50,6 +50,7 @@ import { createProjectScore } from './ui/project-score';
 import { installMapWindow } from './ui/map-window';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
+import { createCrossingDrag } from './ui/crossing-drag';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { hudEvents } from './ui/hud-events';
@@ -215,6 +216,8 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   view.onNeedTransport = () => { void ensureTransport(); };
   if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
   const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
+  /** what a drag of the selection would rebuild, prepared while the player looks (ui/map-gestures.ts; set below) */
+  let prepareDrag: ((next: Sel | null) => void) | undefined;
   // ---- the selection (ui/selection.ts) ----
   const selection = createSelection({
     session, store, projectStore, pack, view, profile, extras, hud, inspector, annotations, intro, buildTool, activeEndpoints,
@@ -224,6 +227,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     // A first-time player (the intro is up) finds our road selected, so the first drag bends it as the intro
     // says; a returning player's drags move the map until a click selects a road.
     startSelected: intro.visible,
+    onSelected: next => prepareDrag?.(next),
   });
   const { selectedPi, select, selectPiece, revalidate, deselect, selectRoad } = selection;
   view.onEndClick = (end) => select({ kind: 'end', end });
@@ -247,6 +251,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const showSource = (hit: SourceHit) => {
     if (!links.editor) return;
     deselect(); inspector.host(); links.editor.show(hit); hud.revealContext('inspector');
+    if (links.editor.interval && links.editor.lineKind) prepareRebuild(links.editor.interval, links.editor.lineKind);
   };
   const showNoLinks = () => { deselect(); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
 
@@ -308,15 +313,21 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   });
   // ---- map gestures: click, drag to bend / rebuild / shape, double click (ui/map-gestures.ts) ----
   const lastClient = { x: 0, y: 0 };
-  const { events: mapEvents, mappedGrab, releaseGrab } = createMapGestures({
-    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
+  const crossingDrag = createCrossingDrag({
+    get transportIndex() { return links.index; }, get sourceEditor() { return links.editor; }, roadNet: pack.roadNet,
+    get projectFull() { return session.projectFull; }, get activeRouteId() { return store.activeRouteId; },
+    get routes() { return projectStore.snapshot.design.routes; },
+  });
+  const { events: mapEvents, mappedGrab, crossingPlan, releaseGrab, prepareFor, prepareRebuild } = createMapGestures({
+    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, sourceAt, thingAt, crossingDrag,
+    get last() { return session.last; },
     get A() { return ends.a; }, get B() { return ends.b; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get sourceEditor() { return links.editor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
     get roadSelected() { return selection.roadSelected; }, get sel() { return session.sel; },
     ensureTransport, select, selectPiece, deselect, selectRoad, switchRoute, showSource, showNoLinks, deletePi, placeAt, legacyRoadAt,
   });
-  view.ev = mapEvents;
+  view.ev = mapEvents; prepareDrag = prepareFor;
 
   // ---- profile: the same verbs (ui/profile-events.ts) ----
   profile.ev = profileEvents({
@@ -334,7 +345,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get roadSelected() { return selection.roadSelected; }, get selectedCrossing() { return session.sel?.kind === 'crossing' ? session.sel.roadId : null; },
-    ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
+    ensureTransport, placeAt, mappedGrab, crossingPlan, mappedRoadNear, bendLabel,
   });
 
   // map → profile: the part of the route the map shows (ui/map-window.ts)

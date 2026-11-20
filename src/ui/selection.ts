@@ -41,6 +41,8 @@ export interface SelectionContext {
   routeCard(): void;
   /** our road starts selected (a first-time player: the intro is up) */
   readonly startSelected: boolean;
+  /** told after each selection (the map's gestures prepare what a drag of it would rebuild) */
+  onSelected?(next: Sel | null): void;
 }
 
 /** Selecting these selects the road itself (a drag on it then bends it); anything else (a crossed road, a culvert,
@@ -131,6 +133,7 @@ export function createSelection(app: SelectionContext) {
       }
       app.hud.revealContext('inspector');
     }
+    app.onSelected?.(next);
   };
   /**
    * Show the player what they picked away from the map (a click in the profile or in a list): fly to it when it

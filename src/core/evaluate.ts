@@ -2795,7 +2795,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     ...footprintCheck.violations,
     ...buildingViolations,
     // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
-    ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
+    ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category, ...(opts.preview ? { radiusSearches: 0 } : {}) })),
     ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, terrain)),
     ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch, d.profileMode !== 'auto' && d.vpis.length >= 2 && !opts.heightsGiven),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),

@@ -179,7 +179,13 @@ export interface ProjectDesign {
   routes: RouteDesign[]; corridors: CorridorDesign[]; connections: ConnectionDesign[];
   buildingOverrides: BuildingOverride[];
   mission: MissionRequirements;
+  /** Dead ends of mapped roads the player cut back (core/taken-up.ts): each piece taken up. */
+  takenUp?: TakenUpPiece[];
 }
+/** A mapped road's dead end cut back: its piece from `at` (the road's new end, at the interval's inner station) to its
+ * old dead end (`end`: which end of the source that is) is taken up: gone from the network, its pavement removed and
+ * its ground restored, nothing regraded. */
+export interface TakenUpPiece { interval: SourceInterval; end: 'a' | 'b'; at: XYZ }
 export interface ProjectIdentity {
   /** New on load/reset/context replacement. Undo increments revision; it never rewinds it. */
   epoch: string;

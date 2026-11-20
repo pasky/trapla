@@ -172,4 +172,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   preview), never changing the bill or validity; `npx tsx scripts/twists-check.ts` (run by tests/twists.test.ts) proves each offered twist with a
   VALID reference design in `scripts/twists/<preset>/`; a change of the bills can break a reference (search again with
   `--find`). Curveballs exist for Šternberk only (TODO for D3, D35, D11, Královec: research/92–94).
+- A selected crossing's ring slides where the crossed road crosses ours, its works bend that road (`ui/crossing-drag.ts`);
+  a selected mapped road's open dead end is cut back by its End handle, the piece taken up (`ProjectDesign.takenUp`,
+  `core/taken-up.ts`; PLAN.md "A selected crossing's parts drag; a dead end cut back"). Open: a dead end of a mapped road
+  under our embankment holds Auto's grade up (I/35 Turnov km 3.0: −961 M once its last 3 m are taken up).
 - See PLAN.md "Next steps" and each section's "Known issues".

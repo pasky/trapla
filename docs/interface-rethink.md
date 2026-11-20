@@ -216,6 +216,9 @@ Implemented as decided above (owner: "just fix everything yourself"). What chang
   select*. A click selects it (its bend handles and a rebuilt stretch's end handles show only then); Esc, ✕ or a
   click on open ground lets go. A first-time player (the intro is up) finds our road selected; a press in the
   profile selects its road (a left drag there never moves the map).
+  **Since 2026-11-20 (owner: a press on a selected crossing's ring or works moved the map):** a selected crossing's
+  ring slides where the crossed road crosses ours, its works bend that road, its reroute reshapes; the hover says which,
+  or why not (PLAN.md "A selected crossing's parts drag; a dead end cut back").
 - **Inspector** (`src/ui/inspector.ts`): pieces of road (`src/ui/pieces.ts`: bridge / tunnel / cut /
   embankment runs, earthwork pieces under 120 m merged), dragged stretches, bends, pins, height points, crossed
   roads, houses; violations as banners with fix buttons (wall of the needed height over the needed km,

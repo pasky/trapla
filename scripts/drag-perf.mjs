@@ -4,7 +4,7 @@
 // (instrumentation wraps the page's Worker; nothing in the app is required).
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
-//        [--scenario d11] [--preset d3-motorway] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi|link] [--bend 9]
+//        [--scenario d11] [--preset d3-motorway] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi|link|crossing] [--bend 9]
 //        [--seconds 2] [--check] [--shot out.png] [--split forward|reverse] [--alloc out.heapprofile]
 //
 // --scenario <id>: another pack; the design defaults to scripts/scenarios/<id>/default.json and the
@@ -21,7 +21,7 @@ const port = Number(arg('--port', process.env.PORT ?? 5300));
 const scenarioId = arg('--scenario', 'd11');
 const presetId = arg('--preset'); // e.g. d3-motorway: design defaults to scripts/scenarios/<id>/<preset>.json
 const designFile = arg('--design', presetId ? `scripts/scenarios/${scenarioId}/${presetId}.json` : scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
-const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point) | link (shape a reroute)
+const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point) | link (shape a reroute) | crossing (slide a crossing's ring)
 const bendArg = arg('--bend');
 const split = arg('--split'); // motorway: split the directions and drag the one towards B (forward) or A (reverse)
 const seconds = Number(arg('--seconds', 2));
@@ -235,6 +235,49 @@ if (mode === 'bend') {
     await page.waitForTimeout(300);
   };
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
+} else if (mode === 'crossing') {
+  // a selected crossing's ring slid along our road (ui/crossing-drag.ts): the first drag rebuilds the crossed mapped road
+  // (a project road from then on) and moves its piece so that it crosses ours under the pointer. The warm-up slides
+  // another crossing and is undone; the measured drag is a player's first slide of its crossing.
+  const viewIdle = () => T(() => new Promise((resolve) => { const tick = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? tick() : resolve())); tick(); }));
+  await T(() => window.trapla.whenTransport());
+  // the crossings carried over or under ours (a cut way has nothing crossing to slide), nearest the bend first
+  const list = await T((at) => window.trapla.result().crossings
+    .filter(c => c.roadId !== undefined && !c.designed && !c.mapped && ['bridge', 'overbridge', 'underpass', 'tunnel'].includes(c.type))
+    .sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y)).map(c => ({ roadId: c.roadId, x: c.x, y: c.y, s: c.s })), pi);
+  let dir = { x: 1, y: 0 };
+  // (the ring lets the pointer through to the map under it: its middle is where a press grabs it)
+  const ring = async () => { const b = await page.locator('.selected-crossing').filter({ visible: true }).first().boundingBox().catch(() => null); return b && { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  /** select crossing k of the list that a ring drag slides (the next one where it cannot), in view */
+  const focus = async (skip) => {
+    for (let k = 0; k < list.length; k++) {
+      const c = list[k];
+      if (k === skip) continue;
+      await T((c) => { window.trapla.select({ kind: 'crossing', roadId: c.roadId }); window.trapla.lookAt(c.x, c.y, 900, 20, 50); }, c);
+      await page.waitForTimeout(800); await viewIdle();
+      const at = await ring();
+      if (!at || !(await T(([x, y]) => window.trapla.grabsAt(x, y), [at.x, at.y]))) continue;
+      // the screen direction of our road there
+      const q = await T((s) => [window.trapla.roadScreen(s - 20), window.trapla.roadScreen(s + 20)], c.s), l = Math.hypot(q[1].sx - q[0].sx, q[1].sy - q[0].sy) || 1;
+      dir = { x: (q[1].sx - q[0].sx) / l, y: (q[1].sy - q[0].sy) / l };
+      return k;
+    }
+    throw new Error('crossing mode needs two crossings carried over or under ours whose ring a drag slides');
+  };
+  const missionId = await T(() => window.trapla.activeRoute());
+  const warm = await focus(-1);
+  grab = async () => { await viewIdle(); return ring(); };
+  const routes = () => T(() => Object.keys(window.trapla.projectResult().routes).length);
+  const before = await routes();
+  afterWarmUp = async () => { if ((await routes()) !== before + 1) throw new Error('the warm-up drag did not rebuild the crossed road'); };
+  beforeMeasure = async () => {
+    await page.keyboard.press('Control+z'); await T(() => window.trapla.whenIdle());
+    if ((await routes()) !== before) throw new Error('undo did not take the warm-up slide back');
+    await T((id) => window.trapla.setActiveRoute(id), missionId);
+    await focus(warm);
+  };
+  afterMeasure = async () => { if ((await routes()) !== before + 1 || !/^moving where/.test((await T(() => window.trapla.undoLabels())).undo)) throw new Error('the measured drag did not slide its crossing'); };
+  path = (u, size) => { const a = size * 0.8 * Math.sin(u * 2 * Math.PI); return { x: dir.x * a, y: dir.y * a }; };
 } else throw new Error(`unknown --mode ${mode}`);
 
 /** `steps`: at least this many moves, the k-th at least k / steps of the way round (the warm-up: on a loaded host the

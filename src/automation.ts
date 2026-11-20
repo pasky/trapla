@@ -153,7 +153,7 @@ export function installAutomation(c: AutomationContext): void {
     setProject: (design: ProjectDesign) => {
       c.select(null);
       if (c.projectStore.inTransaction) c.projectStore.cancel();
-      c.projectStore.begin(); c.projectStore.update(draft => Object.assign(draft, structuredClone(design))); c.projectStore.commit();
+      c.projectStore.begin(); c.projectStore.update(draft => { for (const key of Object.keys(draft)) if (!(key in design)) delete (draft as unknown as Record<string, unknown>)[key]; Object.assign(draft, structuredClone(design)); }); c.projectStore.commit();
     },
     result: () => c.last,
     summary: () => c.last && {

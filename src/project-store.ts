@@ -21,6 +21,8 @@ export class ProjectStore implements ProjectStoreApi {
   private current: ProjectSnapshot;
   private savedBest: ProjectBest | null;
   private history: ProjectDesign[];
+  /** per history entry: the label the step to it was committed with */
+  private notes: (string | undefined)[] = [undefined];
   private index = 0;
   private baseline: ProjectDesign | null = null;
   private listeners = new Set<(snapshot: ProjectSnapshot, committed: boolean) => void>();
@@ -127,7 +129,7 @@ export class ProjectStore implements ProjectStoreApi {
       if (own) this.commit();
     } catch (e) { if (own) this.cancel(); throw e; }
   }
-  commit(): void {
+  commit(label?: string): void {
     if (!this.baseline) throw new Error('No project transaction');
     const design = this.current.design;
     if (designContentKey(design) === designContentKey(this.baseline)) {
@@ -137,9 +139,9 @@ export class ProjectStore implements ProjectStoreApi {
       return;
     }
     persistProjectSave(this.options, { schemaVersion: 1, design, best: this.savedBest });
-    this.history = this.history.slice(0, this.index + 1);
-    this.history.push(copy(design));
-    if (this.history.length > 200) this.history.shift();
+    this.history = this.history.slice(0, this.index + 1); this.notes = this.notes.slice(0, this.index + 1);
+    this.history.push(copy(design)); this.notes.push(label);
+    if (this.history.length > 200) { this.history.shift(); this.notes.shift(); }
     this.index = this.history.length - 1;
     this.baseline = null;
     this.publish(design, true);
@@ -155,6 +157,11 @@ export class ProjectStore implements ProjectStoreApi {
     if (this.baseline) return step === 'undo' ? [this.baseline, this.current.design] : null;
     const i = step === 'undo' ? this.index - 1 : this.index;
     return i >= 0 && i + 1 < this.history.length ? [this.history[i], this.history[i + 1]] : null;
+  }
+  historyNote(step: 'undo' | 'redo'): string | undefined {
+    if (this.baseline) return undefined;
+    const i = step === 'undo' ? this.index : this.index + 1;
+    return i > 0 && i < this.history.length ? this.notes[i] : undefined;
   }
   canRedo(): boolean { return this.index + 1 < this.history.length; }
   private moveHistory(index: number): void {
