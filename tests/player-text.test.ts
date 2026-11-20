@@ -8,7 +8,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   trackEndViolations, verticalViolations, VIOLATION_KINDS } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, culvertCard, cutOffFix, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, culvertCard, cutOffFix, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText, worksClashText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
@@ -59,6 +59,9 @@ describe('player-facing text', () => {
         for (const text of [o.tag, o.label, o.explain]) check(`footprint ${action}/${feature}`, text);
       }
     check('closure', footprintOutcome({ feature: 'road', action: 'relocation', cls: 'service', length: 0, closed: { length: 60, detour: 140 } }).label);
+    // a road's works standing on what nothing moves aside (core/works-clash.ts, project-evaluate.ts clashIssues)
+    for (const what of ['road', 'house', 'railway', 'pier', 'deck', 'ours'] as const) for (const path of ['body', 'cone', 'road', 'tie', 'link'])
+      for (const fix of ['move', 'auto'] as const) { const t = worksClashText({ what, path, cls: 'tertiary', wayCls: 'track' }, fix); check(`works clash ${what}/${path}`, t.title); check(`works clash fix ${fix}`, t.fix); }
     expect(CROSSING_CHOICE_TEXT.map(([v]) => v).filter(Boolean).sort()).toEqual([...CROSSING_CHOICES].sort());
     for (const [, label, title] of CROSSING_CHOICE_TEXT) { check('choice label', label); check('choice tooltip', title); }
     for (const text of Object.values(MINOR_CROSSING_TEXT)) check('minor road choice tooltip', text);

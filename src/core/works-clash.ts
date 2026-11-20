@@ -49,17 +49,29 @@ export const DRAPED = 0.3;
  * slope read at a slightly different spot differs by centimetres; a road's edge is buried where both agree, m. */
 const SAMPLING = 0.05;
 
-export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings' | 'roads'>, crownWidth = crownOf(r) ?? 9.5): WorksClash[] {
+/** `only`: the crossings to screen, and not the road's own works (its body, its end cones, roads moved aside); all of them
+ * when absent. */
+export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings' | 'roads'>, crownWidth = crownOf(r) ?? 9.5,
+  only?: (c: Result['crossings'][number]) => boolean): WorksClash[] {
   const roads = noted(r) ? networkOf(r) : ctx.roads;
   const natural = (x: number, y: number) => ctx.terrain.heightAt(x, y), base = crossingBaseHeight(r, crownWidth, natural);
   const gone = new Set<number>([...r.demolished.map(d => d.j), ...r.boughtOut.map(d => d.j)]);
   const out: WorksClash[] = [], seen = new Set<string>(), strip = BUILDING_RULES.clearance;
   // our own body (its own checks own what lies under it): lateral reach per station
   /** Where (x, y) lies in our own earth body: in its formation, or on a cut / fill slope (else null). */
+  // (each station's segment in the grid cells its body can reach: a point is looked up in its own cell's, in order)
+  const CELL = 50, grid = new Map<number, number[]>(), cellOf = (cx: number, cy: number) => cx * 1_000_003 + cy;
+  for (let i = 0; i + 1 < r.n; i++) {
+    const reach = Math.max(r.dayL[i], r.dayR[i], r.dayL[i + 1], r.dayR[i + 1], crownWidth) + 1;
+    for (let cx = Math.floor((Math.min(r.x[i], r.x[i + 1]) - reach) / CELL); cx <= Math.floor((Math.max(r.x[i], r.x[i + 1]) + reach) / CELL); cx++)
+      for (let cy = Math.floor((Math.min(r.y[i], r.y[i + 1]) - reach) / CELL); cy <= Math.floor((Math.max(r.y[i], r.y[i + 1]) + reach) / CELL); cy++) {
+        const key = cellOf(cx, cy), list = grid.get(key);
+        if (list) list.push(i); else grid.set(key, [i]);
+      }
+  }
   const bodyAt = (x: number, y: number, inset = 0): 'formation' | 'cut' | 'fill' | null => {
-    for (let i = 0; i + 1 < r.n; i++) {
+    for (const i of grid.get(cellOf(Math.floor(x / CELL), Math.floor(y / CELL))) ?? []) {
       const dx = r.x[i + 1] - r.x[i], dy = r.y[i + 1] - r.y[i], len2 = dx * dx + dy * dy;
-      if (Math.abs(x - r.x[i]) > 400 || Math.abs(y - r.y[i]) > 400) continue;
       const t = ((x - r.x[i]) * dx + (y - r.y[i]) * dy) / (len2 || 1);
       if (t < 0 || t > 1) continue;
       const lat = ((y - r.y[i]) * dx - (x - r.x[i]) * dy) / Math.sqrt(len2 || 1);
@@ -91,7 +103,8 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
     }
   }
   // (and a raised junction's ties at our ends: the roads meeting there regraded down from it, junction-raise.ts)
-  const surfaces = [...crossingSurfaces(r.crossings, natural, base), ...footprintSurfaces(r.footprintConflicts.filter(f => f.action === 'junction'), natural)];
+  const surfaces = only ? crossingSurfaces(r.crossings.filter(only), natural, base)
+    : [...crossingSurfaces(r.crossings, natural, base), ...footprintSurfaces(r.footprintConflicts.filter(f => f.action === 'junction'), natural)];
   // the paved turning disks at the ends of closed public roads: no house left standing on one
   if (ctx.buildings) for (const t of turnaroundSurfaces(surfaces, natural)) {
     const c = t.crossing, bld = ctx.buildings, inside = (x: number, y: number) => Math.hypot(x - t.center.x, y - t.center.y) < t.radius + strip;
@@ -103,7 +116,7 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
     });
   }
   // roads moved aside (footprint relocations): their new pavement and turning areas keep off houses left standing
-  if (ctx.buildings) for (const f of r.footprintConflicts) if (f.feature === 'road' && f.action === 'relocation' && f.geometry) {
+  if (ctx.buildings && !only) for (const f of r.footprintConflicts) if (f.feature === 'road' && f.action === 'relocation' && f.geometry) {
     const g = f.geometry, bld = ctx.buildings, old = f.original ?? [];
     const onOld = (p: { x: number; y: number }) => old.some((a, k) => k > 0 && (() => {
       const b = old[k - 1], dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
@@ -239,7 +252,7 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
   }
   // the cone of fill round an end raised with its junction (evaluate.ts): no house under it, no road but those meeting
   // there (on their ties over it)
-  for (const c of r.cones ?? []) if (c.end) {
+  for (const c of only ? [] : r.cones ?? []) if (c.end) {
     const covers = coneCovers(c, c.length, 0, natural), i = c.i, joined = new Set(r.footprintConflicts.filter(f => f.action === 'junction' && f.i === i).flatMap(f => f.junction?.ways ?? []));
     const reach = c.length + c.side + strip;
     if (ctx.buildings) ctx.buildings.near(c.x, c.y, reach, j => {
@@ -262,7 +275,7 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       }
     });
   }
-  if (roads) out.push(...bodyClashes(r, crownWidth, ctx.terrain, roads, ctx.buildings, gone));
+  if (roads && !only) out.push(...bodyClashes(r, crownWidth, ctx.terrain, roads, ctx.buildings, gone));
   return out;
 }
 const onPath = (path: readonly { x: number; y: number }[], x: number, y: number, tolerance = 0.5) => {
