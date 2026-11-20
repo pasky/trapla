@@ -1,4 +1,4 @@
-"""Add the listed monuments and heritage areas to an existing pack: `heritage.json` (stdlib only), research/97.
+"""Add the listed monuments and heritage areas to an existing pack: `heritage.json` (stdlib only), research/102.
 
 Usage (from repo root):
     uv run python pipeline/fetch_heritage.py [scenario-id ...]   # once: pipeline/cache/heritage/raw-*.json, npu_opendata_*.csv

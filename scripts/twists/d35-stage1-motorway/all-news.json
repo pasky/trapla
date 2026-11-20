@@ -1,6 +1,6 @@
 {
  "preset": "d35-stage1-motorway",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seed 2) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/97)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seed 2) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
  "meets": [
   "earth",
   "curveballs"

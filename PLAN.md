@@ -2533,7 +2533,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     15 % of the cut is unsuitable whatever the design and is not counted). The starters bring in 9–86 % (Auto buys fill
     where that is cheaper than digging deeper). On every mission offered: the starter breaks it, a reference meets it.
     Not on the D11 class I road (its starter brings in 9 %).
-  - *Hands off the castle* (round 4, research/97): nothing of ours (cutting, embankment, bridge, tunnel dug from the surface;
+  - *Hands off the castle* (round 4, research/102): nothing of ours (cutting, embankment, bridge, tunnel dug from the surface;
     a mined tunnel under is fine) in a **heritage area** of the state's register (a monument's protection zone, Act 20/1987
     §17; a heritage reserve or zone, §5–6: NPÚ's polygons), nor within a ring round a **listed monument** outside one (castle
     400 m, fort or hillfort 200 m, church 200 m, chapel, memorial or technical monument 100 m, cross or statue 50 m: game
@@ -2669,7 +2669,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   shows where our line enters it, not how far it runs inside); the rings round monuments are game scales, the areas the
   register's; the Jičín reference keeps out of the Studeňany zone by passing Radim and buying out homes there (the only way
   round its north-east corner); the whole I/35's reference meets the money news by 27 M; Nobody moves is not offered on
-  Turnov nor the whole I/35 (two homes left by every search, research/97); a monument within 50 m of a mission's end is
+  Turnov nor the whole I/35 (two homes left by every search, research/102); a monument within 50 m of a mission's end is
   left out (a game approximation of our body's reach).
 
 ## Reroute drags on whole routes (no model version, 2026-11-19)

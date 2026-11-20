@@ -1,4 +1,4 @@
-// A pack's listed monuments and heritage areas (`heritage.json`, pipeline/build_heritage.py; research/97): from the
+// A pack's listed monuments and heritage areas (`heritage.json`, pipeline/build_heritage.py; research/102): from the
 // Central List of Cultural Monuments (ÚSKP, Národní památkový ústav, CC BY 4.0). The "Hands off the castle" twist keeps
 // clear of them (core/mission-twists.ts picks those near a mission's line, data/twists.ts sets the rings).
 

@@ -247,7 +247,7 @@ your embankments, at most 10 % brought in or trucked away ([the starter brings i
 zones and the heritage reserves and zones of the state's register (NPÚ), and away from the listed castles, churches,
 chapels, crosses and technical monuments without one; offered only where the planned line breaks it
 ([the Studeňany village protection zone on the I/35](docs/screenshots/722-i35-jicin-zone-broken.png), [named on hover](docs/screenshots/723-i35-jicin-zone-hover.png),
-[a line led round it](docs/screenshots/724-i35-jicin-zone-kept-clear.png), [the church at Turnov](docs/screenshots/725-i35-turnov-church-ring.png); research/97). *Curveballs*: news from the site,
+[a line led round it](docs/screenshots/724-i35-jicin-zone-kept-clear.png), [the church at Turnov](docs/screenshots/725-i35-turnov-church-ring.png); research/102). *Curveballs*: news from the site,
 drawn from the real project's story, a place to keep out of or less money ([the villa](docs/screenshots/644-news-villa.png),
 [its garden on the map](docs/screenshots/645-villa-broken.png), [the butterflies later](docs/screenshots/647-news-butterflies.png)).
 *From scratch* (the straight line, [Šternberk](docs/screenshots/649-from-scratch.png)), *By hand* (your heights,

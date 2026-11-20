@@ -168,7 +168,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   homes) only in proportion (model 33, research/61); "Our bridge over it" is met through the same retry
   (no grade floor first) and its crossing card says what raising our road for it cost (D3 km 8.59: 15 m, 1.28 bn).
   `scripts/straighten-audit.ts`, `scripts/choice-audit.ts` and `scripts/toolbar-layout.mjs` are gates.
-- Hands off the castle (twists round 4, research/97) reads each pack's `heritage.json` (NPÚ's listed monuments and their
+- Hands off the castle (twists round 4, research/102) reads each pack's `heritage.json` (NPÚ's listed monuments and their
   protection zones, heritage reserves and zones; `pipeline/fetch_heritage.py`, `build_heritage.py`): copy it with the pack,
   or run the script on a pack built without it. Offered only where the planned line breaks it.
 - Twists (PLAN.md "Twists and curveballs"): per-mission challenges checked after each full evaluation (never in a drag

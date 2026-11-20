@@ -10,7 +10,7 @@ import type { MonumentKind } from '../heritage';
  * mission it is offered on (PLAN.md "Twists"). */
 export const EARTH_SHARE = 0.1;
 /** "Hands off the castle": nothing of ours in a heritage area (its declared protection zone, a heritage reserve or zone:
- * the register's polygons, research/97) nor within this distance of a listed monument that has no zone, m. A game rule:
+ * the register's polygons, research/102) nor within this distance of a listed monument that has no zone, m. A game rule:
  * no Czech norm sets a default distance (a protection zone is declared one by one, Act 20/1987 §17): a castle's setting
  * is the hill it stands on, a fort's or hillfort's its mound and ditch, a church's the village green round it, a
  * chapel's, memorial's or technical monument's its own plot and approach, a cross's or a statue's its verge. */

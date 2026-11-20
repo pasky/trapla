@@ -3,7 +3,7 @@
 
 Run: uv run python pipeline/fetch_heritage.py [scenario-id ...]   (stdlib only; default: every scenario)
 Writes pipeline/cache/heritage/raw-<id>-<layer>.json (the ArcGIS responses, polygons simplified by the service to
-1 m). pipeline/build_heritage.py turns them into each pack's `heritage.json` (research/97).
+1 m). pipeline/build_heritage.py turns them into each pack's `heritage.json` (research/102).
 
 Services of https://geoportal.npu.cz/arcgis/rest/services/Hosted (Národní památkový ústav, the Central List of
 Cultural Monuments, ÚSKP; the same records as NPÚ's open data, CC BY 4.0):

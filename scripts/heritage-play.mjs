@@ -1,4 +1,4 @@
-// "Hands off the castle" on the register's data (research/97) and the new Start here, as a player meets them:
+// "Hands off the castle" on the register's data (research/102) and the new Start here, as a player meets them:
 // the start screen's Start here (the D35 first section) → the I/35 Jičín twist screen (its full set) → the starter
 // through the Studeňany village protection zone (red, the card says so; its name on hover) → a design led round it (the
 // zone in the twist's colour) → the I/35 Turnov church ring the planned line passes → the D11's memorial ring.

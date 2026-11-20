@@ -1,4 +1,4 @@
-# 97 — Listed monuments and their protection zones: the official data behind "Hands off the castle"
+# 102 — Listed monuments and their protection zones: the official data behind "Hands off the castle"
 
 Research note, 2026-11-20 (twists round 4). Until now the twist kept rings round named OpenStreetMap castles, churches,
 chapels, monuments and viewpoints (`pipeline/build_landmarks.py`, 479 points). The owner: "Hands off the castle rarely does
