@@ -1,9 +1,8 @@
 {
  "preset": "d35-stage1-motorway",
- "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find); also at most 400 m of bridges (Few bridges)",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find); also at most 400 m of bridges (Few bridges) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/97)",
  "meets": [
   "earth",
-  "landmarks",
   "budget",
   "bridges"
  ],
@@ -18,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Star\u00e9 M\u011bsto",
+    "name": "Motorway towards Staré Město",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -254,7 +253,7 @@
     },
     {
      "id": "b",
-     "name": "Star\u00e9 M\u011bsto",
+     "name": "Staré Město",
      "position": {
       "x": 18222.3,
       "y": 2459.4,

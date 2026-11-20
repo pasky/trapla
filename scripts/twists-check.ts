@@ -8,6 +8,11 @@
 //        [--iters 600] [--seed 1] [--out scripts/twists/<preset>/<name>.json]
 //                                                      a local search (bends, height pins, bridges) for a VALID design that
 //                                                      meets those twists (and the goal), starting from the starter
+//   npx tsx scripts/twists-check.ts --edit <preset> <file.json|-> --out f.json op…
+//                                                      a design edited by hand (- : the starter) and what it meets; ops:
+//                                                      move:i:dx,dy (bend i by metres) set:i:x,y add:x,y (a bend, in order
+//                                                      along the line) del:i pin:s,z unpin:s0,s1 paint:s0,s1,kind (0 earth,
+//                                                      1 bridge, 2 tunnel) unpaint:s0,s1; TW=a,b: the twists shown
 //
 // A reference design is a whole project (as window.trapla.getProject() gives it) with what it claims:
 //   { "preset", "purpose", "meets": [twist ids; "curveballs" = every curveball of the mission has arrived], "goal": bool, "design" }
@@ -281,6 +286,29 @@ else if (args[0] === '--show') {
   console.log(`${rr.valid ? 'VALID' : 'NOT VALID'} ${((rr.cost.total ?? NaN) / 1e6).toFixed(1)} M · ${checks.map(c => `${c.id} ${c.met ? '✓' : '✗'}`).join(' ')}`);
   mkdirSync(out.replace(/\/[^/]+$/, ''), { recursive: true });
   writeFileSync(out, JSON.stringify({ preset: args[1], purpose: `By hand: ${from ?? 'the starter'} with Auto's heights taken as height pins`, meets: rr.valid ? ['byHand'] : [], design: next } satisfies Fixture, null, 1));
+} else if (args[0] === '--edit') {
+  const m = mission(args[1]), inp = args[2], out = opt('--out');
+  if (!out) throw new Error('--out <file.json> is needed');
+  const fx: Fixture = inp === '-' ? { preset: args[1], purpose: 'By hand from the starter', meets: [], design: m.starter } : JSON.parse(readFileSync(inp, 'utf8'));
+  const id = fx.design.routes.find(r => r.role === 'mission')!.id, L0 = evalDesign(m, fx.design).routes[id]!.legacy!;
+  const d = structuredClone(legacyDesignForRoute(fx.design, id));
+  for (const op of args.slice(3).filter((a, i, all) => a !== '--out' && all[i - 1] !== '--out')) {
+    const [k, a, b] = op.split(':'), n = (t: string) => t.split(',').map(Number);
+    if (k === 'move') { const [dx, dy] = n(b), i = Number(a); d.pis[i] = { ...d.pis[i], x: d.pis[i].x + dx, y: d.pis[i].y + dy }; delete d.pis[i].mapped; }
+    else if (k === 'set') { const [x, y] = n(b), i = Number(a); d.pis[i] = { ...d.pis[i], x, y }; delete d.pis[i].mapped; }
+    else if (k === 'add') { const [x, y] = n(a), s = nearestS(L0, x, y); d.pis.splice(d.pis.filter(p => nearestS(L0, p.x, p.y) < s).length, 0, { x, y, r: null }); }
+    else if (k === 'del') d.pis.splice(Number(a), 1);
+    else if (k === 'pin') { const [s, z] = n(a); d.gradePins = [...(d.gradePins ?? []).filter(p => Math.abs(p.s - s) > 30), { s, z }].sort((p, q) => p.s - q.s); }
+    else if (k === 'unpin') { const [s0, s1] = n(a); d.gradePins = (d.gradePins ?? []).filter(p => p.s < s0 || p.s > (s1 ?? s0)); }
+    else if (k === 'paint') { const [s0, s1, kind] = n(a); d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, kind as typeof KIND[keyof typeof KIND]); }
+    else if (k === 'unpaint') { const [s0, s1] = n(a); d.structureOverrides = (d.structureOverrides ?? []).filter(o => o.s1 < s0 || o.s0 > s1); }
+    else throw new Error(`unknown edit ${op}`);
+  }
+  const next = replaceRouteFromLegacy(fx.design, id, d), r = evalDesign(m, next);
+  console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).slice(0, 5).join('; '));
+  for (const c of check(m, next, r, (process.env.TW?.split(',') ?? m.setup.mission.offer) as TwistId[]))
+    console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.slice(0, 5).map(i => `\n      ${i.text}${i.s0 !== undefined ? ` (km ${(i.s0 / 1000).toFixed(2)}–${((i.s1 ?? i.s0) / 1000).toFixed(2)})` : ''}`).join('')}`);
+  writeFileSync(out, JSON.stringify({ ...fx, meets: [], design: next } satisfies Fixture, null, 1));
 } else if (args[0] === '--find') {
   const preset = args[1], twists = (opt('--twists') ?? '').split(',').filter(Boolean) as TwistId[];
   find(preset, twists, args.includes('--goal'), opt('--from'), Number(opt('--iters') ?? 600), Number(opt('--seed') ?? 1),

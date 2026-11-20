@@ -1,6 +1,6 @@
 {
  "preset": "i35-jicin-road",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: the round-3 search's design (scripts/twists-check.ts --find, seed 2) led round the Stude\u0148any village protection zone by hand (its last two bends moved north of the zone and east of it: scripts/tw-edit, round 4)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 3's search (scripts/twists-check.ts --find, seed 2) led round the Studeňany village protection zone by hand (--edit … del:14 del:13 add:11400,3520 add:12100,3150 unpin:11000,14000: its last bends north and east of the zone)",
  "meets": [
   "earth",
   "landmarks",
@@ -17,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Four-lane road towards \u00dalibice",
+    "name": "Four-lane road towards Úlibice",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -68,7 +68,7 @@
    },
    {
     "id": "route:motorway-reverse",
-    "name": "Four-lane road towards \u010c\u00edmy\u0161l",
+    "name": "Four-lane road towards Čímyšl",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -306,7 +306,7 @@
    "ports": [
     {
      "id": "a",
-     "name": "\u010c\u00edmy\u0161l",
+     "name": "Čímyšl",
      "position": {
       "x": 1692.4,
       "y": 9969.3,
@@ -315,7 +315,7 @@
     },
     {
      "id": "b",
-     "name": "\u00dalibice",
+     "name": "Úlibice",
      "position": {
       "x": 12240.1,
       "y": 1569.6,

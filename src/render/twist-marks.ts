@@ -19,6 +19,9 @@ export interface TwistMark {
   at: { x: number; y: number };
 }
 
+/** an outline is cut this far in front of the camera, as a share of its distance to what it looks at (nearer, a point
+ * projects far off the screen: a huge shape to fill) */
+const NEAR_SHARE = 0.25;
 const rank = (m: TwistMark) => (m.fresh ? 2 : 0) + (m.state === 'broken' ? 1 : 0);
 /** the outlines every ≤ 15 m, so they follow the ground */
 function outline(shape: Shape): { x: number; y: number }[][] {
@@ -117,15 +120,21 @@ export class TwistMarks {
     const order = [...this.items].sort((a, b) => rank(b.mark) - rank(a.mark));
     for (const it of order) {
       let d = '';
+      const NEAR = NEAR_SHARE * this.view.cameraDistance;
       for (const ring of it.rings) {
-        let open = false, all = true;
-        for (const p of ring) {
-          const q = this.view.project(p.x, p.y, p.z);
-          if (!q.vis) { open = false; all = false; continue; }
-          d += `${open ? 'L' : 'M'}${q.sx.toFixed(1)},${q.sy.toFixed(1)}`; open = true;
+        // the outline clipped to what lies in front of the camera (also past its far plane: a zone reaching off the
+        // view still fills), so it stays one closed shape
+        const q = ring.map(p => this.view.project(p.x, p.y, p.z)), out: string[] = [];
+        for (let i = 0; i < ring.length; i++) {
+          const a = q[i], b = q[(i + 1) % ring.length];
+          if (a.depth > NEAR) out.push(`${a.sx.toFixed(1)},${a.sy.toFixed(1)}`);
+          if ((a.depth > NEAR) !== (b.depth > NEAR)) {
+            const t = (NEAR - a.depth) / (b.depth - a.depth), p0 = ring[i], p1 = ring[(i + 1) % ring.length];
+            const c = this.view.project(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t, p0.z + (p1.z - p0.z) * t);
+            out.push(`${c.sx.toFixed(1)},${c.sy.toFixed(1)}`);
+          }
         }
-        // (a whole outline in view is closed, so its inside fills)
-        if (all && ring.length) d += 'Z';
+        if (out.length > 1) d += `M${out.join('L')}Z`;
       }
       it.path.setAttribute('d', d);
       const c = this.view.project(it.mark.at.x, it.mark.at.y, it.z);

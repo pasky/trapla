@@ -52,20 +52,34 @@ const zoneDist = (rings: readonly (readonly (readonly [number, number])[])[], pt
   return d;
 };
 
+/** how far our body and its slopes reach from a mission's fixed end, m (a motorway's half-width with its slopes) */
+const END_REACH = 50;
+const insideRing = (p: readonly (readonly [number, number])[], q: { x: number; y: number }) => {
+  let c = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++)
+    if ((p[i][1] > q.y) !== (p[j][1] > q.y) && q.x < (p[j][0] - p[i][0]) * (q.y - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
+  return c;
+};
+
 /** The listed monuments whose ring, and the heritage areas that, come near the starting line or the straight line A–B
  * (the pack's heritage.json, in its own metres), inside the map. */
 export function missionLandmarks(scenario: Pick<ScenarioParams, 'initial'>, frame: PackFrame, heritage: HeritageData | null | undefined): (Landmark & { ring: number })[] {
   const starter = [frame.a, ...(scenario.initial?.pis ?? []).map(p => ({ x: p.x, y: p.y })), frame.b], straight = [frame.a, frame.b];
   const out: (Landmark & { ring: number })[] = [];
+  // (one that takes in an end of the mission, or comes within its body's reach of it, no design can keep clear of: the
+  // ends are the mission's, not the player's)
+  const atEnd = (d: (p: { x: number; y: number }) => number) => d(frame.a) <= END_REACH || d(frame.b) <= END_REACH;
   for (const z of heritage?.zones ?? []) {
     const rings = zoneRings(z);
     if (Math.min(zoneDist(rings, starter), zoneDist(rings, straight)) > LANDMARK_REACH) continue;
+    if (atEnd(p => zoneDist(rings, [p, p])) || rings.some(r => insideRing(r, frame.a) || insideRing(r, frame.b))) continue;
     out.push({ name: z.name, kind: 'zone', ...labelPoint(rings), ring: 0, rings });
   }
   for (const { name, kind, x, y } of heritage?.monuments ?? []) {
     const ring = LANDMARK_RING[kind];
     if (x < 0 || y < 0 || x > frame.width || y > frame.height) continue;
     if (Math.min(lineDist(x, y, starter), lineDist(x, y, straight)) - ring > LANDMARK_REACH) continue;
+    if (atEnd(p => Math.hypot(p.x - x, p.y - y) - ring)) continue;
     out.push({ name, kind, x, y, ring });
   }
   return out;

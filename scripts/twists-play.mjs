@@ -1,5 +1,5 @@
 // Twists as a first-time player meets them on the Šternberk bypass: the start screen → the twist screen (the default
-// three on) → the starter with its twists card and the landmarks' rings → a height pinned by dragging the profile → a
+// two on: no listed monument near its planned line) → the starter with its twists card → a height pinned by dragging the profile → a
 // design that meets the twists and the goal, and the first news from the site (the villa) on top of it → the fix, by
 // dragging a bend on the map → the reveal → the next news at its pace → changing twists mid-game → From scratch.
 //
@@ -19,7 +19,7 @@ let n = 640;
 const shot = async (name) => { if (docs) await page.screenshot({ path: `docs/screenshots/${n}-${name}.png` }); n++; };
 const twistCard = () => page.locator('#twists').textContent();
 const KEY = 'trapla.twists.v1.i46-sternberk.i46-sternberk-road';
-// a reference design that meets Earth balance and Hands off under the goal, as a player who had worked at it would have it
+// a reference design that meets Earth balance under the goal, as a player who had worked at it would have it
 // (its bridge ends in what becomes the villa's garden)
 const before = JSON.parse(readFileSync('scripts/twists/i46-sternberk-road/earth-landmarks.json', 'utf8')).design;
 try {
@@ -32,23 +32,20 @@ try {
   // ---- the twist screen ----
   await page.locator('.twist-picker').waitFor({ timeout: 30000 });
   const names = await page.locator('.twist-picker-list b').allTextContents();
-  ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,Spare the forest,Few bridges,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
-  ok(await page.locator('.twist-picker-list input:checked').count() === 3, 'the default three are on');
+  ok(names.join() === 'Earth balance,Curveballs,Spare the forest,Few bridges,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
+  ok(await page.locator('.twist-picker-list input:checked').count() === 2, 'the default two are on');
   ok(/Goal: a valid design under 792 M CZK/.test(await page.locator('.twist-picker-goal').textContent()), 'it says the goal');
   await shot('twist-screen');
   await page.locator('.twist-start').click();
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
   await game.idle(400);
   // ---- the starter ----
-  ok(/✗ Twists 2\/3/.test(await page.locator('#chip-twists').textContent()), 'the chip by the verdict: 2 of 3 twists met');
+  ok(/✗ Twists 1\/2/.test(await page.locator('#chip-twists').textContent()), 'the chip by the verdict: 1 of 2 twists met');
   await page.locator('#chip-twists').click();
   await page.waitForTimeout(700);
   ok(/Earth balance.*18 % of the fill brought in/.test(await twistCard()), 'the card: the starter brings in 18 % of its fill');
   await game.park(); await shot('starter-twists');
-  await page.evaluate(() => window.trapla.lookAt(3400, 6000, 1400, 0, 55)); await game.still();
-  ok(await page.locator('.twist-label.landmark').count() >= 5, 'the landmarks in town carry their names close up');
-  await game.park(); await shot('landmark-rings');
-  await page.evaluate(() => window.trapla.resetCamera()); await game.still();
+  n++; // (641: the landmarks' rings in town, until round 4: scripts/heritage-play.mjs shows the listed monuments now)
   // ---- a height pinned by hand: drag the road line in the profile down a little at the embankment by km 3.2 ----
   const share = async () => Number((await twistCard()).match(/(\d+) % of the fill brought in/)?.[1] ?? 0);
   const was = await share();
