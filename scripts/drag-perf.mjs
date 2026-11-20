@@ -4,7 +4,7 @@
 // (instrumentation wraps the page's Worker; nothing in the app is required).
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
-//        [--scenario d11] [--preset d3-motorway] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi|link|crossing] [--bend 9]
+//        [--scenario d11] [--preset d3-motorway] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi|link|crossing|ends] [--bend 9]
 //        [--seconds 2] [--check] [--shot out.png] [--split forward|reverse] [--alloc out.heapprofile]
 //
 // --scenario <id>: another pack; the design defaults to scripts/scenarios/<id>/default.json and the
@@ -21,7 +21,7 @@ const port = Number(arg('--port', process.env.PORT ?? 5300));
 const scenarioId = arg('--scenario', 'd11');
 const presetId = arg('--preset'); // e.g. d3-motorway: design defaults to scripts/scenarios/<id>/<preset>.json
 const designFile = arg('--design', presetId ? `scripts/scenarios/${scenarioId}/${presetId}.json` : scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
-const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point) | link (shape a reroute) | crossing (slide a crossing's ring)
+const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point) | link (shape a reroute) | crossing (slide a crossing's ring) | ends (pull a rebuilt stretch's end along the old road)
 const bendArg = arg('--bend');
 const split = arg('--split'); // motorway: split the directions and drag the one towards B (forward) or A (reverse)
 const seconds = Number(arg('--seconds', 2));
@@ -240,7 +240,7 @@ if (mode === 'bend') {
     await page.waitForTimeout(300);
   };
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
-} else if (mode === 'crossing') {
+} else if (mode === 'crossing' || mode === 'ends') {
   // a selected crossing's ring slid along our road (ui/crossing-drag.ts): the first drag rebuilds the crossed mapped road
   // (a project road from then on) and moves its piece so that it crosses ours under the pointer. The warm-up slides
   // another crossing and is undone; the measured drag is a player's first slide of its crossing.
@@ -283,6 +283,27 @@ if (mode === 'bend') {
   };
   afterMeasure = async () => { if ((await routes()) !== before + 1 || !/^moving where/.test((await T(() => window.trapla.undoLabels())).undo)) throw new Error('the measured drag did not slide its crossing'); };
   path = (u, size) => { const a = size * 0.8 * Math.sin(u * 2 * Math.PI); return { x: dir.x * a, y: dir.y * a }; };
+  if (mode === 'ends') {
+    // ends: the slid crossing's road is rebuilt (the warm-up); the measured drag pulls its stretch's End handle along the
+    // old road, out past its end and back (ui/stretch-ends.ts: past junctions onto the next ways of the road). Nothing
+    // is evaluated while it moves (the stretch and the old road ahead are lit); its release is one edit.
+    const handle = async () => { const b = await page.locator('.stretch-end[data-end="1"]').filter({ visible: true }).first().boundingBox().catch(() => null); return b && { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    beforeMeasure = async () => {
+      const id = await T(() => window.trapla.getProject().routes.find(r => r.source)?.id);
+      if (!id) throw new Error('the warm-up drag did not rebuild the crossed road');
+      const ends = await T((id) => { window.trapla.setActiveRoute(id); const r = window.trapla.getProject().routes.find(q => q.id === id); return [r.endpoints.a.position, r.endpoints.b.position]; }, id);
+      await T(([b]) => window.trapla.lookAt(b.x, b.y, 700, 20, 50), [ends[1]]);
+      await page.waitForTimeout(800); await viewIdle();
+      const a = await handle(), sa = await page.locator('.stretch-end[data-end="0"]').first().boundingBox();
+      if (!a || !sa) throw new Error('the rebuilt stretch shows no end handles');
+      const l = Math.hypot(a.x - sa.x - sa.width / 2, a.y - sa.y - sa.height / 2) || 1;
+      dir = { x: (a.x - sa.x - sa.width / 2) / l, y: (a.y - sa.y - sa.height / 2) / l };
+      grab = handle;
+    };
+    afterMeasure = async () => { if (!/^rebuilding (more|less) of/.test((await T(() => window.trapla.undoLabels())).undo)) throw new Error('the measured drag did not move the stretch\'s end'); };
+    // (out past the end first: the old road beyond it, through its junction)
+    path = (u, size) => { const a = size * 1.2 * Math.sin(u * 2 * Math.PI); return { x: dir.x * a, y: dir.y * a }; };
+  }
 } else throw new Error(`unknown --mode ${mode}`);
 
 /** `steps`: at least this many moves, the k-th at least k / steps of the way round (the warm-up: on a loaded host the
@@ -401,12 +422,15 @@ if (check) {
   const fails = [];
   const over = (what, v, max) => { if (!(v <= max)) fails.push(`${what} ${v.toFixed(0)} ms > ${max}`); };
   over('p95 frame', q(intervals, 0.95), budget.frameP95);
-  over('median preview latency', q(lp, 0.5), budget.latencyP50);
-  over('p95 preview latency', q(lp, 0.95), budget.latencyP95);
-  over('p95 main-thread time per preview result', q(hp, 0.95), budget.handlerP95);
+  // (a stretch's end evaluates nothing while it moves: only the frames and the release are measured)
+  if (mode !== 'ends') {
+    over('median preview latency', q(lp, 0.5), budget.latencyP50);
+    over('p95 preview latency', q(lp, 0.95), budget.latencyP95);
+    over('p95 main-thread time per preview result', q(hp, 0.95), budget.handlerP95);
+  } else if (during.length) fails.push(`${during.length} evaluation(s) during the end's drag`);
   if (dragLong.length) fails.push(`${dragLong.length} long task(s) ≥ 50 ms during the drag`);
   if (afterLong.length) fails.push(`${afterLong.length} long task(s) ≥ 50 ms after release`);
-  over('longest gap between displayed results', resultGap, env('DRAG_RESULT_GAP', gpu ? 250 : 1000));
+  if (mode !== 'ends') over('longest gap between displayed results', resultGap, env('DRAG_RESULT_GAP', gpu ? 250 : 1000));
   if (compiled.length) fails.push(`shader programs compiled during the drag: ${compiled.join(', ')}`);
   if (failures.length) fails.push(`errors during the drag: ${failures.join('; ')}`);
   if (!redrawn) fails.push('the full result after release was not drawn (no 3D rebuild committed)');

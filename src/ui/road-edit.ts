@@ -56,7 +56,9 @@ export function rebuildable(base: ProjectTransportIndex, sourceId: string): Rebu
   const highway = source.tags.highway ?? '', row = ROAD_CLASSES[highway];
   if (row?.noAtGrade || highway === 'motorway_link' || highway === 'trunk_link') return { ok: false, why: 'Motorways and expressways cannot be changed yet.' };
   if (!row) return { ok: false, why: highway.endsWith('_link') ? 'Slip roads cannot be changed yet.' : 'This kind of way cannot be changed.' };
-  if (source.bridge || source.tunnel || source.elevation !== 'terrain') return { ok: false, why: 'Bridges and tunnels of existing roads cannot be changed yet.' };
+  // (a bridge goes with the road either side of it: a rebuilt stretch's end is pulled over it, core/stretch-chain.ts)
+  if (source.bridge && !source.tunnel) return { ok: false, why: 'A bridge is changed with its road: change the road beside it, then drag that stretch’s end over the bridge.' };
+  if (source.bridge || source.tunnel || source.elevation !== 'terrain') return { ok: false, why: source.tunnel ? 'Tunnels of existing roads cannot be changed yet.' : 'Roads off the ground cannot be changed yet.' };
   let info: ReturnType<typeof groundRoadSourceInfo>;
   try { info = groundRoadSourceInfo(base, sourceId); } catch { return { ok: false, why: 'This road’s map data is incomplete.' }; }
   return { ok: true, info, spec: { legalClass: info.legalClass, crossSection: REBUILT_AS[info.legalClass] } };

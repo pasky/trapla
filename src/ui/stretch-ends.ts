@@ -20,6 +20,7 @@ const PAST_PX = 24;
 
 export const STRETCH_END_TEXT = {
   title: 'Drag along the old road to rebuild more or less of it',
+  hover: 'drag along the old road',
   /** why a handle goes no further (null: nothing to say) */
   stop: (s: ChainStop): string | null => {
     switch (s.reason) {
@@ -96,6 +97,13 @@ export class StretchEnds {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
       button.className = 'source-endpoint stretch-end'; button.dataset.end = String(i);
       button.title = STRETCH_END_TEXT.title;
+      // (after the map's own hover has let go of the pointer leaving it for the handle: ui/map-hover.ts, next frame)
+      let over = false;
+      button.onpointerenter = () => { over = true; requestAnimationFrame(() => requestAnimationFrame(() => {
+        const p = this.route && (end ? this.route.endpoints.b.position : this.route.endpoints.a.position);
+        if (over && p && !this.moving) this.view.setHover(p, STRETCH_END_TEXT.hover);
+      })); };
+      button.onpointerleave = () => { over = false; if (!this.moving) this.view.setHover(null); };
       button.onpointerdown = event => {
         const route = this.route;
         if (event.button !== 0 || !route?.source) return;
