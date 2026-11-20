@@ -246,6 +246,15 @@ export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?:
     r.violations = r.violations.filter(v => !moot.includes(v));
     r.geomViolations = r.violations.filter(v => !v.goal).length; r.valid = r.violations.length === 0;
   }
+  // A problem of a new bend with an old one kept as it is (a new curve running into the old road's tight corner): where
+  // its fix changes the old bend, it says that rebuilds it.
+  const oldBends = r.curves.filter(c => c.sEnd > c.sStart && within(c.sStart, c.sEnd)).map(c => c.index + 1);
+  if (oldBends.length) r.violations = r.violations.map(v => {
+    if (!GEOMETRY.has(v.kind)) return v;
+    const nums = [...v.fix.matchAll(/\bbends? (\d+)(?: and (\d+))?/g)].flatMap(m => [m[1], m[2]].filter(Boolean).map(Number));
+    const named = oldBends.filter(k => nums.includes(k));
+    return named.length ? { ...v, fix: `${v.fix}; bend ${named[0]} is the ${oldLineWords(line)}'s own: changing it rebuilds it` } : v;
+  });
   // the old road's junctions, culverts and edges stay as they are
   r.crossings = r.crossings.filter(c => !kept[c.i]);
   r.footprintConflicts = r.footprintConflicts.filter(f => !kept[f.i]);
