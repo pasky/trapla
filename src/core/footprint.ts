@@ -9,6 +9,7 @@ import type { ChannelRelocation } from './channel-relocation';
 import type { RetainingFeatureCache } from './retaining';
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossings';
 import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
+import { TIE_IN_RULES } from './tie-in';
 import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
@@ -88,11 +89,19 @@ export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: Readonl
   /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'];
-  /** under a bridge end or tunnel entrance whose road is moved with the earthworks beside it (not under earth) */ support?: true }
+  /** under a bridge end or tunnel entrance whose road is moved with the earthworks beside it (not under earth) */ support?: true;
+  /** a junction's way buried deeper than the junction rebuilds it (JUNCTION_DRAPE): no part of its mouth */ deep?: true }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
 /** the longest end of a way under our earthworks rejoined to the road our junction rebuilds where it meets it, m
  * (PROVISIONAL: a short junction arm; a longer stretch runs along our earthworks and is moved aside) */
 const JUNCTION_TIE_IN = 30;
+/** How much earth over a joined road's pavement inside a junction's zone is the junction rebuilding that pavement at its
+ * level, m: the draped-road tolerance (crossing-works.ts DRAPED) plus what the joined road can be regraded by within the
+ * zone, back to its own level at the zone's edge no steeper than a junction allows (TIE_IN_RULES.maxGrade, VL 3 to ČSN
+ * 73 6102: not over 6 %). Deeper, our slope buries the joined road beside the junction: an obstacle as any road (walled off
+ * by retaining.ts, moved aside, or a problem). */
+const JUNCTION_DRAPE = 0.3;
+export const junctionRegrade = (zone: number, fromEnd: number) => JUNCTION_DRAPE + TIE_IN_RULES.maxGrade * Math.max(0, zone - fromEnd);
 /** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
 const existingHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
 
@@ -291,6 +300,22 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   const junctionAt = (i: number, way: number) => r.junctions?.find(j => j.ways.has(way)
     && (j.end === 'a' ? r.s[i] <= j.zone : length - r.s[i] <= j.zone));
   const junctionWorks = new Map<FootprintJunction, Map<number, [number, number][]>>();
+  /** How much deeper than the junction `j` rebuilds it (junctionRegrade) our body (the formation, its slopes straight from
+   * the crown edge to the daylight point, as walls cut them short) buries a road's pavement along a hit, m: the most at
+   * any metre of it (≤ 0: the junction's own works). */
+  const buriedDepth = (cell: FootprintCell, segment: RoadSegment, hit: [number, number], j: FootprintJunction) => {
+    const i = cell.i, w = r.crownWidth / 2, z = r.grade[i], end = j.end === 'a' ? 0 : r.n - 1;
+    let deepest = -Infinity;
+    const count = Math.max(1, Math.ceil(hit[1] - hit[0]));
+    for (let k = 0; k <= count; k++) {
+      const t = (hit[0] + (hit[1] - hit[0]) * k / count - segment.d) / (segment.length || 1);
+      const x = segment.ax + t * (segment.bx - segment.ax), y = segment.ay + t * (segment.by - segment.ay);
+      const v = -(x - r.x[i]) * r.ty[i] + (y - r.y[i]) * r.tx[i], day = v >= 0 ? r.dayL[i] : r.dayR[i], zDay = v >= 0 ? r.zDayL[i] : r.zDayR[i];
+      const at = Math.abs(v), surface = at <= w || day <= w ? z : z + (zDay - z) * Math.min(1, (at - w) / (day - w));
+      if (at <= day) deepest = Math.max(deepest, Math.abs(surface - terrain.heightAt(x, y)) - junctionRegrade(j.zone, Math.hypot(x - r.x[end], y - r.y[end])));
+    }
+    return deepest;
+  };
   for (const cell of cells) {
     const stored = !cell.structure ? r.featureCache?.get(cell.i) : undefined;
     const cached = stored && stored.left >= cell.left && stored.right >= cell.right ? stored : undefined;
@@ -304,7 +329,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       // The joined road's own pavement inside the junction zone is rebuilt as part of the junction.
       // Bridge supports on it are not ordinary junction works and stay conflicts.
       const junction = !cell.structure ? junctionAt(cell.i, segment.way) : undefined;
-      if (junction) {
+      if (junction && buriedDepth(cell, segment, hit, junction) <= 0) {
         let byWay = junctionWorks.get(junction);
         if (!byWay) junctionWorks.set(junction, byWay = new Map());
         const list = byWay.get(segment.way) ?? [];
@@ -318,8 +343,10 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const key = `${segment.way}:${structure ?? 'earth'}`;
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
+      const joined = !cell.structure ? r.junctions?.find(j => j.ways.has(segment.way)) : undefined;
+      const deep = !!joined && buriedDepth(cell, segment, hit, joined) > 0;
       for (const [a, b] of subtract(hit, structure ? severed.get(segment.way) ?? [] : screened(segment.way)))
-        group.hits.push({ a, b, i: cell.i, j: cell.i, structure, ...(cell.structure && !structure ? { support: true as const } : {}) });
+        group.hits.push({ a, b, i: cell.i, j: cell.i, structure, ...(cell.structure && !structure ? { support: true as const } : {}), ...(deep ? { deep: true as const } : {}) });
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);
     const visitWater = (segment: WaterSegment) => {
@@ -367,7 +394,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     for (const [way, works] of junctionWorks.get(junction) ?? []) {
       const group = roadHits.get(`${way}:earth`);
       if (!group) continue;
-      const near = (h: Hit) => !h.support && (junction.end === 'a' ? r.s[h.j] <= junction.zone + JUNCTION_TIE_IN
+      const near = (h: Hit) => !h.support && !h.deep && (junction.end === 'a' ? r.s[h.j] <= junction.zone + JUNCTION_TIE_IN
         : length - r.s[h.i] <= junction.zone + JUNCTION_TIE_IN);
       const rebuilt: [number, number][] = union(works.map(([a, b]) => ({ a, b, i: 0, j: 0 }))).map(w => [w.a, w.b]);
       const mouth = union(group.hits.filter(near)).filter(h => rebuilt.some(([a, b]) => h.a <= b + 0.5 && h.b >= a - 0.5)

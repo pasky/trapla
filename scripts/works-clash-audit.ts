@@ -4,166 +4,21 @@
 // Also the turning areas at cut roads' ends and roads moved aside against houses, with the strip. What is screened is what the renderer draws
 // (render/crossing-surface.ts crossingSurfaces: the 1:1.5 slopes, cut short by priced walls).
 // npx tsx scripts/works-clash-audit.ts [--all] [design.json …]   (--all: every pack's starters and saved designs; ONLY=<pack ids>)
-import { existsSync, readFileSync } from 'node:fs';
-import { evaluate, type EvalContext, type Result } from '../src/core/evaluate';
-import { loadPack, evalContext, projectContext } from './loadpack';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import type { Result } from '../src/core/evaluate';
+import type { ProjectDesign } from '../src/core/project';
+import { playerEdits } from './works-clash-edits';
+import { loadPack, projectContext } from './loadpack';
 import { scenarioParams, PRESETS } from '../src/core/data/scenario';
 import { evaluateProject } from '../src/core/project-evaluate';
 import { projectContext as fullContext } from './eval-project';
-import { CATEGORIES } from '../src/core/data/categories';
 import { KIND } from '../src/core/structures';
-import { bridgeLayout, frameColumns } from '../src/core/bridge';
-import { protectedRasterCells } from '../src/core/protected-raster';
-import { BUILDING_RULES } from '../src/core/data/urban';
-import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../src/render/crossing-surface';
+import { worksClashes, type WorksClash } from '../src/core/works-clash';
 
-export interface WorksClash { path: string; i: number; s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck' | 'ours'; x: number; y: number; j?: number }
-
-/** Earth this thin is the drape tolerance, not a slope (crossing-works.ts DRAPED). */
-const DRAPED = 0.3;
-
-export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings'>, crownWidth: number): WorksClash[] {
-  const natural = (x: number, y: number) => ctx.terrain.heightAt(x, y), base = crossingBaseHeight(r, crownWidth, natural);
-  const gone = new Set<number>([...r.demolished.map(d => d.j), ...r.boughtOut.map(d => d.j)]);
-  const out: WorksClash[] = [], seen = new Set<string>(), strip = BUILDING_RULES.clearance;
-  // our own body (its own checks own what lies under it): lateral reach per station
-  /** Where (x, y) lies in our own earth body: in its formation, or on a cut / fill slope (else null). */
-  const bodyAt = (x: number, y: number, inset = 0): 'formation' | 'cut' | 'fill' | null => {
-    for (let i = 0; i + 1 < r.n; i++) {
-      const dx = r.x[i + 1] - r.x[i], dy = r.y[i + 1] - r.y[i], len2 = dx * dx + dy * dy;
-      if (Math.abs(x - r.x[i]) > 400 || Math.abs(y - r.y[i]) > 400) continue;
-      const t = ((x - r.x[i]) * dx + (y - r.y[i]) * dy) / (len2 || 1);
-      if (t < 0 || t > 1) continue;
-      const lat = ((y - r.y[i]) * dx - (x - r.x[i]) * dy) / Math.sqrt(len2 || 1);
-      const k = t < 0.5 ? i : i + 1;
-      // (over a tunnel or under a bridge is no clash with our body: piers are checked on their own)
-      if (r.kind[k] !== KIND.earth) continue;
-      const reach = lat >= 0 ? r.dayL[k] : r.dayR[k];
-      if (Math.abs(lat) > reach - inset) continue;
-      if (Math.abs(lat) <= crownWidth / 2 + 1) return 'formation';
-      // (dug away where the natural ground stands above our grade there)
-      return ctx.terrain.heightAt(x, y) > r.grade[i] + (r.grade[i + 1] - r.grade[i]) * t ? 'cut' : 'fill';
-    }
-    return null;
-  };
-  const ours = (x: number, y: number, inset = 0) => bodyAt(x, y, inset) !== null;
-  // our bridge piers and deck: per bridge station, the deck underside
-  const piers: { x: number; y: number }[] = [];
-  for (const run of r.runs) if (run.kind === KIND.bridge) {
-    const length = run.s1 - run.s0, spans = Math.max(1, Math.round(length / bridgeLayout(length).span));
-    const stations = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + length * (k + 1) / spans);
-    // (a frame pier: its two columns, as footprint.ts structureFootprints places them)
-    const frame = frameColumns(crownWidth);
-    for (const s of stations) {
-      const i = Math.min(r.n - 2, Math.floor(s / r.ds)), t = s / r.ds - i, x = r.x[i] + (r.x[i + 1] - r.x[i]) * t, y = r.y[i] + (r.y[i + 1] - r.y[i]) * t;
-      if (run.framePiers?.includes(s)) for (const o of [-frame.offset, frame.offset]) piers.push({ x: x - r.ty[i] * o, y: y + r.tx[i] * o });
-      else piers.push({ x, y });
-    }
-  }
-  const surfaces = crossingSurfaces(r.crossings, natural, base);
-  // the paved turning disks at the ends of closed public roads: no house left standing on one
-  if (ctx.buildings) for (const t of turnaroundSurfaces(surfaces, natural)) {
-    const c = t.crossing, bld = ctx.buildings, inside = (x: number, y: number) => Math.hypot(x - t.center.x, y - t.center.y) < t.radius + strip;
-    bld.near(t.center.x, t.center.y, t.radius + strip + 5, j => {
-      const key = `${c.s}:${c.roadId}:turn:${j}`;
-      if (!gone.has(j) && !seen.has(key) && bld.anyPoint(j, 1, inside)) {
-        seen.add(key); out.push({ path: 'turn', i: 0, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
-      }
-    });
-  }
-  // roads moved aside (footprint relocations): their new pavement and turning areas keep off houses left standing
-  if (ctx.buildings) for (const f of r.footprintConflicts) if (f.feature === 'road' && f.action === 'relocation' && f.geometry) {
-    const g = f.geometry, bld = ctx.buildings, old = f.original ?? [];
-    const onOld = (p: { x: number; y: number }) => old.some((a, k) => k > 0 && (() => {
-      const b = old[k - 1], dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
-      return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 1; })());
-    const check = (p: { x: number; y: number }, q: { x: number; y: number }, half: number, path: string) => {
-      const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
-      bld.near(x, y, len / 2 + half + strip + 5, j => {
-        const key = `${f.s0}:${f.roadId}:moved:${j}`;
-        if (!gone.has(j) && !seen.has(key) && (bld.hits(j, x, y, tx, ty, len / 2, half + strip) || [p, q].some(e => bld.facadeDistanceSq(j, e.x, e.y) < (half + strip) ** 2))) {
-          seen.add(key); out.push({ path, i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
-        }
-      });
-    };
-    for (const path of [g.road ?? [], ...(g.links ?? [])]) for (let k = 1; k < path.length; k++) if (!onOld(path[k - 1]) || !onOld(path[k])) check(path[k - 1], path[k], g.width / 2, 'moved');
-    const R = g.turnaroundRadius ?? 0;
-    if (R > 0) for (const p of g.turnarounds ?? []) bld.near(p.x, p.y, R + strip + 5, j => {
-      const key = `${f.s0}:${f.roadId}:moved:${j}`;
-      if (!gone.has(j) && !seen.has(key) && bld.facadeDistanceSq(j, p.x, p.y) < (R + strip) ** 2) {
-        seen.add(key); out.push({ path: 'turn', i: 0, s: f.s0, roadId: f.roadId, cls: f.cls ?? 'road', type: 'moved aside', what: 'house', x: (bld as any).ox[j], y: (bld as any).oy[j], j });
-      }
-    });
-  }
-  for (const surface of surfaces) {
-    const c = surface.crossing, pathKind = surface.tie ? 'tie' : surface.link ? 'link' : 'road';
-    let at = 0;
-    const add = (what: WorksClash['what'], x: number, y: number, j?: number) => {
-      const key = `${c.s}:${c.roadId}:${what}:${j ?? `${Math.round(x / 5)},${Math.round(y / 5)}`}`;
-      if (!seen.has(key)) { seen.add(key); out.push({ path: pathKind, i: at, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what, x, y, j }); }
-    };
-    const sec = surface.sections;
-    for (let i = 0; i + 1 < sec.length; i++) {
-      if (!groundSegment(surface, i)) continue;
-      const a = sec[i], b = sec[i + 1];
-      at = i;
-      const raised = (q: typeof a) => Math.abs(q.edge[0].z - natural(q.edge[0].x, q.edge[0].y)) > DRAPED || Math.abs(q.edge[1].z - natural(q.edge[1].x, q.edge[1].y)) > DRAPED;
-      // (a new road's pavement on the ground keeps the working strip from houses too: only it is screened there)
-      const level = !raised(a) && !raised(b);
-      if (level && (!surface.link || surface.keptEnd)) continue;
-      const dx = b.p.x - a.p.x, dy = b.p.y - a.p.y, len = Math.hypot(dx, dy);
-      if (len < 1e-6) continue;
-      const tx = dx / len, ty = dy / len, x = (a.p.x + b.p.x) / 2, y = (a.p.y + b.p.y) / 2;
-      // half-widths of the drawn body (toe to toe) on either side; the screen is the smaller of the two
-      // sections' reach, so a slope only partly over a house still counts where both ends reach it
-      const reach = (q: typeof a, k: 0 | 1) => Math.hypot(q.toe[k].x - q.p.x, q.toe[k].y - q.p.y);
-      const left = Math.min(reach(a, 1), reach(b, 1)), right = Math.min(reach(a, 0), reach(b, 0));
-      const half = Math.max(left, right);
-      // (the strip beyond a side's toe where that side has earthworks, a slope or a wall at its edge, or the new road's
-      // edge: the old road's edge beside a house is as it was)
-      const edgeOf = (q: typeof a, k: 0 | 1) => Math.hypot(q.edge[k].x - q.p.x, q.edge[k].y - q.p.y);
-      const off = (q: typeof a, k: 0 | 1) => Math.abs(q.edge[k].z - natural(q.edge[k].x, q.edge[k].y)) > DRAPED;
-      const sloped = (k: 0 | 1) => Math.max(reach(a, k) - edgeOf(a, k), reach(b, k) - edgeOf(b, k)) > DRAPED * 1.5 || off(a, k) || off(b, k);
-      const anew = surface.link && !surface.keptEnd;
-      const houseL = left + (anew || sloped(1) ? strip : 0), houseR = right + (anew || sloped(0) ? strip : 0);
-      if (ctx.buildings) ctx.buildings.near(x, y, len / 2 + half + strip + 5, j => {
-        if (gone.has(j)) return;
-        // (rectangle centred between the sections, off-centre by the side difference)
-        const shift = (houseL - houseR) / 2, cx = x - ty * shift, cy = y + tx * shift;
-        // (a new road's pavement: round its points too, so a bend's outer corner counts)
-        const round = anew && [a, b].some(q => ctx.buildings!.facadeDistanceSq(j, q.p.x, q.p.y) < (Math.max(edgeOf(q, 0), edgeOf(q, 1)) + strip) ** 2);
-        if ((round || ctx.buildings!.hits(j, cx, cy, tx, ty, len / 2, (houseL + houseR) / 2)) && !ours((ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j])) add('house', (ctx.buildings as any).ox[j], (ctx.buildings as any).oy[j], j);
-      });
-      if (level) continue;
-      // (a quarter metre's tolerance: the walls stand at the raster cell's edge)
-      protectedRasterCells(ctx.terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: left - 0.25, right: right - 0.25 }, f => {
-        if (f.feature === 'railway' && !ours(f.x, f.y)) add('railway', f.x, f.y);
-      });
-      // our own body (formation, slopes): a bridge over us and a reroute keep their slopes out of it (a junction
-      // meets our road, a box's way passes through our embankment, by design)
-      if (c.type === 'overbridge' || surface.link) {
-        // (the slope's own height there beyond the drape tolerance: a toe grazing our slope's edge is not a body in it)
-        for (const q of [a, b]) for (const k of [0, 1] as const) for (const t of [0.25, 0.5, 0.75]) {
-          if (Math.abs(q.edge[k].z - natural(q.edge[k].x, q.edge[k].y)) * (1 - t) < DRAPED) continue;
-          const x = q.edge[k].x + (q.toe[k].x - q.edge[k].x) * t, y = q.edge[k].y + (q.toe[k].y - q.edge[k].y) * t;
-          if (Math.hypot(q.toe[k].x - q.edge[k].x, q.toe[k].y - q.edge[k].y) <= 1) continue;
-          // (a fill beside our fill merges with it: one body; anything in our formation or our cut, or a cut into
-          // our embankment, is not buildable as drawn)
-          const body = bodyAt(x, y, 1), fill = q.edge[k].z > natural(q.edge[k].x, q.edge[k].y);
-          if (body === 'formation' || body === 'cut' || (body === 'fill' && !fill)) add('ours', x, y);
-        }
-      }
-      for (const p of piers) {
-        const u = (p.x - a.p.x) * tx + (p.y - a.p.y) * ty, v = -(p.x - a.p.x) * ty + (p.y - a.p.y) * tx;
-        if (u >= 0 && u <= len && (v >= 0 ? v <= left : -v <= right)) add('pier', p.x, p.y);
-      }
-    }
-  }
-  return out;
-}
+export { worksClashes, type WorksClash };
 
 /** Every pack's starters (each preset's opening project), evaluated as the browser does: each route's clashes. */
-export function* starterClashes(): Generator<{ name: string; result: Result; clashes: WorksClash[] }> {
+export function* starterClashes(): Generator<{ name: string; preset: string; result: Result; clashes: WorksClash[] }> {
   // ONLY=<pack ids, comma-separated>: only those packs' starters
   const only = process.env.ONLY?.split(',');
   for (const preset of PRESETS) {
@@ -174,29 +29,67 @@ export function* starterClashes(): Generator<{ name: string; result: Result; cla
     const { initial } = projectContext(pack, sc, dir), design = initial();
     const { ctx } = fullContext(design);
     const pr = evaluateProject(ctx, { epoch: 'audit', revision: 1, design });
-    for (const [rid, rr] of Object.entries(pr.routes)) if (rr.legacy) {
-      const spec = design.routes.find(x => x.id === rid)!.specification as { category?: string };
-      yield { name: `${preset.presetId ?? id} ${rid}`, result: rr.legacy, clashes: worksClashes(rr.legacy, ctx.legacy, CATEGORIES[(spec.category ?? 'S9.5') as keyof typeof CATEGORIES]?.crownWidth ?? 9.5) };
-    }
+    for (const [rid, rr] of Object.entries(pr.routes)) if (rr.legacy)
+      yield { name: `${preset.presetId ?? id} ${rid}`, preset: preset.presetId ?? id, result: rr.legacy, clashes: worksClashes(rr.legacy, ctx.legacy) };
   }
 }
 
+/** A clash's key: the mission, the crossing (or a road's own body) and what it stands on (no km: an edit elsewhere moves
+ * stations a little). */
+export const clashKey = (preset: string, c: WorksClash) => `${preset} ${c.cls}:${c.roadId ?? ''} ${c.type} ${c.what}:${c.way ?? ''}`;
+/** Auto's own clashes on the starters, known and open (PLAN.md "One screen for every earthwork"): the screen does not
+ * fail on these (up to the count listed); anything else, on a starter or after a player's edit, fails the gate. */
+export const KNOWN_FILE = 'scripts/works-clash-known.json';
+export const known = (): Record<string, number> => existsSync(KNOWN_FILE) ? JSON.parse(readFileSync(KNOWN_FILE, 'utf8')).clashes : {};
+/** What of these clashes (one project's routes) the known list does not cover. */
+export function unknownClashes(preset: string, clashes: WorksClash[], list = known()): WorksClash[] {
+  const count = new Map<string, WorksClash[]>();
+  for (const c of clashes) { const k = clashKey(preset, c); (count.get(k) ?? count.set(k, []).get(k)!).push(c); }
+  return [...count].flatMap(([k, l]) => l.length > (list[k] ?? 0) ? l : []);
+}
+/** Each route of a project, evaluated as the browser does: its clashes. */
+export function projectClashes(design: ProjectDesign) {
+  const { ctx } = fullContext(design);
+  const pr = evaluateProject(ctx, { epoch: 'audit', revision: 1, design });
+  return { result: pr, routes: Object.entries(pr.routes).flatMap(([rid, rr]) => rr.legacy ? [{ id: rid, result: rr.legacy, clashes: worksClashes(rr.legacy, ctx.legacy) }] : []) };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  let total = 0;
-  const report = (name: string, clashes: WorksClash[]) => {
-    total += clashes.length;
+  // npx tsx scripts/works-clash-audit.ts [--edits] [--gate] [--write-known] [design.json …]
+  //   (starters always; --edits: random player edits and saved players' projects, works-clash-edits.ts; --gate: exit 1 on any
+  //   clash not in the known list; --write-known: the starters' clashes become the known list)
+  const args = process.argv.slice(2), gate = args.includes('--gate');
+  let total = 0, failed = 0;
+  const report = (name: string, clashes: WorksClash[], unknown: WorksClash[] = clashes) => {
+    total += clashes.length; failed += unknown.length;
+    if (!clashes.length && !process.env.VERBOSE) return;
     const byCrossing = new Map<string, WorksClash[]>();
     for (const c of clashes) { const k = `${Math.round(c.s)} ${c.cls} ${c.roadId} ${c.type}`; (byCrossing.get(k) ?? byCrossing.set(k, []).get(k)!).push(c); }
-    console.log(`${name}: ${clashes.length} clashes${[...byCrossing].map(([k, l]) => `\n  km ${k}: ${[...new Set(l.map(c => c.what))].map(w => `${l.filter(c => c.what === w).length} ${w}`).join(', ')}`).join('')}`);
+    console.log(`${name}: ${clashes.length} clashes${unknown.length ? `, ${unknown.length} NOT KNOWN` : ''}${[...byCrossing].map(([k, l]) => `\n  km ${k}: ${[...new Set(l.map(c => c.what))].map(w => `${l.filter(c => c.what === w).length} ${w}${w === 'road' ? ` (${l.filter(c => c.what === w).map(c => `${c.way} ${c.wayCls} @${Math.round(c.x)},${Math.round(c.y)}`).join('; ')})` : ''}`).join(', ')}${l.some(c => unknown.includes(c)) ? ' ✗' : ''}`).join('')}`);
   };
-  if (args.includes('--all') || !args.length) for (const { name, clashes } of starterClashes()) report(name, clashes);
-  for (const file of args.filter(a => a.endsWith('.json'))) {
-    const pack = loadPack(process.env.SCENARIO ? `public/scenarios/${process.env.SCENARIO}` : undefined), ctx = evalContext(pack);
-    const d = JSON.parse(readFileSync(file, 'utf8')).design;
-    report(file, worksClashes(evaluate(ctx, d), ctx, CATEGORIES[d.category as keyof typeof CATEGORIES]?.crownWidth ?? 9.5));
+  const list: Record<string, number> = {}, knownList = known();
+  for (const { name, preset, clashes } of starterClashes()) {
+    report(name, clashes, unknownClashes(preset, clashes, knownList));
+    const own: Record<string, number> = {};
+    for (const c of clashes) own[clashKey(preset, c)] = (own[clashKey(preset, c)] ?? 0) + 1;
+    for (const [k, n] of Object.entries(own)) list[k] = Math.max(list[k] ?? 0, n);
   }
-  console.log(`total ${total}`);
+  if (args.includes('--write-known')) {
+    // (both directions of a split motorway draw the same crossing: the count per key is the most one route has)
+    writeFileSync(KNOWN_FILE, JSON.stringify({ note: 'Auto\'s own clashes on the starters (open; PLAN.md "One screen for every earthwork"). Regenerate with --write-known only for a reviewed change.', clashes: Object.fromEntries(Object.entries(list).sort()) }, null, 1) + '\n');
+    console.log(`wrote ${KNOWN_FILE}: ${Object.keys(list).length} keys`);
+  }
+  if (args.includes('--edits')) for (const edit of playerEdits()) {
+    const { routes } = projectClashes(edit.design), preset = edit.design.presetId ?? edit.design.scenarioId;
+    report(edit.name, routes.flatMap(r => r.clashes), routes.flatMap(r => unknownClashes(preset, r.clashes, knownList)));
+  }
+  for (const file of args.filter(a => a.endsWith('.json'))) {
+    const design = JSON.parse(readFileSync(file, 'utf8')) as ProjectDesign;
+    const routes = projectClashes(design).routes;
+    report(file, routes.flatMap(r => r.clashes), routes.flatMap(r => unknownClashes(design.presetId ?? design.scenarioId, r.clashes, knownList)));
+  }
+  console.log(`total ${total} · not known ${failed}`);
+  if (gate && failed) process.exit(1);
 }
 
 /** A cut way (reroute) whose cut ends stay joined over other roads: how far round is it from one cut end to the

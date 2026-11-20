@@ -87,16 +87,29 @@ export function tieIns(roads: RoadNet, ends: { a: EndpointConstraint; b: Endpoin
 const issue = (s0: number, s1: number, title: string, fix: string, rule: string, basis: Violation['basis'] = 'norm'): Violation =>
   ({ kind: 'crossing', s0, s1, title, fix, rule, basis });
 
+/** The steepest grade of a road between stations s0 and s1. */
+function steepest(r: Result, s0: number, s1: number) {
+  let steep = 0;
+  for (let k = 1; k < r.n; k++) if (r.s[k] > s0 && r.s[k - 1] < s1) steep = Math.max(steep, Math.abs(r.grade[k] - r.grade[k - 1]) / (r.s[k] - r.s[k - 1]));
+  return steep;
+}
+const tooSteep = (s0: number, s1: number, what: string, zone: number, steep: number) => issue(s0, s1, `Too steep where it joins the ${what}`,
+  `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
+  'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction'); // research/29
+
 /** What a designer checks at each new junction: no at-grade junction on a motorway, class I spacing,
  * the joining road's grade in the junction, and the view along the joined road. */
 export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, terrain: Terrain, buildings?: BuildingIndex): Violation[] {
   const out: Violation[] = [];
   for (const t of ties) {
-    if (t.junction.kind === 'continuation') continue; // the old road goes on: no new junction to check
+    // the old road goes on: no new junction to check, unless other roads meet there (the stretch between junctions ends at
+    // one: its grade there is a junction's, as anywhere a road joins, owner report: a slid crossing's ramps rising from it)
+    if (t.junction.kind === 'continuation' && !t.existing) continue;
     const row = ROAD_CLASSES[t.cls], atStart = t.end === 'a';
     const zone = ENDPOINT_JUNCTIONS[t.junction.kind].zone;
     const s0 = atStart ? 0 : Math.max(0, r.length - zone), s1 = atStart ? Math.min(r.length, zone) : r.length;
     const what = row?.label ?? 'road';
+    if (t.junction.kind === 'continuation') { const steep = steepest(r, s0, s1); if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(tooSteep(s0, s1, what, zone, steep)); continue; }
     if (row?.noAtGrade) {
       out.push(issue(s0, s1, `A ${what} cannot be joined at the same level`, 'End the road on another road; the game builds slip roads only onto a motorway of its own',
         'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access')); // research/08
@@ -113,11 +126,8 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
         'ČSN 73 6101:2018: junctions on class I roads at least 1.5 km apart')); // research/12
     }
     // The joining road's grade inside the junction.
-    let steep = 0;
-    for (let k = 1; k < r.n; k++) if (r.s[k] > s0 && r.s[k - 1] < s1) steep = Math.max(steep, Math.abs(r.grade[k] - r.grade[k - 1]) / (r.s[k] - r.s[k - 1]));
-    if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins the ${what}`,
-      `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
-      'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction')); // research/29
+    const steep = steepest(r, s0, s1);
+    if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(tooSteep(s0, s1, what, zone, steep));
     if (t.junction.kind === 'roundabout' && !ROUNDABOUT_HOSTS.includes(t.cls)) out.push(issue(s0, s1, `A roundabout cannot be built on a ${what}`,
       'Set this junction back to Auto', 'Game rule: roundabouts join public roads (class I–III and local roads), not tracks or service roads.', 'game'));
     // A roundabout's entries see to the left around the ring (TP 135), not along a through road: the T

@@ -5,6 +5,7 @@
 import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable, pinClearanceBlame, usableLine } from './autoprofile';
 import { applyPinFixes, honouredPinFixes, PIN_FIX_NEAR, reachableSuggestions, type GradePin, type GradePinViolation, type PinFix } from './grade-pins';
 import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
+import { noteNetwork } from './works-clash';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
@@ -656,7 +657,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   if (ownHeights) result.ownHeights = true;
   withPlanSpeeds(ctx, d, result);
-  if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
+  if (!opts.preview && !opts.window) { rememberFull(ctx, d, opts, result); noteNetwork(result, ctx.roads, CATEGORIES[d.category].crownWidth); }
   return result;
 }
 /** says which slowed bends keep a faster curve (Result.planSpeeds) */
