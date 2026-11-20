@@ -41,7 +41,7 @@ function mergeSources(intervals: RoadSourceInterval[]): RoadSourceInterval[] {
 export class RoadRemedyLedger {
   static sameGeometry(a: RoadRealignmentPlan, b: RoadRealignmentPlan): boolean { return physicalKey(a) === physicalKey(b); }
   private built = new Map<string, { conflict: FootprintConflict; quote: number; pavement: number[]; apron: number; retaining: number;
-    accesses: Set<string>; codes: Set<string>; retainingArea: number; turnaroundArea: number }>();
+    accesses: Set<string>; codes: Set<string>; retainingArea: number; turnaroundArea: number; removal: number }>();
   accept(conflict: FootprintConflict, plan: RoadRealignmentPlan): FootprintConflict {
     if (plan.problems.length) throw new Error('Cannot reserve an unbuildable road remedy');
     const key = physicalKey(plan), quote = plan.cost - (plan.lumpCost ?? 0), previous = this.built.get(key), pavement = canonicalCosts(plan);
@@ -49,7 +49,8 @@ export class RoadRemedyLedger {
       conflict.sourceIntervals = mergeSources(plan.sourceIntervals);
       conflict.originals = conflict.original ? [conflict.original] : [];
       this.built.set(key, { conflict, quote, pavement, apron: plan.apronCost, retaining: plan.retainingCost,
-        accesses: new Set(plan.accessKeys), codes: new Set(plan.roadCode.split(' / ')), retainingArea: plan.retainingArea, turnaroundArea: plan.turnaroundArea });
+        accesses: new Set(plan.accessKeys), codes: new Set(plan.roadCode.split(' / ')), retainingArea: plan.retainingArea, turnaroundArea: plan.turnaroundArea,
+        removal: plan.takenUp?.cost ?? 0 });
       return conflict;
     }
     const target = previous.conflict;
@@ -58,6 +59,9 @@ export class RoadRemedyLedger {
     target.affectedLength = (target.affectedLength ?? 0) + (conflict.affectedLength ?? 0);
     target.s0 = Math.min(target.s0, conflict.s0); target.s1 = Math.max(target.s1, conflict.s1);
     for (const access of plan.accessKeys ?? []) previous.accesses.add(access);
+    // (each way's own dead end taken up)
+    previous.removal += plan.takenUp?.cost ?? 0;
+    if (plan.buyout) target.buyout = [...new Set([...target.buyout ?? [], ...plan.buyout])].sort((p, q) => p - q);
     for (const code of plan.roadCode.split(' / ')) previous.codes.add(code);
     // Equal totals can hide opposite high/low source-class mixes. Use the higher SPK amount
     // at EACH matching physical segment, not merely max(total quote). No surcharge on ACCESS.
@@ -67,9 +71,11 @@ export class RoadRemedyLedger {
     if (quote > previous.quote) { previous.quote = quote; target.cls = conflict.cls; }
     target.roadCode = [...previous.codes].sort().join(' / ');
     target.lumpCost = previous.accesses.size * ACCESS;
-    target.cost = previous.pavement.reduce((a, b) => a + b, 0) + previous.apron + previous.retaining + target.lumpCost;
+    if (plan.takenUp) target.takenUp = { length: (target.takenUp?.length ?? 0) + plan.takenUp.length, cost: previous.removal,
+      intervals: [...target.takenUp?.intervals ?? [], ...plan.takenUp.intervals] };
+    target.cost = previous.pavement.reduce((a, b) => a + b, 0) + previous.apron + previous.retaining + target.lumpCost + previous.removal;
     const shared = new Set(target.sourceIntervals.map(s => s.way)).size;
-    target.detail = roadRemedyDetail(ROAD_CLASSES[target.cls!].label, target.affectedLength, { length: target.length, retainingArea: previous.retainingArea,
+    target.detail = roadRemedyDetail(ROAD_CLASSES[target.cls!].label, target.affectedLength, { length: target.length, retainingArea: previous.retainingArea, takenUp: target.takenUp, buyout: target.buyout,
       turnaroundArea: previous.turnaroundArea, lumpCost: target.lumpCost }, shared) + ' The new road is built and paid for once.';
     target.source = roadRemedySource({ roadCode: target.roadCode, retainingArea: previous.retainingArea, lumpCost: target.lumpCost });
     return target;

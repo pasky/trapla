@@ -17,6 +17,7 @@ import type { RoadNet, RoadSegment } from './roadnet';
 import { clearedHit } from './mapped-structures';
 import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, waterCoverFits, type WaterCrossing, type WaterSegment } from './watercourses';
 import { realignmentReason, roadRemedyDetail, roadRemedySource } from './terms';
+import type { BuildingIndex } from './buildings';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -35,6 +36,11 @@ export interface FootprintConflict {
   landCost?: number;
   /** Included all-in access/junction allowance, exempt from construction surcharge. */
   lumpCost?: number;
+  /** A dead end cut back (road-realignment.ts): its piece taken up, m, and what taking up its part beyond our
+   * earthworks costs (included in cost, exempt from construction surcharge: OTSKP rows), CZK. */
+  takenUp?: { length: number; cost: number; intervals: { way: number; a: number; b: number }[] };
+  /** buildings that dead end was the only road to, bought out (billed with our road's buildings, evaluate.ts) */
+  buyout?: number[];
   /** Reporting allocation for distributed works; financial booking uses engineering quantities. */
   allocations?: { i: number; cost: number; landCost?: number }[];
   detail: string;
@@ -70,6 +76,10 @@ export interface FootprintRoute {
   motorway?: boolean;
   /** 1 = a tunnel cell built cut and cover, in an open pit (structures.ts cutCoverMask) */
   cutCover?: ArrayLike<number>;
+  /** The buildings and those our works take (1): a dead end that is the only road to one left is not taken up. */
+  homes?: { index: BuildingIndex; gone: ArrayLike<number> };
+  /** Per way: the dead ends' pieces that serve nothing beyond our works (dead-ends.ts, as the retaining screen read them). */
+  deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
 }
 export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string;
   /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean }
@@ -94,7 +104,7 @@ function union(hits: Hit[]): Hit[] {
   }
   return out;
 }
-export function subtract(range: [number, number], covered: readonly [number, number][]): [number, number][] {
+export function subtract(range: [number, number], covered: readonly (readonly [number, number])[]): [number, number][] {
   let pieces = [range];
   for (const [lo, hi] of covered) {
     const next: typeof pieces = [];
@@ -410,11 +420,14 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       continue;
     }
     if (rejoinsJunction(way, h.a, h.b)) continue;
-    const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections,
+    const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections, homes: r.homes,
+      ...(r.deadEnds?.has(way) ? { deadEnds: r.deadEnds.get(way) } : {}),
       bounds: [index ? (merged[index - 1].b + h.a) / 2 : -Infinity, index + 1 < merged.length ? (h.b + merged[index + 1].a) / 2 : Infinity] });
     base.length = planned.length; base.cost = planned.cost; base.roadCode = planned.roadCode;
     base.geometry = planned.geometry; base.geometry.turnaroundRadius = planned.turnaroundRadius;
     base.original = planned.original ?? original; base.lumpCost = planned.lumpCost;
+    if (planned.takenUp) base.takenUp = planned.takenUp;
+    if (planned.buyout) base.buyout = planned.buyout;
     if (planned.closed) base.closed = planned.closed;
     const invalid = planned.problems.length > 0;
     base.detail = invalid
@@ -443,13 +456,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
           for (const [a, b] of subtract([other.a, other.b], prior)) {
             if (b - a < 0.1) continue;
             const hit = { ...other, a, b };
-            const plan = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way: otherWay, cls: group.cls, hit,
+            const plan = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way: otherWay, cls: group.cls, hit, homes: r.homes,
+              ...(r.deadEnds?.has(otherWay) ? { deadEnds: r.deadEnds.get(otherWay) } : {}),
               covered: roadCovered, crossings, fixedConnections,
               bounds: [k ? (otherHits[k - 1].b + a) / 2 : -Infinity, k + 1 < otherHits.length ? (b + otherHits[k + 1].a) / 2 : Infinity] });
             if (plan.problems.length || !RoadRemedyLedger.sameGeometry(planned, plan)) continue;
             accepted.push({ plan, conflict: { ...base, id: `road:${otherWay}:${a.toFixed(2)}:earth`, roadId: otherWay, cls: group.cls,
               i: hit.i, s0: Math.max(0, r.s[hit.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[hit.j] + r.ds / 2),
-              affectedLength: b - a, original: plan.original, geometry: plan.geometry, cost: plan.cost, lumpCost: plan.lumpCost, roadCode: plan.roadCode } });
+              affectedLength: b - a, original: plan.original, geometry: plan.geometry, cost: plan.cost, lumpCost: plan.lumpCost, roadCode: plan.roadCode,
+              ...(plan.takenUp ? { takenUp: plan.takenUp } : {}), ...(plan.buyout ? { buyout: plan.buyout } : {}) } });
           }
         }
       }

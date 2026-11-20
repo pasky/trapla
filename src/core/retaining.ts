@@ -29,6 +29,9 @@ export interface RetainingRoute extends Sections {
   tx: ArrayLike<number>; ty: ArrayLike<number>; grade: ArrayLike<number>; crownWidth: number;
   /** Our road is a motorway (a protected landscape area takes none, research/75). */
   motorway?: boolean;
+  /** Per way: the pieces of mapped dead ends that serve nothing beyond our works (dead-ends.ts): taken up where our
+   * slopes reach them (road-realignment.ts), none bridged for (walls keep our slopes off them as off any road). */
+  deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
 }
 export interface RetainingPlan {
   walls: RetainingWall[]; perCell: Float64Array; landPerCell: Float64Array; forcedBridge: Uint8Array; forcedTunnel: Uint8Array;
@@ -37,6 +40,8 @@ export interface RetainingPlan {
   clearanceRequirements: { s: number; z: number; i: number }[];
   /** buildings the walls keep clear of our works (instead of demolishing them) */
   walledBuildings: WalledBuilding[];
+  /** the dead ends' pieces the screen read (RetainingRoute.deadEnds): what the footprint screen takes up */
+  deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
 }
 /** Buildings our works may reach: the player's kept ones are walled off wherever a wall can stand;
  * Auto walls off a building no one lives in that only the working strip beside our slopes reaches when
@@ -58,7 +63,7 @@ export type RetainingFeatureCache = Map<number, { left: number; right: number; r
 /** One station's screening outcome, replayed in order when every input it read is unchanged:
  * this candidate set (same object), section widths, grade, barrels and crossing-way map. A station keeps
  * its last few (the two passes of a plan differ in their barrels, a strict retry in its crossing ways). */
-interface StationMemo { left: number; right: number; grade: number; barrels: string; ways: number[]; events: StationEvent[] }
+interface StationMemo { left: number; right: number; grade: number; barrels: string; ways: number[]; dead: string; events: StationEvent[] }
 type StationEvent = [0, Request] | [1, ClearanceRequest] | [2, BridgeRequest] | [3, number] | [4, WaterSegment['reach'], number, number, number]
   | CrossingHit;
 /** A crossing way's stretch inside a station's footprint: cell, segment, half width, way, the stretch; and what
@@ -69,7 +74,7 @@ type CrossingHit = [5, FootprintCell, RoadSegment, number, number, [number, numb
  * road and of the barrels (`reads`: its candidates' own, `barrels`: their key then) and the events it made.
  * A later pass with the same ways replays every station for which these are unchanged without asking its
  * candidates again. `grade` is NaN where the station is not held (its candidates were asked again). */
-interface PassRecord { ways: string; left: Float64Array; right: Float64Array; grade: Float64Array; reads: string[]; barrels: string[]; events: StationEvent[][] }
+interface PassRecord { ways: string; left: Float64Array; right: Float64Array; grade: Float64Array; reads: string[]; barrels: string[]; dead: string[]; events: StationEvent[][] }
 /** A wall's place on one side of a station as last found (from this grade, limit, room on the other side
  * and whether it holds back water), and the section it leaves. */
 interface WallMemo { grade: number; limit: number; otherFoot: number; wet: boolean;
@@ -214,7 +219,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     apply([0, { i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained, crossing, cap }]);
   };
   const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number,
-    owned: readonly [number, number][] = [], ownedMode = 0, cap = Infinity) => {
+    owned: readonly (readonly [number, number])[] = [], ownedMode = 0, cap = Infinity) => {
     const hit = clipFootprint(seg, c, pad);
     if (!hit || seg.length <= 0) return;
     // Clip ownership BEFORE selecting constraint points: a barrel may cover only the
@@ -275,6 +280,13 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     for (let j = 0; j < roads.length; j++) if (crossingWays?.has(roads[j].way)) { if (list[k] !== j) return false; k++; }
     return k === list.length;
   };
+  /** the dead-end pieces (r.deadEnds) of the ways a station's candidates hold: a key of what its screening read of them */
+  const deadKey = (candidates: { roads: readonly RoadSegment[] } | undefined) => {
+    if (!r.deadEnds || !candidates) return '';
+    let key = '';
+    for (const seg of candidates.roads) { const list = r.deadEnds.get(seg.way); if (list) key += `${seg.way}:${list.join(',')};`; }
+    return key;
+  };
   let held = cache && passMemos.get(cache);
   if (cache && !held) passMemos.set(cache, held = { records: [], walls: [[], [], [], []] });
   // This pass's record: the one made with the same crossing ways by the same pass of an earlier plan (its
@@ -283,13 +295,13 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   let record = held?.records.find(x => x.ways === ways && x.grade.length === n);
   if (held) {
     if (record) held.records.splice(held.records.indexOf(record), 1);
-    else record = { ways, left: new Float64Array(n), right: new Float64Array(n), grade: new Float64Array(n).fill(NaN), reads: new Array(n), barrels: new Array(n), events: new Array(n) };
+    else record = { ways, left: new Float64Array(n), right: new Float64Array(n), grade: new Float64Array(n).fill(NaN), reads: new Array(n), barrels: new Array(n), dead: new Array(n), events: new Array(n) };
     held.records.unshift(record);
     if (held.records.length > PASS_RECORDS) held.records.length = PASS_RECORDS;
   }
   for (let i = 1; i < n - 1; i++) {
     const grade = r.grade[i];
-    if (record && record.grade[i] === grade && record.left[i] === r.dayL[i] && record.right[i] === r.dayR[i]) {
+    if (record && record.grade[i] === grade && record.left[i] === r.dayL[i] && record.right[i] === r.dayR[i] && record.dead[i] === deadKey(cache?.get(i))) {
       const reads = record.reads[i];
       if (record.barrels[i] === (reads === '' || !barrels.length ? '' : barrelKeys.get(reads) ?? stationBarrels(cache!.get(i)!))) {
         const events = record.events[i];
@@ -312,12 +324,12 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       if (held) for (const x of held.records) if (x.grade.length === n) x.grade[i] = NaN;
     }
     // Which candidate roads are crossing ways (a strict retry removes some) is all the station reads.
-    const barrelKey = stationBarrels(candidates), near = candidates.roads;
-    const memo = candidates.memos?.find(m => m.left === c.left && m.right === c.right && m.grade === grade && m.barrels === barrelKey && sameWays(near, m.ways));
+    const barrelKey = stationBarrels(candidates), near = candidates.roads, dead = deadKey(candidates);
+    const memo = candidates.memos?.find(m => m.left === c.left && m.right === c.right && m.grade === grade && m.barrels === barrelKey && m.dead === dead && sameWays(near, m.ways));
     const events: StationEvent[] = memo?.events ?? [];
     if (record) {
       record.left[i] = c.left; record.right[i] = c.right; record.grade[i] = grade;
-      record.reads[i] = candidates.reads!; record.barrels[i] = barrelKey; record.events[i] = events;
+      record.reads[i] = candidates.reads!; record.barrels[i] = barrelKey; record.dead[i] = dead; record.events[i] = events;
     }
     if (memo) {
       for (const e of events) apply(e);
@@ -328,7 +340,10 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       const pad = roadHalfWidth(seg.cls);
       // (a mapped bridge with room over our road here, a mapped tunnel deep enough under it: nothing to hold off, footprint.ts)
       if (roads!.structure(seg.way)) { const hit = clipFootprint(seg, c, pad); if (hit && clearedHit(roads!, seg, hit, grade, terrain)) continue; }
-      if (!crossingWays?.has(seg.way)) { segment(c, seg, pad, 'road'); continue; }
+      // (a dead end serving nothing beyond our works: never bridged for (under our crown it is taken up:
+      // road-realignment.ts), walled off beside us as any road)
+      const dead = r.deadEnds?.get(seg.way);
+      if (!crossingWays?.has(seg.way)) { if (dead) segment(c, seg, pad, 'road', undefined, dead, 2); else segment(c, seg, pad, 'road'); continue; }
       const hit = clipFootprint(seg, c, pad);
       if (!hit) continue;
       apply([5, c, seg, pad, seg.way, hit, {}]);
@@ -360,7 +375,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     if (cache) {
       const ways: number[] = [], memos = candidates.memos ??= [];
       candidates.roads.forEach((seg, j) => { if (crossingWays?.has(seg.way)) ways.push(j); });
-      memos.unshift({ left: c.left, right: c.right, grade, barrels: barrelKey, ways, events });
+      memos.unshift({ left: c.left, right: c.right, grade, barrels: barrelKey, ways, dead, events });
       if (memos.length > STATION_MEMOS) memos.length = STATION_MEMOS;
     }
   }

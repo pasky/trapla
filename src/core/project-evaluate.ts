@@ -19,7 +19,7 @@ import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvalu
 import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign, RoadOperations } from './project';
 import * as dm from './detmath';
-import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, type MovedWays, type OldLineOf, type ResolvedEnds } from './project-roadnet';
+import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, takenUpTrims, type MovedWays, type OldLineOf, type ResolvedEnds } from './project-roadnet';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
@@ -628,6 +628,23 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     const end = removed[0] >= 0 ? path[path.length - 1] : path[0];
     const a = roads.wayStation(c.roadId, end.x, end.y), b = roads.wayStation(c.roadId, c.oldJunction.x, c.oldJunction.y);
     if (Math.abs(b - a) > 0.5) result.acceptedReplacements.push({ transportData: design.transportData!, sourceId, s0: Math.min(a, b), s1: Math.max(a, b) });
+  }
+  // A dead end Auto ends at our works (road-realignment.ts takenUp) gives up its piece beyond its turning area: gone
+  // from the map, as one the player cuts back (a way the player cut back from its start is measured anew: left drawn)
+  if (roads && ctx.sourceWays) {
+    const sources = new Map([...ctx.sourceWays].map(([id, way]) => [way, id])), heads = new Set(takenUpTrims(roads, design, ctx.sourceWays).filter(t => t.d0 === 0).map(t => t.way));
+    for (const legacy of new Set(legacyOf.values())) for (const f of legacy.footprintConflicts) {
+      // (its pieces one interval per way)
+      const byWay = new Map<number, [number, number]>();
+      if (f.action === 'relocation') for (const iv of f.takenUp?.intervals ?? []) {
+        const was = byWay.get(iv.way);
+        byWay.set(iv.way, was ? [Math.min(was[0], iv.a), Math.max(was[1], iv.b)] : [iv.a, iv.b]);
+      }
+      for (const [way, [a, b]] of byWay) {
+        const sourceId = way < roads.wayCount && !heads.has(way) ? sources.get(way) : undefined;
+        if (sourceId && b - a > 0.5) result.acceptedReplacements.push({ transportData: design.transportData!, sourceId, s0: a, s1: b });
+      }
+    }
   }
 }
 

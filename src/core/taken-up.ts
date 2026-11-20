@@ -60,7 +60,7 @@ export function takenUpOutcome(design: ProjectDesign, roads: RoadNet, edited: Ro
 /** Houses (no shed or garage) within STUB_HOUSE of the piece that are not within STUB_HOUSE of any road left (a
  * motorway is no way in), the project's own taken houses aside; both measured alike, from the house's outline to the
  * way's line (a house no road came within STUB_HOUSE of before loses nothing). */
-function servedOnly(path: readonly XY[], net: RoadNet, lines: readonly Line[], bld: BuildingIndex | undefined, gone: ReadonlySet<number>): number[] {
+export function servedOnly(path: readonly XY[], net: RoadNet, lines: readonly Line[], bld: BuildingIndex | undefined, gone: ReadonlySet<number>): number[] {
   if (!bld) return [];
   const found = new Set<number>();
   for (let k = 1; k < path.length; k++) {

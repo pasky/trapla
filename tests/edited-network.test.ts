@@ -234,7 +234,8 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // the old road is off the map and out of the motorway's checks; untouched, the change is priced at once
     expect(after.issues.map(i => i.code)).toEqual([]);
     expect(after.cost.total).not.toBeNull();
-    expect(after.acceptedReplacements).toEqual([interval]);
+    // (and the dead ends Auto takes up at our works, road-realignment.ts)
+    expect(after.acceptedReplacements.filter(i => i.sourceId === interval.sourceId)).toEqual([interval]);
     expect(motorway.crossings.some(c => c.roadId === 1515)).toBe(false);
     // the same road in the same place: our abutments keep clear of it as they did of the old road (walls,
     // bridge length); the motorway's bill does not move (it fell 15 M when they ignored it)

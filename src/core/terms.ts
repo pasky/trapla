@@ -326,12 +326,16 @@ export const BRIDGE_STYLE_TEXT: readonly ['short' | 'long' | 'arch', string, str
 ];
 
 /** Footprint outcomes (things our earthworks cover beside the road). */
-export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
+export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation' | 'takenUp' | 'buyout'>): OutcomeText {
+  const bought = c.buyout?.length ? ` The ${c.buyout.length > 1 ? `${c.buyout.length} buildings it was the only road to are` : 'building it was the only road to is'} bought out: our earthworks bury its way in.` : '';
   const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : c.feature === 'nature' ? 'protected nature area' : 'stream';
   switch (c.action) {
     case 'relocation': return c.closed && !c.closed.detour
-      ? { tag: 'removed', label: `${what}: ${m(c.closed.length)} m removed (a dead end under our earthworks)`,
-        explain: `This dead-end piece of the ${what} lies (almost) wholly under our earthworks; too little of it would be left to turn round in, so it is removed with the land.` }
+      ? { tag: 'taken up', label: `${what}: its last ${m(c.closed.length)} m taken up (a dead end under our earthworks)`,
+        explain: `This dead-end piece of the ${what} runs under our earthworks${bought ? '' : ' and serves nothing beyond them'}: it is taken up, and the ${what} ends where they begin.${bought}` }
+      : c.takenUp && !c.closed
+      ? { tag: 'taken up', label: `${what}: its last ${m(c.takenUp.length)} m taken up, a turning area where it now ends`,
+        explain: `The dead end of this ${what} ran under our earthworks${bought ? '' : ' and served nothing there'}. It now ends beside them in a turning area; the piece beyond is taken up.${bought}` }
       : c.closed
       ? { tag: 'closed', label: `${what}: ${m(c.closed.length)} m closed (its ends stay connected by ${m(c.closed.detour)} m of other roads)`,
         explain: `This short piece of the ${what} lies under our earthworks and is removed; both its ends stay connected by existing roads.` }
@@ -372,8 +376,10 @@ export function realignmentReason(problems: readonly string[]): string {
   return list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0] ?? 'it found no way';
 }
 /** Plain description of an accepted road relocation or closure. */
-export function roadRemedyDetail(what: string, affected: number, plan: Pick<RoadRealignmentPlan, 'length' | 'closed' | 'retainingArea' | 'turnaroundArea' | 'lumpCost'>, shared = 1): string {
-  if (plan.closed && !plan.closed.detour) return `${affected.toFixed(0)} m of the ${what} lies under our earthworks; it is a dead end with too little left beside them to turn round in, so it is removed.`;
+export function roadRemedyDetail(what: string, affected: number, plan: Pick<RoadRealignmentPlan, 'length' | 'closed' | 'retainingArea' | 'turnaroundArea' | 'lumpCost' | 'takenUp' | 'buyout'>, shared = 1): string {
+  const n = plan.buyout?.length ?? 0, bought = n ? ` It was the only road to ${n > 1 ? `${n} buildings, which are` : 'a building, which is'} bought out.` : '';
+  if (plan.takenUp && !plan.closed) return `${affected.toFixed(0)} m of the ${what}'s dead end lies under our earthworks. It now ends beside them in a turning area, with ${plan.length.toFixed(0)} m of road rebuilt up to it${plan.retainingArea ? ` and retaining walls (${plan.retainingArea.toFixed(0)} m² of wall)` : ''}; its last ${plan.takenUp.length.toFixed(0)} m are taken up.${bought}`;
+  if (plan.closed && !plan.closed.detour) return `${affected.toFixed(0)} m of the ${what} lies under our earthworks; it is a dead end${bought ? '' : ' serving nothing beyond them'}, so its last ${plan.closed.length.toFixed(0)} m are taken up.${bought}`;
   if (plan.closed) return `${affected.toFixed(0)} m of the ${what} lies under our earthworks and is closed; its two ends stay connected by ${plan.closed.detour.toFixed(0)} m of existing roads.`;
   const extras = [plan.retainingArea ? `retaining walls (${plan.retainingArea.toFixed(0)} m² of wall) where it is raised or lowered` : '',
     plan.turnaroundArea ? 'a turning area at its cut end' : '', plan.lumpCost ? 'its junction with the road it joins' : ''].filter(Boolean);

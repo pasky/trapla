@@ -9,6 +9,10 @@ import { cellBounds, clipFootprint, insideFootprint, touchesFootprint, type Foot
 import type { RoadNet, RoadSegment } from './roadnet';
 import { mappedKind } from './mapped-structures';
 import { barrelLength, waterSize, waterWidth } from './watercourses';
+import { removalPerMetre } from './project-replacement';
+import { STUB_HOUSE } from './crossing-geometry';
+import { BUILDING_KIND } from './data/urban';
+import type { BuildingIndex } from './buildings';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 import * as dm from './detmath';
 
@@ -27,6 +31,11 @@ export interface RoadRealignmentInput {
   crossings?: readonly CrossingResult[];
   /** Already accepted new connectors are live connections, not merely removed old source. */
   fixedConnections?: readonly PreservedRoadConnection[];
+  /** The buildings, and those our works take (1): a dead end is not taken up where it is the only road to one left. */
+  homes?: { index: BuildingIndex; gone: ArrayLike<number> };
+  /** The pieces of `way` (its own chainages) that are dead ends serving nothing beyond our works (dead-ends.ts): one our
+   * earthworks cut is taken up from where they cover it to its dead end, even where that end lies beyond them. */
+  deadEnds?: readonly (readonly [number, number])[];
 }
 export interface RoadRealignmentPlan {
   geometry: CrossingGeometry; original?: CrossingPoint[];
@@ -45,8 +54,14 @@ export interface RoadRealignmentPlan {
   retainingArea: number;
   /** Pre-surcharge CZK, already included in cost. */
   retainingCost: number;
-  /** All-in access tie-ins, included in cost but not construction surcharge. */
+  /** All-in access tie-ins and the old road taken up, included in cost but not construction surcharge. */
   lumpCost?: number;
+  /** A dead end cut back: the length of its piece taken up (from where it now ends to its old dead end), m, and what
+   * taking up its part beyond our earthworks costs (included in cost; no construction surcharge: OTSKP rows), CZK. */
+  takenUp?: { length: number; cost: number; intervals: RoadSourceInterval[] };
+  /** A dead end taken up that was the only road to these buildings (no other road within STUB_HOUSE): no access can be
+   * kept where our earthworks bury it, so they are bought out (the last resort of the access rules, research/86). */
+  buyout?: number[];
   /** Actual service junctions rebuilt; shared connectors book each allowance only once. */
   accessKeys?: string[];
   /** The stretch is closed instead of rebuilt: its two junctions stay connected over existing
@@ -284,8 +299,13 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     crossingAnchor(ends[1], along(raw, Math.max(lo, hi - CROSSING_RULES.linkMinLength)))];
   // Only a true graph end inside acquired earthwork (its pavement reaching into it) may be removed. A
   // clipped traversal or a junction is not a licence to close a branch. Structure foundations are never acquisition.
-  const dead = ends.map((p, i) => Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6
-    && grid.near(p).some(c => !c.structure && insideFootprint(p, c, half)) && roads.isDeadEnd(p));
+  // (or whose pavement there our earthworks cover: the hit reaches the end, its centreline beside a bridge end)
+  // (or one that serves nothing beyond our works from where they cover it: dead-ends.ts)
+  const total = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
+  const beyond = (i: number) => !!input.deadEnds?.some(([a, b]) => i ? a <= h.a + 1e-6 && b >= total - 1e-6 : a <= 1e-6 && b >= h.b - 1e-6);
+  const cutOff = ends.map((p, i) => Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6 && Math.abs(p.d - (i ? total : 0)) < 1e-6 && beyond(i) && roads.isDeadEnd(p));
+  const dead = ends.map((p, i) => cutOff[i] || Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6
+    && (grid.near(p).some(c => !c.structure && insideFootprint(p, c, half)) || Math.abs((i ? h.b : h.a) - p.d) < 0.01) && roads.isDeadEnd(p));
   // A dead-end piece that lies wholly under our earthworks (its other end joins a road there too) leads
   // nowhere that remains: it is removed with the land it served, at no cost.
   // (so is one whose part left outside them is shorter than the turning area its cut end would need)
@@ -298,8 +318,15 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       if (Math.hypot(j.x - live.x, j.y - live.y) > JUNCTION_TOLERANCE) return true;
     return false;
   };
-  /** the stretch [a, b] of the connected path removed, no new pavement */
-  const removal = (a: number, b: number): RoadRealignmentPlan => {
+  /** A dead end's piece [a, b] of the connected path taken up: its length, and what taking up its part beyond our
+   * earthworks costs (its pavement removed and its ground restored, as a dead end the player cuts back:
+   * taken-up.ts; under our earthworks it goes with them) */
+  const takenUp = (a: number, b: number) => {
+    const piece = dense(slice(raw, a, b)), beyond = piece.length ? (b - a) * piece.filter(p => !under(p)).length / piece.length : 0;
+    return { length: b - a, cost: beyond * removalPerMetre(row.width), intervals: wayIntervals(a, b) };
+  };
+  /** the ways' own chainages of the stretch [a, b] of the connected path */
+  function wayIntervals(a: number, b: number): RoadSourceInterval[] {
     const intervals: RoadSourceInterval[] = [];
     for (const span of spans) {
       const start = Math.max(a, span.lo), end = Math.min(b, span.hi);
@@ -307,9 +334,47 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       const da = span.a + (span.b - span.a) * (start - span.lo) / (span.hi - span.lo), db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
       intervals.push({ way: span.way, a: Math.min(da, db), b: Math.max(da, db) });
     }
-    return { geometry: { width: row.width, schematic: false, road: [] }, original: slice(raw, a, b).map(point), length: 0, cost: 0, roadCode: '', problems: [],
+    return intervals;
+  }
+  /** Buildings people go to (no shed or garage), not taken by our works, that the stretch [a, b] of the connected path
+   * comes within STUB_HOUSE of and no other road does (the rule of a dead end the player cuts back, taken-up.ts). */
+  const strands = (a: number, b: number): number[] => {
+    const bld = input.homes?.index, gone = input.homes?.gone, out: number[] = [];
+    if (!bld || !gone) return out;
+    const piece = dense(slice(raw, a, b)), cut = wayIntervals(a, b), found = new Set<number>();
+    for (const p of piece) bld.near(p.x, p.y, STUB_HOUSE + 5, j => {
+      if (!gone[j] && bld.kind[j] !== BUILDING_KIND.minor && bld.facadeDistanceSq(j, p.x, p.y) < STUB_HOUSE * STUB_HOUSE) found.add(j);
+    });
+    for (const j of found) {
+      const [x, y, rad] = bld.items[j], reach = rad + STUB_HOUSE;
+      let served = false;
+      roads.nearSegments([x - reach, y - reach, x + reach, y + reach], g => {
+        if (served || ROAD_CLASSES[g.cls]?.noAtGrade || !(g.length > 0)) return;
+        // (of the way taken up, only what is left of it)
+        let left: [number, number][] = [[0, 1]];
+        for (const c of cut) if (c.way === g.way) left = left.flatMap(([u0, u1]) => {
+          const c0 = (c.a - g.d) / g.length, c1 = (c.b - g.d) / g.length;
+          const e = 0.01 / g.length; // (a centimetre: what is left of a segment by rounding is none of it)
+          return c1 <= u0 || c0 >= u1 ? [[u0, u1]] : [...c0 > u0 + e ? [[u0, c0] as [number, number]] : [], ...c1 < u1 - e ? [[c1, u1] as [number, number]] : []];
+        });
+        const dx = g.bx - g.ax, dy = g.by - g.ay;
+        for (const [u0, u1] of left) {
+          const t = Math.max(u0, Math.min(u1, ((x - g.ax) * dx + (y - g.ay) * dy) / (dx * dx + dy * dy)));
+          if (bld.facadeDistanceSq(j, g.ax + t * dx, g.ay + t * dy) < STUB_HOUSE * STUB_HOUSE) { served = true; break; }
+        }
+      });
+      if (!served) out.push(j);
+    }
+    return out.sort((p, q) => p - q);
+  };
+  /** the stretch [a, b] of the connected path removed, no new pavement */
+  const removal = (a: number, b: number): RoadRealignmentPlan => {
+    const lost = strands(a, b);
+    const intervals = wayIntervals(a, b);
+    const gone = takenUp(a, b);
+    return { geometry: { width: row.width, schematic: false, road: [] }, original: slice(raw, a, b).map(point), length: 0, cost: gone.cost, roadCode: '', problems: [],
       pavementCosts: [], apronCost: 0, sourceIntervals: mergeIntervals(intervals), turnaroundArea: 0, retainingArea: 0, retainingCost: 0,
-      closed: { length: b - a, detour: 0 } };
+      closed: { length: b - a, detour: 0 }, ...(gone.cost > 0 ? { takenUp: gone } : {}), ...(lost.length ? { buyout: lost } : {}) };
   };
   if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1]))) && !joined()) return removal(lo, hi);
   if (dead[0] && dead[1]) return failure('no surviving branch outside the acquired footprint');
@@ -355,13 +420,15 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     }
     return q;
   };
-  const radius = row.width * 1.5;
-  let turn: WayPoint | undefined, removedLo: number | undefined, removedHi: number | undefined;
+  // (a track or service road, no public road, just ends: no turning area, as at a crossing, crossing-geometry.ts)
+  const minor = cls === 'track' || cls === 'service', radius = row.width * 1.5;
+  let turn: WayPoint | undefined, removedLo: number | undefined, removedHi: number | undefined, lost: number[] = [];
   if (dead.some(Boolean)) {
     // End the replacement on the surviving REAL branch, far enough out for the whole disk.
     // No laterally invented anchor and no new access across the severed main-road corridor.
-    const samples = dense(source), reverse = dead[1], ordered = reverse ? [...samples].reverse() : samples;
-    turn = ordered.find(p => !grid.hits(p, radius + SETBACK));
+    // (from the dead end, or from where our earthworks begin to cover a dead end beyond them)
+    const samples = dense(source), reverse = dead[1], ordered = reverse ? samples.filter(p => !cutOff[1] || p.d <= h.a).reverse() : samples.filter(p => !cutOff[0] || p.d >= h.b);
+    turn = ordered.find(p => !grid.hits(p, (minor ? half : radius) + SETBACK));
     // A dead end with no room for a turning area before the first road it joins is cut back to that
     // junction: its traffic turns there, and what it led to lies under our road.
     const junction = firstJunction(reverse);
@@ -369,6 +436,23 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     if (junction !== undefined && (reverse ? junction <= h.a : junction >= h.b) && (!turn || (reverse ? turn.d < junction : turn.d > junction)))
       return reverse ? removal(junction, hi) : removal(lo, junction);
     if (!turn) return failure('no clear turnaround on the surviving branch within real-way reach');
+    // (a dead end beyond our works is taken up only as far as it serves nothing: dead-ends.ts; further, it is a road
+    // that leads somewhere, moved aside as any other)
+    if (cutOff[reverse ? 1 : 0]) {
+      const pieces = input.deadEnds!.filter(([a, b]) => reverse ? b >= total - 1e-6 : a <= 1e-6);
+      const from = reverse ? Math.min(...pieces.map(([a]) => a)) : Math.max(...pieces.map(([, b]) => b));
+      if (reverse ? turn.d < from - 1e-6 : turn.d > from + 1e-6) return planRoadRealignment({ ...input, deadEnds: undefined }, junctionRetry);
+    }
+    if (minor) {
+      // (where that would leave a building without its road, as little as our earthworks cover: the track then ends at
+      // their foot)
+      if ((reverse ? strands(turn.d, hi) : strands(lo, turn.d)).length) {
+        const foot = ordered.find(p => !grid.near(p).some(c => !c.structure && insideFootprint(p, c, half)));
+        if (foot && (reverse ? foot.d > turn.d : foot.d < turn.d)) turn = foot;
+      }
+      return reverse ? removal(turn.d, hi) : removal(lo, turn.d);
+    }
+    lost = reverse ? strands(turn.d, hi) : strands(lo, turn.d);
     if (reverse) { removedHi = hi; hi = turn.d; } else { removedLo = lo; lo = turn.d; }
   }
   let initialReach = CROSSING_RULES.linkMinLength;
@@ -501,20 +585,24 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     for (let i = 1; i < path.length; i++) chain.push(i === gap ? 0 : chain[i - 1] + distance(path[i - 1], path[i]));
     const lower = path.map(p => p.ground - MAX_SUPPORT), upper = path.map(p => p.ground + MAX_SUPPORT);
     for (const [i, z] of fixed) lower[i] = upper[i] = z;
+    // (a dead end cut back: where its old road beyond the turning area is left where it is, it keeps its own grade;
+    // the norm's ramp gradient is for new pavement)
+    const kept = (i: number) => !!turn && distance(flat[i - 1], along(raw, flat[i - 1].d)) <= 0.01 && distance(flat[i], along(raw, flat[i].d)) <= 0.01;
+    const rise = (i: number) => Math.max((chain[i] - chain[i - 1]) * row.rampGradient, kept(i) ? Math.abs(path[i].ground - path[i - 1].ground) + 1e-6 : 0);
     for (let i = 1; i < path.length; i++) {
       if (i === gap) continue;
-      const dz = (chain[i] - chain[i - 1]) * row.rampGradient;
+      const dz = rise(i);
       lower[i] = Math.max(lower[i], lower[i - 1] - dz); upper[i] = Math.min(upper[i], upper[i - 1] + dz);
     }
     for (let i = path.length - 2; i >= 0; i--) {
       if (i + 1 === gap) continue;
-      const dz = (chain[i + 1] - chain[i]) * row.rampGradient;
+      const dz = rise(i + 1);
       lower[i] = Math.max(lower[i], lower[i + 1] - dz); upper[i] = Math.min(upper[i], upper[i + 1] + dz);
     }
     for (let i = 0; i < path.length; i++) {
       let min = lower[i], max = upper[i];
       if (i && i !== gap) {
-        const dz = (chain[i] - chain[i - 1]) * row.rampGradient;
+        const dz = rise(i);
         min = Math.max(min, path[i - 1].z - dz); max = Math.min(max, path[i - 1].z + dz);
       }
       if (min > max + 1e-7) problems.add('6% grade needs support exceeding 10 m or a longer real-way tie-in');
@@ -565,7 +653,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       const p = path[i - 1], q = path[i], len = distance(p, q), mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
       length += len; pavementCosts.push(price(mid, len, (p.d! + q.d!) / 2));
       if (chordHits(p, q)) problems.add('path intersects the footprint');
-      if (Math.abs(q.z - p.z) > len * row.rampGradient + 1e-6) problems.add('tie-in heights exceed 6% gradient');
+      if (Math.abs(q.z - p.z) > Math.max(len * row.rampGradient, kept(i) ? Math.abs(q.ground - p.ground) : 0) + 1e-6) problems.add('tie-in heights exceed 6% gradient');
       const originalA = along(raw, p.d!), originalB = along(raw, q.d!);
       const changed = distance(p, originalA) > 0.01 || distance(q, originalB) > 0.01
         || Math.abs(p.z - p.ground) > 0.01 || Math.abs(q.z - q.ground) > 0.01;
@@ -782,12 +870,15 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       if (!preserved) problems.add('realignment would sever an accepted connector');
     }
     if (length < 0.1) problems.add('replacement has no distinct surviving anchors');
-    cost += lumpCost;
+    // (a dead end cut back to its turning area: the piece beyond taken up)
+    const gone = turn ? (dead[0] ? takenUp(removedLo!, turn.d) : takenUp(turn.d, removedHi!)) : undefined;
+    cost += lumpCost + (gone?.cost ?? 0);
     const diagnostics = [...problems];
     const plan: RoadRealignmentPlan = { geometry: { ...(gap > 0 ? { links: [path.slice(0, gap), path.slice(gap)] as [CrossingPoint[], CrossingPoint[]] } : { road: path }), width: row.width, schematic: false,
       ...(turn ? { turnarounds: [point(turn)] } : {}), ...(diagnostics.length ? { clipped: true, diagnostics } : {}) },
       original: slice(raw, ownLo, ownHi).map(point), length, cost, roadCode: [...codes].join(' / '), problems: diagnostics, sourceIntervals, pavementCosts, apronCost,
-      turnaroundArea, retainingArea, retainingCost, lumpCost, accessKeys: [...rebuiltAccesses], ...(turn ? { turnaroundRadius: radius } : {}) };
+      turnaroundArea, retainingArea, retainingCost, lumpCost, accessKeys: [...rebuiltAccesses], ...(turn ? { turnaroundRadius: radius } : {}), ...(gone ? { takenUp: gone } : {}),
+      ...(lost.length ? { buyout: lost } : {}) };
     if (!best || plan.problems.length < best.problems.length) best = plan;
     if (!problems.size) return plan;
     // A new short seed must not suppress an older feasible longer-collar candidate.

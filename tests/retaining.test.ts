@@ -168,7 +168,7 @@ describe('automatic slope retention', () => {
     for (let col = 150; col < 156; col++) terrain.lc[19 * terrain.nx + col] = LC.rail;
     const roads = new RoadNet({ cls: ['service', 'track'], ways: [[0, 450, 118, 490, 118], [1, 600, 80, 800, 120]] });
     const water = terrain.watercourses!.intersections(n, base.route.s, base.route.x, base.route.y), at = roads.wayStation(1, 700, 100);
-    type Variant = { grade?: (i: number) => number; ways?: Map<number, number[]>; cover?: number; bare?: (i: number) => number; twice?: boolean };
+    type Variant = { grade?: (i: number) => number; ways?: Map<number, number[]>; cover?: number; bare?: (i: number) => number; twice?: boolean; dead?: boolean };
     const variants: Variant[] = [
       {}, {},
       { grade: i => i >= 30 && i <= 50 ? 109 : 108 }, // a lift over the ditch and the wall beside the road
@@ -182,6 +182,8 @@ describe('automatic slope retention', () => {
       {},
       { bare: i => i >= 63 && i <= 69 ? 104 : 108 }, // lower over the railway, the sections as they were
       {},
+      { ways: new Map(), dead: true }, // the track an obstacle, but a dead end serving nothing (dead-ends.ts): no structure for it
+      {},
     ];
     const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open', 'rockFace', 'subgrade', 'sideL', 'sideR'] as const;
     const shared = new Map(), seen = new Set<string>();
@@ -191,6 +193,7 @@ describe('automatic slope retention', () => {
         if (v.grade) route.grade.forEach((_, i) => { route.grade[i] = v.grade!(i); });
         Object.assign(route, computeSections(terrain, n, route.x, route.y, route.tx, route.ty, route.grade, { crownWidth: route.crownWidth }, true));
         if (v.bare) route.grade.forEach((_, i) => { route.grade[i] = v.bare!(i); });
+        if (v.dead) Object.assign(route, { deadEnds: new Map([[1, [[0, 300]]]]) });
         const elevations = v.cover === undefined ? undefined : new Map(water.filter(c => c.id === 1).map(c => [c, 100 + v.cover!]));
         const make = () => planRetainingWalls(route, terrain, roads, undefined, water, cache ?? new Map(), elevations, v.ways ?? new Map([[1, [at]]]));
         const plan = make();
@@ -201,8 +204,8 @@ describe('automatic slope retention', () => {
       seen.add(JSON.stringify([plans[1].plan.walls, [...plans[1].plan.forcedBridge]]));
     }
     // (the variants are different plans: the base, the lift, the track as an obstacle (both ways), the other
-    // barrel, the narrowed sections, no bridge over the railway)
-    expect(seen.size).toBe(6);
+    // barrel, the narrowed sections, no bridge over the railway, the track a dead end)
+    expect(seen.size).toBe(7);
   });
   it('rescreens culvert ownership after a road wall shortens the crossing barrel', () => {
     const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
@@ -235,6 +238,17 @@ describe('automatic slope retention', () => {
       const owned = planRetainingWalls(crossing.route, crossing.terrain, track(), undefined, [], undefined, undefined, new Map([[0, [Math.hypot(200, 20)]]]));
       expect([...owned.forcedBridge, ...owned.forcedTunnel].some(Boolean)).toBe(false);
       expect(owned.walls.every(w => w.cost / (w.s1 - w.s0) <= 2 * 13_985_684.5 / 1000)).toBe(true);
+    }
+  });
+  it('a dead end serving nothing beyond our works is never bridged or tunnelled for (the footprint screen takes it up)', () => {
+    // (a track under our crown at a shallow angle: as an ordinary road it forces structures, road-realignment.ts)
+    for (const grade of [140, 70]) {
+      const track = () => new RoadNet({ cls: ['track'], ways: [[0, 300, 80, 700, 120]] });
+      const plain = setup(grade), dead = setup(grade);
+      const ordinary = planRetainingWalls(plain.route, plain.terrain, track());
+      expect([...ordinary.forcedBridge, ...ordinary.forcedTunnel].some(Boolean)).toBe(true);
+      const ended = planRetainingWalls({ ...dead.route, deadEnds: new Map([[0, [[0, 410]]]]) }, dead.terrain, track());
+      expect([...ended.forcedBridge, ...ended.forcedTunnel].some(Boolean)).toBe(false);
     }
   });
   it('a rejected crossing-track wall falls back to the independent railway constraint on that side', () => {

@@ -46,6 +46,7 @@ import { crossingWallGaps } from './crossing-walls';
 import { natureCells, protectedRasterCells, railwayNear } from './protected-raster';
 import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
+import { deadEndPieces, deadEndsNear } from './dead-ends';
 import { crossedLevel, mappedKind, wayLevels } from './mapped-structures';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
@@ -1008,7 +1009,12 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const widen = hairpinWidening(al, d.pis, d.category, st.s); // a hairpin's widened lanes
   // (Auto's deepest open cut: roads and motorways, STRUCTURE_RULES.deepCut)
   const deepCut = cat.mode === 'railway' ? undefined : STRUCTURE_RULES.deepCut;
-  return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, lineAt, win, al, maxGradient, st, n, ds, deepCut,
+  // the mapped dead ends beside our road that serve nothing at their end (dead-ends.ts): asked for by the first
+  // retaining screen of a full evaluation, the same for all its passes (no other road ending on ours is one)
+  let deadEndList: ReturnType<typeof deadEndsNear> | undefined;
+  const deadEnds = () => deadEndList ??= ctx.roads ? deadEndsNear(ctx.roads, ctx.buildings, st, cat.crownWidth / 2 + DEAD_END_REACH,
+    way => endJunctions.some(j => j.ways.has(way))) : [];
+  return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, lineAt, win, al, maxGradient, st, n, ds, deepCut, deadEnds,
     manualStructures, cutMethod, bridgeStyle, heldDeck, choiceDeck, crossingOverrides, ground, groundIds, groundProfiles, groundPackIds,
     groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
     mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
@@ -1665,11 +1671,23 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     wideHits[i] = hitsAt(i, sec.dayL[i], sec.dayR[i]); wideHitL[i] = sec.dayL[i]; wideHitR[i] = sec.dayR[i];
   }
   const retainingStart = performance.now();
+  // the dead ends beside us that serve nothing our works leave standing (the houses our slopes and working strip
+  // reach go, unless the player keeps them): taken up where our slopes reach them, never walled or bridged for
+  const ends = preview ? [] : setup.deadEnds();
+  let reached: Set<number> | undefined;
+  const gone = (j: number) => {
+    if (wallable?.skip.has(j)) return true;
+    if (wallable?.keep.has(j)) return false;
+    if (!reached) { reached = new Set(); for (const list of wideHits) for (const k of list) reached.add(k); }
+    return reached.has(j);
+  };
+  const deadEnds = ends.length ? deadEndPieces(ends, gone) : undefined;
   // A preview keeps natural slopes: no retaining walls, nor the bridges an impossible wall forces.
   const retention: RetainingPlan = preview ? {
     walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
     wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [], walledBuildings: [],
-  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b, motorway: !!cat.motorwayByLaw }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits }, opts.keepClear?.filter(c => c.wall));
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b, motorway: !!cat.motorwayByLaw, ...(deadEnds?.size ? { deadEnds } : {}) }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits }, opts.keepClear?.filter(c => c.wall));
+  if (deadEnds?.size) retention.deadEnds = deadEnds;
   work('retaining', retainingStart);
   lap('sections');
 
@@ -2640,6 +2658,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
+    ...(bld ? { homes: { index: bld, gone } } : {}), ...(quantities.retention.deadEnds ? { deadEnds: quantities.retention.deadEnds } : {}),
     motorway: !!cat.motorwayByLaw, cutCover,
     ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}), ...(retiredAt ? { railRetired: retiredAt } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
@@ -2685,13 +2704,17 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
       c.allocations.push({ i, cost: c.cost / count, landCost: land });
     }
   }
+  let bought = false;
   for (const c of footprintCheck.conflicts) {
+    // a dead end taken up that was the only road to buildings our earthworks leave: bought out (road-realignment.ts)
+    for (const j of c.buyout ?? []) if (bld && !gone[j]) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'access', strip: false }); bought = true; }
     if (c.action === 'retaining-wall' || c.action === 'channel-relocation') continue;
-    if (c.feature === 'road') crossingStructure[c.i] += c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0);
+    if (c.feature === 'road') crossingStructure[c.i] += c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0) - (c.takenUp?.cost ?? 0);
     else if (c.action === 'culvert') culverts[c.i] += c.cost;
     remedyLand[c.i] += c.landCost ?? 0;
-    crossingLump[c.i] += c.lumpCost ?? 0;
+    crossingLump[c.i] += (c.lumpCost ?? 0) + (c.takenUp?.cost ?? 0);
   }
+  if (bought) demolished.sort((p, q) => p.i - q.i);
   lap('footprint');
   return { crossingLump, crossingStructure, crossingsPaid, joinedRight, crossings, crossingIssues, footprintCheck,
     remedyLand };
@@ -3187,6 +3210,9 @@ function motorwayLanes(cat: (typeof CATEGORIES)[CategoryId], medianRight: boolea
 
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
 const STRICT_RETRY_REACH = 300;
+/** How far beyond our crown's edge a mapped dead end is looked at as one our works may take up (engine bound: beyond
+ * our widest ordinary slopes), m. */
+const DEAD_END_REACH = 100;
 /** The strip beyond our earthworks a new road keeps clear of them (crossing-geometry.ts SETBACK), m. */
 const WEAVE_SETBACK = 3;
 /** regula-falsi steps after the bracket when settling the fill value on a fixed grade line */

@@ -6,6 +6,8 @@ import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain, Terrain, BUILTUP_BIT, LC, RAIL_CROSSING_BIT } from '../src/core/terrain';
 import { ACCESS, ROAD_CLASSES } from '../src/core/data/urban';
 import type { CrossingResult } from '../src/core/crossings';
+import { removalPerMetre } from '../src/core/project-replacement';
+import { BuildingIndex } from '../src/core/buildings';
 
 function setup(ways = [[0, 20, 260, 1250, 260]], cls = ['service']): RoadRealignmentInput & { cells: FootprintCell[] } {
   const n = 101, array = (v: number) => new Float64Array(n).fill(v);
@@ -76,7 +78,8 @@ describe('bounded real road relocation', () => {
   });
 
   it('removes only a true acquired dead-end stub and prices its outside turning apron by area', () => {
-    const input = setup([[0, 500, 260, 1250, 260]]);
+    // (a public road: a track or service road just ends, below)
+    const input = setup([[0, 500, 260, 1250, 260]], ['unclassified']);
     input.hit = { a: 0, b: 607, i: 40, j: 100 };
     input.terrain.lc.fill(BUILTUP_BIT);
     const plan = planRoadRealignment(input);
@@ -89,11 +92,53 @@ describe('bounded real road relocation', () => {
     expect(plan.geometry.road![0].x).toBe(p.x);
     expect(plan.turnaroundArea).toBeGreaterThan(0);
     expect(plan.turnaroundArea).toBeLessThan(Math.PI * radius ** 2);
-    expect(plan.cost).toBeCloseTo((plan.length + plan.turnaroundArea / ROAD_CLASSES.service.width) * ROAD_CLASSES.service.roadPerKm[1] / 1000, 5);
+    // the piece from its dead end to the turning area is taken up, billed where it lies beyond our earthworks (x 1105 on)
+    const gone = plan.takenUp!;
+    expect(gone.length).toBeCloseTo(p.x - 500, 5);
+    const beyond = gone.cost / removalPerMetre(ROAD_CLASSES.unclassified.width); // (to its samples, 5 m apart)
+    expect(beyond).toBeGreaterThan(p.x - 1105 - 5);
+    expect(beyond).toBeLessThan(p.x - 1105 + 5);
+    expect(Math.min(...gone.intervals.map(i => i.a))).toBe(0);
+    expect(Math.max(...gone.intervals.map(i => i.b))).toBeCloseTo(p.x - 500, 6);
+    expect(plan.cost).toBeCloseTo((plan.length + plan.turnaroundArea / ROAD_CLASSES.unclassified.width) * ROAD_CLASSES.unclassified.roadPerKm[1] / 1000 + gone.cost, 5);
     // Reverse the way: the same true end can be at either side of its source chainage.
-    const reversed = setup([[0, 1250, 260, 500, 260]]);
+    const reversed = setup([[0, 1250, 260, 500, 260]], ['unclassified']);
     reversed.hit = { a: 143, b: 750, i: 40, j: 100 };
     assertClear(planRoadRealignment(reversed), reversed.cells);
+    // A service road (no public road) just ends beyond our earthworks: no turning area, nothing rebuilt
+    const service = setup([[0, 500, 260, 1250, 260]]);
+    service.hit = { a: 0, b: 607, i: 40, j: 100 };
+    const ends = planRoadRealignment(service);
+    expect(ends.problems).toEqual([]);
+    expect(ends.geometry.turnarounds).toBeUndefined();
+    expect(ends.closed!.length).toBeGreaterThan(590);
+    expect(ends.closed!.length).toBeLessThan(615);
+    expect(ends.cost).toBe(ends.takenUp!.cost);
+  });
+
+  it('keeps an untouched old road beyond a dead end\'s turning area at its own grade (the norm\'s ramp is for new pavement)', () => {
+    // (I/35 Turnov km 3.0: a local road climbing 15 % away from our earthworks)
+    const input = setup([[0, 500, 260, 1250, 260]], ['unclassified']);
+    input.hit = { a: 0, b: 607, i: 40, j: 100 };
+    input.terrain = syntheticTerrain(260, 100, 5, (x) => 100 + 0.15 * Math.max(0, x - 1090));
+    const plan = planRoadRealignment(input);
+    expect(plan.problems).toEqual([]);
+    expect(plan.geometry.turnarounds).toHaveLength(1);
+    for (const p of plan.geometry.road!) expect(p.z).toBeCloseTo(p.ground, 6);
+  });
+
+  it('does not take up the only road to a building our works leave: it is bought out where its road is buried', () => {
+    // a track along our road's end (x 1105) from a service road, its dead end under our earthworks, a house beside its
+    // buried end and 36 m from what is left of it
+    const input = setup([[1, 1300, 265, 1060, 265], [0, 1300, 200, 1300, 330]], ['service', 'track']);
+    input.cls = 'track'; input.hit = { a: 195, b: 240, i: 96, j: 100 };
+    const house = new BuildingIndex([[1080, 290, 5]]);
+    const plan = planRoadRealignment({ ...input, homes: { index: house, gone: new Uint8Array(1) } });
+    expect(plan.problems).toEqual([]);
+    expect(plan.buyout).toEqual([0]);
+    // (one our works take anyway, or one another road reaches, is no reason)
+    expect(planRoadRealignment({ ...input, homes: { index: house, gone: Uint8Array.of(1) } }).buyout).toBeUndefined();
+    expect(planRoadRealignment({ ...input, homes: { index: new BuildingIndex([[1125, 290, 5]]), gone: new Uint8Array(1) } }).buyout).toBeUndefined();
   });
 
   it('removes a dead-end stub that our earthworks take (almost) whole: too little is left to turn round in', () => {
@@ -103,12 +148,16 @@ describe('bounded real road relocation', () => {
     const plan = planRoadRealignment(input);
     expect(plan.problems).toEqual([]);
     expect(plan.closed).toEqual({ length: 15, detour: 0 });
-    expect(plan.cost).toBe(0);
+    // (its 3 m beyond our earthworks taken up)
+    expect(plan.cost).toBeCloseTo(3 * removalPerMetre(ROAD_CLASSES.track.width), 6);
     expect(plan.sourceIntervals).toEqual([{ way: 0, a: 0, b: 15 }]);
-    // a longer stub keeps its outside part with a turning area
+    // a longer one keeps its outside part: a track just ends beside our earthworks (y 270), no turning area
     const long = setup([[1, 500, 330, 500, 258], [0, 300, 330, 700, 330]], ['service', 'track']);
     long.cls = 'track'; long.hit = { a: 60, b: 72, i: 40, j: 40 };
-    expect(planRoadRealignment(long).closed).toBeUndefined();
+    const ends = planRoadRealignment(long);
+    expect(ends.geometry.turnarounds).toBeUndefined();
+    expect(ends.closed!.length).toBeGreaterThan(12);
+    expect(ends.closed!.length).toBeLessThan(72 - 50);
   });
 
   it('does not mistake a sharp junction, unsplit T-junction or class-restricted continuation for a dead end', () => {
@@ -295,7 +344,7 @@ describe('bounded real road relocation', () => {
   });
 
   it('protects ribbon edges and turning aprons, while leaving old drainage on unchanged tails alone', () => {
-    const input = setup([[0, 500, 260, 1250, 260]]);
+    const input = setup([[0, 500, 260, 1250, 260]], ['unclassified']);
     input.hit = { a: 0, b: 607, i: 40, j: 100 };
     const valid = planRoadRealignment(input), turn = valid.geometry.turnarounds![0];
     const col = Math.floor(turn.x / input.terrain.cell), row = Math.floor((input.terrain.height - turn.y - 5) / input.terrain.cell);
@@ -381,7 +430,7 @@ describe('bounded real road relocation', () => {
     mouth.terrain = syntheticTerrain(260, 100, 5, (x) => 100 + Math.max(0, 10 - 2 * Math.abs(x - 605)));
     expect(planRoadRealignment(mouth).problems).toContain('new pavement intersects an unhandled road');
     // A turning disk on a steep slope touching a road 4 m above its centre.
-    const disk = setup([[0, 350, 260, 350, 350], [0, 355, 275, 355, 350]]);
+    const disk = setup([[0, 350, 260, 350, 350], [0, 355, 275, 355, 350]], ['unclassified']);
     disk.hit = { a: 0, b: 12, i: 25, j: 25 };
     disk.terrain = syntheticTerrain(260, 100, 5, (x) => 100 + 0.8 * (x - 350));
     expect(planRoadRealignment(disk).problems).toContain('new pavement intersects an unhandled road');

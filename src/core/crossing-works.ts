@@ -218,8 +218,12 @@ function besideObstacles(works: CrossingWorks, road: readonly CrossingPoint[], w
     if (len < 1e-6) continue;
     const tx = (b.x - a.x) / len, ty = (b.y - a.y) / len, x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
     for (const side of [0, 1] as const) {
-      const sign = side ? 1 : -1, reach = Math.max(slopedAt(road, j) ? toeAt(road, j, side, half, ctx.heightAt) : half,
-        slopedAt(road, j + 1) ? toeAt(road, j + 1, side, half, ctx.heightAt) : half);
+      // (and halfway, where a ramp leaving the ground is drawn already off it while its first point is still on it:
+      // render/crossing-surface.ts interpolates between the points)
+      const sign = side ? 1 : -1, { nx, ny } = normal(road, j), mid = { ...a, x, y, z: (a.z + b.z) / 2 };
+      const reach = Math.max(slopedAt(road, j) ? toeAt(road, j, side, half, ctx.heightAt) : half,
+        slopedAt(road, j + 1) ? toeAt(road, j + 1, side, half, ctx.heightAt) : half,
+        slopedAt(road, j) !== slopedAt(road, j + 1) ? toe(mid, nx, ny, sign, half, ctx.heightAt) : half);
       // (a slope under the drape tolerance's height is no earthwork: crossing-works' DRAPED)
       if (reach <= half + DRAPED * SLOPE) continue;
       const hits = ctx.beside ? ctx.beside(x, y, tx, ty, len / 2, sign, reach) : [];
