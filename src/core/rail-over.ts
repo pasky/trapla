@@ -2,6 +2,7 @@
 // under the rails our road must be, which way the railway runs where we cross it, and what the bridge costs.
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { RAIL_OVER, SPOZES } from './data/railway';
+import { RETAINING_RULES } from './data/remedies';
 import type { Terrain } from './terrain';
 import * as dm from './detmath';
 
@@ -43,10 +44,11 @@ export interface RailOverPrice {
   bridge: number; provisional: number; cost: number;
   tracks: 1 | 2; code: string;
 }
-/** What carrying the railway over our road costs: a bridge as long, along the railway, as our crown is wide across
- * it (`sine`: of the angle between the two lines), as wide as its tracks need (RAIL_OVER). */
-export function railOverPrice(crownWidth: number, sine: number, tracks: 1 | 2): RailOverPrice {
-  const span = crownWidth / Math.max(0.3, Math.abs(sine)), width = RAIL_OVER.deckWidth[tracks], area = span * width;
+/** What carrying the railway over our road costs: a bridge as long, along the railway, as the opening it spans across
+ * our road is wide (`opening`: between its abutments, our cutting's walls; `sine`: of the angle between the two lines),
+ * as wide as its tracks need (RAIL_OVER). */
+export function railOverPrice(opening: number, sine: number, tracks: 1 | 2): RailOverPrice {
+  const span = opening / Math.max(0.3, Math.abs(sine)), width = RAIL_OVER.deckWidth[tracks], area = span * width;
   const long = span > RAIL_OVER.longFrom, rate = long ? RAIL_OVER.longPerM2 : RAIL_OVER.perM2;
   const bridge = area * rate * (1 + SPOZES.markup.bridges), provisional = area * RAIL_OVER.provisionalPerM2;
   return { span, width, area, bridge, provisional, cost: bridge + provisional, tracks, code: `SPOŽES 2026 ${long ? 'H02' : 'H01'} + H07` };
@@ -72,7 +74,7 @@ export interface RailRun {
 }
 /** The railway crossings of a line from its raster samples (in chainage order; adjacent within `gap`). */
 export function railCrossingRuns(samples: RailRun['samples'], st: { n: number; s: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number> },
-  terrain: Terrain, cat: Pick<Category, 'roadClass' | 'crownWidth'>, choices: readonly RailChoice[], gap = 5): RailRun[] {
+  terrain: Terrain, cat: Pick<Category, 'roadClass' | 'crownWidth'>, choices: readonly RailChoice[], gap = 5, spacing = 2.5): RailRun[] {
   const runs: RailRun[] = [], below = railUnderDepth(cat), sorted = [...samples].sort((p, q) => p.at - q.at);
   let group: RailRun['samples'] = [];
   const close = () => {
@@ -81,10 +83,12 @@ export function railCrossingRuns(samples: RailRun['samples'], st: { n: number; s
     const ds = st.n > 1 ? st.s[1] - st.s[0] : 1, i = Math.max(0, Math.min(st.n - 1, Math.round(mid.at / ds)));
     const dir = railDirection(terrain, mid.x, mid.y) ?? { tx: -st.ty[i], ty: st.tx[i] };
     const sine = Math.abs(st.tx[i] * dir.ty - st.ty[i] * dir.tx);
-    const tracks: 1 | 2 = (x1 - x0 + terrain.cell) * Math.max(0.3, sine) > RAIL_OVER.doubleBand ? 2 : 1;
+    // (the band's width across the railway: the samples' extent and one sample's spacing)
+    const tracks: 1 | 2 = (x1 - x0 + spacing) * Math.max(0.3, sine) > RAIL_OVER.doubleBand ? 2 : 1;
     const eligible = below !== undefined && x1 - x0 <= RAIL_OVER.maxRun && sine >= RAIL_OVER.minSine;
     runs.push({ x0, x1, s: (x0 + x1) / 2, x: mid.x, y: mid.y, g: Math.max(...group.map(p => p.g)), tx: dir.tx, ty: dir.ty, sine, tracks,
-      mode: eligible ? 'auto' : 'bridge', ...(eligible ? { below, price: railOverPrice(cat.crownWidth, sine, tracks) } : {}), samples: group });
+      // (as the grade search weighs it: its abutments where our cutting's walls stand nearest our crown)
+      mode: eligible ? 'auto' : 'bridge', ...(eligible ? { below, price: railOverPrice(cat.crownWidth + 2 * RETAINING_RULES.minimumOffset, sine, tracks) } : {}), samples: group });
     group = [];
   };
   for (const p of sorted) {
@@ -117,12 +121,15 @@ export function railCarriedMask(runs: readonly RailRun[], grade: ArrayLike<numbe
   }
   return mask;
 }
-/** Our grade passes under the railway's new bridge (not our bridge over it): at the crossing at least `below` under its rails. */
+/** Our grade passes under the railway's new bridge (not our bridge over it): at least `below` under the rails at each of
+ * its samples (the one decision the bill, the card, the screens and the problems read). */
 export function passesUnder(r: RailRun, grade: ArrayLike<number>, st: { n: number; s: ArrayLike<number> }): boolean {
   if (r.mode === 'bridge' || r.below === undefined) return false;
-  const ds = st.n > 1 ? st.s[1] - st.s[0] : 1, f = Math.max(0, Math.min(st.n - 1 - 1e-9, r.s / ds)), j = Math.floor(f), t = f - j;
-  const z = grade[j] * (1 - t) + grade[Math.min(st.n - 1, j + 1)] * t;
-  return z <= r.g - r.below + 0.05;
+  const ds = st.n > 1 ? st.s[1] - st.s[0] : 1;
+  return r.samples.every(p => {
+    const f = Math.max(0, Math.min(st.n - 1 - 1e-9, p.at / ds)), j = Math.floor(f), t = f - j;
+    return grade[j] * (1 - t) + grade[Math.min(st.n - 1, j + 1)] * t <= p.g - r.below! + 1e-3;
+  });
 }
 
 /** How our road crosses a mapped railway, as built (Result.railCrossings). */
@@ -138,14 +145,18 @@ export interface RailCrossing {
   /** what this crossing bills (the railway's bridge where it carries the railway), CZK */
   cost: number;
 }
-/** Each railway crossing as the finished line builds it; `kindAt` our structure at a station (KIND: 1 bridge, 2 tunnel). */
-export function railCrossingsBuilt(runs: readonly RailRun[], grade: ArrayLike<number>, st: { n: number; s: ArrayLike<number> }, kindAt: (i: number) => number, need: number): RailCrossing[] {
+/** Each railway crossing as the finished line builds it; `kindAt` our structure at a station (KIND: 1 bridge, 2 tunnel);
+ * `opening` our cutting's width there (its walls': what the railway's bridge spans, billed and drawn). */
+export function railCrossingsBuilt(runs: readonly RailRun[], grade: ArrayLike<number>, st: { n: number; s: ArrayLike<number> }, kindAt: (i: number) => number, need: number,
+  opening: (i: number) => number): RailCrossing[] {
   const ds = st.n > 1 ? st.s[1] - st.s[0] : 1;
   return runs.map(r => {
     const i = Math.max(0, Math.min(st.n - 1, Math.round(r.s / ds))), f = Math.max(0, Math.min(st.n - 1 - 1e-9, r.s / ds)), j = Math.floor(f), t = f - j;
-    const above = grade[j] * (1 - t) + grade[Math.min(st.n - 1, j + 1)] * t - r.g, under = passesUnder(r, grade, st);
-    const how: RailCrossing['how'] = under ? 'railway' : kindAt(i) === 1 && above >= need - 1e-6 || kindAt(i) === 2 ? 'ours' : 'missed';
+    // (our tunnel under it needs no bridge of the railway's)
+    const above = grade[j] * (1 - t) + grade[Math.min(st.n - 1, j + 1)] * t - r.g, tunnel = kindAt(i) === 2, under = !tunnel && passesUnder(r, grade, st);
+    const how: RailCrossing['how'] = under ? 'railway' : kindAt(i) === 1 && above >= need - 1e-6 || tunnel ? 'ours' : 'missed';
+    const price = under ? railOverPrice(opening(i), r.sine, r.tracks) : r.price;
     return { s: r.s, i, x: r.x, y: r.y, tx: r.tx, ty: r.ty, g: r.g, above, how, auto: r.mode === 'auto', ...(r.chosen ? { chosen: r.chosen } : {}),
-      ...(r.below !== undefined ? { below: r.below } : {}), ...(r.price ? { price: r.price } : {}), tracks: r.tracks, sine: r.sine, cost: under ? r.price!.cost : 0 };
+      ...(r.below !== undefined ? { below: r.below } : {}), ...(price ? { price } : {}), tracks: r.tracks, sine: r.sine, cost: under ? price!.cost : 0 };
   });
 }

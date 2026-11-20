@@ -368,6 +368,7 @@ export function realignmentReason(problems: readonly string[]): string {
             : /water\/rail/.test(p) ? 'it would run into water or a railway'
               : /protected nature/.test(p) ? 'it would run through a protected nature area'
               : /turnaround/.test(p) ? 'there is no room for a turning area at its cut end'
+              : /building you keep/.test(p) ? 'taking its dead end up would cut off a building you keep'
                 : /terrain data/.test(p) ? 'it would leave the map'
                   : /no surviving branch/.test(p) ? 'none of it would remain outside our earthworks'
                     : /wider/.test(p) ? 'it joins a wider road right there'
@@ -496,7 +497,7 @@ export interface RailCrossingFacts {
 }
 /** The railway crossing's choices: [value, button label, what it means]. */
 export const RAIL_OPTIONS: readonly [string, string, string][] = [
-  ['', 'Auto', 'The cheaper of the two: our bridge over the railway, or the railway on a new bridge over our cutting.'],
+  ['', 'Auto', 'Auto weighs our bridge over the railway against the railway on a new bridge over our cutting.'],
   ['bridge', 'Our bridge over it', 'Our road crosses over the railway on a bridge; it needs enough height above the wires.'],
   ['overbridge', 'The railway over us', 'The railway is carried over our road on a new bridge; our road runs in a cutting under it.'],
 ];
@@ -505,7 +506,8 @@ export function railCrossingCard(c: RailCrossingFacts, line: OurLine = 'road'): 
   const state = c.how === 'railway' && p ? `Carried over ${ours} on a new ${m(p.span)} m bridge`
     : c.how === 'ours' ? (c.tunnel ? `${cap(ours)} passes under it in a tunnel` : `${cap(ours)} crosses over it on a bridge`)
     : 'Crossed on the level: not allowed';
-  const why: string[] = [c.auto ? 'Auto: the cheaper of our bridge over it and the railway on a new bridge over us.' : 'Your choice.'];
+  const why: string[] = [c.chosen ? 'Your choice.' : !p ? `Our bridge over it: it crosses ${ours} at too sharp an angle, or too many tracks lie side by side, for a bridge of its own.`
+    : c.how === 'railway' ? `Auto: cheaper here than lifting ${ours} over the railway.` : `Auto: cheaper here than lowering ${ours} under a new bridge of the railway.`];
   if (c.how === 'railway') why.push(`${cap(ours)} runs ${c.above < 0 ? `${(-c.above).toFixed(1)} m` : 'just'} under the rails here.`);
   else if (c.how === 'ours' && !c.tunnel) why.push(`${cap(ours)} is ${c.above.toFixed(1)} m above the rails here.`);
   const more: string[] = [];

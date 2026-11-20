@@ -31,8 +31,9 @@ export interface RoadRealignmentInput {
   crossings?: readonly CrossingResult[];
   /** Already accepted new connectors are live connections, not merely removed old source. */
   fixedConnections?: readonly PreservedRoadConnection[];
-  /** The buildings, and those our works take (1): a dead end is not taken up where it is the only road to one left. */
-  homes?: { index: BuildingIndex; gone: ArrayLike<number> };
+  /** The buildings, and those our works take (1): a dead end is not taken up where it is the only road to one left;
+   * `keep`: the player's (never bought out); `removed`: the old roads other accepted plans take up (no road to anyone). */
+  homes?: { index: BuildingIndex; gone: ArrayLike<number>; keep?: ReadonlySet<number>; removed?: readonly RoadSourceInterval[] };
   /** The pieces of `way` (its own chainages) that are dead ends serving nothing beyond our works (dead-ends.ts): one our
    * earthworks cut is taken up from where they cover it to its dead end, even where that end lies beyond them. */
   deadEnds?: readonly (readonly [number, number])[];
@@ -71,6 +72,8 @@ export interface RoadRealignmentPlan {
 type WayPoint = Point2 & { d: number };
 type SourceSpan = RoadSourceInterval & { lo: number; hi: number; cls: string };
 const STEP = 5, SETBACK = 3, MAX_POINTS = 1600;
+/** A dead end taken up would leave a building the player keeps without its road (problem code). */
+const CUTS_KEPT = 'taking it up would cut off a building you keep';
 /** PROVISIONAL longest junction-to-junction stretch that may be closed instead of rebuilt, m. */
 const MAX_CLOSURE = 400;
 /** PROVISIONAL height difference a new junction mouth or turning area may regrade, m. */
@@ -341,7 +344,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   const strands = (a: number, b: number): number[] => {
     const bld = input.homes?.index, gone = input.homes?.gone, out: number[] = [];
     if (!bld || !gone) return out;
-    const piece = dense(slice(raw, a, b)), cut = wayIntervals(a, b), found = new Set<number>();
+    const piece = dense(slice(raw, a, b)), cut = [...wayIntervals(a, b), ...input.homes?.removed ?? []], found = new Set<number>();
     for (const p of piece) bld.near(p.x, p.y, STUB_HOUSE + 5, j => {
       if (!gone[j] && bld.kind[j] !== BUILDING_KIND.minor && bld.facadeDistanceSq(j, p.x, p.y) < STUB_HOUSE * STUB_HOUSE) found.add(j);
     });
@@ -370,11 +373,12 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   /** the stretch [a, b] of the connected path removed, no new pavement */
   const removal = (a: number, b: number): RoadRealignmentPlan => {
     const lost = strands(a, b);
+    if (lost.some(j => input.homes?.keep?.has(j))) return failure(CUTS_KEPT);
     const intervals = wayIntervals(a, b);
     const gone = takenUp(a, b);
     return { geometry: { width: row.width, schematic: false, road: [] }, original: slice(raw, a, b).map(point), length: 0, cost: gone.cost, roadCode: '', problems: [],
       pavementCosts: [], apronCost: 0, sourceIntervals: mergeIntervals(intervals), turnaroundArea: 0, retainingArea: 0, retainingCost: 0,
-      closed: { length: b - a, detour: 0 }, ...(gone.cost > 0 ? { takenUp: gone } : {}), ...(lost.length ? { buyout: lost } : {}) };
+      closed: { length: b - a, detour: 0 }, takenUp: gone, ...(lost.length ? { buyout: lost } : {}) };
   };
   if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1]))) && !joined()) return removal(lo, hi);
   if (dead[0] && dead[1]) return failure('no surviving branch outside the acquired footprint');
@@ -453,6 +457,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       return reverse ? removal(turn.d, hi) : removal(lo, turn.d);
     }
     lost = reverse ? strands(turn.d, hi) : strands(lo, turn.d);
+    if (lost.some(j => input.homes?.keep?.has(j))) return failure(CUTS_KEPT);
     if (reverse) { removedHi = hi; hi = turn.d; } else { removedLo = lo; lo = turn.d; }
   }
   let initialReach = CROSSING_RULES.linkMinLength;

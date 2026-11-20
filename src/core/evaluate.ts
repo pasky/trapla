@@ -13,7 +13,7 @@ import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
-import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, railOverViolation, ROAD_CHECKS, ROAD_TOO_LOW, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
+import { categoryViolation, crossingViolation, mergeNearby, RAIL_ON_LEVEL, oobViolation, profileViolation, railOverViolation, ROAD_CHECKS, ROAD_TOO_LOW, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, cutCoverPitHalfWidth, cutCoverPitPerM, tunnelTubeFactor, decisionPrices, dividedRoad, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
@@ -47,7 +47,7 @@ import { natureCells, protectedRasterCells, railwayNear } from './protected-rast
 import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import { deadEndPieces, deadEndsNear } from './dead-ends';
-import { railCarriedMask, railCrossingRuns, railCrossingsBuilt, type RailChoice, type RailCrossing, type RailRun } from './rail-over';
+import { passesUnder, railCarriedMask, railCrossingRuns, railCrossingsBuilt, type RailChoice, type RailCrossing, type RailRun } from './rail-over';
 import { crossedLevel, mappedKind, wayLevels } from './mapped-structures';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
@@ -543,7 +543,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       && c.geometry?.diagnostics?.some(m => (c.type === 'overbridge' && (m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH) || m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG))
         || m === WORKS_COVER_RAILWAY || m === WORKS_COVER_HOUSE || m === WORKS_COVER_OURS));
     // …and where it paid the clearance penalty over a river, railway or stream instead of clearing it.
-    const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water'));
+    // (a railway Auto may pass under too: rail-over.ts)
+    const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water' || (v.clearance === 'either' && v.title === RAIL_ON_LEVEL)));
     // …and where a way could be led to no other crossing and nothing else was buildable there either: it
     // too is cleared (where our cutting is already deep enough for its bridge, that bridge's ramps could
     // not be built: our bridge over it).
@@ -663,7 +664,8 @@ function withPlanSpeeds(ctx: EvalContext, d: Design, r: Result): Result {
 }
 
 type MustBridge = { s: number; g: number; need: number; what: string; below?: number;
-  /** the player's choice to pass under it (a railway on its new bridge over us): never raised over it */ under?: true };
+  /** the player's choice to pass under it (a railway on its new bridge over us): never raised over it */ under?: true;
+  /** a mapped railway's crossing (rail-over.ts): whether our road passes under it is decided for all of it at once */ run?: RailRun };
 type CostClass = { ground: number; water: WaterCrossing[]; elevation: number; urban: number };
 type SideHits = ReturnType<ReturnType<typeof routeSetup>['sideHits']>;
 /** Stage 1 of evaluateRoute, before any road height is known: the stationed alignment (or the window of
@@ -808,10 +810,10 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   // A mapped railway's crossing (its adjacent raster samples, ≈ 2.5 m apart): our bridge over it, or (research/105) the
   // railway carried over our cutting on a new bridge of its own: the player's choice, else Auto's (the grade search
   // weighs that bridge's price against our own bridge, rail-over.ts). The first as before: a floor under our grade.
-  const railRuns = railCrossingRuns(railSamples, st, terrain, cat, d.railCrossings ?? [], STEP / 2);
+  const railRuns = railCrossingRuns(railSamples, st, terrain, cat, d.railCrossings ?? [], STEP / 2, STEP / 4);
   for (const run of railRuns) for (const p of run.samples) {
     const item: MustBridge = { s: p.at, g: p.g, need: STRUCTURE_RULES.railClearance, what: 'railway', ...(run.mode !== 'bridge' ? { below: run.below } : {}),
-      ...(run.mode === 'under' ? { under: true as const } : {}) };
+      ...(run.mode === 'under' ? { under: true as const } : {}), run };
     mustBridge.push(item);
     if (run.mode !== 'bridge') { p.item = item; continue; }
     if (blocks) railHits.push({ x: p.at, item });
@@ -1574,16 +1576,18 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         if (deficit <= 1e-6) return;
         // (a line that may pass under it instead, and is nearer to that: lowered the rest of the way)
         const under = c.below !== undefined ? z0[k] - (c.g - c.below) : Infinity;
+        // (a railway Auto may pass under: its run's slots carry its either-or clearance, blocks)
+        const slots = runSlots.get(c), either = !!c.run && c.below !== undefined && !c.under;
         if (under < deficit || c.under) {
           short = Math.max(short, under);
           const i0 = Math.min(n - 2, Math.floor(c.s / ds));
-          for (const i of [i0, i0 + 1]) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], c.g - c.below! - ground[i] - under - 0.5);
+          for (const i of c.run && slots ? slots : [i0, i0 + 1]) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], c.g - c.below! - ground[i] - under - 0.5);
           return;
         }
         short = Math.max(short, deficit);
-        const slots = runSlots.get(c);
-        if (slots) { for (const j of slots) minH[j] = Math.max(minH[j], c.g + c.need - ground[j] + deficit + 0.5); return; }
-        const target = c.what === 'watercourse' ? waterAbove : minH;
+        const raise = (target: Float64Array, j: number) => { target[j] = Math.max(Number.isNaN(target[j]) ? -Infinity : target[j], c.g + c.need - ground[j] + deficit + 0.5); };
+        if (slots) { for (const j of slots) raise(either ? waterAbove : minH, j); return; }
+        const target = c.what === 'watercourse' || either ? waterAbove : minH;
         const i0 = Math.min(n - 2, Math.floor(c.s / ds));
         if (blocks) clearanceS[i0] = clearanceS[i0 + 1] = c.s;
         for (const i of [i0, i0 + 1]) target[i] = Math.max(Number.isNaN(target[i]) ? -Infinity : target[i], c.g + c.need - ground[i] + deficit + 0.5);
@@ -2720,7 +2724,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
-    ...(bld ? { homes: { index: bld, gone } } : {}), ...(quantities.retention.deadEnds ? { deadEnds: quantities.retention.deadEnds } : {}),
+    ...(bld ? { homes: { index: bld, gone, keep: keptIds } } : {}), ...(quantities.retention.deadEnds ? { deadEnds: quantities.retention.deadEnds } : {}),
     motorway: !!cat.motorwayByLaw, cutCover,
     ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}), ...(retiredAt ? { railRetired: retiredAt } : {}), ...(quantities.retention.railCarried ? { railCarried: quantities.retention.railCarried } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
@@ -2769,7 +2773,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   let bought = false;
   for (const c of footprintCheck.conflicts) {
     // a dead end taken up that was the only road to buildings our earthworks leave: bought out (road-realignment.ts)
-    for (const j of c.buyout ?? []) if (bld && !gone[j]) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'access', strip: false }); bought = true; }
+    for (const j of c.buyout ?? []) if (bld && !gone[j] && !keptIds.has(j)) { gone[j] = 1; buildingCost[c.i] += bld.cost[j]; demolished.push({ j, i: c.i, cost: bld.cost[j], in: 'access', strip: false }); bought = true; }
     if (c.action === 'retaining-wall' || c.action === 'channel-relocation') continue;
     if (c.feature === 'road') crossingStructure[c.i] += c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0) - (c.takenUp?.cost ?? 0);
     else if (c.action === 'culvert') culverts[c.i] += c.cost;
@@ -2779,7 +2783,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
   if (bought) demolished.sort((p, q) => p.i - q.i);
   // the mapped railways we cross: one carried over us on its new bridge is billed here (rail-over.ts; SPOŽES rows with
   // their own mark-up: no construction surcharge)
-  const railCrossings = setup.railRuns.length ? railCrossingsBuilt(setup.railRuns, grade, st, i => kind[i], STRUCTURE_RULES.railClearance) : [];
+  const railCrossings = setup.railRuns.length ? railCrossingsBuilt(setup.railRuns, grade, st, i => kind[i], STRUCTURE_RULES.railClearance, i => Math.max(b, sec.dayL[i] + sec.dayR[i])) : [];
   for (const c of railCrossings) crossingLump[c.i] += c.cost;
   lap('footprint');
   return { crossingLump, crossingStructure, crossingsPaid, joinedRight, crossings, crossingIssues, footprintCheck,
@@ -2948,13 +2952,16 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       if (c.what === 'watercourse') return; // sized opening / actual structure checked above
       const ic = Math.min(n - 1, Math.round(c.s / ds));
       const above = zc[k] - c.g;
-      // the railway over us, as the player chose, needs our road under it (rail-over.ts)
+      // a railway: under it at all its samples or none (rail-over.ts passesUnder); the railway over us, as the player
+      // chose, needs our road under it
+      const under = c.run && c.below !== undefined && (kind[ic] === KIND.tunnel || passesUnder(c.run, grade, st));
       if (c.under && c.below !== undefined) {
-        if (above > -c.below + 1e-6 && kind[ic] !== KIND.tunnel && c.s - (last.get('rail-over') ?? -Infinity) >= 50) { last.set('rail-over', c.s); violations.push(railOverViolation(c.s, above, c.below)); }
+        if (!under && c.s - (last.get('rail-over') ?? -Infinity) >= 50) { last.set('rail-over', c.s); violations.push(railOverViolation(c.s, above, c.below)); }
         return;
       }
+      if (under) return;
       if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6) return;
-      if (c.below !== undefined && above <= -c.below + 1e-6) return;
+      if (!c.run && c.below !== undefined && above <= -c.below + 1e-6) return;
       if (c.s - (last.get(c.what) ?? -Infinity) < 50) return;
       last.set(c.what, c.s);
       violations.push(crossingViolation(c.s, c.what, above, c.need, c.below));

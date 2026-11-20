@@ -630,9 +630,9 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     if (Math.abs(b - a) > 0.5) result.acceptedReplacements.push({ transportData: design.transportData!, sourceId, s0: Math.min(a, b), s1: Math.max(a, b) });
   }
   // A dead end Auto ends at our works (road-realignment.ts takenUp) gives up its piece beyond its turning area: gone
-  // from the map, as one the player cuts back (a way the player cut back from its start is measured anew: left drawn)
+  // from the map, as one the player cuts back (on a way the player cut back from its start, measured from its new start)
   if (roads && ctx.sourceWays) {
-    const sources = new Map([...ctx.sourceWays].map(([id, way]) => [way, id])), heads = new Set(takenUpTrims(roads, design, ctx.sourceWays).filter(t => t.d0 === 0).map(t => t.way));
+    const sources = new Map([...ctx.sourceWays].map(([id, way]) => [way, id])), heads = new Map(takenUpTrims(roads, design, ctx.sourceWays).filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
     for (const legacy of new Set(legacyOf.values())) for (const f of legacy.footprintConflicts) {
       // (its pieces one interval per way)
       const byWay = new Map<number, [number, number]>();
@@ -641,8 +641,8 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
         byWay.set(iv.way, was ? [Math.min(was[0], iv.a), Math.max(was[1], iv.b)] : [iv.a, iv.b]);
       }
       for (const [way, [a, b]] of byWay) {
-        const sourceId = way < roads.wayCount && !heads.has(way) ? sources.get(way) : undefined;
-        if (sourceId && b - a > 0.5) result.acceptedReplacements.push({ transportData: design.transportData!, sourceId, s0: a, s1: b });
+        const sourceId = way < roads.wayCount ? sources.get(way) : undefined, by = heads.get(way) ?? 0;
+        if (sourceId && b - a > 0.5) result.acceptedReplacements.push({ transportData: design.transportData!, sourceId, s0: a + by, s1: b + by });
       }
     }
   }

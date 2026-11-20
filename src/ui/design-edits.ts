@@ -109,7 +109,11 @@ export function createDesignEdits(app: DesignEditContext) {
     }),
     // how our road crosses a mapped railway: the choice holds for the crossing nearest where it was made (rail-over.ts)
     railCrossing: (x, y, choice) => app.store.update((d) => {
-      const rest = (d.railCrossings ?? []).filter((c) => Math.hypot(c.x - x, c.y - y) > RAIL_CHOICE_REACH);
+      // (the choices bound to this crossing: those it is the nearest crossing to, as the engine binds them)
+      const near = (p: { x: number; y: number }) => (app.last?.railCrossings ?? []).reduce<{ x: number; y: number } | undefined>((m, c) =>
+        Math.hypot(c.x - p.x, c.y - p.y) <= RAIL_CHOICE_REACH && (!m || Math.hypot(c.x - p.x, c.y - p.y) < Math.hypot(m.x - p.x, m.y - p.y)) ? c : m, undefined);
+      const self = near({ x, y });
+      const rest = (d.railCrossings ?? []).filter((c) => { const m = near(c); return self ? m !== self : Math.hypot(c.x - x, c.y - y) > RAIL_CHOICE_REACH; });
       if (choice) rest.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, choice });
       if (rest.length) d.railCrossings = rest; else delete d.railCrossings;
     }),

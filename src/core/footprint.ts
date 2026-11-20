@@ -78,8 +78,9 @@ export interface FootprintRoute {
   motorway?: boolean;
   /** 1 = a tunnel cell built cut and cover, in an open pit (structures.ts cutCoverMask) */
   cutCover?: ArrayLike<number>;
-  /** The buildings and those our works take (1): a dead end that is the only road to one left is not taken up. */
-  homes?: { index: BuildingIndex; gone: ArrayLike<number> };
+  /** The buildings and those our works take (1), the player's kept ones: a dead end that is the only road to one left is
+   * not taken up (bought out, never one kept). */
+  homes?: { index: BuildingIndex; gone: ArrayLike<number>; keep?: ReadonlySet<number> };
   /** Per way: the dead ends' pieces that serve nothing beyond our works (dead-ends.ts, as the retaining screen read them). */
   deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
 }
@@ -388,6 +389,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       ...(way !== undefined && roads ? { roadId: way, cls: roads.wayClass(way) } : {}),
       ...(junction.continuation ? { continuation: true } : {}), detail: '', source: junction.source });
   }
+  // (the old roads accepted plans take up: no road to a building any more, for the plans after them)
+  const removedPieces: { way: number; a: number; b: number }[] = [];
+  const homes = () => r.homes && { ...r.homes, removed: removedPieces };
   for (const { way, cls, hits } of roadHits.values()) {
     const merged = union(hits);
     for (let index = 0; index < merged.length; index++) {
@@ -424,14 +428,14 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       continue;
     }
     if (rejoinsJunction(way, h.a, h.b)) continue;
-    const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections, homes: r.homes,
+    const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections, homes: homes(),
       ...(r.deadEnds?.has(way) ? { deadEnds: r.deadEnds.get(way) } : {}),
       bounds: [index ? (merged[index - 1].b + h.a) / 2 : -Infinity, index + 1 < merged.length ? (h.b + merged[index + 1].a) / 2 : Infinity] });
     base.length = planned.length; base.cost = planned.cost; base.roadCode = planned.roadCode;
     base.geometry = planned.geometry; base.geometry.turnaroundRadius = planned.turnaroundRadius;
     base.original = planned.original ?? original; base.lumpCost = planned.lumpCost;
     if (planned.takenUp) base.takenUp = planned.takenUp;
-    if (planned.buyout) base.buyout = planned.buyout;
+    if (planned.buyout && !planned.problems.length) base.buyout = planned.buyout;
     if (planned.closed) base.closed = planned.closed;
     const invalid = planned.problems.length > 0;
     base.detail = invalid
@@ -460,7 +464,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
           for (const [a, b] of subtract([other.a, other.b], prior)) {
             if (b - a < 0.1) continue;
             const hit = { ...other, a, b };
-            const plan = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way: otherWay, cls: group.cls, hit, homes: r.homes,
+            const plan = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way: otherWay, cls: group.cls, hit, homes: homes(),
               ...(r.deadEnds?.has(otherWay) ? { deadEnds: r.deadEnds.get(otherWay) } : {}),
               covered: roadCovered, crossings, fixedConnections,
               bounds: [k ? (otherHits[k - 1].b + a) / 2 : -Infinity, k + 1 < otherHits.length ? (b + otherHits[k + 1].a) / 2 : Infinity] });
@@ -473,6 +477,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         }
       }
       for (const entry of accepted) {
+        removedPieces.push(...entry.plan.takenUp?.intervals ?? []);
         entry.conflict.action = 'relocation';
         if (roadLedger.accept(entry.conflict, entry.plan) === entry.conflict) conflicts.push(entry.conflict);
       }

@@ -168,6 +168,8 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   out.crossings = [...base.crossings.filter(c => outsideS(c.s)), ...list.flatMap(p => p.piece.crossings.map(c => ({ ...c, s: mapS(p, c.s), i: toI(p, c.i),
     ...(c.targetS !== undefined ? { targetS: mapS(p, c.targetS) } : {}) })))].sort((a, b) => a.s - b.s);
   out.waterCrossings = [...base.waterCrossings.filter(c => outsideS(c.s)), ...list.flatMap(p => p.piece.waterCrossings.map(c => ({ ...c, s: mapS(p, c.s), i: toI(p, c.i) })))];
+  const rails = [...(base.railCrossings ?? []).filter(c => outsideS(c.s)), ...list.flatMap(p => (p.piece.railCrossings ?? []).map(c => ({ ...c, s: mapS(p, c.s), i: toI(p, c.i) })))];
+  if (rails.length) out.railCrossings = rails.sort((a, b) => a.s - b.s); else delete out.railCrossings;
   out.footprintConflicts = [...base.footprintConflicts.filter(c => outsideI(c.i)), ...list.flatMap(p => p.piece.footprintConflicts.map(c => ({ ...c, i: toI(p, c.i),
     s0: mapS(p, c.s0), s1: mapS(p, c.s1), ...(c.allocations ? { allocations: c.allocations.map(a => ({ ...a, i: toI(p, a.i) })) } : {}) })))];
   out.retainingWalls = [...base.retainingWalls.filter(w => outsideI(w.i)), ...list.flatMap(p => p.piece.retainingWalls.map(w => ({ ...w, i: toI(p, w.i), s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
@@ -284,6 +286,7 @@ export function sliceResult(r: Result, i0: number, i1: number): Result {
     crossings: r.crossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s), ...(c.targetS !== undefined ? { targetS: sh(c.targetS) } : {}) })),
     cones: r.cones?.filter(c => inI(c.i) && inI(c.earthCell)).map(c => ({ ...c, i: at(c.i), earthCell: at(c.earthCell), s: sh(c.s) })),
     waterCrossings: r.waterCrossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s) })),
+    ...(r.railCrossings ? { railCrossings: r.railCrossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s) })) } : {}),
     footprintConflicts: r.footprintConflicts.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s0: sh(c.s0), s1: sh(c.s1),
       ...(c.allocations ? { allocations: c.allocations.filter(a => inI(a.i)).map(a => ({ ...a, i: at(a.i) })) } : {}) })),
     retainingWalls: r.retainingWalls.filter(w => inI(w.i)).map(w => ({ ...w, i: at(w.i), s0: sh(w.s0), s1: sh(w.s1) })),

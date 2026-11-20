@@ -759,10 +759,11 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   }
   const kept = <T>(list: T[], was: T[] | undefined) => list.length || was ? { list } : null;
   const so2 = kept(spineSo, spine.structureOverrides), wo2 = kept(spineWo, spine.wallOverrides);
-  const { structureOverrides: _so, wallOverrides: _wo, ...rest } = spine;
+  // (how the corridor crosses a railway: one choice for both directions, made on either, rail-over.ts)
+  const { structureOverrides: _so, wallOverrides: _wo, railCrossings: _rc, ...rest } = spine;
   const next = replaceRawCorridorFromDesign(project, corridor.id, { ...rest, gradePins: spinePins.sort((p, q) => p.s - q.s),
     ...(so2 ? { structureOverrides: so2.list } : {}), ...(wo2 ? { wallOverrides: wo2.list } : {}),
-    crossingOverrides: d.crossingOverrides, buildingOverrides: d.buildingOverrides });
+    crossingOverrides: d.crossingOverrides, buildingOverrides: d.buildingOverrides, ...(d.railCrossings?.length ? { railCrossings: d.railCrossings } : {}) });
   const c = next.corridors.find(x => x.id === corridor.id)!;
   if (c.mode !== 'paired') throw new Error('Corridor mode changed');
   if (stretches.length) c.stretches = stretches; else delete c.stretches;

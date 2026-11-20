@@ -55,7 +55,7 @@ try {
   await idle(); await game.still();
   let text = await card();
   console.log('card', text);
-  assert.match(text, /Carried over our road on a new \d+ m bridge/); assert.match(text, /Auto: the cheaper/);
+  assert.match(text, /Carried over our road on a new \d+ m bridge/); assert.match(text, /Auto: cheaper here than lifting our road over the railway/);
   assert.match(text, /The railway over us/); assert.match(text, /Our bridge over it/);
   await shot('742-d11-railway-over-us');
   // the deck is what a click there selects

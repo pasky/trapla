@@ -674,7 +674,8 @@ export class ProfilePanel {
       }
       g.save(); g.strokeStyle = c.how === 'missed' ? '#d33' : '#3b3b3b'; g.lineWidth = 1.5;
       if (c.how === 'railway' && c.price) {
-        const half = c.price.span * Math.max(0.3, c.sine) / 2, x0 = this.X(c.s - half), x1 = this.X(c.s + half);
+        // (its deck along our road: its width across the railway, over the sine of the angle between them)
+        const half = c.price.width / Math.max(0.3, c.sine) / 2, x0 = this.X(c.s - half), x1 = this.X(c.s + half);
         g.fillStyle = '#8f8f8f'; g.fillRect(x0, py + 1, Math.max(2, x1 - x0), Math.max(2, this.Y(c.g - 1.8) - py - 1));
       }
       g.beginPath(); g.moveTo(px - 6, py - 1); g.lineTo(px + 6, py - 1); g.moveTo(px - 6, py + 1); g.lineTo(px + 6, py + 1);

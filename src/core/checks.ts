@@ -706,6 +706,8 @@ export function crossingViolation(s: number, what: string, above: number, need: 
   };
 }
 
+/** A railway our road crosses neither over nor under (crossingViolation with a way under it): its title. */
+export const RAIL_ON_LEVEL = 'The railway cannot be crossed on the level';
 /** The player chose the railway carried over our road on a new bridge (rail-over.ts), and our road is not low enough
  * under it for that bridge. */
 export function railOverViolation(s: number, above: number, below: number): Violation {

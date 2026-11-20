@@ -136,6 +136,8 @@ describe('bounded real road relocation', () => {
     const plan = planRoadRealignment({ ...input, homes: { index: house, gone: new Uint8Array(1) } });
     expect(plan.problems).toEqual([]);
     expect(plan.buyout).toEqual([0]);
+    // (one the player keeps is not bought: it cannot be taken up)
+    expect(planRoadRealignment({ ...input, homes: { index: house, gone: new Uint8Array(1), keep: new Set([0]) } }).problems.join(';')).toContain('building you keep');
     // (one our works take anyway, or one another road reaches, is no reason)
     expect(planRoadRealignment({ ...input, homes: { index: house, gone: Uint8Array.of(1) } }).buyout).toBeUndefined();
     expect(planRoadRealignment({ ...input, homes: { index: new BuildingIndex([[1125, 290, 5]]), gone: new Uint8Array(1) } }).buyout).toBeUndefined();

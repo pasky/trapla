@@ -1476,7 +1476,8 @@ function searchProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProf
             if (minH && h < minH[i] + CLEARANCE_MARGIN) { c += pen; ci += pen; }
             if (maxH && h > maxH[i] - CLEARANCE_MARGIN) { c += pen; ci += pen; }
             if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) { c += pen; ci += pen; }
-            else if (opt.eitherH?.belowCost?.[i] && h <= opt.eitherH.below[i] - CLEARANCE_MARGIN) { c += opt.eitherH.belowCost[i]; ci += opt.eitherH.belowCost[i]; }
+            // (an open line under it: not one in a tunnel, which passes under it as it is)
+            else if (opt.eitherH?.belowCost?.[i] && h <= opt.eitherH.below[i] - CLEARANCE_MARGIN) c += opt.eitherH.belowCost[i];
           }
           if (steepNorm === steepNorm) {
             const ex = Math.abs(slope + cSlope) / steepNorm - 1;
