@@ -81,7 +81,7 @@ describe('pinned Auto DP heights', () => {
     const r = autoProfile(ss, gg, { ...opt, pins }), p = buildProfile(r.vpis, opt.minCrest, opt.minSag);
     expect(r.pinViolations).toEqual([]);
     for (const pin of pins) expect(Math.abs(elevationAt(p, pin.s) - pin.z)).toBeLessThanOrEqual(GRADE_PIN_TOLERANCE + 1e-9);
-    expect(r.steep!.every(w => w.left.pin.reason === 'gradient-envelope')).toBe(true);
+    expect(r.steep!.length).toBeGreaterThan(0);
     const spans = r.honoured!.spans, within = (a: number, b: number) => spans.some(([x, y]) => a >= x - 260 && b <= y + 260);
     expect(spans[0][0]).toBeGreaterThan(500);
     expect(spans[spans.length - 1][1]).toBeLessThan(5500);
@@ -216,9 +216,9 @@ describe('a pin against a crossing', () => {
     expect(pinned.honoured!.pins).toEqual(pins);
     for (let x = 0; x <= 2000; x += 10) if (x < 900 - 760 || x > 900 + 760) expect(elevationAt(p, x)).toBeCloseTo(elevationAt(ownP, x), 9);
     // the crossing it misses, put down to it
-    const blame = pinClearanceBlame(s, g, { ...opt, ...ask, pins }, pinned.vpis, () => own.vpis);
+    const blame = pinClearanceBlame(s, g, { ...opt, ...ask, pins }, pinned.vpis, () => own.vpis, () => own.vpis);
     expect([...blame.keys()]).toEqual([0]);
-    expect(blame.get(0)).toBeGreaterThanOrEqual(800);
+    expect(blame.get(0)![0]).toBeGreaterThanOrEqual(800);
     // a suggestion's check: within the norm, left out
     expect(autoProfile(s, g, { ...opt, minH: floor, pinStrict: true, pins }).pinViolations![0].pin.reason).toBe('clearance');
   });
@@ -229,5 +229,38 @@ describe('a pin against a crossing', () => {
     expect(r.pinViolations!.map(v => v.pin.index)).toEqual([1]);
     const lone = autoProfile(s, g, { ...opt, ...ask, pins: [{ s: 3000, z: 0 }] });
     expect(lone.vpis).toEqual(autoProfile(s, g, { ...opt, ...ask }).vpis);
+  });
+  // review: each crossing a pin makes our line miss is put down to it, and to the pin in the way, not the nearest
+  it('puts every crossing it misses down to the pin in the way', () => {
+    const two = Float64Array.from(s, (x) => Math.abs(x - 900) <= 20 || Math.abs(x - 1100) <= 20 ? 6 : NaN);
+    const o = { ...opt, minH: two, clearancePenaltyAt: at(1e11) }, own = autoProfile(s, g, o).vpis;
+    const pins = [{ s: 1000, z: 0 }], line = autoProfile(s, g, { ...o, pins }).vpis;
+    expect(pinClearanceBlame(s, g, { ...o, pins }, line, () => own, () => own).get(0)!.length).toBe(2);
+    // the pin at km 1.00 holds the line down through the crossing of km 0.80–1.20; the one at km 0.70 is met by a line
+    // clearing it (its misses at km 0.80 lie nearer the km 0.70 pin)
+    const both = [{ s: 700, z: 3 }, { s: 1000, z: 0 }], held = autoProfile(s, g, { ...opt, ...ask, pins: both }).vpis;
+    const ownAsk = autoProfile(s, g, { ...opt, ...ask }).vpis;
+    const blame = pinClearanceBlame(s, g, { ...opt, ...ask, pins: both }, held, () => ownAsk, k => autoProfile(s, g, { ...opt, ...ask, pins: both.filter((_, j) => j !== k) }).vpis);
+    expect([...blame.keys()]).toEqual([1]);
+  });
+});
+
+// review: pins out of reach on their own stretches are honoured each on its own, and the cap is STEEP_MAX itself
+describe('pins honoured each on its own', () => {
+  const ss = Float64Array.from({ length: 601 }, (_, i) => i * 10), gg = new Float64Array(ss.length);
+  const o: AutoProfileOptions = { ...opt, minCrest: 1500, minSag: 1500 };
+  const height = (r: ReturnType<typeof autoProfile>, x: number) => elevationAt(buildProfile(r.vpis, o.minCrest, o.minSag), x);
+  it('meets a pin out of the norm\'s reach beside one out of any reach far from it', () => {
+    const near = autoProfile(ss, gg, { ...o, pins: [{ s: 100, z: 10 }] });
+    expect(near.pinViolations).toEqual([]);
+    const r = autoProfile(ss, gg, { ...o, pins: [{ s: 100, z: 10 }, { s: 5900, z: 99 }] });
+    expect(Math.abs(height(r, 100) - 10)).toBeLessThanOrEqual(GRADE_PIN_TOLERANCE + 1e-9);
+    expect(r.pinViolations!.map(v => [v.pin.index, v.pin.reason])).toEqual([[1, 'gradient-envelope']]);
+    expect(r.lineOk).toBe(true);
+  });
+  it('honours a pin that needs a grade just under STEEP_MAX times the norm', () => {
+    const r = autoProfile(ss, gg, { ...o, pins: [{ s: 100, z: 14 }] });
+    expect(r.pinViolations).toEqual([]);
+    expect(Math.abs(height(r, 100) - 14)).toBeLessThanOrEqual(GRADE_PIN_TOLERANCE + 1e-9);
   });
 });

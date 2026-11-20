@@ -2698,25 +2698,29 @@ bridge being too low or something, but honor my pins if set manually."
 
 **Now (`autoprofile.ts` `honour`, `spliced`):** a pin of the player's that the search cannot meet within the norm (out of
 the slopes' reach, or no line found: reason `gradient-envelope` / `search`), or meets only by missing a crossing Auto's
-own line clears (a stream, a river, a railway, a protected area, a structure of the player's; the old blame: each new
-miss put down to the pin nearest it), is met. Auto's own line without those pins is kept everywhere but a span either
+own line clears (a stream, a river, a railway, a protected area, a structure of the player's; each new miss put down
+to the pin in the way: of the three nearest it, the first without which Auto's line clears it, else the nearest), is met. Auto's own line without those pins is kept everywhere but a span either
 side of each, 500 m first, then 1 and 2 km where no line is found there: the same knots, its heights and grades fixed at
 the knots just outside, the span re-solved by the same DP at its blocks' material values. Within the span the line may
 be steeper than the norm where the way from Auto's line at the span's ends to the pin needs it (`steep`: the grade
-straight there or the norm's, plus a quarter of the norm's for the curves at the ends), the search paying
+straight there or the norm's, plus a quarter of the norm's for the curves at the ends, at most `STEEP_MAX` × the norm's),
+the search paying
 `STEEP_PENALTY` (10 M CZK per metre per x(1 + x), x the excess over the norm's grade: a search parameter, never billed)
 so the line is no steeper than it must be and spreads the climb. A pin out of reach even so (beyond `STEEP_MAX` = 2.5 ×
 the norm's grade, game rule PROVISIONAL: no norm says how steep a road is built against a pin; the factor the search's
-own last resort uses) is left out as before and said at the pin ("Pinned height out of reach: too steep … Even 2.5 times
-as steep as allowed, no road reaches it, so Auto leaves it out"). The retries and lifts of the evaluation re-solve on
-their own line with the same spans (`AutoProfileOptions.honoured`, `steep`).
+own last resort uses) is left out as before and said at the pin ("Pinned height out of reach: too steep … Auto finds no
+road to it even 2.5 times as steep as allowed, so it leaves it out"). Pins more than 4 km apart (twice the widest span)
+are honoured each on its own: one out of any reach leaves the others honoured. The retries and lifts of the evaluation
+re-solve on their own line with the same spans (`AutoProfileOptions.honoured`, `steep`, refreshed after each accepted
+retry).
 
 **What it costs is said where it is** (`grade-pins.ts` `honouredPinFixes`, `applyPinFixes`): the too-steep stretches next
 to the pin ("Too steep: 19.7 ‰ climb") and the problems at a crossing the pin's line misses (`pinClearanceBlame`, within
 60 m of it: "Road too low over the railway", "Our earthworks cover a railway", "Our cutting runs through a stream", "Our
 earthworks block a stream", …) get the pin as their fix: "Set the pin at km 0.29 to 260.7 m, or unpin", the height the
 old strict rule finds (`pinStrict`: the suggestion's check, unchanged: a height whose first solve within the norm misses
-no crossing), buttons "Set the pin to 260.7 m" and "Unpin" (`ViolationTarget.pin`), the detail "Your height pin (256.0 m
+no crossing, tried with the player's other pins as they are; none where that is the height the pin has: "Unpin the
+height at km …"), buttons "Set the pin to 260.7 m" and "Unpin" (`ViolationTarget.pin`), the detail "Your height pin (256.0 m
 at km 0.29) holds our road here. At 260.7 m it clears this." / "… is out of reach within the limit: Auto builds our road
 through it as steep as it must be." The pin's card lists them ("Auto passes within 0.5 m of it, at a cost:"). A bridge's
 span problem at a crossing the pin holds too low is dropped beside the crossing's own ("Road too low over the railway"),
@@ -2741,7 +2745,11 @@ low); nothing beyond 10 km changes in any suite. Frozen bills and the twists' re
 met them within the pins' ±0.5 m and then climbed its 12.5 ‰ limit 1 m lower to km 8.5, and the lifts at km 9.8 and the
 boundary at km 11.21 moved 4 m at km 12 (Královec). Splicing keeps the knots outside exactly. And a lift failed anywhere
 on a line with a steep stretch, as its grade envelope met that stretch between two points it cannot move
-(`profile-remedies.ts`: such a pair is the line as it was, skipped).
+(`profile-remedies.ts`: such a pair is the line as it was, skipped; only on a pinned line, so an unpinned one's lifts are as
+before). A review's repros are tests (tests/grade-pins.test.ts): a pin out of any reach 5.8 km from one out of the
+norm's reach leaves that one honoured; a pin needing just under 2.5 × the norm is honoured (the curves' slack was counted
+against the cap); one pin under two crossings is blamed for both; of two pins, the one in the way is blamed, not the
+nearer. A span's ends keep the line's own heights (on the solve's other grid they were rounded by up to 8 cm).
 
 **Pins Auto adds:** none. Twists and curveballs set no pins; a motorway direction's pins where the two run side by side
 are the player's (checked, reported); the span's ends are not pins. A suggestion's check (`pinStrict`) keeps the old rule.

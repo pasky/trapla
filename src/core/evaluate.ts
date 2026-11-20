@@ -1453,17 +1453,20 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
             ...(o.pinBounds.eitherH ? { eitherH: { above: cut(o.pinBounds.eitherH.above)!, below: cut(o.pinBounds.eitherH.below)! } } : {}) } } : {}),
           pins: inside.map(k => ({ ...o.pins![k], s: o.pins![k].s - sa })),
           ...(o.steep ? { steep: o.steep.map(w => ({ ...w, s0: w.s0 - sa, s1: w.s1 - sa, pin: { ...w.pin, s: w.pin.s - sa } })) } : {}),
-          ...(o.honoured ? { honoured: { pins: o.honoured.pins.map(p => ({ ...p, s: p.s - sa })), spans: o.honoured.spans.map(([a, b]) => [a - sa, b - sa] as const) } } : {}),
+          ...(o.honoured ? { honoured: { pins: o.honoured.pins.map(p => ({ ...p, s: p.s - sa })), spans: o.honoured.spans.map(([a, b]) => [a - sa, b - sa] as const),
+            left: o.honoured.left.map(p => ({ ...p, s: p.s - sa })) } } : {}),
           ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
         // (each pin as the route has it: its index among all pins, its stations on the route's chainage)
         const routePin = (v: GradePinViolation): GradePinViolation => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa,
           pin: { ...v.pin, index: inside[v.pin.index], requested: { ...o.pins![inside[v.pin.index]] },
             suggested: v.pin.suggested && { ...v.pin.suggested, s: v.pin.suggested.s + sa },
             ...(v.pin.clearanceAt !== undefined ? { clearanceAt: v.pin.clearanceAt + sa } : {}) } });
+        // (a pin of this stretch by its own heights: the route's pin it was made from)
+        const routeOf = (p: GradePin): GradePin => ({ ...o.pins![inside.find(k => o.pins![k].s - sa === p.s && o.pins![k].z === p.z)!] });
         return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(routePin),
-          ...(r.steep ? { steep: r.steep.map(w => ({ ...w, s0: w.s0 + sa, s1: w.s1 + sa, pin: { ...o.pins![inside[w.left.pin.index]] }, left: routePin(w.left) })) } : {}),
-          ...(r.honoured ? { honoured: { pins: r.honoured.pins.map(p => ({ ...o.pins![inside.find(k => o.pins![k].s - sa === p.s && o.pins![k].z === p.z)!] })),
-            spans: r.honoured.spans.map(([a, b]) => [a + sa, b + sa] as const) } } : {}) };
+          ...(r.steep ? { steep: r.steep.map(w => ({ ...w, s0: w.s0 + sa, s1: w.s1 + sa, pin: routeOf(w.pin) })) } : {}),
+          ...(r.honoured ? { honoured: { pins: r.honoured.pins.map(routeOf), spans: r.honoured.spans.map(([a, b]) => [a + sa, b + sa] as const),
+            left: r.honoured.left.map(routeOf) } } : {}) };
       };
       constrainedSolve = solveAuto;
       const outside = Array.from(st.s).filter(x => x < sa - 1e-6 || x > sb + 1e-6), fixedZ = elevations(fixedProf, outside);
@@ -1532,6 +1535,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       // (nor a line that meets the pins by one that leaves one out)
       if (d.gradePins?.length && (!usableLine(retry) || (retry.pinViolations?.length ?? 0) > (ap.pinViolations?.length ?? 0))) break;
       ap = retry;
+      // (the pins it honours as it does)
+      if (d.gradePins?.length) { (apOpt as AutoProfileOptions).honoured = ap.honoured; (apOpt as AutoProfileOptions).steep = ap.steep; }
     }
     vpis = ap.vpis;
     materialValue = ap.materialValue ?? MATERIAL_VALUE.start;
@@ -1551,7 +1556,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     if (strictSolve && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, strictSolve);
     // the player's pins honoured at a price: the height each could have within the norm, the fix of what it costs
     if (strictSolve) pinFixes = honouredPinFixes(d.gradePins!, ap, strictSolve, () => solveAuto({ ...firstOpt!, pins: [] }).vpis,
-      (own) => pinClearanceBlame(st.s, ground, firstOpt!, ap.vpis, own), (vp) => buildProfile(vp, vlim.crest, vlim.sag), maxGradient);
+      (own) => pinClearanceBlame(st.s, ground, firstOpt!, ap.vpis, own, k => solveAuto({ ...firstOpt!, pins: d.gradePins!.filter((_, j) => j !== k) }).vpis),
+      (vp) => buildProfile(vp, vlim.crest, vlim.sag), maxGradient);
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
@@ -2960,8 +2966,10 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
 function pinHeld(fixes: readonly PinFix[], runs: readonly { s0: number; s1: number; kind: number }[]): [number, number][] {
   const out: [number, number][] = [];
   for (const f of fixes) if (f.kind === 'clearance') {
-    let a = f.s0 - PIN_FIX_NEAR, b = f.s0 + PIN_FIX_NEAR;
-    for (const r of runs) if (r.kind !== KIND.earth && r.s0 <= b && r.s1 >= a) { a = Math.min(a, r.s0 - PIN_FIX_NEAR); b = Math.max(b, r.s1 + PIN_FIX_NEAR); }
+    const a0 = f.s0 - PIN_FIX_NEAR, b0 = f.s0 + PIN_FIX_NEAR;
+    let a = a0, b = b0;
+    // (the runs at the crossing itself, not a chain of their neighbours)
+    for (const r of runs) if (r.kind !== KIND.earth && r.s0 <= b0 && r.s1 >= a0) { a = Math.min(a, r.s0 - PIN_FIX_NEAR); b = Math.max(b, r.s1 + PIN_FIX_NEAR); }
     out.push([a, b]);
   }
   return out;

@@ -37,7 +37,7 @@
 //   chainage they apply at); give a new one its exact chainage there.
 
 import { buildProfile, elevationAt, elevations, gradeLimitOf, type GradeLimit, type RadiusLimit, type VPI } from './vertical';
-import { clearancePinViolation, GRADE_PIN_TOLERANCE, gradePinViolations, STEEP_MAX, type GradePin, type GradePinViolation } from './grade-pins';
+import { clearancePinViolation, GRADE_PIN_TOLERANCE, gradePinViolations, PIN_FIX_NEAR, STEEP_MAX, type GradePin, type GradePinViolation } from './grade-pins';
 export { STEEP_MAX } from './grade-pins';
 
 export interface BalanceSearch {
@@ -187,12 +187,11 @@ export interface AutoProfileResult {
 /** A grade line that can be engineered as Auto's: every limit kept (pins it could not meet left out, reported). */
 export const usableLine = (r: AutoProfileResult): boolean => r.feasible || r.lineOk === true;
 
-/** A stretch (chainage s0–s1) where the line may be as steep as `grade` to meet the pin `pin`; `left`: the pin's
- * problem without it (reason 'gradient-envelope' or 'search', against Auto's line then), what its suggestion is
- * found from. */
-export interface SteepWindow { s0: number; s1: number; grade: number; pin: GradePin; left: GradePinViolation }
-/** Pins Auto meets by re-solving its own line (without them) only within `spans` (chainage, m) */
-export interface Honoured { pins: readonly GradePin[]; spans: readonly (readonly [number, number])[] }
+/** A stretch (chainage s0–s1) where the line may be as steep as `grade` to meet the pin `pin`. */
+export interface SteepWindow { s0: number; s1: number; grade: number; pin: GradePin }
+/** Pins Auto meets by re-solving its own line (without them) only within `spans` (chainage, m); `left`: those it
+ * could not honour so (left out, said at each) */
+export interface Honoured { pins: readonly GradePin[]; spans: readonly (readonly [number, number])[]; left: readonly GradePin[] }
 
 /** Search parameters of a pin honoured at a price (no norm: how far Auto looks for room): Auto holds its own line
  * this far either side of the pin, then twice and four times as far where no line is found; where that is steeper
@@ -400,125 +399,166 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     // (a retry with the pins honoured before: the same stretches, on its own line now)
     const h = opt.honoured, steep = opt.steep ?? [];
     opt = { ...opt, honoured: undefined, steep: undefined };
-    const rest = (opt.pins ?? []).filter(p => !h.pins.some(q => q.s === p.s && q.z === p.z));
-    const r = spliced(s, g, opt, autoProfile(s, g, { ...opt, pins: rest }), h, steep);
-    if (r) return r;
+    const all = opt.pins ?? [], same = (p: GradePin) => (q: GradePin) => q.s === p.s && q.z === p.z;
+    const searched = all.filter(p => !h.left.some(same(p))), rest = searched.filter(p => !h.pins.some(same(p)));
+    const r = spliced(s, g, opt, searched, autoProfile(s, g, { ...opt, pins: rest }), h, steep);
+    if (r) return reported(opt, r, new Map());
   }
   return honour(s, g, opt, searchProfile(s, g, opt));
 }
 
-/** Auto's line `ref` (without the pins `h.pins`) re-solved through all pins within `h.spans` only, steep where `steep`
- * says: null where that misses any pin. */
-function spliced(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, ref: AutoProfileResult, h: Honoured, steep: readonly SteepWindow[]): AutoProfileResult | null {
-  if (!usableLine(ref) || !opt.pins?.length) return null;
+/** Auto's line `ref` (without the pins `h.pins`) re-solved through the pins `searched` within `h.spans` only, steep
+ * where `steep` says: null where that misses any of them. */
+function spliced(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, searched: readonly GradePin[], ref: AutoProfileResult, h: Honoured, steep: readonly SteepWindow[]): AutoProfileResult | null {
+  if (!usableLine(ref) || !searched.length) return null;
   const values = ref.blockValues ?? [ref.materialValue ?? opt.balance?.start ?? 0];
-  const t = searchProfile(s, g, { ...opt, steep, splice: { vpis: ref.vpis, values, spans: h.spans } });
+  const t = searchProfile(s, g, { ...opt, pins: searched, steep, splice: { vpis: ref.vpis, values, spans: h.spans } });
   if (t.pinViolations?.length || !usableLine(t)) return null;
-  return { ...t, honoured: { pins: h.pins.map(p => ({ ...p })), spans: h.spans.map(([a, b]) => [a, b] as const) }, ...(steep.length ? { steep: [...steep] } : {}) };
+  return { ...t, honoured: { pins: h.pins.map(p => ({ ...p })), spans: h.spans.map(([a, b]) => [a, b] as const), left: h.left.map(p => ({ ...p })) },
+    ...(steep.length ? { steep: [...steep] } : {}) };
+}
+
+/** A line through some of the player's pins (`r`, its pins met) with every pin of `opt.pins` checked against it: the ones
+ * it leaves out reported (left out for a crossing `why`: that crossing's chainage). */
+function reported(opt: AutoProfileOptions, r: AutoProfileResult, why: ReadonlyMap<number, number>): AutoProfileResult {
+  const prof = buildProfile(r.vpis, opt.crestAt ?? opt.minCrest, opt.sagAt ?? opt.minSag);
+  const pinViolations = gradePinViolations(opt.pins ?? [], prof, opt.maxGradient)
+    .map(v => why.has(v.pin.index) && v.pin.reason === 'search' ? clearancePinViolation(v, why.get(v.pin.index)!) : v);
+  return { ...r, feasible: r.feasible && !pinViolations.length, pinViolations, lineOk: usableLine(r) };
+}
+
+/** Of the CULPRIT_TRIES pins nearest a crossing a line through the pins misses, the first without which Auto's line
+ * clears it is the one in the way (a pin nearer it may hold the line where it clears: QA P2 re-check), else the
+ * nearest. */
+const CULPRIT_TRIES = 3;
+
+/**
+ * The crossings (their own clearances, `pinBounds`, at their stations `mine`) a line through the pins misses that Auto's
+ * own line without pins (`own()`) keeps, each put down to a pin `eligible` (`blamed` above), pin index → the
+ * crossings' chainages (one per PIN_FIX_NEAR). `without(k)`: Auto's line with the pins but pin k.
+ */
+function blameMisses(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, mine: readonly number[], own: () => readonly VPI[],
+  without: (k: number) => readonly VPI[], eligible: (k: number) => boolean): Map<number, number[]> {
+  const out = new Map<number, number[]>(), pins = opt.pins ?? [];
+  if (!mine.length) return out;
+  const ownMissed = new Set(missedClearances(s, g, opt, own()));
+  const { clearanceS } = opt.pinBounds ?? opt;
+  const missedWithout = new Map<number, Set<number>>();
+  for (const i of mine) {
+    if (ownMissed.has(i)) continue;
+    const x = clearanceS && !Number.isNaN(clearanceS[i]) ? clearanceS[i] : s[i];
+    const near = pins.map((_, k) => k).filter(eligible).sort((a, b) => Math.abs(pins[a].s - x) - Math.abs(pins[b].s - x) || a - b);
+    if (!near.length) continue;
+    let k = near[0];
+    if (near.length > 1) for (const c of near.slice(0, CULPRIT_TRIES)) {
+      let m = missedWithout.get(c);
+      if (!m) missedWithout.set(c, m = new Set(missedClearances(s, g, opt, without(c))));
+      if (!m.has(i)) { k = c; break; }
+    }
+    const list = out.get(k) ?? [];
+    if (!list.some(y => Math.abs(y - x) <= PIN_FIX_NEAR)) list.push(x);
+    out.set(k, list);
+  }
+  return out;
 }
 
 /**
  * The player's pins `r` (the search's result) leaves out (out of the slopes' reach, or no line met them: the line is
- * then Auto's own without them) or meets only by missing a crossing Auto's own line (no pins) clears (put down to the
- * pin nearest each, the old rule of strictProfile): honoured by Auto's own line without them, re-solved only within
- * STEEP_WINDOWS[i] m either side of each (`spliced`: the same knots, its heights and grades kept at the ends), so the
- * far line stays Auto's own exactly (QA sweep 3: a pin left out, or met by a far-reaching line, is no answer; the
- * owner: honour it, say what it costs, keep it local; a line through the pin and Auto's heights there as two more pins
- * still moved the Královec railway 4 m at km 12, a line at its limit). Within them the search's line through the
- * pins, as steep as the way from Auto's line at the ends to the pins needs where that is steeper than the norm
- * (`steep`, plus STEEP_SLACK for its curves), missing the crossings it must. The first window that finds a line meeting all is kept; with none (steeper than
- * STEEP_MAX times the norm, or no line) `r` as it was: the pins it left out said at each.
+ * then Auto's own without them) or meets only by missing a crossing Auto's own line (no pins) clears (`blameMisses`):
+ * honoured by Auto's own line without them, re-solved only within STEEP_WINDOWS[i] m either side of each (`spliced`:
+ * the same knots, its heights and grades kept at the ends), so the far line stays Auto's own exactly (QA sweep 3: a pin
+ * left out, or met by a far-reaching line, is no answer; the owner: honour it, say what it costs, keep it local; a line
+ * through the pin and Auto's heights there as two more pins still moved the Královec railway 4 m at km 12, a line at
+ * its limit). Within them the search's line through the pins, as steep as the way from Auto's line at the ends to the
+ * pins needs (`steep`, plus STEEP_SLACK for its curves, never beyond STEEP_MAX times the norm), missing the crossings it
+ * must. Pins more than twice the widest window apart are honoured each on their own (one out of reach does not take the
+ * others with it), the first window that finds a line kept; a pin with none is left out (`r`'s problem at it, or out of
+ * reach for the crossing it misses), said at it.
  */
 function honour(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, r: AutoProfileResult): AutoProfileResult {
   const pins = opt.pins ?? [], L = s[s.length - 1];
   if (!pins.length) return r;
   const active = (k: number) => pins[k].s >= 0 && pins[k].s <= L && Number.isFinite(pins[k].z);
-  const out = new Map((r.pinViolations ?? []).filter(v => v.pin.reason === 'gradient-envelope' || v.pin.reason === 'search').map(v => [v.pin.index, v]));
+  const out = new Set((r.pinViolations ?? []).filter(v => v.pin.reason === 'gradient-envelope' || v.pin.reason === 'search').map(v => v.pin.index));
   if (!usableLine(r)) return r;
   // (a pin met by missing a crossing Auto's own line clears)
-  const conflict = new Set<number>();
+  let conflict = new Map<number, number[]>();
   let own: AutoProfileResult | undefined;
+  const ownLine = () => (own ??= autoProfile(s, g, { ...opt, pins: [] })).vpis;
   const bounds = opt.pinBounds ?? opt;
   if (bounds.minH || bounds.maxH || bounds.eitherH) {
     const mine = missedClearances(s, g, opt, r.vpis);
-    if (mine.length) {
-      own = autoProfile(s, g, { ...opt, pins: [] });
-      const ownMissed = new Set(missedClearances(s, g, opt, own.vpis));
-      const { clearanceS } = bounds;
-      for (const i of mine) {
-        if (ownMissed.has(i)) continue;
-        const x = clearanceS && !Number.isNaN(clearanceS[i]) ? clearanceS[i] : s[i];
-        let best = -1;
-        pins.forEach((p, k) => { if (active(k) && !out.has(k) && (best < 0 || Math.abs(p.s - x) < Math.abs(pins[best].s - x))) best = k; });
-        if (best >= 0) conflict.add(best);
-      }
-    }
+    if (mine.length) conflict = blameMisses(s, g, opt, mine, ownLine,
+      k => autoProfile(s, g, { ...opt, pins: pins.filter((_, j) => j !== k) }).vpis, k => active(k) && !out.has(k));
   }
-  const treated = [...new Set([...out.keys(), ...conflict])].filter(active).sort((a, b) => pins[a].s - pins[b].s);
+  const treated = [...new Set([...out, ...conflict.keys()])].filter(active).sort((a, b) => pins[a].s - pins[b].s);
   if (!treated.length) return r;
   // Auto's own line without them (with the other pins)
-  const rest = pins.flatMap((p, k) => active(k) && !treated.includes(k) ? [p] : []);
-  const ref = !conflict.size ? r : !rest.length ? own! : autoProfile(s, g, { ...opt, pins: rest });
+  const rest = pins.filter((_, k) => active(k) && !treated.includes(k));
+  const ref = !conflict.size ? r : !rest.length ? (ownLine(), own!) : autoProfile(s, g, { ...opt, pins: rest });
   if (!usableLine(ref)) return r;
   const refP = buildProfile(ref.vpis, opt.crestAt ?? opt.minCrest, opt.sagAt ?? opt.minSag);
   const norm = (a: number, b: number) => opt.gradeAt ? opt.gradeAt(a, b) : opt.maxGradient;
-  const leftOf = (k: number) => out.get(k) ?? gradePinViolations(pins, refP, opt.maxGradient).find(v => v.pin.index === k);
-  for (const W of STEEP_WINDOWS) {
-    // each treated pin's stretch, merged where they overlap
+  /** the spans and steep stretches of the pins `group` with windows of W m, null if a pin is out of STEEP_MAX's reach */
+  const plan = (group: readonly number[], W: number) => {
     const spans: [number, number][] = [];
-    for (const k of treated) {
+    for (const k of group) {
       const a = Math.max(0, pins[k].s - W), b = Math.min(L, pins[k].s + W), last = spans[spans.length - 1];
       if (last && a <= last[1]) last[1] = Math.max(last[1], b); else spans.push([a, b]);
     }
     const windows: SteepWindow[] = [];
-    let capped = false;
     for (const [a, b] of spans) {
       // from Auto's own line at its ends, through the player's pins within it
-      const inside = pins.map((p, k) => ({ ...p, k })).filter(p => active(p.k) && p.s > a && p.s < b).sort((p, q) => p.s - q.s);
+      const inside = pins.map((p, k) => ({ ...p, k })).filter(p => active(p.k) && p.s > a && p.s < b && (group.includes(p.k) || !treated.includes(p.k))).sort((p, q) => p.s - q.s);
       const nodes = [{ s: a, z: elevationAt(refP, a), k: -1 }, ...inside, { s: b, z: elevationAt(refP, b), k: -1 }];
-      for (let q = 0; q + 1 < nodes.length && !capped; q++) {
-        const u = nodes[q], v = nodes[q + 1], k = treated.includes(v.k) ? v.k : treated.includes(u.k) ? u.k : -1;
+      for (let q = 0; q + 1 < nodes.length; q++) {
+        const u = nodes[q], v = nodes[q + 1], k = group.includes(v.k) ? v.k : group.includes(u.k) ? u.k : -1;
         if (k < 0) continue;
         // (every side of the pin, also one within the norm: its curve at the pin takes height; STEEP_PENALTY keeps the
         // line no steeper than it must be)
         const lim = norm(u.s, v.s), need = v.s - u.s < 1e-9 ? Infinity : Math.abs(v.z - u.z) / (v.s - u.s);
-        const grade = Math.max(need, lim) + STEEP_SLACK * lim, left = leftOf(k);
-        if (!(grade <= STEEP_MAX * lim) || !left) { capped = true; break; }
-        windows.push({ s0: u.s, s1: v.s, grade, pin: { ...pins[k] }, left });
+        if (!(need <= STEEP_MAX * lim)) return null;
+        windows.push({ s0: u.s, s1: v.s, grade: Math.min(STEEP_MAX * lim, Math.max(need, lim) + STEEP_SLACK * lim), pin: { ...pins[k] } });
       }
-      if (capped) break;
     }
-    if (capped) continue;
-    const t = spliced(s, g, opt, ref, { pins: treated.map(k => ({ ...pins[k] })), spans }, windows);
-    if (t) return t;
+    return { spans, windows };
+  };
+  // groups that no window joins
+  const reach = 2 * STEEP_WINDOWS[STEEP_WINDOWS.length - 1], groups: number[][] = [];
+  for (const k of treated) {
+    const last = groups[groups.length - 1];
+    if (last && pins[k].s - pins[last[last.length - 1]].s <= reach) last.push(k); else groups.push([k]);
   }
-  return r;
+  const met: number[] = [], spans: [number, number][] = [], windows: SteepWindow[] = [];
+  let only: AutoProfileResult | null = null;
+  for (const group of groups) for (const W of STEEP_WINDOWS) {
+    const p = plan(group, W);
+    if (!p) continue;
+    const t = spliced(s, g, opt, [...rest, ...group.map(k => pins[k])], ref, { pins: group.map(k => pins[k]), spans: p.spans, left: [] }, p.windows);
+    if (!t) continue;
+    met.push(...group); spans.push(...p.spans); windows.push(...p.windows); only = t;
+    break;
+  }
+  if (!met.length) return r;
+  const left = treated.filter(k => !met.includes(k)).map(k => ({ ...pins[k] }));
+  const h: Honoured = { pins: met.map(k => ({ ...pins[k] })), spans, left };
+  // (several groups: all their spans in one line, each re-solved as on its own)
+  const line = groups.length === 1 ? only! : spliced(s, g, opt, [...rest, ...met.map(k => pins[k])], ref, h, windows);
+  if (!line) return r;
+  const why = new Map([...conflict].filter(([k]) => !met.includes(k)).map(([k, at]) => [k, at[0]]));
+  return reported(opt, { ...line, honoured: { ...h, left } }, why);
 }
 
 /**
- * The crossings a line through the pins misses (their own clearances, `pinBounds`) that Auto's own line `own` keeps,
- * each put down to the pin nearest to it: [the pin's index, the crossing's chainage] (the first such crossing of each
- * pin). The finished (rounded) line at each clearance's own chainage.
+ * The crossings a line through the pins misses (their own clearances, `pinBounds`) that Auto's own line without pins
+ * (`own`) keeps, each put down to a pin (`blameMisses`): pin index → the crossings' chainages. The finished (rounded)
+ * line at each clearance's own chainage. `without(k)`: Auto's line with the pins but pin k.
  */
-export function pinClearanceBlame(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, vpis: readonly VPI[], own: () => readonly VPI[]): Map<number, number> {
-  const blamed = new Map<number, number>();
+export function pinClearanceBlame(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions, vpis: readonly VPI[], own: () => readonly VPI[],
+  without: (k: number) => readonly VPI[]): Map<number, number[]> {
   const pins = opt.pins ?? [], L = s[s.length - 1];
-  if (!pins.length) return blamed;
-  const mine = missedClearances(s, g, opt, vpis);
-  if (!mine.length) return blamed;
-  const ownMissed = new Set(missedClearances(s, g, opt, own()));
-  const { clearanceS } = opt.pinBounds ?? opt;
-  for (const i of mine) {
-    if (ownMissed.has(i)) continue;
-    const x = clearanceS && !Number.isNaN(clearanceS[i]) ? clearanceS[i] : s[i];
-    let best = -1;
-    pins.forEach((p, k) => {
-      if (!(p.s >= 0 && p.s <= L && Number.isFinite(p.z))) return;
-      if (best < 0 || Math.abs(p.s - x) < Math.abs(pins[best].s - x)) best = k;
-    });
-    if (best >= 0 && !blamed.has(best)) blamed.set(best, x);
-  }
-  return blamed;
+  if (!pins.length) return new Map();
+  return blameMisses(s, g, opt, missedClearances(s, g, opt, vpis), own, without, k => pins[k].s >= 0 && pins[k].s <= L && Number.isFinite(pins[k].z));
 }
 
 /**
@@ -1007,7 +1047,9 @@ function searchProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProf
       const fixed = new Map<number, number>([lo, ka, kb, hi].map(k => [k, own[k]]));
       const line = fixedSolve({ ka: lo, kb: hi, fixed }, vals);
       if (!line) return fail;
-      for (let k = lo; k <= hi; k++) z[k] = line.z[k];
+      // (its fixed knots keep the line's own heights: on another grid the solve rounds them, by up to half a step and B's
+      // correction; profileOk below judges the joints)
+      for (let k = ka + 1; k < kb; k++) z[k] = line.z[k];
       cost += line.cost;
     }
     z[0] = zA; z[nK] = zB;
