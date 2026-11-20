@@ -2615,13 +2615,15 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
 - **Where** (round 4: Hands off on the register, the I/35's full set): Hands off is offered on D3 0304 and the whole D3
   (the ruin of Stejc castle), the whole D35 (the Holy Trinity column at Mohelnice), the D11 motorway (the memorial to the
   Austrian gunners of 1866), the I/35 Turnov stage (the church of St John the Baptist: its reference moves the line 254 m
-  north-east, under the goal at 4.82 bn), Jičín (the Studeňany village protection zone, declared 26 Jun 2026: its reference
-  goes north and east round it, 4.55 bn) and the whole I/35 (both); not where the planned line keeps clear of every
+  north-east, under the goal at 4.77 bn), Jičín (the Studeňany village protection zone, declared 26 Jun 2026: its reference
+  goes north and east round it, 4.14 bn) and the whole I/35 (both); not where the planned line keeps clear of every
   listed monument and zone (Šternberk, D3 0301–0303 and 0305, D35 stage 1, I/35 Rovensko) nor on the Královec railway (its
   only one, the listed road bridge at Trutnov station, is at its fixed start). The I/35 stages and the whole route: Turnov
-  (Earth, Hands off, Curveballs 5, Nobody moves, Spare the forest 0.6 ha, Few bridges 700 m, From scratch, By hand), Rovensko
+  (Earth, Hands off, Curveballs 5, Spare the forest 0.6 ha, Few bridges 700 m, From scratch, By hand; not Nobody moves: every
+  search left two homes), Rovensko
   (Earth, Curveballs 5, Spare the forest 5 ha, Few bridges 350 m, …), Jičín (Earth, Hands off, Curveballs 5, Nobody moves,
-  Spare the forest 0.8 ha, Few bridges 250 m, …), the whole I/35 (…). `twists-check.ts --edit` makes a reference by hand
+  Spare the forest 0.8 ha, Few bridges 250 m, …), the whole I/35 (Earth, Hands off, Curveballs 7, Spare the forest 8 ha,
+  Few bridges 1,600 m, From scratch, By hand). `twists-check.ts --edit` makes a reference by hand
   (bends moved, added, dropped; pins; painted structures) and says what it meets; the Jičín and Turnov references began so.
 - **Where** (round 3): Šternberk (Earth balance, Hands off, Curveballs 5, Spare the forest 4.5 ha, Few bridges 150 m, From
   scratch, By hand); D3 0301 (Earth, Hands off, Curveballs 5, Few bridges 500 m, …), 0302 (Earth, Hands off, Curveballs 5,

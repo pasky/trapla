@@ -99,5 +99,6 @@ nothing of it: it is not offered.
   the bend that turns the line off the D10 interchange (demolished; moving the bend 20–30 m away takes others further on),
   one at km 3.7 beside the Jizera crossing (bought out); the planned line takes 12.
 - **Spare the forest / Few bridges**: caps just above what a reference reaches under the goal: Turnov 0.6 ha (0.54) and
-  700 m (690), Rovensko 5 ha (4.9) and 350 m (320), Jičín 0.8 ha (0.74) and 250 m (220); the starters take 1.4 / 6.6 / 1.5 ha
-  and 1,420 / 530 / 980 m.
+  700 m (690), Rovensko 5 ha (4.9) and 350 m (320), Jičín 0.8 ha (0.74) and 250 m (220), the whole route 8 ha (7.7) and
+  1,600 m (1,580); the starters take 1.4 / 6.6 / 1.5 / 9.5 ha and 1,420 / 530 / 980 / 2,760 m. The whole route's are its own
+  searches' (the stages' stitched lose their caps at the seams; ≈ 10 s a design on the whole route, so fewer were tried).
