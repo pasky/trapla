@@ -9,7 +9,10 @@
 //     road on Nudvojovická; D3 0303's diamond, road II/105 slid between its slip roads' junctions.
 //  4. I/35 Turnov, a local road ending at our embankment near km 3.0: its End handle says "drag to shorten"; dragged
 //     back 120 m the piece is taken up (billed, the home it served is a problem); undo makes it whole.
-// node scripts/crossing-drag-scene.mjs [--gpu] [--docs]   (--docs: docs/screenshots/700–709)
+//  5. D11 road III/3012, slid: its rebuilt stretch's End pulled through a junction and over a 7 m bridge onto the next
+//     way, its Start back past its junction onto the way before (one undo step each); on I/35 a Start held short of a
+//     road you built, the hover saying why.
+// node scripts/crossing-drag-scene.mjs [--gpu] [--docs]   (--docs: docs/screenshots/700–709, 780–785)
 import { mkdirSync, readFileSync } from 'node:fs';
 import { checker, startGame } from './lib/browser.mjs';
 

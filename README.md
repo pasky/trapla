@@ -465,6 +465,19 @@ Also: [the slide's live preview](docs/screenshots/701-crossing-ring-sliding.png)
 [D11 road III/3012](docs/screenshots/704-d11-iii-3012-ring.png) [slid](docs/screenshots/705-d11-iii-3012-slid.png),
 [a cut way's ring says why](docs/screenshots/706-cut-way-ring-says-why.png), [the dead end dragged back](docs/screenshots/708-dead-end-dragged-back.png).
 
+A rebuilt stretch's Start and End squares follow the old road through its junctions and over its bridges onto the way
+the road goes on as (OSM splits a road there): the stretch then spans several mapped ways, rebuilt as one road (an old
+bridge kept where the line stays on it, taken down and billed where it leaves it). A square goes no further where the
+road ends or something holds it, and the hover says what ("The road ends here", "Another rebuilt stretch starts here",
+"New road covers it here"); undo "rebuilding more of …".
+
+| Its End pulled past the junction (the old road ahead lit) | Over the bridge onto the next way |
+|---|---|
+| ![Past the junction](docs/screenshots/781-stretch-end-past-junction.png) | ![Over the bridge](docs/screenshots/782-stretch-over-the-bridge.png) |
+
+Also: [its two squares](docs/screenshots/780-stretch-ends.png), [its Start pulled back past its junction](docs/screenshots/783-stretch-start-past-junction.png),
+[both ends pulled](docs/screenshots/784-stretch-both-ends-pulled.png), [held at a road you built, saying why](docs/screenshots/785-stretch-end-held-at-your-road.png).
+
 A mapped dead end that serves nothing beyond our works is ended beside them by Auto (its last metres taken up, billed
 and drawn so, a turning area on a public road); an existing railway may be carried over our road on a new bridge (Auto
 weighs it, the player picks it on the railway's card, a pin's fix offers it). `node scripts/rail-dead-end-shots.mjs

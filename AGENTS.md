@@ -153,6 +153,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - A reroute's new piece can be led to another road by dragging its end (the square handle where it joins its road;
   `CrossingOverride.ends`, cost model 52, PLAN.md "A reroute led where the player drags its end"): built like Auto's
   own, a road that cannot take it leaves Auto's line and says why; a shaped side no longer builds the other side.
+- A rebuilt stretch may span several mapped ways of one road (`core/stretch-chain.ts`, PLAN.md "A rebuilt stretch over
+  several ways"): its squares are dragged through junctions and over bridges; an old bridge in it is kept where the line
+  stays on it, else taken down and billed (research/106). Open: a mapped bridge selected on its own, tunnels.
 - A pin the player set is honoured (model 59, PLAN.md "A pin the player set is honoured"): one out of the norm's reach or
   met only by missing a crossing is met by Auto's own line re-solved within 500 m–2 km of it (spliced: the far line
   exactly Auto's own), steeper than the norm there if it must be (at most 2.5 ×), the crossing missed if it must be; each

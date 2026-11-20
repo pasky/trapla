@@ -3006,6 +3006,59 @@ main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before;
   slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
   (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.
 
+## A rebuilt stretch over several ways (owner report, no model version, 2026-11-20)
+
+- **Bug (owner, D11):** after sliding a crossed road's crossing, its rebuilt stretch shows two square end handles that
+  could not be moved past anything. A rebuilt stretch was one `SourceInterval` on one OSM way and the handles were held
+  to that way (`freeSpan`); OSM splits roads at junctions and at bridges, so the squares sat at the way's ends. The
+  owner wants to pull the tie-in further along the old road, as a designer would, to give the ramps room.
+- **Model:** `RouteDesign.source.intervals` holds several intervals in route order (`core/stretch-chain.ts`), each
+  meeting the next at a node at its end; one interval stays as it always was (its route runs with its source), so saves
+  and bills of single-way stretches are untouched (eval-regression identical). Promotion (`promoteGroundChain`) gives the
+  stretch its ends, a joint connection where two of its ways meet (`connection:<route>:joint:<k>`, its position the
+  node's) and every other way meeting it as a side road (branch connections, as before). The evaluation finds its old
+  road in the legacy network piece by piece (`oldPieces`: route ends and joints measured on each way, a mapped bridge
+  by its OSM id among the pack's structure ways); every edited network cuts each piece (what is left beyond its ends
+  keeps its way's number, or the stretch's slot; a second remainder from a way's start is a trim).
+- **The road goes on as:** at a way's end node, the way of the same number (else name) through a turn up to 75°, else
+  the straightest within 45° (PROVISIONAL game tolerances, headings over 20 m), of the same legal class, on the ground or
+  a bridge, never one already in the stretch. It stops where the road ends, at another rebuilt stretch or a piece taken
+  up, where another road's earthworks cover it, at the map's edge, short of a railway, a side road's bridge or a tunnel
+  (5 m, as before), and short of where a road of the project joins it.
+- **Handles (`ui/stretch-ends.ts`):** a square dragged along the old road follows it through junctions and over bridges
+  onto the next way (worked out once at the press, ≤ 3 km ahead); the stretch is lit and the old road it can still go
+  along is lit fainter ahead of it; an end never stands on a bridge (it goes to the nearer side, 5 m clear) and snaps
+  to a joint within 1 m. Held at the far end with the pointer past it, the hover says why: "The road ends here",
+  "Another rebuilt stretch starts here", "New road covers it here", "A road you built joins it here", "The map ends
+  here", "A railway crosses it here", "A tunnel starts here: it cannot be rebuilt yet". Hover "drag along the old
+  road"; undo "rebuilding more of Road III/3012" / "rebuilding less of …". Nothing is evaluated while it moves; the
+  release is one edit (`moveStretchEnds` over the union of the old and new stretch on one line, `ChainLine`). A
+  railway's stretch stays on its one way (`MappedLineKind.chains`).
+- **Bills and engineering:** priced like any rebuilt stretch: kept as the old road where its line stays on it (its old
+  line now the whole chain), built anew elsewhere, side roads at the junctions inside it reconnected (model 49's
+  rule and the reconnection works, as before), the works-clash and land screens as for any road. **An old bridge in
+  it:** where the line stays on it, it is kept as it is (as the old road is; its deck's heights straight between its
+  ends, a mapped bridge's own heights being unknown); where the line leaves it, it is taken down and billed by its deck
+  (way length × class width × 2,000 CZK/m², PROVISIONAL: research/106, the II/101 Zápy take-off's 0.776 m³/m² × OTSKP
+  966168 at 2,600 CZK/m³) and the new line crosses as Auto builds it. Rebuilding it in place was tried and dropped: the
+  kernel's stream rules then raise a 9 m viaduct over a brook an old 7 m bridge crossed at ground level.
+- **A mapped bridge selected on its own** still cannot be changed: its card says "A bridge is changed with its road:
+  change the road beside it, then drag that stretch's end over the bridge." Tunnels: not yet.
+- **Live:** `node scripts/drag-perf.mjs --gpu --check --mode ends` (gate `drag-ends`: the D11 warm-up slide, then the
+  End pulled out past its junction and back): frames p50/p95 17 ms, no long task, nothing evaluated during the drag.
+- **Checked:** `scripts/crossing-drag-scene.mjs` section 5 (D11 road III/3012 slid, then its End pulled through the
+  street's junction, a 18 m way and the 7 m bridge 150 m onto the next way, its Start back past its junction onto the way
+  before; one undo step each; no new unpriced reason), I/35 a Start held at a road you built; screenshots 780–785;
+  `tests/stretch-chain.test.ts` (the walk, promotion, joints, side roads, every old way gone from the map, the bridge
+  kept where the line stays on it and billed when moved off).
+- **Known issues:** (1) pulling an end past the old road's next corner can reveal a norm problem the stretch's end hid
+  (D11 III/3012: the slid corner and the old corner beyond 702 m are "too close for an S-bend"; the same on main when
+  the one way's end is pulled to 780 m): the extension's refit keeps the least built anew. (2) Where the kernel builds a
+  structure on cells kept as the old road (here its bridge over the brook, the old 7 m bridge kept), the structure is
+  drawn but, being kept, not billed: kept cells are laid on the old road only where the kernel built earthworks
+  (`project-kept.ts layOnGround`), on main too. (3) A drag on a mapped bridge (its card, a crossing ring on it) does not
+  rebuild it with its approaches yet.
+
 ## Start over keeps its Undo; the frames after Start over (playtest flake, no model version, 2026-11-20)
 
 The toast's Undo after Start over vanished in `scripts/playtest.mjs` on the built site under load. No store event was
