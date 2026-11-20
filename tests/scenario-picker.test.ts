@@ -55,7 +55,7 @@ describe('picker cards', () => {
     expect(ids(fresh.cards.find(c => c.group === 'Český ráj')!.presets)).toEqual(['i35-turnov-road', 'i35-rovensko-road', 'i35-jicin-road', 'i35-full-road']);
     // Trutnov: the D11 motorway (the real project) first, the class I road beside it as the simpler job
     expect(ids(fresh.cards.find(c => c.group === 'Trutnov')!.presets)).toEqual(['d11-motorway', 'd11']);
-    expect(fresh.startHere?.presetId).toBe('d3-0302-motorway');
+    expect(fresh.startHere?.presetId).toBe('d35-stage1-motorway');
     // the town bypass is its own card, last
     expect(ids(fresh.cards.at(-1)!.presets)).toEqual(['i46-sternberk-road']);
   });

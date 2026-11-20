@@ -1,0 +1,306 @@
+{
+ "preset": "i35-jicin-road",
+ "purpose": "Nobody moves under the goal: a search from the starter (--find --twists homes --goal, seed 43)",
+ "meets": [
+  "homes"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "i35-jicin",
+  "presetId": "i35-jicin-road",
+  "packId": "i35-jicin",
+  "objectData": "1059523:4110933075:3687078145",
+  "transportData": "efafb8a736f232bfc74eb38f89072c06faaed3989886083a0870e6efa5a8abad",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Four-lane road towards Úlibice",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 1692.4,
+       "y": 9969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12240.1,
+       "y": 1569.6,
+       "z": 302.79232
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 5935.5,
+      "heavyShare": 0.205,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Four-lane road towards Čímyšl",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 12240.1,
+       "y": 1569.6,
+       "z": 302.79232
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 1692.4,
+       "y": 9969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "S21.5",
+     "designSpeed": 110,
+     "operations": {
+      "aadt": 5935.5,
+      "heavyShare": 0.205,
+      "speed": 110,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 1692.4,
+       "y": 9969.3,
+       "z": 313.1227200000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12240.1,
+       "y": 1569.6,
+       "z": 302.79232
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 2936.1600092557087,
+       "y": 9332.129286465297,
+       "r": null
+      },
+      {
+       "x": 3651.7365959010244,
+       "y": 9040.128847545659,
+       "r": null
+      },
+      {
+       "x": 3753.562437447621,
+       "y": 8487.591991382153,
+       "r": null
+      },
+      {
+       "x": 3908.4577407415095,
+       "y": 7647.449194357138,
+       "r": null
+      },
+      {
+       "x": 4526.182897266136,
+       "y": 7220.00670148084,
+       "r": null
+      },
+      {
+       "x": 5011.781196472482,
+       "y": 6781.421454834208,
+       "r": null
+      },
+      {
+       "x": 5651.814776436792,
+       "y": 6433.454616070435,
+       "r": null
+      },
+      {
+       "x": 6613.40951077257,
+       "y": 5761.144125990332,
+       "r": null
+      },
+      {
+       "x": 7138.457474986551,
+       "y": 5298.627949282305,
+       "r": null
+      },
+      {
+       "x": 7693.654156947977,
+       "y": 4754.559928613122,
+       "r": null
+      },
+      {
+       "x": 8156.595406379544,
+       "y": 4217.070983170953,
+       "r": null
+      },
+      {
+       "x": 9087.728207322585,
+       "y": 4000.673537415818,
+       "r": null
+      },
+      {
+       "x": 10231.34795775662,
+       "y": 3150.196114124397,
+       "r": null
+      },
+      {
+       "x": 10261.58364423154,
+       "y": 3122.81341529641,
+       "r": null
+      },
+      {
+       "x": 11163.811660531832,
+       "y": 2838.300583009589,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": []
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 4490,
+        "z": 353.9
+       },
+       {
+        "s": 5340,
+        "z": 338.4
+       },
+       {
+        "s": 6329,
+        "z": 338.9
+       },
+       {
+        "s": 12609,
+        "z": 294.5
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "i35-jicin:i35-jicin-road",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Čímyšl",
+     "position": {
+      "x": 1692.4,
+      "y": 9969.3,
+      "z": 313.1227200000001
+     }
+    },
+    {
+     "id": "b",
+     "name": "Úlibice",
+     "position": {
+      "x": 12240.1,
+      "y": 1569.6,
+      "z": 302.79232
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.5,
+     "demand": {
+      "kind": "road",
+      "aadt": 11871
+     }
+    }
+   ]
+  }
+ }
+}

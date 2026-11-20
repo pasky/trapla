@@ -243,8 +243,11 @@ There is no separate game mode: the game stays the builder, and each mission off
 valid design, picked on a short screen after Start ([the twist screen](docs/screenshots/640-twist-screen.png)) and
 changed any time from the **Twists** card (the chip by the verdict, "✗ Twists 2/3"). *Earth balance*: what you dig fills
 your embankments, at most 10 % brought in or trucked away ([the starter brings in 18 %](docs/screenshots/641-starter-twists.png),
-[one height pinned](docs/screenshots/643-pin-lower.png)). *Hands off the castle*: rings around the castles, churches, chapels
-and viewpoints near the line ([in Šternberk](docs/screenshots/642-landmark-rings.png)). *Curveballs*: news from the site,
+[one height pinned](docs/screenshots/643-pin-lower.png)). *Hands off the castle*: keep out of the listed monuments' protection
+zones and the heritage reserves and zones of the state's register (NPÚ), and away from the listed castles, churches,
+chapels, crosses and technical monuments without one; offered only where the planned line breaks it
+([the Studeňany village protection zone on the I/35](docs/screenshots/722-i35-jicin-zone-broken.png), [named on hover](docs/screenshots/723-i35-jicin-zone-hover.png),
+[a line led round it](docs/screenshots/724-i35-jicin-zone-kept-clear.png), [the church at Turnov](docs/screenshots/725-i35-turnov-church-ring.png); research/102). *Curveballs*: news from the site,
 drawn from the real project's story, a place to keep out of or less money ([the villa](docs/screenshots/644-news-villa.png),
 [its garden on the map](docs/screenshots/645-villa-broken.png), [the butterflies later](docs/screenshots/647-news-butterflies.png)).
 *From scratch* (the straight line, [Šternberk](docs/screenshots/649-from-scratch.png)), *By hand* (your heights,
@@ -287,9 +290,11 @@ the dashed planned line answers a click ([card](docs/screenshots/681-official-li
 
 ### Scenarios
 
-The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),
-[at 1280 × 800](docs/screenshots/552-start-screen-1280x800.png)) offers one mission first, *Start here*: Jílové →
-Hostěradice across the Sázava (the smallest map, 3.9 MB, a 4.5 km motorway). Below it one card per corridor or
+The start screen ([now](docs/screenshots/720-start-here-d35.png), [before round 4 of the twists](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),
+[at 1280 × 800](docs/screenshots/552-start-screen-1280x800.png)) offers one mission first, *Start here*: the D35's first
+section, Opatovec → Staré Město (a 5 MB map, a 17 km motorway with a bit of everything: the open D35 to join, villages
+and streams, a protected slope over a tunnel, a ridge; [the card](docs/screenshots/720-start-here-d35.png); until round 4
+of the twists Jílové → Hostěradice, one bridge over the Sázava). Below it one card per corridor or
 mission: what it is and how long, one line of what you do, the download size; the D3 and the D35 each have one card
 with their sections as choices, the whole route last ([the D3 card](docs/screenshots/553-start-screen-d3-whole-route.png)).
 The sections are named by their places ([the D3 card](docs/screenshots/581-start-screen-d3-card.png)), and a card's line says

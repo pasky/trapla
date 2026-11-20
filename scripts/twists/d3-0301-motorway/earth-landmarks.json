@@ -1,9 +1,8 @@
 {
  "preset": "d3-0301-motorway",
- "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seeds 1 \u2192 2); also at most 500 m of bridges (Few bridges)",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find, seeds 1 → 2); also at most 500 m of bridges (Few bridges) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
  "meets": [
   "earth",
-  "landmarks",
   "bridges"
  ],
  "goal": true,
@@ -17,7 +16,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards J\u00edlov\u00e9 (on to 0302)",
+    "name": "Motorway towards Jílové (on to 0302)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -233,7 +232,7 @@
     },
     {
      "id": "b",
-     "name": "J\u00edlov\u00e9 (on to 0302)",
+     "name": "Jílové (on to 0302)",
      "position": {
       "x": 2825.3,
       "y": 3024.5,

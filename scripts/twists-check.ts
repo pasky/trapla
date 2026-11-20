@@ -8,6 +8,12 @@
 //        [--iters 600] [--seed 1] [--out scripts/twists/<preset>/<name>.json]
 //                                                      a local search (bends, height pins, bridges) for a VALID design that
 //                                                      meets those twists (and the goal), starting from the starter
+//   npx tsx scripts/twists-check.ts --edit <preset> <file.json|-> --out f.json op…
+//                                                      a design edited by hand (- : the starter) and what it meets; ops:
+//                                                      move:i:dx,dy (bend i by metres) set:i:x,y add:x,y (a bend, in order
+//                                                      along the line) del:i pin:s,z unpin:s0,s1 (Auto heights only)
+//                                                      paint:s0,s1,kind (0 earth, 1 bridge, 2 tunnel) unpaint:s0,s1 (back
+//                                                      to Auto there); TW=a,b: the twists shown
 //
 // A reference design is a whole project (as window.trapla.getProject() gives it) with what it claims:
 //   { "preset", "purpose", "meets": [twist ids; "curveballs" = every curveball of the mission has arrived], "goal": bool, "design" }
@@ -19,9 +25,9 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
 import { corridorOfRoute } from '../src/core/project-motorway';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { checkTwists, earthShare, ourResults, twistFacts, useAt, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
+import { checkTwists, earthShare, shapeRings, ourResults, twistFacts, useAt, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
 import { GOAL_SHARE, MISSION_TWISTS } from '../src/core/data/twists';
-import { missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
+import { missionLandmarks, missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
 import { CATEGORIES } from '../src/core/data/categories';
 import type { Design } from '../src/core/evaluate';
 import { paintOverride } from '../src/core/overrides';
@@ -40,8 +46,10 @@ export function mission(preset: string): Mission {
   const pack = loadPack(`public/scenarios/${scenario.id}`), { meta } = pack;
   const ends = scenario.ports ? { a: { x: scenario.ports.a.xy[0], y: scenario.ports.a.xy[1] }, b: { x: scenario.ports.b.xy[0], y: scenario.ports.b.xy[1] } }
     : { a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
-  const setup = missionTwistSetup(preset, scenario, { origin: meta.origin as [number, number], width: meta.nx * meta.cell, height: meta.ny * meta.cell, ...ends });
+  const setup = missionTwistSetup(preset, scenario, { origin: meta.origin as [number, number], width: meta.nx * meta.cell, height: meta.ny * meta.cell, ...ends }, pack.heritage);
   if (!setup) throw new Error(`${preset}: no twists`);
+  // (ALL=1: every twist, the landmarks near the line too where the mission does not offer them: what a survey asks)
+  if (process.env.ALL && !setup.terms.landmarks.length) setup.terms = { ...setup.terms, landmarks: missionLandmarks(scenario, { origin: meta.origin as [number, number], width: meta.nx * meta.cell, height: meta.ny * meta.cell, ...ends }, pack.heritage) };
   const starter = packContext(pack, scenarioParams(scenario.id, scenario.presetId)).initial();
   return { preset, scenario, pack, setup, starter, ctx: projectContext(starter).ctx };
 }
@@ -171,7 +179,7 @@ function placeOf(m: Mission, ref: string | undefined): { x: number; y: number } 
   const z = ref?.startsWith('curveball:') ? m.setup.curveballs.find(c => c.id === ref.slice(10))?.zone : undefined;
   if (!z) return undefined;
   if (z.shape.kind === 'circle') return z.shape;
-  const p = z.shape.pts;
+  const p = shapeRings(z.shape).flat();
   return { x: p.reduce((a, q) => a + q[0], 0) / p.length, y: p.reduce((a, q) => a + q[1], 0) / p.length };
 }
 export function nearestS(L: { n: number; x: Float64Array; y: Float64Array; s: Float64Array }, x: number, y: number) {
@@ -191,11 +199,13 @@ export function checkMission(preset: string, log: (line: string) => void = conso
   const r0 = evalDesign(m, m.starter), cost0 = r0.cost.total ?? NaN;
   console.log(`${preset}: starter ${(cost0 / 1e6).toFixed(1)} M (data ${(mt.startBill / 1e6).toFixed(0)} M), ${m.setup.terms.landmarks.length} landmarks, ${m.setup.curveballs.length} curveballs`);
   if (!(Math.abs(cost0 - mt.startBill) <= 0.01 * mt.startBill)) fail(`starting bill ${cost0} is not data/twists.ts startBill ${mt.startBill} (±1 %)`);
-  const constraints = mt.offer.filter(t => t !== 'scratch' && t !== 'byHand' && t !== 'curveballs' && t !== 'landmarks');
+  // (Hands off the castle too: offered only where the starter breaks it, PLAN.md "Twists")
+  const constraints = mt.offer.filter(t => t !== 'scratch' && t !== 'byHand' && t !== 'curveballs');
   for (const c of check(m, m.starter, r0, constraints)) {
     console.log(`  starter ${c.id}: ${c.met ? 'meets it' : 'breaks it'} (${c.status})`);
     if (c.met) fail(`${c.id}: the starter already meets it (not a challenge)`);
   }
+  if (MISSION_TWISTS[preset].offer.includes('landmarks') && !m.pack.heritage) fail(`Hands off offered, public/scenarios/${m.scenario.id}/heritage.json missing (pipeline/build_heritage.py)`);
   if (mt.offer.includes('landmarks') && !m.setup.terms.landmarks.length) fail('landmarks offered, none near the line');
   const dir = `scripts/twists/${preset}`, files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.json')).sort() : [];
   const claimed = new Set<TwistId>();
@@ -278,6 +288,32 @@ else if (args[0] === '--show') {
   console.log(`${rr.valid ? 'VALID' : 'NOT VALID'} ${((rr.cost.total ?? NaN) / 1e6).toFixed(1)} M · ${checks.map(c => `${c.id} ${c.met ? '✓' : '✗'}`).join(' ')}`);
   mkdirSync(out.replace(/\/[^/]+$/, ''), { recursive: true });
   writeFileSync(out, JSON.stringify({ preset: args[1], purpose: `By hand: ${from ?? 'the starter'} with Auto's heights taken as height pins`, meets: rr.valid ? ['byHand'] : [], design: next } satisfies Fixture, null, 1));
+} else if (args[0] === '--edit') {
+  const m = mission(args[1]), inp = args[2], out = opt('--out');
+  if (!out) throw new Error('--out <file.json> is needed');
+  const fx: Fixture = inp === '-' ? { preset: args[1], purpose: 'By hand from the starter', meets: [], design: m.starter } : JSON.parse(readFileSync(inp, 'utf8'));
+  const id = fx.design.routes.find(r => r.role === 'mission')!.id, L0 = evalDesign(m, fx.design).routes[id]!.legacy!;
+  const d = structuredClone(legacyDesignForRoute(fx.design, id));
+  for (const op of args.slice(3).filter((a, i, all) => a !== '--out' && all[i - 1] !== '--out')) {
+    const [k, a, b] = op.split(':'), n = (t: string) => t.split(',').map(Number);
+    if (k === 'move') { const [dx, dy] = n(b), i = Number(a); d.pis[i] = { ...d.pis[i], x: d.pis[i].x + dx, y: d.pis[i].y + dy }; delete d.pis[i].mapped; }
+    else if (k === 'set') { const [x, y] = n(b), i = Number(a); d.pis[i] = { ...d.pis[i], x, y }; delete d.pis[i].mapped; }
+    else if (k === 'add') { const [x, y] = n(a), s = nearestS(L0, x, y); d.pis.splice(d.pis.filter(p => nearestS(L0, p.x, p.y) < s).length, 0, { x, y, r: null }); }
+    else if (k === 'del') d.pis.splice(Number(a), 1);
+    else if ((k === 'pin' || k === 'unpin') && d.profileMode === 'manual') throw new Error(`${op}: this design's heights are by hand (height pins of Auto do nothing)`);
+    else if (k === 'pin') { const [s, z] = n(a); d.gradePins = [...(d.gradePins ?? []).filter(p => Math.abs(p.s - s) > 30), { s, z }].sort((p, q) => p.s - q.s); }
+    else if (k === 'unpin') { const [s0, s1] = n(a); d.gradePins = (d.gradePins ?? []).filter(p => p.s < s0 || p.s > (s1 ?? s0)); }
+    else if (k === 'paint') { const [s0, s1, kind] = n(a); d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, kind as typeof KIND[keyof typeof KIND]); }
+    // (that stretch back to Auto; painted structures beside it keep their ends)
+    else if (k === 'unpaint') { const [s0, s1] = n(a); d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, null); }
+    else throw new Error(`unknown edit ${op}`);
+  }
+  const next = replaceRouteFromLegacy(fx.design, id, d), r = evalDesign(m, next);
+  console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).slice(0, 5).join('; '));
+  for (const c of check(m, next, r, (process.env.TW?.split(',') ?? m.setup.mission.offer) as TwistId[]))
+    console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.slice(0, 5).map(i => `\n      ${i.text}${i.s0 !== undefined ? ` (km ${(i.s0 / 1000).toFixed(2)}–${((i.s1 ?? i.s0) / 1000).toFixed(2)})` : ''}`).join('')}`);
+  // (what it meets is for twists-check to say: claimed nothing yet)
+  writeFileSync(out, JSON.stringify({ ...fx, meets: [], goal: false, design: next } satisfies Fixture, null, 1));
 } else if (args[0] === '--find') {
   const preset = args[1], twists = (opt('--twists') ?? '').split(',').filter(Boolean) as TwistId[];
   find(preset, twists, args.includes('--goal'), opt('--from'), Number(opt('--iters') ?? 600), Number(opt('--seed') ?? 1),
