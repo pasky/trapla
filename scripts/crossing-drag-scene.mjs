@@ -85,6 +85,16 @@ try {
   await drag(w, 40, -10, 10);
   ok(moved(c1, await camera()) < 1 && await undo() === 'changing Nudvojovická', `a drag on them rebuilds it and bends it (undo "${await undo()}"), no map moved`);
   await shot('703-crossed-road-works-bent');
+  // the player's choice goes with a slid crossing: an underpass stays one
+  await page.keyboard.press('Control+z'); await game.idle(600);
+  await select(F, 344, nud.x, nud.y);
+  await page.locator('#inspector button', { hasText: /^Underpass$/ }).click(); await game.idle(600);
+  const [under] = await crossingOf(F, 'c => c.roadId === 344');
+  await select(F, 344, under.x, under.y);
+  const r6 = await ring(), d6 = await alongRoad(under.s, 40);
+  await drag(r6, d6.dx, d6.dy);
+  const [kept] = await crossingOf(F, 'c => c.designed && c.s > 1400 && c.s < 2000');
+  ok(under.type === 'underpass' && kept?.type === 'underpass', `your underpass under us, slid: still an underpass (${under.type} → ${kept?.type})`);
 
   // ---- 2. D11: road III/3012 under our bridge at km 2.32 ----
   await game.open('scenario=d11');
