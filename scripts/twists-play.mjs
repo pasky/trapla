@@ -45,7 +45,7 @@ try {
   await page.waitForTimeout(700);
   ok(/Earth balance.*18 % of the fill brought in/.test(await twistCard()), 'the card: the starter brings in 18 % of its fill');
   await game.park(); await shot('starter-twists');
-  n++; // (641: the landmarks' rings in town, until round 4: scripts/heritage-play.mjs shows the listed monuments now)
+  n++; // (642: the landmarks' rings in town, until round 4: scripts/heritage-play.mjs shows the listed monuments now)
   // ---- a height pinned by hand: drag the road line in the profile down a little at the embankment by km 3.2 ----
   const share = async () => Number((await twistCard()).match(/(\d+) % of the fill brought in/)?.[1] ?? 0);
   const was = await share();

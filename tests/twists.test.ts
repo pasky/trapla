@@ -7,7 +7,9 @@ import { MISSION_TWISTS } from '../src/core/data/twists';
 import { CURVEBALLS } from '../src/core/data/curveballs';
 import { PRESETS } from '../src/core/data/scenario';
 import { jargonIn } from '../src/core/terms';
-import { checkTwists, twistLine, TWIST_NAMES, TWIST_ORDER, zoneRuns, type TwistFacts } from '../src/core/twists';
+import { checkTwists, inside, landmarkShape, twistLine, TWIST_NAMES, TWIST_ORDER, zoneRuns, type TwistFacts } from '../src/core/twists';
+import { missionLandmarks } from '../src/core/mission-twists';
+import type { HeritageData } from '../src/core/heritage';
 import type { Result } from '../src/core/evaluate';
 
 describe('twists', () => {
@@ -38,6 +40,23 @@ describe('twists', () => {
     expect(zoneRuns(r, 'r', circle(200, 0, 5), ['cut', 'fill', 'pier']).map(u => u.use)).toEqual(['pier']);
     expect(zoneRuns(r, 'r', circle(160, 0, 15), ['cut', 'fill', 'pier'])).toEqual([]); // the deck over it, no pier there
     expect(zoneRuns(r, 'r', circle(450, 0, 10), ['cut', 'fill', 'bridge'])).toEqual([]); // 30 m of ground over a mined tunnel
+  });
+
+  it('keep clear of the heritage areas and monuments near the line, not of one at a fixed end', () => {
+    // A (0, 0) to B (4000, 0); a zone with a hole across the line, one far off, a cross by the line, a church at B
+    const square = (x0: number, y0: number, x1: number, y1: number) => [x0, y0, x1, y0, x1, y1, x0, y1];
+    const heritage: HeritageData = { version: 1, source: 'test', zones: [
+      { name: 'Near zone', code: '1', rings: [square(1000, -500, 2000, 500), square(1400, -100, 1600, 100)] },
+      { name: 'Far zone', code: '2', rings: [square(1000, 3000, 2000, 4000)] },
+    ], monuments: [
+      { name: 'Kříž, Ves', kind: 'cross', x: 3000, y: 80, code: '3' },
+      { name: 'Kostel, Konec', kind: 'church', x: 4100, y: 0, code: '4' },
+    ] };
+    const frame = { origin: [0, 0] as const, width: 5000, height: 5000, a: { x: 0, y: 0 }, b: { x: 4000, y: 0 } };
+    const found = missionLandmarks({ initial: { pis: [] } } as never, frame, heritage);
+    expect(found.map(l => `${l.name} ${l.ring}`)).toEqual(['Near zone 0', 'Kříž, Ves 50']);
+    const zone = landmarkShape(found[0]);
+    expect([inside(zone, 1200, 0), inside(zone, 1500, 0), inside(zone, 2500, 0)]).toEqual([true, false, false]); // the hole is outside
   });
 
   for (const preset of Object.keys(MISSION_TWISTS)) {
