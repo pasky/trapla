@@ -114,19 +114,19 @@ try {
   const [iii2] = await crossingOf(M, 'c => c.designed && c.s > 2000 && c.s < 2800');
   ok(moved(c2, await camera()) < 1 && iii2 && iii2.s - iii.s > 30, `it crosses ${iii2 ? (iii2.s - iii.s).toFixed(0) : '?'} m further on; no map moved`);
   ok(await undo() === 'moving where road III/3012 crosses', `undo: "${await undo()}"`);
+  const priced = () => T(() => { const r = window.trapla.projectResult(); return { total: r.cost.total, why: [...new Set(r.cost.unpriced.map(u => u.reason))].join() }; });
+  const p2 = await priced();
+  ok(p2.total !== null, `slid, the project is priced (${p2.total !== null ? (p2.total / 1e9).toFixed(3) + ' bn' : `unpriced: ${p2.why}`})`);
   await shot('705-d11-iii-3012-slid');
 
   // ---- 5. its rebuilt stretch's ends pulled past junctions on both sides (owner: the squares could not pass them) ----
   // III/3012 is mapped as ways split at its junctions and at a 7 m bridge over a brook: its stretch [228 m, 802 m] of
   // one way is pulled on through the junction with a street, over the bridge and 150 m along the next way; then back
-  // past the junction at its start onto the way before it. Each pull is one undo step; the bill stays priced and valid.
+  // past the junction at its start onto the way before it. Each pull is one undo step; the project stays priced.
   const III = 'osm:way:236292102', NEXT = 'osm:way:141372692', BRIDGE = 'osm:way:141372695', BEFORE = 'osm:way:28729805';
   const rebuiltId = await T(() => window.trapla.getProject().routes.find(r => r.source)?.id);
   const stretch = () => T((id) => window.trapla.getProject().routes.find(r => r.id === id).source.intervals.map(i => ({ id: i.sourceId, s0: i.s0, s1: i.s1 })), rebuiltId);
   const iv0 = await stretch();
-  // (what keeps the slid crossing's project from a price already, the shared-land screen: no new reason may come of a pull)
-  const reasons = () => T(() => [...new Set(window.trapla.projectResult().cost.unpriced.map(u => u.reason))].sort().join());
-  const reasons0 = await reasons();
   ok(iv0.length === 1 && iv0[0].id === III, `the slid road is rebuilt on one way (${JSON.stringify(iv0.map(i => [i.id, Math.round(i.s0), Math.round(i.s1)]))})`);
   const endHandle = async (k) => { const hb = await page.locator(`.stretch-end[data-end="${k}"]`).boundingBox(); return { x: hb.x + hb.width / 2, y: hb.y + hb.height - 4 }; };
   const sp = (id, s) => T(([id, s]) => window.trapla.sourcePoint(id, s), [id, s]);
@@ -147,14 +147,15 @@ try {
   ok(iv1.map(i => i.id).join() === [III, 'osm:way:236292104', BRIDGE, NEXT].join() && Math.abs(iv1[3].s1 - 150) < 25,
     `pulled on through its junction and over the bridge: ${iv1.map(i => `${i.id.slice(8)} ${Math.round(i.s0)}–${Math.round(i.s1)}`).join(', ')}`);
   ok(await undo() === 'rebuilding more of Road III/3012' || /^rebuilding more of /.test(await undo()), `undo: "${await undo()}"`);
-  ok(await reasons() === reasons0 && !/Branch|cannot end/.test(await T(() => document.querySelector('.toast')?.textContent ?? '')),
-    `engineered and billed as before the pull (${bill1.works.join(' | ')}; unpriced: ${reasons0 || 'none'}; ${bill1.issues.join(' | ')})`);
+  ok(bill1.total !== null && !/Branch|cannot end/.test(await T(() => document.querySelector('.toast')?.textContent ?? '')),
+    `engineered and priced (${bill1.works.join(' | ')}; ${bill1.total !== null ? (bill1.total / 1e9).toFixed(3) + ' bn' : `unpriced: ${bill1.why.join()}`}; ${bill1.issues.join(' | ')})`);
   await shot('782-stretch-over-the-bridge');
   await lookAtSource(III, 228);
   await pull(0, BEFORE, 120, () => shot('783-stretch-start-past-junction', false));
   const iv2 = await stretch();
   ok(iv2[0].id === BEFORE && iv2.at(-1).id === NEXT && iv2.length === 5, `its start pulled back past its junction onto the way before: ${iv2.map(i => `${i.id.slice(8)} ${Math.round(i.s0)}–${Math.round(i.s1)}`).join(', ')}`);
-  ok(await reasons() === reasons0, `engineered and billed as before (unpriced: ${reasons0 || 'none'})`);
+  const p5 = await priced();
+  ok(p5.total !== null, `engineered and priced (${p5.total !== null ? (p5.total / 1e9).toFixed(3) + ' bn' : `unpriced: ${p5.why}`})`);
   await shot('784-stretch-both-ends-pulled');
   await page.keyboard.press('Control+z'); await game.idle(600);
   ok((await stretch()).length === 4, 'undo: its start where it was');
