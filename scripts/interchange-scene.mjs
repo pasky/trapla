@@ -13,7 +13,8 @@
 //     2.5 m wider), the formation and paving drawn wider along each lane; a gore dragged along it.
 //  5. The I/35 Turnov stage at km 1.67, Nudvojovická over the four-lane road, where our road cuts a local road at km 1.81
 //     and leads it to Nudvojovická: a diamond built against the local road as our road leaves it (no "two roads change
-//     the same old road"; the north-east exit over its new link), its crossroads made roundabouts on the cards: VALID.
+//     the same old road"; the north-east exit, just past it, over its new link); the south-west entry dragged off
+//     Nudvojovická, a bend too close to the north-east exit's end removed, the crossroads roundabouts on the cards: VALID.
 // node scripts/interchange-scene.mjs [--gpu] [--docs] [--only i35|nudvojovicka] [--save-i35 <file>] [--save-nudvojovicka <file>]
 //   (--docs: docs/screenshots/620–633, 710–719 and 720–724; --save-i35 / --save-nudvojovicka: a diamond's project, tests/fixtures/interchange)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -314,7 +315,8 @@ try {
   const swN = await groundAt(2657.05, 3264.05), neN = await groundAt(2963.0, 3578.9);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 1300, 0, 89), [nud.x, nud.y]);
   await game.idle(); await game.still();
-  const slipsN = [[await goreN(nud.s - 430, 1), swN], [swN, await goreN(nud.s + 450, 1)], [await goreN(nud.s + 450, -1), neN], [neN, await goreN(nud.s - 430, -1)]];
+  // (the north-east exit leaves the carriageway just past where our road cuts the local road: across what our road leaves of it)
+  const slipsN = [[await goreN(nud.s - 430, 1), swN], [swN, await goreN(nud.s + 450, 1)], [await goreN(nud.s + 200, -1), neN], [neN, await goreN(nud.s - 430, -1)]];
   for (const [k, [a, b]] of slipsN.entries()) {
     await build('Slip road');
     const ha = await hoverAt(a); await clickAt(a);
@@ -323,20 +325,44 @@ try {
   }
   const n1 = await issues();
   ok(!n1.list.some(t => /Two roads change the same old road/.test(t)), `the slip roads are built against the local road as our road leads it: no "two roads change the same old road" (${n1.list.join('; ') || 'no problems'})`);
-  const cut = await page.evaluate(() => { const t = window.trapla, p = t.getProject(), r = t.projectResult(), s3 = p.routes.find(q => q.name === 'Slip road 3');
-    return r.routes[s3.id].legacy.crossings.map(c => ({ way: c.roadId, type: c.type, x: c.x, y: c.y })); });
-  ok(!cut.some(c => c.way === nud.led.way && Math.hypot(c.x - nud.led.x, c.y - nud.led.y) < 120), `the north-east exit crosses the local road's new link, not its old line our road takes out (${cut.map(c => `${c.way} ${c.type}`).join(', ')})`);
-  // (Nudvojovická runs nearly towards the south-west entry's gore: Build still leaves it square, then turns east)
+  // (where it crosses the local road: on our road's new link of it, not on the stretch our road takes out)
+  const onLink = await page.evaluate(() => { const t = window.trapla, p = t.getProject(), r = t.projectResult(), s3 = p.routes.find(q => q.name === 'Slip road 3');
+    const led = r.routes['route:motorway-forward'].legacy.crossings.find(c => c.type === 'reconnection' && Math.abs(c.s - 1811) < 30);
+    const seg = (p, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, u = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(p.x - a.x - u * dx, p.y - a.y - u * dy); };
+    const near = (c, line) => line.slice(1).some((q, k) => seg(c, line[k], q) < 3);
+    return r.routes[s3.id].legacy.crossings.filter(c => c.cls === led.cls).map(c => ({ type: c.type, link: (led.geometry.links ?? []).some(l => near(c, l)) })); });
+  ok(onLink.length > 0 && onLink.every(c => c.link), `the north-east exit crosses the local road on our road's new link of it (${onLink.map(c => `${c.type}${c.link ? ' on the link' : ' elsewhere'}`).join(', ')})`);
+  // the south-west entry: Nudvojovická runs nearly towards its gore, so Build's line runs along it and crosses it;
+  // dragged off it square, as a designer would
   const second = await page.evaluate(() => window.trapla.getProject().routes.find(r => r.name === 'Slip road 2').id);
   await page.evaluate((id) => window.trapla.setActiveRoute(id), second); await game.idle();
-  const own = await page.evaluate(() => { const t = window.trapla; return { pis: t.getDesign().pis.length, crosses: t.projectResult().routes[t.activeRoute()].legacy.crossings.some(c => c.cls === 'tertiary') }; });
-  ok(own.pis === 2 && !own.crosses, `the south-west entry leaves Nudvojovická square and does not cross it (${own.pis} bends)`);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 520, 0, 89), [2760, 3250]); await game.idle(); await game.still();
+  const crossedOwn = await page.evaluate(() => { const t = window.trapla; return t.projectResult().routes[t.activeRoute()].legacy.crossings.some(c => c.cls === 'tertiary'); });
+  ok(crossedOwn, 'Build\'s line of the south-west entry runs along Nudvojovická and crosses it');
+  const onLine = await page.evaluate(() => { const t = window.trapla, r = t.projectResult().routes[t.activeRoute()].legacy; let best = null;
+    for (let i = 0; i < r.n; i++) { const d = Math.hypot(r.x[i] - 2745, r.y[i] - 3266); if (!best || d < best.d) best = { d, x: r.x[i], y: r.y[i], z: r.grade[i] }; } return best; });
+  const p0 = await at(onLine), p1 = await at(await groundAt(2740, 3235));
+  await page.mouse.move(p0.x, p0.y, { steps: 4 }); await page.waitForTimeout(200); await page.mouse.down();
+  await page.mouse.move(p1.x, p1.y, { steps: 12 }); await page.waitForTimeout(400);
+  await game.frames(3); await page.screenshot({ path: `${out}/720-nudvojovicka-entry-dragged-off-the-road.png` }); // (no park: the button is down)
+  await page.mouse.up(); await game.idle();
+  const dragged = await page.evaluate(() => { const t = window.trapla, r = t.projectResult().routes[t.activeRoute()].legacy; return { pis: t.getDesign().pis.length, crosses: r.crossings.some(c => c.cls === 'tertiary') }; });
+  ok(dragged.pis === 2 && !dragged.crosses, `dragged, it leaves Nudvojovická square and crosses it no more (${dragged.pis} bends)`);
+  // the north-east exit, short: Build's square bend comes too close to its end; removed on its card (the exit meets
+  // Nudvojovická askew enough without it)
+  const third = await page.evaluate(() => window.trapla.getProject().routes.find(r => r.name === 'Slip road 3').id);
+  await page.evaluate((id) => window.trapla.setActiveRoute(id), third); await game.idle();
+  if ((await issues()).list.some(t => /Slip road 3: Bend 2 is too close to its end/.test(t))) {
+    await page.evaluate(() => window.trapla.selectPi(1)); await game.idle();
+    await page.locator('#pi-del').click(); await game.idle();
+  }
+  ok(!(await issues()).list.some(t => /Slip road 3: Bend/.test(t)), 'the north-east exit\'s bends fit');
   // the crossroads as roundabouts (the sight lines along Nudvojovická are short): each slip road's card, Roundabout
   for (const [k, name] of ['Slip road', 'Slip road 2', 'Slip road 3', 'Slip road 4'].entries()) {
     const id = await page.evaluate((n) => window.trapla.getProject().routes.find(r => r.name === n).id, name);
     await page.evaluate((id) => window.trapla.setActiveRoute(id), id); await game.idle();
     await page.locator(`.route-junctions button[data-end="${k % 2 === 0 ? 'b' : 'a'}"]`, { hasText: 'Roundabout' }).click(); await game.idle();
-    if (k === 0) await shot('720-nudvojovicka-roundabout-on-the-card');
+    if (k === 0) await shot('721-nudvojovicka-roundabout-on-the-card');
   }
   const n2 = await issues();
   ok(n2.valid && n2.total !== null && n2.list.length === 0, `the Nudvojovická diamond is VALID and priced: ${(n2.total / 1e9).toFixed(4)} bn (${n2.list.join('; ') || 'no problems'})`);
@@ -344,14 +370,11 @@ try {
   if (saveNud) { writeFileSync(saveNud, JSON.stringify(await page.evaluate(() => window.trapla.getProject()), null, 1) + '\n'); console.log(`saved ${saveNud}`); }
   await page.evaluate(() => window.trapla.setActiveRoute('route:motorway-forward')); await game.idle();
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 1000, 0, 89), [nud.x, nud.y]);
-  await game.idle(); await game.still(); await shot('721-nudvojovicka-diamond-valid-overview');
+  await game.idle(); await game.still(); await shot('722-nudvojovicka-diamond-valid-overview');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 620, 150, 40), [nud.x, nud.y]);
-  await game.idle(); await game.still(); await shot('722-nudvojovicka-diamond-oblique');
+  await game.idle(); await game.still(); await shot('723-nudvojovicka-diamond-oblique');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x + 60, y - 10, 380, 200, 50), [nud.led.x, nud.led.y]);
-  await game.idle(); await game.still(); await shot('723-nudvojovicka-slip-road-over-the-led-local-road');
-  await page.evaluate((id) => window.trapla.setActiveRoute(id), second); await game.idle();
-  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 300, 160, 50), [swN.x + 60, swN.y]); await game.idle(); await game.still();
-  await shot('724-nudvojovicka-entry-leaves-the-road-square');
+  await game.idle(); await game.still(); await shot('724-nudvojovicka-exit-over-the-local-road-s-new-link');
   }
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }

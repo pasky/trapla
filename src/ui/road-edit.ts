@@ -471,14 +471,7 @@ export function newSlipRoad(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, 
  * askew, the normal leads back towards the motorway on one side and away from it on the other: the bend is kept at
  * least halfway out from the leaving bend to the end there (clear of the motorway's slopes), and at most 20 m
  * further out than the end on the other side. PROVISIONAL: a game default the player drags. Null where that leaves
- * under 30 m, the road runs nearly towards the gore (SQUARE_MIN), or too little room is left before the leaving bend. */
-/** How far off the road's normal the leaving bend may lie for a square last leg: cos 80° (the road running nearly towards
- * the gore). Beyond, the slip road would leave the road and turn back along it; below, without the square bend it runs
- * along the road and crosses it (Nudvojovická, I/35 km 1.67, at cos 0.35 it did). Game rule. */
-const SQUARE_MIN = Math.cos(80 * Math.PI / 180);
-/** Under cos 70° off the normal the turn onto the square leg needs a longer one: 85 m (a 50 km/h slip road's 85 m radius
- * through about 70°, tangent 85 · tan 35° ≈ 60 m, and 25 m of straight mouth and transition). Game rule (data/norms.ts ramp radii). */
-const SQUARE_TURN = Math.cos(70 * Math.PI / 180), SQUARE_TURN_LEG = 85;
+ * under 30 m, the road runs nearly towards the gore, or too little room is left before the leaving bend. */
 export function squareBend(t: { x: number; y: number }, along: { x: number; y: number }, first: { x: number; y: number },
   g: { x: number; y: number; travel: { x: number; y: number } }) {
   const l = Math.hypot(along.x, along.y) || 1;
@@ -486,8 +479,7 @@ export function squareBend(t: { x: number; y: number }, along: { x: number; y: n
   const fx = first.x - t.x, fy = first.y - t.y, reach = Math.hypot(fx, fy);
   if (nx * fx + ny * fy < 0) { nx = -nx; ny = -ny; }
   // (the leaving bend well off the road's normal: the slip road would run back along the road)
-  const off = (nx * fx + ny * fy) / (reach || 1);
-  if (off < SQUARE_MIN || Math.hypot(g.x - t.x, g.y - t.y) < 150) return null;
+  if ((nx * fx + ny * fy) / (reach || 1) < 0.35 || Math.hypot(g.x - t.x, g.y - t.y) < 150) return null;
   // out: away from the motorway, on the slip road's side; o(p): how far out p is from the gore
   let ox = -g.travel.y, oy = g.travel.x;
   if (ox * (first.x - g.x) + oy * (first.y - g.y) < 0) { ox = -ox; oy = -oy; }
@@ -495,9 +487,6 @@ export function squareBend(t: { x: number; y: number }, along: { x: number; y: n
   let d = Math.min(90, Math.max(40, reach / 4));
   if (out < -1e-6) d = Math.min(d, (o(t) - (o(first) + o(t)) / 2) / -out);
   else if (out > 1e-6) d = Math.min(d, 20 / out);
-  // (a road running nearly towards the gore: the slip road turns through most of a right angle there, room for its curve)
-  // (away from the motorway only: towards it the bend stays where it keeps clear of the motorway's slopes)
-  if (off < SQUARE_TURN && out >= -1e-6) d = Math.max(d, SQUARE_TURN_LEG);
   if (!(d >= 30) || reach - d < 60) return null;
   return { x: t.x + nx * d, y: t.y + ny * d, r: null };
 }

@@ -109,8 +109,8 @@
    }
   },
   {
-   "id": "route:f186d084-fdfe-41f7-bd5f-94b2996cf8b0",
-   "acousticSourceId": "acoustic:b52148a8-b59b-46a7-b945-1f47c78a8235",
+   "id": "route:d802fc47-5a10-4d10-af95-3a9afc0927d8",
+   "acousticSourceId": "acoustic:a741104a-f122-4795-b08f-e870472918f8",
    "name": "Slip road",
    "revision": 1,
    "role": "auxiliary",
@@ -186,12 +186,12 @@
    }
   },
   {
-   "id": "route:e654c613-11b4-4c96-b003-ed0395a793cb",
-   "acousticSourceId": "acoustic:f318d9ab-b1bf-4b04-aa3d-be61c7c81e2a",
+   "id": "route:c7b5bef2-64a4-4f54-a084-734c28d4189e",
    "name": "Slip road 2",
-   "revision": 1,
    "role": "auxiliary",
+   "revision": 13,
    "kind": "road",
+   "acousticSourceId": "acoustic:6ef0598a-aaea-439f-9795-3eb6b494d2e4",
    "endpoints": {
     "a": {
      "position": {
@@ -223,6 +223,32 @@
      "binding": "resolved"
     }
    },
+   "alignment": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 2739.999986885132,
+      "y": 3234.999998399305,
+      "r": null
+     },
+     {
+      "x": 3185.819426758857,
+      "y": 3277.9086681016415,
+      "r": null
+     }
+    ],
+    "controls": {
+     "structureOverrides": [],
+     "junctionForms": {
+      "a": "roundabout"
+     }
+    },
+    "vertical": {
+     "kind": "auto",
+     "pins": [],
+     "manualVpis": []
+    }
+   },
    "specification": {
     "kind": "road",
     "policy": "legacy-road",
@@ -235,51 +261,26 @@
      "speed": 50,
      "speedPolicy": "design"
     }
-   },
-   "alignment": {
-    "kind": "pi",
-    "pis": [
-     {
-      "x": 2677.893435150824,
-      "y": 3181.641932509343,
-      "r": null
-     },
-     {
-      "x": 3185.819426758857,
-      "y": 3277.9086681016415,
-      "r": null
-     }
-    ],
-    "vertical": {
-     "kind": "auto",
-     "pins": []
-    },
-    "controls": {
-     "structureOverrides": [],
-     "junctionForms": {
-      "a": "roundabout"
-     }
-    }
    }
   },
   {
-   "id": "route:0b3711e2-a5bb-4a07-a87b-5a04eeb2934d",
-   "acousticSourceId": "acoustic:8dae8185-eb5c-4059-a0ca-f8b3d82903dd",
+   "id": "route:0a50d3b0-e829-4318-95d1-fdd53db9ae85",
    "name": "Slip road 3",
-   "revision": 1,
    "role": "auxiliary",
+   "revision": 2,
    "kind": "road",
+   "acousticSourceId": "acoustic:3a23b5db-a78d-4dca-992b-90b8420a9181",
    "endpoints": {
     "a": {
      "position": {
-      "x": 3324.5656355825568,
-      "y": 3213.7234709215263,
-      "z": 251.26066344157573
+      "x": 3100.3203921390273,
+      "y": 3327.9431581511317,
+      "z": 248.10291250061783
      },
      "anchor": {
       "kind": "route",
       "routeId": "route:motorway-reverse",
-      "s": 2119.9809810637908
+      "s": 1869.9832238628721
      },
      "binding": "resolved"
     },
@@ -300,6 +301,27 @@
      "binding": "resolved"
     }
    },
+   "alignment": {
+    "kind": "pi",
+    "pis": [
+     {
+      "x": 2986.31250726345,
+      "y": 3388.2580769201963,
+      "r": null
+     }
+    ],
+    "controls": {
+     "structureOverrides": [],
+     "junctionForms": {
+      "b": "roundabout"
+     }
+    },
+    "vertical": {
+     "kind": "auto",
+     "pins": [],
+     "manualVpis": []
+    }
+   },
    "specification": {
     "kind": "road",
     "policy": "legacy-road",
@@ -312,36 +334,11 @@
      "speed": 50,
      "speedPolicy": "design"
     }
-   },
-   "alignment": {
-    "kind": "pi",
-    "pis": [
-     {
-      "x": 3207.835867646283,
-      "y": 3308.2653202663732,
-      "r": null
-     },
-     {
-      "x": 3016.874308169383,
-      "y": 3564.534677492687,
-      "r": null
-     }
-    ],
-    "vertical": {
-     "kind": "auto",
-     "pins": []
-    },
-    "controls": {
-     "structureOverrides": [],
-     "junctionForms": {
-      "b": "roundabout"
-     }
-    }
    }
   },
   {
-   "id": "route:6c1205a0-b72b-48f9-b847-316c07631ad8",
-   "acousticSourceId": "acoustic:1a09b7ef-3416-410a-a78a-e23fd82448b2",
+   "id": "route:376f5b57-fbc0-4919-9329-9c31bd99ceef",
+   "acousticSourceId": "acoustic:bc4f53ed-652e-4aa8-b2e7-98e6f1e182a0",
    "name": "Slip road 4",
    "revision": 1,
    "role": "auxiliary",

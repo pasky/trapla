@@ -2550,35 +2550,38 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
 ## Slip roads see our road's crossings (owner request, cost model 61, 2026-11-20)
 
 - **Gap:** a slip road saw its motorway's footprint relocations but not what the motorway's crossings do to the roads they
-  cross. At Nudvojovická (I/35 km 1.67) our road cuts a local road at km 1.81 and leads both its ends to Nudvojovická: the
-  slip roads crossed that local road's old line (an underpass of a stretch our road takes out) and the screen said "two roads
-  change the same old road" (the project unpriced).
-- **Now** (`project-evaluate.ts movedByMotorway`, `road-realignment.ts crossingChange`): a slip road is built against the
-  roads as our road's crossings leave them, like the relocations: where a crossing moves a road's plan (a reconnection or
-  diversion: cut, its links to the other road; a way moved aside or squared) that stretch is cut from the slip road's network
-  and the new pieces are ground ways of it, in our road's order (every slip road numbers them alike); every crossing's
-  stretch (also one only raised over our road or lowered under it) is a zone where the slip road's changes of that road are
-  one design with ours (`ScreenRoute.sharedWays`). The road a slip road's own end joins keeps its line (the interchange's
-  terminals, `interchangeTerminals`). The three earlier diamonds: identical.
-- **Build → Slip road's square bend** (found here): where the road at a slip road's end runs nearly towards its gore
-  (Nudvojovická from the south-west, 71° off the normal) Build gave no square bend (under cos 0.35 off it), and the entry ran
-  along Nudvojovická and crossed it, the crossing engine cutting Nudvojovická between the junction and its bridge. Now the
-  square bend is given down to 80° off the normal (`SQUARE_MIN`), its leg at least 85 m long under 70° where it leads away
-  from the motorway (a 50 km/h slip road's 85 m radius through about 70°; `SQUARE_TURN_LEG`, game rule).
-- **Result:** the Nudvojovická diamond (gores 430 m before and 450 m after the bridge, crossroads on Nudvojovická 290 m
-  south-west and 185 m north of it, as roundabouts: the sight lines along it are short): 6.5495 bn valid (+920 M: the
-  north-east slip roads buy out the industrial buildings by the bridge, the south-west ones houses of Nudvojovice); the
-  north-east exit crosses the local road's new link (underpass), not its old line; `tests/fixtures/interchange/
-  i35-nudvojovicka-diamond.json`, `tests/slip-roads.test.ts` (with the old Build shape of its south-west entry across what
-  our road leaves of the local road: one design, priced), `scripts/interchange-scene.mjs --only nudvojovicka` (screenshots
-  720–724).
+  cross. At Nudvojovická (I/35 km 1.67) our road cuts a local road at km 1.81 and leads both its ends to Nudvojovická: an
+  exit leaving the carriageway just past it crossed the local road's old line where our road takes it out (an underpass of a
+  road that is not there) and the screen said "two roads change the same old road" (the project unpriced).
+- **Now** (`project-evaluate.ts movedByMotorway`, `crossingChanges`; `road-realignment.ts crossingChange`): a slip road is
+  built against the roads as our road's crossings leave them, as against its relocations: where a crossing gives up a
+  road's old line (a reconnection's or diversion's severed stretch, also a closure's; a way moved aside or squared: its old
+  line; not its regraded ties, nor a road only raised over us or lowered under us on its own line) that stretch is cut from
+  the slip road's network (measured as on our road's network: from a dead end's new start where the player cut it back) and
+  its new pieces (the links, the moved or squared line) are ground ways of it, in our road's order (every slip road of the
+  interchange numbers them alike; worked out once per evaluated motorway); each such stretch is a zone where the slip
+  road's changes of that road are one design with ours (`ScreenRoute.sharedWays`). A slip road's end on a stretch our road
+  takes out is a problem ("It joins a stretch of road the four-lane road takes out"). Every frozen bill, starter and saved
+  design identical; D3 0303 and 0304 identical; the I/35 Turnov diamond 6.2054996382 bn (+0.00009 CZK: its north-east
+  exit's network no longer has the service way our road closes at km 1.18).
+- **Result:** the Nudvojovická diamond, built with the mouse (`scripts/interchange-scene.mjs --only nudvojovicka`,
+  screenshots 720–724): gores 430 m before the bridge on both sides, 450 m after it on the forward side, the north-east exit
+  200 m after it, just past the local road; crossroads on Nudvojovická 290 m south-west and 185 m north of the bridge as
+  roundabouts (the sight lines along it are short). The south-west entry, which Build runs along Nudvojovická (the road
+  runs nearly towards its gore, so Build gives no square bend), dragged off it square; the north-east exit's square bend,
+  too close to its end, removed on its card. 5.9445 bn valid (+315 M); the north-east exit crosses the local road on our
+  road's new link of it (an overbridge), not its old line. On the old engine: "two roads change the same old road".
+  `tests/fixtures/interchange/i35-nudvojovicka-diamond.json`, `tests/slip-roads.test.ts`.
 - **Not done: the noise barrier along a lane.** The motorway's noise (its walls, their height, the houses bought out) is
   solved in its own evaluation, before its slip roads exist; the lanes come from the slip roads, built against the finished
   motorway. Moving the barrier out with the lane means re-solving the motorway's noise after its slip roads (or the lanes
   before them): not small. Drawn, the wall stands beyond the lane (2.5 m further out on S 21.5, 0.5 m on D 27.5); billed and
   heard at the crown edge.
-- **Known gaps:** a crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road,
-  as a moved piece is); a slip road's own crossing of a link our road builds is its own (billed by it).
+- **Known gaps:** a cut road's remnant beyond the cut is a new way of the slip road's network (as a relocation's is), so a
+  choice on a slip road's crossing of it is not kept, and a choice saved on that way before is no longer applied there; a
+  crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road); a road only raised
+  over our road or lowered under it near a slip road is still two changes of one road (the slip road sees its ground line,
+  not our ramp); Build gives no square bend where the road runs nearly towards the gore (the player drags one).
 
 ## Twists and curveballs (owner request, no model version, 2026-11-20)
 

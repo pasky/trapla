@@ -434,10 +434,10 @@ bridge, its decks wider](docs/screenshots/715-i35-lanes-over-a-bridge.png), [the
 above](docs/screenshots/719-i35-gores-from-above.png), [the north-east slip roads along
 Přepeřská](docs/screenshots/718-i35-north-east-slip-roads.png).
 
-Where our road cuts a road and leads it elsewhere, its slip roads cross that road as our road leaves it (the new link, not
-the old line), one design with ours: [a diamond at Nudvojovická](docs/screenshots/721-nudvojovicka-diamond-valid-overview.png)
-(I/35 km 1.67, `i35-nudvojovicka-diamond.json`), [its exit over the local road's new link](docs/screenshots/723-nudvojovicka-slip-road-over-the-led-local-road.png),
-[its entry leaving Nudvojovická square](docs/screenshots/724-nudvojovicka-entry-leaves-the-road-square.png).
+Where our road cuts a road and leads it elsewhere, its slip roads cross that road as our road leaves it (on its new link,
+not its old line), one design with ours: [a diamond at Nudvojovická](docs/screenshots/722-nudvojovicka-diamond-valid-overview.png)
+(I/35 km 1.67, `i35-nudvojovicka-diamond.json`), [its exit over the local road's new link](docs/screenshots/724-nudvojovicka-exit-over-the-local-road-s-new-link.png),
+[its entry dragged off Nudvojovická](docs/screenshots/720-nudvojovicka-entry-dragged-off-the-road.png).
 
 A selected crossing's parts drag too (select first, then drag): its ring slides where the crossed road crosses ours
 along our road (the road rebuilt around the crossing, its angle kept; undo "moving where … crosses"), its lit works bend
