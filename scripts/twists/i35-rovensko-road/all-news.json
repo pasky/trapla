@@ -1,6 +1,6 @@
 {
  "preset": "i35-rovensko-road",
- "purpose": "Earth balance, Hands off the castle (600 m round the chapel at Radostn\u00e1 pod Koz\u00e1kovem) and every curveball, under the goal: searches from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seeds 2 \u2192 3 \u2192 9, the last two STEP=0.3)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the chapel at Radostná pod Kozákovem) and every curveball, under the goal: searches from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seeds 2 → 3 → 9, the last two STEP=0.3)",
  "meets": [
   "earth",
   "landmarks",
@@ -17,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Four-lane road towards \u010c\u00edmy\u0161l",
+    "name": "Four-lane road towards Čímyšl",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -68,7 +68,7 @@
    },
    {
     "id": "route:motorway-reverse",
-    "name": "Four-lane road towards Vald\u0161tejnsko",
+    "name": "Four-lane road towards Valdštejnsko",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -200,8 +200,8 @@
        "r": null
       },
       {
-       "x": 6126.958557837926,
-       "y": 8022.032496251179,
+       "x": 6116.703729480808,
+       "y": 8036.622747427127,
        "r": null
       },
       {
@@ -217,6 +217,11 @@
       {
        "x": 7536.2687129821015,
        "y": 7131.121070105476,
+       "r": null
+      },
+      {
+       "x": 7963.867119117479,
+       "y": 6714.675519741808,
        "r": null
       },
       {
@@ -240,13 +245,18 @@
        "r": null
       },
       {
+       "x": 6966.155871568465,
+       "y": 3329.9196084621735,
+       "r": null
+      },
+      {
        "x": 6961.111401423288,
        "y": 2574.823396883639,
        "r": null
       },
       {
-       "x": 7501.2704980418575,
-       "y": 2235.6127308396467,
+       "x": 7498.906403323671,
+       "y": 2217.9569602281217,
        "r": null
       }
      ],
@@ -300,7 +310,7 @@
        },
        {
         "s0": 7106.129270387591,
-        "s1": 7383.491866816247,
+        "s1": 7452.208923494428,
         "kind": 0
        },
        {
@@ -333,8 +343,20 @@
         "z": 300.2
        },
        {
+        "s": 1159,
+        "z": 311.4
+       },
+       {
         "s": 1619,
         "z": 327.3
+       },
+       {
+        "s": 2329,
+        "z": 341.8
+       },
+       {
+        "s": 3058,
+        "z": 357.5
        },
        {
         "s": 3338,
@@ -361,16 +383,16 @@
         "z": 334.9
        },
        {
+        "s": 6835,
+        "z": 335.2
+       },
+       {
         "s": 7824,
         "z": 345.6
        },
        {
         "s": 8056,
         "z": 351.4
-       },
-       {
-        "s": 8287,
-        "z": 352.3
        },
        {
         "s": 8324,
@@ -387,6 +409,10 @@
        {
         "s": 11612,
         "z": 310.4
+       },
+       {
+        "s": 11752,
+        "z": 304.3
        }
       ],
       "manualVpis": []
@@ -402,7 +428,7 @@
    "ports": [
     {
      "id": "a",
-     "name": "Vald\u0161tejnsko",
+     "name": "Valdštejnsko",
      "position": {
       "x": 2424.2,
       "y": 9775.1,
@@ -411,7 +437,7 @@
     },
     {
      "id": "b",
-     "name": "\u010c\u00edmy\u0161l",
+     "name": "Čímyšl",
      "position": {
       "x": 7692.4,
       "y": 1969.3,
