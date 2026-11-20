@@ -3085,11 +3085,14 @@ unchanged. Starters: I/35 Turnov 5,629.2 → 4,489.1 M (−967 the dead end at k
 070, carried over our cutting on a 30 m bridge, 39.5 M), I/35 whole route 15,157.9 → 14,095.3, Jičín 5,371.2 → 5,242.0,
 D35 stage 1 motorway 19,459.1 → 18,882.9 (the branch line at km 9.61 carried over our cutting on a 37 m bridge, 49.5 M,
 instead of our 70 m bridge over it: the line 10–17 m lower over km 9.1–9.9), D35 whole 33,238.9 → 32,620.5, D35 road
-6,673.9 → 6,545.2, D3 0301 5,082.1 → 4,855.0 and 0305 9,439.4 → 9,343.8 (dead ends), D3 full 36,080.7 → 35,972.2, D11
+6,673.9 → 6,545.2, D3 0301 5,082.1 → 4,855.0, 0303 5,633.4 → 5,632.1 (track 1031's dead end at km 3.19: its last 20 m taken up, not moved
+aside) and 0305 9,439.4 → 9,343.8 (dead ends), D3 full 36,080.7 → 35,972.2, D11
 14,029.2 → 14,026.2 (motorway) and 8,761.2 → 8,681.8 (road); dearer: the D3 road 4,004.8 → 4,015.9 (a home at km 0.45
 whose only road our embankment buries is bought out, before it was cut off unsaid), the D3 motorway 14,638.5 → 14,647.1,
 the Královec railway 10,760.2 → 10,800.6 (the 370 m bridge at km 10.09 was held over a dead end under it; with that end
-taken up the structure choice fills 90 m of it, houses and borrow it does not weigh fully). Not valid designs (the D11
+taken up the structure choice fills 90 m of it, houses and borrow it does not weigh fully). Not valid designs (the D11 railway
+mission's starter 24,958.5 → 24,932.3: dead ends at km 4.33, blocked before, and 13.88 taken up, the structure choice then
+filling more: bridges −101 M, earth +59 M, noise buy-outs +35 M; the D11
 random designs, straight starts) move both ways, where the search's railway bridge price does not foresee the walls
 beside it. Twists: the start bills; I/35 Turnov offers no earth balance (its starter balances its earth now); references
 searched again where the planned line's lower bill moved a curveball's limit (D11 motorway, D3 0301, 0305, I/35 Turnov,
