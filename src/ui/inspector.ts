@@ -159,6 +159,8 @@ export class Inspector {
     onRing?: (j: number) => boolean;
     /** a mapped road's own name or number, by its index in the pack's network (ui/road-links.ts), if it has one */
     roadName?: RoadNamer;
+    /** a mined tunnel's line under More on this map (core/data/lore.ts MINED_TUNNEL_LORE), if any */
+    minedTunnel?: () => string | undefined;
     /** where a tunnel's or cut's ends (stations i0, i1) drain to different seas, the card's line (core/basins.ts) */
     watershed?: (r: Result, i0: number, i1: number, s0: number, s1: number) => string | null;
     /** a Czech record this bridge or tunnel of the player's beats, said once (ui/records.ts) */
@@ -436,6 +438,7 @@ export class Inspector {
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
         ${sel.piece === 'cut' ? this.groundLine(r, i0, i1) : ''}
+        ${tunnel && tunnel.method !== 'cut' && tunnel.length - (tunnel.cutCoverM ?? 0) > 0 && this.ctx.minedTunnel?.() ? `<div class="sub lore">${esc(this.ctx.minedTunnel()!)}</div>` : ''}
         ${near || !open ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
         <div class="ctx-lbl">${CATEGORIES[d.category].mode === 'railway' ? 'Track' : 'Road'} height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`

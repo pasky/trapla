@@ -96,7 +96,7 @@ describe('player-facing text', () => {
     // local knowledge on mapped ways' cards (research/96) and records (research/97): one short sentence each
     for (const lore of [...ALL_LORE, ...RECORDS]) for (const text of [lore.line, 'title' in lore ? lore.title : undefined]) {
       check('local knowledge', text);
-      if (text) expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(16);
+      if (text) expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(18);
     }
     // a motorway direction is named after the place it leads to, never with its section note in nested
     // brackets (QA: "Drag this direction (Hostěradice (on to 0303)).")

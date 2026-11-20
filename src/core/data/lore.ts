@@ -38,5 +38,12 @@ export function mappedLore(pack: string | undefined, sourceId: string, tags: { h
   return ref && pack && ref.packs.includes(pack) ? ref.lore : undefined;
 }
 
+/** A mined tunnel of ours on these maps, under its card's More (research/96 §7: St Barbara at the real D11 tunnels'
+ * portals; a trade custom, said as whose it is; no statue drawn). */
+export const MINED_TUNNEL_LORE: Readonly<Record<string, string>> = {
+  d11: 'St Barbara, tunnellers’ patron, stands at its portal, as at the real Poříčí tunnel here since November 2026.',
+};
+
 /** Every line, for the player-text guard. */
-export const ALL_LORE: readonly Lore[] = [...MAPPED_LORE.values(), ...Object.values(BY_REF).map(r => r.lore)];
+export const ALL_LORE: readonly Lore[] = [...MAPPED_LORE.values(), ...Object.values(BY_REF).map(r => r.lore),
+  ...Object.values(MINED_TUNNEL_LORE).map(line => ({ line }))];

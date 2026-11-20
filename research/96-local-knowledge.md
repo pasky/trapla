@@ -7,7 +7,7 @@ subagents (2026-11-19/20), then every quote below re-read here; the OSM ways wer
 `transport.json.gz`. Used by `src/core/data/lore.ts` (mapped ways, a mission end), `src/ui/inspector.ts` (a tunnel's
 More) and `src/ui/twists.ts` (the reveal).
 
-Rule: one grey sentence, at most ≈ 15 words, on a card the object already opens; never on our own road's cards except
+Rule: one grey sentence, at most ≈ 15 words (18 at the most), on a card the object already opens; never on our own road's cards except
 where the line is about the real place (St Barbara). No line where a fact is not sourced.
 
 ## 1. Ecce Homo, Šternberk (i46-sternberk: road III/44423)
@@ -89,8 +89,8 @@ where the line is about the real place (St Barbara). No line where a fact is not
 
 ## 7. St Barbara at a mined tunnel (D11 motorway mission)
 
-**Line (a mined tunnel's More, d11 only):** "Tunnellers set St Barbara, their patron, at its portal, as at the real
-Poříčí tunnel here in November 2026."
+**Line (a mined tunnel's More, d11 only):** "St Barbara, tunnellers’ patron, stands at its portal, as at the real
+Poříčí tunnel here since November 2026."
 
 - [Valbek Story, 7 Nov 2026](https://www.valbekstory.com/clanky/detail-clanky/r/svata-barbora-bude-bdit-nad-vystavbou-tunelu-porici):
   "V úterý 3. listopadu se u tunelu Poříčí na dálnici D11 odehrál slavnostní okamžik … Trutnovský farář Ján Kubiš

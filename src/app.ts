@@ -53,6 +53,7 @@ import { createMapGestures } from './ui/map-gestures';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { earnedRecord } from './ui/records';
+import { MINED_TUNNEL_LORE } from './core/data/lore';
 import { shownS } from './ui/chainage';
 import { watershedLine, type BasinData } from './core/basins';
 import { createFlyAlong } from './ui/fly-along';
@@ -198,6 +199,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     maxRadius: (i) => curveEdit.maxRadius(i),
     radiusNote: (i, r) => radiusNotes.get(store.activeRouteId, i, r),
     natureNotes: (r, d, s0, s1) => natureNotes(pack.terrain, r, d, s0, s1),
+    minedTunnel: () => MINED_TUNNEL_LORE[scenario.id],
     // the ends of a tunnel or a cut in different seas' basins (core/basins.ts; loaded on the first such card)
     watershed: (r, i0, i1, s0, s1) => {
       if (basins === undefined) { basins = null; void pack.loadBasins().then(b => { basins = b; if (b) inspector.render(); }); return null; }

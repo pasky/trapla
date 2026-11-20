@@ -163,5 +163,23 @@ try {
     assert.match(await inspector(), /rain at its km 4\.\d\d end runs to the North Sea, at its km 7\.\d\d end to the Black Sea/);
     await shot(677, 'watershed-tunnel');
   }
+  // 7. St Barbara under a mined tunnel's More, on the D11 map only (core/data/lore.ts MINED_TUNNEL_LORE)
+  if (want('barbara')) {
+    await game.open('scenario=d11&preset=d11-rail-kralovec');
+    const t = await T(() => window.trapla.result().runs.filter(q => q.kind === 2 && q.method !== 'cut').sort((p, q) => q.length - p.length)[0]);
+    await T((s) => window.trapla.selectPiece(s), (t.s0 + t.s1) / 2); await idle(300);
+    assert.doesNotMatch(await inspector(), /St Barbara/, 'under More only');
+    await page.locator('#inspector .more-t').click();
+    assert.match(await inspector(), /St Barbara, tunnellers’ patron, stands at its portal/);
+    await shot(678, 'barbara-tunnel');
+    await page.locator('#inspector .more-t').click();
+    // not on another map's mined tunnel
+    await game.open('scenario=d35&preset=d35-stage1-motorway');
+    const u = await T(() => window.trapla.result().runs.filter(q => q.kind === 2).sort((p, q) => q.length - p.length)[0]);
+    await T((s) => window.trapla.selectPiece(s), (u.s0 + u.s1) / 2); await idle(300);
+    await page.locator('#inspector .more-t').click();
+    assert.doesNotMatch(await inspector(), /St Barbara/);
+    await page.locator('#inspector .more-t').click();
+  }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }
