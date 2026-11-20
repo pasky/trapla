@@ -47,3 +47,39 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('roads moved asid
     expect(r.demolished.filter(d => d.in === 'reroute').map(d => d.j)).toContain(22326);
   }, 120_000);
 });
+
+// Owner (2026-11-20, recurring: "we have embankment interfering with another road if we drag the crossing road"): a
+// crossing's ring slid along our road rebuilds the crossed road between its junctions; held on its bridge over our road,
+// it rose straight from the junction nodes at its steepest grade (its ramp embankments drawn as fans round the nodes)
+// and still missed its deck. A designer keeps a junction's grade there and raises the junction with the ramps, the roads
+// meeting there regraded down from it (core/junction-raise.ts).
+describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('a slid crossing between two junctions', () => {
+  it('raises the junctions with its ramps: valid, nothing under its works (D11 motorway km 8.39, slid −40 m)', async () => {
+    const { playerEdits } = await import('../scripts/works-clash-edits');
+    const { projectClashes } = await import('../scripts/works-clash-audit');
+    const [edit] = [...playerEdits(['d11:d11-motorway'], 7, { roadIds: [4828], slides: [-40] })];
+    const { result, routes } = projectClashes(edit.design);
+    const r = result.routes['route:edited'].legacy!;
+    expect(routes.find(q => q.id === 'route:edited')!.clashes).toEqual([]);
+    expect(result.issues.filter(i => i.scope.routeIds.includes('route:edited')).map(i => i.violation.title)).toEqual([]);
+    expect(r.valid).toBe(true);
+    // both ends raised: the roads meeting there regraded down from the node (drawn and billed with the junction), the
+    // end's fill a cone round it, and a junction's grade within its zone
+    const junctions = r.footprintConflicts.filter(f => f.action === 'junction');
+    expect(junctions.map(j => (j.geometry?.ties?.length ?? 0) >= 2 && j.cost > 0)).toEqual([true, true]);
+    expect(r.cones?.filter(c => c.end).length).toBe(2);
+    for (const [a, b] of [[0, 30], [r.length - 30, r.length]]) for (let k = 1; k < r.n; k++)
+      if (r.s[k] > a && r.s[k - 1] < b) expect(Math.abs(r.grade[k] - r.grade[k - 1]) / (r.s[k] - r.s[k - 1])).toBeLessThanOrEqual(0.06 + 1e-9);
+  }, 300_000);
+  it('a class I road under the rebuilt road\'s fill beside its junction is the footprint\'s, a problem (I/35 km 23.13, slid −40 m)', async () => {
+    const { playerEdits } = await import('../scripts/works-clash-edits');
+    const { projectClashes } = await import('../scripts/works-clash-audit');
+    const [edit] = [...playerEdits(['i35-full:i35-full-road'], 7, { roadIds: [5053], slides: [-40] })];
+    const { result, routes } = projectClashes(edit.design);
+    const r = result.routes['route:edited'].legacy!;
+    expect(routes.find(q => q.id === 'route:edited')!.clashes).toEqual([]);
+    // (deeper than the junction regrades it: an ordinary road hit, not the junction's mouth)
+    expect(r.footprintConflicts.some(f => f.feature === 'road' && f.action === 'blocked' && f.cls === 'primary')).toBe(true);
+    expect(r.valid).toBe(false);
+  }, 300_000);
+});

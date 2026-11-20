@@ -114,13 +114,16 @@ export function junctionRejoin(crossings: readonly CrossingResult[], roads: Road
       && roads.connections(end).some(c => c.way !== way && junctionRebuilt.some(iv => iv.way === c.way && c.d >= iv.a - 0.5 && c.d <= iv.b + 0.5)));
   };
 }
-/** How much earth over a joined road's pavement inside a junction's zone is the junction rebuilding that pavement at its
- * level, m: the draped-road tolerance (crossing-works.ts DRAPED) plus what the joined road can be regraded by within the
- * zone, back to its own level at the zone's edge no steeper than a junction allows (TIE_IN_RULES.maxGrade, VL 3 to ČSN
- * 73 6102: not over 6 %). Deeper, our slope buries the joined road beside the junction: an obstacle as any road (walled off
- * by retaining.ts, moved aside, or a problem). */
+/** How much earth over a joined road's pavement is the junction rebuilding that pavement at its level, `fromEnd` m from
+ * our end, m: the draped-road tolerance (crossing-works.ts DRAPED) plus what the joined road can be regraded by there no
+ * steeper than a junction allows (TIE_IN_RULES.maxGrade, VL 3 to ČSN 73 6102: not over 6 %): inside the zone, back to its
+ * own level at the zone's edge; along a road running on beside ours (a slip road joining at a shallow angle), from the
+ * node back to its own level where what the junction rebuilds of it ends (its mouth, JUNCTION_TIE_IN beyond the zone),
+ * whichever is more. Deeper, our slope buries the joined road beside the junction: an obstacle as any road (walled off by
+ * retaining.ts, moved aside, or a problem). */
 const JUNCTION_DRAPE = 0.3;
-export const junctionRegrade = (zone: number, fromEnd: number) => JUNCTION_DRAPE + TIE_IN_RULES.maxGrade * Math.max(0, zone - fromEnd);
+export const junctionRegrade = (zone: number, fromEnd: number) => JUNCTION_DRAPE
+  + TIE_IN_RULES.maxGrade * Math.max(0, zone - fromEnd, Math.min(fromEnd, zone + JUNCTION_TIE_IN - fromEnd));
 /** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
 const existingHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
 

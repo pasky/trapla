@@ -22,7 +22,10 @@ describe('the setup shared by the passes of an evaluation', () => {
 
   it.skipIf(!regressionPackAvailable())('is changed by no pass (direct-80: a first pass and its regrade retry)', () => {
     const ctx = regressionContext();
-    const d = JSON.parse(readFileSync('scripts/direct-80-design.json', 'utf8')).design as Design;
+    // (a box asked under the track at km 6.20, on too low an embankment: the retry raises our line for it; since cost model
+    // 63 Auto's own reroutes there take no homes, which retried before)
+    const saved = JSON.parse(readFileSync('scripts/direct-80-design.json', 'utf8')).design as Design;
+    const d: Design = { ...saved, crossingOverrides: [...saved.crossingOverrides ?? [], { roadId: 3564, type: 'underpass' }] };
     // (what the setup only points to: the pack and the design)
     const skip = new Set<unknown>([ctx.terrain, ctx.roads, ctx.buildings, ctx.scenario, ctx.junctions, d]);
     const cache = passCache(), hashes: string[] = [];

@@ -38,7 +38,9 @@ function random(seed: number) {
 export interface PlayerEdit { name: string; design: ProjectDesign }
 
 /** Every edit, its project as the player would leave it (evaluated by the caller). */
-export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_PACKS, seed = 7): Generator<PlayerEdit> {
+/** `only`: just these crossed ways (by legacy id) slid by these offsets (no dead ends, no saved projects): a repro. */
+export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_PACKS, seed = 7,
+  only?: { roadIds: number[]; slides: number[] }): Generator<PlayerEdit> {
   for (const spec of packs) {
     // (each pack its own sequence: narrowing EDIT_PACKS keeps its edits)
     const rnd = random(seed + [...spec].reduce((h, ch) => Math.imul(h, 31) + ch.charCodeAt(0) | 0, 0));
@@ -64,7 +66,8 @@ export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_
     // the crossings a ring or works drag can move (a mapped way, not cut, rebuildable), a seeded pick of them
     const movable = ours.crossings.filter(c => c.roadId !== undefined && !c.designed && c.type !== 'reconnection' && c.type !== 'diversion'
       && sourceOf.has(c.roadId) && index.source(sourceOf.get(c.roadId)!) && mappedLineKindFor(index, sourceOf.get(c.roadId)!).verdict.ok);
-    const picked = movable.map(c => ({ c, k: rnd() })).sort((a, b) => a.k - b.k).slice(0, PER_PACK).map(p => p.c).sort((a, b) => a.s - b.s);
+    const picked = only ? movable.filter(c => only.roadIds.includes(c.roadId!))
+      : movable.map(c => ({ c, k: rnd() })).sort((a, b) => a.k - b.k).slice(0, PER_PACK).map(p => p.c).sort((a, b) => a.s - b.s);
     for (const c of picked) {
       const sid = sourceOf.get(c.roadId!)!, kind = mappedLineKindFor(index, sid).kind!;
       const interval = derivedStretch(index, sid, stationOn(sid, c).s, covered(sid));
@@ -77,7 +80,7 @@ export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_
         return { edited, q: edited.routes.find(r => r.id === 'route:edited')! };
       };
       const km = (c.s / 1000).toFixed(2), what = `${presetId} km ${km} ${c.cls} ${c.type}`;
-      for (const off of SLIDES) {
+      for (const off of only?.slides ?? SLIDES) {
         const { edited, q } = rebuilt();
         if (q.alignment.kind !== 'pi' || q.specification.kind !== 'road') continue;
         const axis = slideAxis(ours, c.s), sec = slideSection(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis,
@@ -85,7 +88,7 @@ export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_
         q.alignment.pis = slideTo(sec, axis, axisPoint(axis, axisStation(axis, c) + off));
         yield { name: `${what}: ring slid ${off > 0 ? '+' : ''}${off} m`, design: edited };
       }
-      for (const pull of PULLS) for (const sign of [-1, 1]) {
+      for (const pull of only ? [] : PULLS) for (const sign of [-1, 1]) {
         const { edited, q } = rebuilt();
         if (q.alignment.kind !== 'pi') continue;
         const s = stationOn(sid, c).s, g = index.position(sid, s)!, g2 = index.position(sid, Math.min(s + 5, index.source(sid)!.stations.at(-1)!))!;
@@ -95,7 +98,7 @@ export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_
       }
     }
     // dead ends near our road, cut back half way to where they may go (ui/dead-end.ts)
-    let ends = 0;
+    let ends = only ? 2 : 0;
     for (const c of ours.crossings) {
       if (ends >= 2 || c.roadId === undefined || !sourceOf.has(c.roadId)) continue;
       const sid = sourceOf.get(c.roadId)!;
@@ -110,7 +113,7 @@ export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_
       }
     }
   }
-  for (const dir of SAVED) if (existsSync(dir)) for (const f of readdirSync(dir).filter(f => f.endsWith('.json')).sort()) {
+  if (!only) for (const dir of SAVED) if (existsSync(dir)) for (const f of readdirSync(dir).filter(f => f.endsWith('.json')).sort()) {
     const design = JSON.parse(readFileSync(`${dir}/${f}`, 'utf8')) as ProjectDesign;
     if (design.routes?.length && existsSync(`public/scenarios/${design.packId}/meta.json`)) yield { name: `${dir}/${f}`, design };
   }
