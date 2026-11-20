@@ -31,22 +31,26 @@ export function deadEndsNear(roads: RoadNet, buildings: BuildingIndex | undefine
   reach: number, skip: (way: number) => boolean = () => false): DeadEnd[] {
   const out: DeadEnd[] = [];
   if (line.n < 2) return out;
-  const near = (p: XY) => {
-    for (let i = 1; i < line.n; i++) {
-      const ax = line.x[i - 1], ay = line.y[i - 1], dx = line.x[i] - ax, dy = line.y[i] - ay;
-      if (Math.min(ax, ax + dx) - reach > p.x || Math.max(ax, ax + dx) + reach < p.x || Math.min(ay, ay + dy) - reach > p.y || Math.max(ay, ay + dy) + reach < p.y) continue;
-      const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy || 1)));
-      if (Math.hypot(p.x - ax - t * dx, p.y - ay - t * dy) <= reach) return true;
-    }
-    return false;
-  };
-  // (the ways near our line, by chunks of its stations)
-  const ways = new Set<number>(), CHUNK = 20;
+  // (the line by chunks of stations, their boxes: a point near it lies within reach of a chunk's box)
+  const CHUNK = 20, boxes: [number, number, number, number, number][] = [];
   for (let i0 = 0; i0 < line.n - 1; i0 += CHUNK) {
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (let i = i0; i <= Math.min(line.n - 1, i0 + CHUNK); i++) { x0 = Math.min(x0, line.x[i]); x1 = Math.max(x1, line.x[i]); y0 = Math.min(y0, line.y[i]); y1 = Math.max(y1, line.y[i]); }
-    roads.nearSegments([x0 - reach, y0 - reach, x1 + reach, y1 + reach], s => { ways.add(s.way); });
+    boxes.push([i0, x0 - reach, y0 - reach, x1 + reach, y1 + reach]);
   }
+  const near = (p: XY) => {
+    for (const [i0, bx0, by0, bx1, by1] of boxes) if (p.x >= bx0 && p.x <= bx1 && p.y >= by0 && p.y <= by1)
+      for (let i = Math.max(1, i0); i <= Math.min(line.n - 1, i0 + CHUNK); i++) {
+        const ax = line.x[i - 1], ay = line.y[i - 1], dx = line.x[i] - ax, dy = line.y[i] - ay;
+        if (Math.min(ax, ax + dx) - reach > p.x || Math.max(ax, ax + dx) + reach < p.x || Math.min(ay, ay + dy) - reach > p.y || Math.max(ay, ay + dy) + reach < p.y) continue;
+        const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(p.x - ax - t * dx, p.y - ay - t * dy) <= reach) return true;
+      }
+    return false;
+  };
+  // (the ways near our line, by its chunks)
+  const ways = new Set<number>();
+  for (const [, x0, y0, x1, y1] of boxes) roads.nearSegments([x0, y0, x1, y1], s => { ways.add(s.way); });
   for (const way of [...ways].sort((a, b) => a - b)) {
     const row = ROAD_CLASSES[roads.wayClass(way)];
     if (!row || row.noAtGrade || roads.structure(way) || roads.isDesigned(way) || skip(way)) continue;

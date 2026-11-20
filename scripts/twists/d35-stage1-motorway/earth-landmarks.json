@@ -1,11 +1,11 @@
 {
  "preset": "d35-stage1-motorway",
- "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find); also at most 400 m of bridges (Few bridges)",
+ "purpose": "Earth balance and Hands off the castle, under the goal: a search from the starter (scripts/twists-check.ts --find); also at most 400 m of bridges (Few bridges); searched again from it for cost model 60 (seed 1)",
  "meets": [
   "earth",
   "landmarks",
-  "budget",
-  "bridges"
+  "bridges",
+  "budget"
  ],
  "goal": true,
  "design": {
@@ -18,7 +18,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Star\u00e9 M\u011bsto",
+    "name": "Motorway towards Staré Město",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -166,8 +166,8 @@
        "r": null
       },
       {
-       "x": 4892.704511322895,
-       "y": 4313.791621777545,
+       "x": 4900.2703375161955,
+       "y": 4322.629710435046,
        "r": null
       },
       {
@@ -176,13 +176,13 @@
        "r": null
       },
       {
-       "x": 6907.539217933136,
-       "y": 4199.447072996506,
+       "x": 6774.711931258082,
+       "y": 4184.734850341278,
        "r": null
       },
       {
-       "x": 7822.560266552971,
-       "y": 4248.961149460665,
+       "x": 7792.088633176723,
+       "y": 4199.78970821018,
        "r": null
       },
       {
@@ -191,13 +191,13 @@
        "r": null
       },
       {
-       "x": 12882.902639064341,
-       "y": 3543.1636821080288,
+       "x": 12876.64423171703,
+       "y": 3520.8234025194993,
        "r": null
       },
       {
-       "x": 14488.257845269587,
-       "y": 3753.3306460064127,
+       "x": 14502.111838202733,
+       "y": 3756.1999629405177,
        "r": null
       },
       {
@@ -209,6 +209,11 @@
      "controls": {
       "structureOverrides": [
        {
+        "s0": 3434.2223159058617,
+        "s1": 3721.608400182759,
+        "kind": 0
+       },
+       {
         "s0": 4812.770028277262,
         "s1": 5003.909157393993,
         "kind": 0
@@ -217,6 +222,16 @@
         "s0": 7005.43851974855,
         "s1": 7292.871320236833,
         "kind": 0
+       },
+       {
+        "s0": 9670.288630272786,
+        "s1": 9838.344830348706,
+        "kind": 0
+       },
+       {
+        "s0": 14983.536131074574,
+        "s1": 15258.843403679848,
+        "kind": 0
        }
       ]
      },
@@ -224,12 +239,24 @@
       "kind": "auto",
       "pins": [
        {
-        "s": 2170,
-        "z": 499.9
+        "s": 1200,
+        "z": 468.3
        },
        {
-        "s": 10019,
-        "z": 391.3
+        "s": 1660,
+        "z": 481.2
+       },
+       {
+        "s": 4318,
+        "z": 550.3
+       },
+       {
+        "s": 6926,
+        "z": 463.7
+       },
+       {
+        "s": 10540,
+        "z": 399.2
        }
       ],
       "manualVpis": []
@@ -254,7 +281,7 @@
     },
     {
      "id": "b",
-     "name": "Star\u00e9 M\u011bsto",
+     "name": "Staré Město",
      "position": {
       "x": 18222.3,
       "y": 2459.4,
