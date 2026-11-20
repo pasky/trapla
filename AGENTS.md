@@ -183,4 +183,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   a selected mapped road's open dead end is cut back by its End handle, the piece taken up (`ProjectDesign.takenUp`,
   `core/taken-up.ts`; PLAN.md "A selected crossing's parts drag; a dead end cut back"). Open: a dead end of a mapped road
   under our embankment holds Auto's grade up (I/35 Turnov km 3.0: −961 M once its last 3 m are taken up).
+- Hand-built slip roads work on any divided road (D 27.5, S 21.5: the road's own lanes, speeds and price; cost model 60)
+  and are built against the roads as our road's crossings leave them (cost model 61; PLAN.md "Slip roads see our road's
+  crossings"). Open: along a speed-change lane the noise wall is DRAWN moved out with the widened formation but BILLED and
+  HEARD at the old crown edge (the motorway's noise is solved before its slip roads exist; moving it means re-solving the
+  motorway's noise after them); a crossing choice on what is left of a way our road cuts is not kept (a new way in the slip
+  road's network).
 - See PLAN.md "Next steps" and each section's "Known issues".
