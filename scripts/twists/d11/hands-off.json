@@ -1,0 +1,236 @@
+{
+ "preset": "d11",
+ "purpose": "Hands off the castle under the goal (its four listed places by the straight line, the memorial to the Austrian gunners, the railway bridge at Trutnov, the Bernartice grave and church, and the Zlat\u00e1 Ole\u0161nice church the first search's line came near): searches from the starter (seed 1, then seed 5 with WEIGHT=landmarks:4)",
+ "meets": [
+  "landmarks"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d11",
+  "presetId": "d11",
+  "packId": "d11",
+  "objectData": "2088988:889881338:3067130932",
+  "transportData": "2f1ce1f8f00ac3e5dc3a66eda26addbcf5025f601fd802d86b1d163e775a900e",
+  "routes": [
+   {
+    "id": "route:legacy-mission",
+    "name": "Road",
+    "role": "mission",
+    "revision": 0,
+    "kind": "road",
+    "acousticSourceId": "acoustic:legacy-mission",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 6909.9,
+       "y": 3283.3,
+       "z": 480.96768
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 12896.3,
+       "y": 20878.9,
+       "z": 527.9932800000001
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 7130.259263346475,
+       "y": 3886.436367047601,
+       "r": null
+      },
+      {
+       "x": 7231.9793870046715,
+       "y": 5441.945724268853,
+       "r": null
+      },
+      {
+       "x": 7530.152889940006,
+       "y": 6366.545240605176,
+       "r": null
+      },
+      {
+       "x": 12596.392139400248,
+       "y": 19966.784922031977,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 552.9289980043985,
+        "s1": 627.0499077502599,
+        "kind": 0
+       },
+       {
+        "s0": 1622.5458134339428,
+        "s1": 1696.4676717175976,
+        "kind": 0
+       },
+       {
+        "s0": 10445.08908216259,
+        "s1": 10594.534796717082,
+        "kind": 0
+       },
+       {
+        "s0": 11649.888166655794,
+        "s1": 11743.612399248286,
+        "kind": 0
+       },
+       {
+        "s0": 16353.474576010081,
+        "s1": 16617.365110464987,
+        "kind": 0
+       },
+       {
+        "s0": 17511.41542517633,
+        "s1": 17759.13631724606,
+        "kind": 1
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 320,
+        "z": 483
+       },
+       {
+        "s": 700,
+        "z": 470
+       },
+       {
+        "s": 1550,
+        "z": 477
+       },
+       {
+        "s": 3619,
+        "z": 452.8
+       },
+       {
+        "s": 4210,
+        "z": 430.5
+       },
+       {
+        "s": 7248,
+        "z": 449.6
+       },
+       {
+        "s": 7838,
+        "z": 426.7
+       },
+       {
+        "s": 9315,
+        "z": 498.1
+       },
+       {
+        "s": 9857,
+        "z": 479.6
+       },
+       {
+        "s": 10970,
+        "z": 529.3
+       },
+       {
+        "s": 11669,
+        "z": 556.7
+       },
+       {
+        "s": 13576,
+        "z": 506.5
+       },
+       {
+        "s": 13840,
+        "z": 499.6
+       },
+       {
+        "s": 14886,
+        "z": 518.5
+       },
+       {
+        "s": 16076,
+        "z": 529.4
+       },
+       {
+        "s": 18135,
+        "z": 517.4
+       }
+      ],
+      "manualVpis": []
+     }
+    },
+    "specification": {
+     "kind": "road",
+     "policy": "legacy-road",
+     "legalClass": "I",
+     "crossSection": "S9.5",
+     "designSpeed": 90,
+     "operations": {
+      "aadt": 9000,
+      "heavyShare": 0.15,
+      "speed": 90,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d11:d11",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Trutnov",
+     "position": {
+      "x": 6909.9,
+      "y": 3283.3,
+      "z": 480.96768
+     }
+    },
+    {
+     "id": "b",
+     "name": "PL border",
+     "position": {
+      "x": 12896.3,
+      "y": 20878.9,
+      "z": 527.9932800000001
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "road"
+     ],
+     "maxTravelMin": 14.5,
+     "demand": {
+      "kind": "road",
+      "aadt": 9000
+     }
+    }
+   ]
+  }
+ }
+}

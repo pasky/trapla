@@ -162,3 +162,6 @@ I/35 Rovensko, Královec), part of the default difficulty.
   reference 8.36). Hands off is offered there **off at first** (`notDefault`; the twist screen says "no line we found keeps
   it, the goal and all the news together"); its reference (`hands-off.json`, 8.90 bn) meets it with Earth balance and every
   news.
+- **The D11 class I road** (no twists until now: its straight starter balances its earth): Hands off with the own rings
+  (the starter passes four: the memorial to the Austrian gunners of 1866 and the railway bridge at Trutnov, the common
+  grave and the church at Bernartice); its reference keeps clear of them under the goal (7.57 bn; the starter 8.68).

@@ -2710,7 +2710,9 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   meets it with Earth balance and every news at 8.90 bn, over the goal (8.41 bn; the line moved ≈ 200 m east over the valley
   costs ≈ 0.4–0.7 bn, seven searches got no lower than 8.78 bn). Šternberk: none near enough (the bypass keeps
   670 m from the town's heritage zone, 1.2 km from the castle; the villa's garden stays a curveball); its twist screen says
-  so. The missions where the own rings bite keep them and name what their starter breaks. Screenshots 750–759
+  so. The missions where the own rings bite keep them and name what their starter breaks; the D11 class I road, until now
+  without twists, offers Hands off (its straight starter passes the memorial to the Austrian gunners, the railway bridge
+  at Trutnov, the Bernartice grave and church by their own rings; reference 7.57 bn, under the goal) and By hand. Screenshots 750–759
   (`scripts/hands-off-play.mjs`), 760–765 (`scripts/twist-picker-shots.mjs`).
 - **Where** (round 4: Hands off on the register, the I/35's full set): Hands off is offered on D3 0304 and the whole D3
   (the ruin of Stejc castle), the whole D35 (the Holy Trinity column at Mohelnice), the D11 motorway (the memorial to the
