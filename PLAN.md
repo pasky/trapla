@@ -2912,3 +2912,22 @@ main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before;
   and D11 road III/3012 with the real mouse (no camera move, the crossing where it was dragged, undo labels), a second
   slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
   (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.
+
+## Start over keeps its Undo; the frames after Start over (playtest flake, no model version, 2026-11-20)
+
+The toast's Undo after Start over vanished in `scripts/playtest.mjs` on the built site under load. No store event was
+the cause; the toast's own 6 s ran out before the page could take the click. Now the 6 s count only while the page
+answers (`ui/toast.ts`: from the next idle moment, a late tick counts as on time), and only the player's next edit
+hides it (a gesture under way, or a step committed / undone / redone: `ProjectStore.historyMoves`). playtest.mjs
+blocks the page 7 s after Start over and checks the Undo is still there.
+
+Performance item, measured on D11 (`scenario=d11`, the demo design, Start over from the design panel, host load ≈ 12):
+- in headless Chromium on SwiftShader (the browser gates' default, no `--gpu`): the first two frames after Start over
+  take ≈ 2.1 s each: one at once, one ≈ 2.2 s later when the new scene first draws. No main-thread long task
+  (PerformanceObserver `longtask`: none or one of 74 ms). The worker's evaluation returns at ≈ 0.85–1.0 s and the scene
+  is idle (`whenIdle`) at ≈ 1.2–1.4 s, so the main thread is free. The time goes into software GL drawing the
+  overview the camera reset shows, and into the first draw of the rebuilt meshes. A Playwright click waits for stable
+  frames, so it lands ≈ 2–3.3 s after Start over;
+- with the GPU (`GPU=1`): no frame over 50 ms, the result at ≈ 0.53–0.63 s, idle at ≈ 0.76–0.88 s.
+Not a player-facing problem on real hardware. It slows and destabilises the SwiftShader browser gates. Open: find what
+those two frames draw (the overview's buildings / terrain at full detail, or buffer uploads) before changing it.
