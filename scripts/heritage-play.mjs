@@ -31,6 +31,7 @@ try {
   await page.evaluate((key) => { localStorage.clear(); localStorage.setItem(key, '1'); }, INTRO_KEY);
   await page.reload();
   await page.waitForSelector('[data-start-here]', { timeout: 60000 });
+  await page.waitForFunction(() => document.querySelector('[data-start-here] button')?.disabled === false, null, { timeout: 120000 });
   const first = page.locator('[data-start-here]');
   ok(/Opatovec → Staré Město/.test(await first.textContent()), `Start here: Opatovec → Staré Město ("${(await first.locator('h3').textContent()).trim()}")`);
   ok(/Motorway · 17 km/.test(await first.textContent()), 'a 17 km motorway');

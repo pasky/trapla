@@ -1,6 +1,6 @@
 {
  "preset": "i35-turnov-road",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 3's search (seeds 1 → 11) with its bends 1 and 2 moved 254 m north-east by hand, clear of the church of St John the Baptist (--edit … move:1:130,220 move:2:130,220 unpin:1300,2700 unpaint:1300,2600), then searched (scripts/twists-check.ts --find, seeds 2 → 3)",
+ "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: round 3's search (seeds 1 → 11) with its bends 1 and 2 moved 254 m north-east by hand, clear of the church of St John the Baptist (--edit … move:1:130,220 move:2:130,220 unpin:1300,2700 unpaint:1300,2600), then searched (scripts/twists-check.ts --find, seeds 2 → 3 → 8)",
  "meets": [
   "earth",
   "landmarks",
@@ -190,6 +190,11 @@
        "r": null
       },
       {
+       "x": 4473.241644530109,
+       "y": 2237.7581416505514,
+       "r": null
+      },
+      {
        "x": 5021.590982183864,
        "y": 2053.03064795327,
        "r": null
@@ -208,18 +213,8 @@
      "controls": {
       "structureOverrides": [
        {
-        "s0": 14.3235359914745,
-        "s1": 247.56769755984195,
-        "kind": 0
-       },
-       {
-        "s0": 1541.1469634435487,
-        "s1": 1663.064763351666,
-        "kind": 0
-       },
-       {
-        "s0": 2709.8078756493505,
-        "s1": 2809.257005573272,
+        "s0": 300.2411196669884,
+        "s1": 439.7379840731461,
         "kind": 0
        },
        {
@@ -238,8 +233,13 @@
         "kind": 0
        },
        {
-        "s0": 5389.27070293997,
-        "s1": 5528.8793881743495,
+        "s0": 3977.090971739572,
+        "s1": 4082.6814284570287,
+        "kind": 0
+       },
+       {
+        "s0": 4669.598248752908,
+        "s1": 4830.133488451523,
         "kind": 0
        }
       ]
@@ -248,8 +248,8 @@
       "kind": "auto",
       "pins": [
        {
-        "s": 1079,
-        "z": 260.4
+        "s": 1020,
+        "z": 258.1
        },
        {
         "s": 1280,
@@ -260,12 +260,12 @@
         "z": 261.5
        },
        {
-        "s": 2280,
-        "z": 254.5
-       },
-       {
         "s": 2630,
         "z": 251.2
+       },
+       {
+        "s": 2640,
+        "z": 251.8
        },
        {
         "s": 2868,
@@ -282,6 +282,10 @@
        {
         "s": 3717,
         "z": 249.8
+       },
+       {
+        "s": 5190,
+        "z": 277.6
        }
       ],
       "manualVpis": []

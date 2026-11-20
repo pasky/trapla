@@ -79,5 +79,25 @@ anything, since the areas are very far from any plausible route." The twist now 
 There the planned line already keeps clear of every listed monument and heritage area near it, so the twist would ask
 nothing of it: it is not offered.
 
-## I/35 Turnov: the church of St John the Baptist
-(Filled in from the searches, see below.)
+## The I/35 references (round 4: a full set of twists)
+- **Turnov, the church of St John the Baptist** (Kostel sv. Jana Křtitele, a listed monument outside Turnov's heritage
+  zone): the planned line passes 40–100 m from it at km 1.5–1.8, in a shallow cut on the valley floor west of the town.
+  Round 3's searches never got 200 m off it. Here: south of it lie the railway yard and the town, north of it a factory
+  inside its ring; a mined tunnel under it is out of reach (the valley floor gives no 14 m of cover; a 1.6 km tunnel painted
+  under the church, the yard and Nudvojovice prices at 11.6 bn, the goal is 5.07). By hand (`twists-check.ts --edit`):
+  the first two bends moved 254 m north-east, round the ring and the factory's north side (5.56 bn, industrial buildings
+  bought out, invalid at a railway), then searched (seeds 2 → 3 → 8): **4.77 bn, VALID, every curveball met, earth balanced 4 %**.
+- **Jičín, the Studeňany village protection zone** (ÚSKP 3260, declared 26 Jun 2026, ≈ 730 ha round the Studeňany village
+  heritage zone): the planned line runs through its north-east part for 1.9 km (km 11.4–13.3; a cut). Round 3's reference
+  moved north and east of it by hand (its last two bends; 4.55 bn), then searched: **4.14 bn**. It passes by Radim on the
+  zone's north-east corner and buys out homes there: the price of keeping out of the zone.
+- **The whole I/35**: round 3's whole-route reference with the two stages' new lines stitched in (`twists-stitch.ts --base`,
+  new: keep a whole-route design outside the sections) and searched (seeds 9 → 10 → 13): **13.31 bn, under the money news
+  (13.34 bn) and the goal (13.64 bn)**.
+- **Nobody moves**: Jičín (a search from the starter: 3.51 bn, none bought out). Not on Turnov nor the whole route: six
+  searches from the starter and from the references (≈ 3,500 designs) leave two homes, one by the Jizera at Ohrazenice on
+  the bend that turns the line off the D10 interchange (demolished; moving the bend 20–30 m away takes others further on),
+  one at km 3.7 beside the Jizera crossing (bought out); the planned line takes 12.
+- **Spare the forest / Few bridges**: caps just above what a reference reaches under the goal: Turnov 0.6 ha (0.54) and
+  700 m (690), Rovensko 5 ha (4.9) and 350 m (320), Jičín 0.8 ha (0.74) and 250 m (220); the starters take 1.4 / 6.6 / 1.5 ha
+  and 1,420 / 530 / 980 m.

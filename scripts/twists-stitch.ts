@@ -2,7 +2,9 @@
 // bends, height pins and painted structures carried over into the whole pack (EPSG:5514 places, stations re-measured on
 // the stitched line); the rest of the line stays the starter's. A starting point for `twists-check.ts --find --from`.
 //
-//   npx tsx scripts/twists-stitch.ts <whole preset> <section fixture.json>… [--manual] [--repair N] [--painted none|tunnels] [--freeze [--hybrid W]] --out f.json
+//   npx tsx scripts/twists-stitch.ts <whole preset> <section fixture.json>… [--manual] [--repair N] [--painted none|tunnels] [--freeze [--hybrid W]]
+//        [--base whole.json] --out f.json
+// --base: a whole-route design to keep outside the sections (its bends, heights and painted structures) instead of the starter
 import { readFileSync, writeFileSync } from 'node:fs';
 import { check, evalDesign, mission, nearestS, type Fixture } from './twists-check';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
@@ -14,11 +16,13 @@ import { KIND } from '../src/core/structures';
 const args = process.argv.slice(2), out = args[args.indexOf('--out') + 1];
 if (!args.includes('--out') || !out?.endsWith('.json')) throw new Error('--out <file.json> is needed');
 const whole = mission(args[0]), o = whole.pack.meta.origin as [number, number];
-const files = args.slice(1).filter(a => a.endsWith('.json') && a !== out);
+const baseFile = args.includes('--base') ? args[args.indexOf('--base') + 1] : undefined;
+const files = args.slice(1).filter(a => a.endsWith('.json') && a !== out && a !== baseFile);
 const routeOf = (d: Fixture['design']) => d.routes.find(r => r.role === 'mission')!.id;
-const wr = routeOf(whole.starter);
-const L0 = evalDesign(whole, whole.starter).routes[wr]!.legacy!;
-const base = legacyDesignForRoute(whole.starter, wr);
+const baseDesign = baseFile ? (JSON.parse(readFileSync(baseFile, 'utf8')) as Fixture).design : whole.starter;
+const wr = routeOf(baseDesign);
+const L0 = evalDesign(whole, baseDesign).routes[wr]!.legacy!;
+const base = legacyDesignForRoute(baseDesign, wr);
 type Pt = { x: number; y: number };
 const at = (L: { n: number; x: Float64Array; y: Float64Array; ds: number }, s: number): Pt => {
   const i = Math.max(0, Math.min(L.n - 2, Math.floor(s / L.ds))), t = Math.max(0, Math.min(1, s / L.ds - i));
@@ -43,7 +47,7 @@ const pis = [
 // (STITCH_DROP=i,j: bends left out by index, where two sections' bends merge into one curve on the whole line)
 for (const k of (process.env.STITCH_DROP ?? '').split(',').filter(Boolean).map(Number).sort((a, b) => b - a)) pis.splice(k, 1);
 const stage1: Design = { ...structuredClone(base), pis, gradePins: [], structureOverrides: [] };
-let design = replaceRouteFromLegacy(whole.starter, wr, stage1);
+let design = replaceRouteFromLegacy(baseDesign, wr, stage1);
 const L1 = evalDesign(whole, design).routes[wr]!.legacy!;
 // the heights and the painted structures, their stations measured anew on the stitched line
 const sOn = (q: typeof sections[number], s: number) => { const p = q.conv(at(q.L, s)); return nearestS(L1, p.x, p.y); };
@@ -52,6 +56,10 @@ const gradePins = sections.flatMap(q => (q.d.gradePins ?? []).map(p => ({ s: Mat
 const painted = args.includes('--painted') ? args[args.indexOf('--painted') + 1] : 'all';
 const structureOverrides = sections.flatMap(q => (q.d.structureOverrides ?? []).filter(so => painted === 'all' || (painted === 'tunnels' && so.kind === KIND.tunnel))
   .map(so => ({ ...so, s0: sOn(q, so.s0), s1: sOn(q, so.s1) })));
+// (--base: its own painted structures outside the sections, re-measured on the stitched line)
+if (baseFile) structureOverrides.push(...(base.structureOverrides ?? []).filter(so => !sections.some(q => so.s1 >= q.s0 && so.s0 <= q.s1))
+  .map(so => ({ ...so, s0: nearestS(L1, ...(Object.values(at(L0, so.s0)) as [number, number])), s1: nearestS(L1, ...(Object.values(at(L0, so.s1)) as [number, number])) })));
+structureOverrides.sort((a, b) => a.s0 - b.s0);
 // --manual: the sections' own grade lines as the whole's heights by hand (where their pins do not solve on the whole line)
 // (where no section covers the line, the starter's own heights, re-measured on the stitched line)
 const covered = (s: number) => sections.some(q => s >= sOn(q, 0) - 1 && s <= sOn(q, q.L.s[q.L.n - 1]) + 1);
@@ -68,7 +76,7 @@ const boundary = (vs: typeof vpis) => {
   return [...vs.filter(v => !inWin(v.s)), ...fromStarter].sort((a, b) => a.s - b.s);
 };
 vpis.splice(0, vpis.length, ...boundary(vpis));
-design = replaceRouteFromLegacy(whole.starter, wr, args.includes('--manual') ? { ...stage1, profileMode: 'manual', vpis, structureOverrides } : { ...stage1, gradePins, structureOverrides });
+design = replaceRouteFromLegacy(baseDesign, wr, args.includes('--manual') ? { ...stage1, profileMode: 'manual', vpis, structureOverrides } : { ...stage1, gradePins, structureOverrides });
 let r = evalDesign(whole, design);
 // --freeze: the heights the whole line got (its pins as the sections set them, met or not) taken by hand, as By hand takes them
 if (args.includes('--freeze')) {
@@ -79,7 +87,7 @@ if (args.includes('--freeze')) {
     const w = Number(args[args.indexOf('--hybrid') + 1]), cuts = sections.slice(1).map(q => sOn(q, 0)), inWin = (s: number) => cuts.some(c => Math.abs(s - c) <= w);
     frozen = [...vpis.filter(v => !inWin(v.s)), ...frozen.filter(v => inWin(v.s))].sort((a, b) => a.s - b.s);
   }
-  design = replaceRouteFromLegacy(whole.starter, wr, { ...d, profileMode: 'manual', vpis: frozen, gradePins: [] });
+  design = replaceRouteFromLegacy(baseDesign, wr, { ...d, profileMode: 'manual', vpis: frozen, gradePins: [] });
   r = evalDesign(whole, design);
 }
 // --repair N: the fixes the issues spell out, applied N rounds (a pin moved to where the road passes, or unpinned, one of two bends that merge dropped, a height point raised or lowered by what they say, a bridge
@@ -108,7 +116,7 @@ for (let round = 0; round < Number(args[args.indexOf('--repair') + 1] ?? 0) && a
       d.vpis[k] = { ...d.vpis[k], z: Math.min(d.vpis[k].z, L.ground[j]) - 2 };
     }
   }
-  design = replaceRouteFromLegacy(whole.starter, wr, d);
+  design = replaceRouteFromLegacy(baseDesign, wr, d);
   r = evalDesign(whole, design);
   console.log(`  repair ${round + 1}: ${r.issues.length} issues, ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} M`);
 }
