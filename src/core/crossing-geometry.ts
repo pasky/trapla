@@ -10,7 +10,7 @@ import { CLOSURE_ROUND, PIECE_SEARCH, pieceAccess, type PieceAccess } from './wa
 export { CLOSURE_ROUND } from './way-pieces';
 import { smoothLink } from './crossing-link';
 import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
-import { crossingWorks, slopeWorks, type CrossingTie, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
+import { crossingWorks, slopeWorks, SOURCE_BREAK, type CrossingTie, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LINK_MAX_SUPPORT, LOWERING_RULES, MAX_RAMP_LENGTH, OVERBRIDGE_CLEARANCE as CLEARANCE, RETAINING_RULES, retainingAssembly, sagDrainage, SQUARE_BELOW, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
 export { SQUARE_BELOW };
 import { slopeSurfaceAt } from './sections';
@@ -1898,9 +1898,13 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
     let cost = 0, wallLength = 0, tieLength = 0;
     const houses = new Set(c.houses ?? []), ties: CrossingTie[] = [];
     // (its own way's line and the way it is led to are the reroute itself: crossing-works' source)
-    const source = roads ? [...getPath(c.roadId, c.x, c.y, g)] : [];
+    const source: XY[] = roads ? [...getPath(c.roadId, c.x, c.y, g)] : [];
+    // (the way it is led to, as far each way from where each link meets it as a tie reaches: a link joining it
+    // mid-way lies on it, not beside it; worksClashes counts that way the reroute's own too)
+    if (roads && c.targetRoadId !== undefined) for (const path of g.links) for (const q of [path[0], path[path.length - 1]])
+      if (q) source.push(SOURCE_BREAK, ...denseWay(roads.connectedCrossingPath(c.targetRoadId, q.x, q.y, MAX_RAMP_LENGTH), () => {}));
     g.links = g.links.map(path => {
-      const key = `${g.width}|${c.roadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
+      const key = `${g.width}|${c.roadId}|${c.targetRoadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
       let own = slopes.get(key);
       const screen = { heightAt, ours: (q: XY, pad: number) => margin(q, pad) <= 0, body, gap: (q: XY) => margin(q, 0, false), ...(route.beside ? { beside: route.beside } : {}) };
       if (!own) slopes.set(key, own = roads ? crossingWorks(path, g.width, source, { ...screen, roads, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed })

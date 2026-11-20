@@ -71,12 +71,15 @@ const segDist = (q: XY, a: XY, b: XY) => {
 const CELL = 20;
 const sourceIndex = new WeakMap<readonly XY[], Map<number, number[]>>();
 const cellKey = (cx: number, cy: number) => cx * 1_000_003 + cy;
+/** (a point with a NaN coordinate breaks the source into pieces: no segment through it) */
+export const SOURCE_BREAK: XY = { x: NaN, y: NaN };
 function onSource(q: XY, source: readonly XY[]): boolean {
   let grid = sourceIndex.get(source);
   if (!grid) {
     grid = new Map();
     for (let i = 1; i < source.length; i++) {
       const a = source[i - 1], b = source[i];
+      if (!Number.isFinite(a.x + b.x)) continue;
       for (let cx = Math.floor((Math.min(a.x, b.x) - ON_PATH) / CELL); cx <= Math.floor((Math.max(a.x, b.x) + ON_PATH) / CELL); cx++)
         for (let cy = Math.floor((Math.min(a.y, b.y) - ON_PATH) / CELL); cy <= Math.floor((Math.max(a.y, b.y) + ON_PATH) / CELL); cy++) {
           const key = cellKey(cx, cy), list = grid.get(key);
