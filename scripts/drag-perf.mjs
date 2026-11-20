@@ -37,6 +37,11 @@ try {
 // one navigation (the page's Worker is wrapped before its own code runs), the first-run intro dismissed beforehand:
 // it lies over the map's corner and the start view is framed around it
 await dismissIntro(page);
+// (the twists stay on, as a player has them, but the reveal has been seen: a design that meets them under the goal, as
+// the D11 best design meets Hands off, would otherwise open it over the map before the drag)
+await page.addInitScript((key) => {
+  try { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ chosen: false, firstValid: true, revealed: { cost: 0, on: [] } })); } catch { /* none */ }
+}, `trapla.twists.v1.${scenarioId}.${presetId ?? scenarioId}`);
 await page.addInitScript(() => {
   const D = window.__drag = { on: false, posts: new Map(), results: [], frames: [], longtasks: [], moves: [] };
   const Orig = window.Worker;
