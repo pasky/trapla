@@ -446,7 +446,7 @@ export class Inspector {
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
           : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height pin here</button></div>`}
         ${this.costLines(r, i0, i1)}
-        ${bridge && bridge.style !== 'arch' ? `<div class="ctx-row"><button type="button" data-print-bridge="${bridge.s0}" title="One A4 sheet: fold it along the middle and stand it on a desk. Side view on one face, from above on the other, both to scale.">Print bridge card</button></div>` : ''}
+        ${bridge && bridge.style !== 'arch' ? `<div class="ctx-row"><button type="button" data-print-bridge="${bridge.s0}" title="One A4 sheet: fold it along the middle and stand it on a desk. The side view on one half, the view from above on the other, both to scale.">Print bridge card</button></div>` : ''}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
   }
