@@ -286,7 +286,7 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
       const a = route.endpoints[e].anchor, p = route.endpoints[e].position, way = a.kind === 'source' ? sourceWays?.get(a.location.sourceId) : undefined;
       if (way === undefined) continue;
       const d = roads.wayStation(way, p.x, p.y) - (takenUpHeads(roads, design, sourceWays).get(way) ?? 0);
-      if (changes.some(c => c.cuts.some(i => i.way === way && d > i.d0 + 1 && d < i.d1 - 1))) out.endsGone.push(e);
+      if (out.cuts.some(i => i.way === way && d > i.d0 + 1 && d < i.d1 - 1)) out.endsGone.push(e);
     }
   }
   return out.cuts.length || out.zones.length ? out : undefined;
@@ -307,7 +307,10 @@ function crossingChangeList(host: Result, roads: RoadNet, heads: ReadonlyMap<num
   const out: { x: number; y: number; reach: number; cuts: MovedWays['cuts']; ways: MovedWays['ways'] }[] = [];
   for (const c of host.crossings) {
     if (c.shared || c.roadId === undefined) continue;
-    const change = crossingChange(c, roads), removed = change?.removed.filter(i => i.way < roads.wayCount) ?? [];
+    // (a crossing of what is left of a way our road's own network cut, a later way there: the pack's way at that place)
+    const way = c.roadId < roads.wayCount ? c.roadId : roads.nearestWay(c.x, c.y, 1);
+    if (way === undefined || (c.roadId >= roads.wayCount && roads.connections({ x: c.x, y: c.y }, 1).find(q => q.way === way)?.cls !== c.cls)) continue;
+    const change = crossingChange(way === c.roadId ? c : { ...c, roadId: way }, roads), removed = change?.removed.filter(i => i.way < roads.wayCount) ?? [];
     if (!change || !removed.length) continue;
     const cuts = removed.map(i => { const by = heads.get(i.way) ?? 0; return { way: i.way, d0: Math.max(0, i.a - by), d1: Math.max(0, i.b - by) }; }).filter(i => i.d1 > i.d0);
     if (!cuts.length) continue;
@@ -628,7 +631,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
       for (const e of moved.endsGone) {
         const at = e === 'a' ? { s0: 0, s1: Math.min(own.length, SLIP_ROAD.endZone / 2) } : { s0: Math.max(0, own.length - SLIP_ROAD.endZone / 2), s1: own.length };
         own.violations.push({ kind: 'crossing', ...at, basis: 'game', title: `It joins a stretch of road the ${word} takes out`,
-          fix: 'Move this end along the road to where it stays', rule: `Game rule: a slip road joins a road where it stays; the ${word} cuts this one here and leads it elsewhere.` });
+          fix: 'Move this end along the road to where it stays', rule: `Game rule: a slip road joins a road where it stays; the ${word} takes this stretch of it out.` });
         own.valid = false;
       }
     }

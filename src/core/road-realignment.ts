@@ -149,8 +149,10 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
 export function crossingChange(c: CrossingResult, roads: RoadNet): { removed: RoadSourceInterval[]; pieces: CrossingPoint[][]; reach: number } | undefined {
   const g = c.geometry, source = crossingSource(c, roads);
   if (!g || !source?.removed.length) return undefined;
+  // (a squared or moved-on-its-line way: its new line between where it leaves the old one; a reconnection's links)
+  const within = (p: CrossingPoint) => p.d === undefined || !g.removed || (p.d >= g.removed[0] - 1e-6 && p.d <= g.removed[1] + 1e-6);
   const pieces = c.type === 'reconnection' || c.type === 'diversion' || c.moved ? (g.links ?? []).filter(l => l.length > 1)
-    : g.road && g.road.length > 1 ? [g.road] : [];
+    : c.type !== 'junction' && g.road && g.road.length > 1 ? [g.road.filter(within)].filter(l => l.length > 1) : [];
   const reach = Math.max(0, ...[...source.path, ...pieces.flat()].map(q => Math.hypot(q.x - c.x, q.y - c.y)));
   return { removed: source.removed, pieces, reach };
 }
