@@ -125,7 +125,8 @@ try {
   await page.locator('.twist-start').click();
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
   await game.idle(600);
-  await page.evaluate((d) => window.trapla.setProject(d), JSON.parse(readFileSync('scripts/twists/d3-0305-motorway/earth.json', 'utf8')).design);
+  // (a design that meets the twists on under the goal: the first triumph)
+  await page.evaluate((d) => window.trapla.setProject(d), JSON.parse(readFileSync('scripts/twists/d3-0305-motorway/all-news.json', 'utf8')).design);
   await game.idle(1200);
   const news2 = page.locator('.news-card');
   ok(await news2.count() === 1 && /Leave the Mastník open/.test(await news2.textContent()), 'the first triumph there brings its first news: the Mastník’s banks');
@@ -133,7 +134,7 @@ try {
     'a game event on a real place: it says so and links the register the place comes from');
   await game.park(); await shot('news-real-place');
   await news2.getByRole('button', { name: 'Show me' }).click(); await game.still();
-  ok(await page.locator('.twist-label.zone.broken').count() >= 1, 'the place on the map, red: our embankment on its banks');
+  ok(await page.locator('.twist-label.zone').count() >= 1 && !(await page.locator('.twist-label.zone.broken').count()), 'the place on the map, in amber: this design already bridges its banks');
   await game.park(); await shot('mastnik-place');
   await news2.getByRole('button', { name: 'OK' }).click();
   const KEY2 = 'trapla.twists.v1.d3-0305.d3-0305-motorway';

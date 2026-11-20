@@ -22,9 +22,9 @@ export interface Landmark { name: string; kind: LandmarkKind; x: number; y: numb
 /** what a landmark is, in the player's words */
 export const LANDMARK_KIND_WORDS: Record<LandmarkKind, string> = { castle: 'castle', fort: 'fort', church: 'church', chapel: 'chapel', cross: 'cross or statue',
   memorial: 'memorial', technical: 'technical monument', zone: 'heritage area' };
-/** a landmark's name, kind and ring in a few words ("Chapel of St Roch, Staré Město · chapel · 600 m ring") */
+/** a landmark's name, kind and ring in a few words ("Chapel of St Roch, Staré Město · chapel · 600 m ring"; an area: its name) */
 export const landmarkWords = (l: Pick<Landmark, 'name' | 'kind'> & { ring: number }) =>
-  `${l.name} · ${LANDMARK_KIND_WORDS[l.kind]}${l.kind === 'zone' ? '' : ` · ${l.ring.toLocaleString('en-US')} m ring`}`;
+  l.kind === 'zone' ? l.name : `${l.name} · ${LANDMARK_KIND_WORDS[l.kind]} · ${l.ring.toLocaleString('en-US')} m ring`;
 
 /** What a mission's twists are measured with (data/twists.ts). */
 export interface TwistTerms {

@@ -54,7 +54,7 @@ try {
   await page.locator('#chip-twists').click(); await page.waitForTimeout(500);
   ok(/Hands off the castle 1 too close/.test(await twistCard()) && /in the Studeňany village protection zone/.test(await twistCard()),
     'the card: the planned line cuts through the Studeňany village protection zone');
-  await page.locator('#twists li[data-id="landmarks"] button', { hasText: 'Show' }).first().click();
+  await page.locator('#twists li[data-id="landmarks"] button[data-show]').first().click();
   await game.still();
   ok(await page.locator('.twist-marks path.heritage.broken:not(.fill)').count() === 1, 'the zone on the map, red: our road in it');
   await game.park(); await shot('i35-jicin-zone-broken');
@@ -90,7 +90,7 @@ try {
   await game.idle(600);
   await page.locator('#chip-twists').click(); await page.waitForTimeout(400);
   ok(/Memorial to the Austrian gunners of 1866, Trutnov/.test(await twistCard()), 'D11: the planned line passes the memorial to the Austrian gunners of 1866');
-  await page.locator('#twists li[data-id="landmarks"] button', { hasText: 'Show' }).first().click();
+  await page.locator('#twists li[data-id="landmarks"] button[data-show]').first().click();
   await game.still(); await game.park(); await shot('d11-memorial-ring');
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally {
