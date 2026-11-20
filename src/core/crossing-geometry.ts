@@ -710,6 +710,14 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     for (const message of cached.diagnostics) if (!roads.isDesigned(roadId) || message !== DENSE_CROPPED) diagnose(g, message);
     return cached.path;
   };
+  /** A way alone (no continuations) through (x, y), sampled densely: what a reroute led to it lies on (its diagnostics are
+   * its own crossing's). */
+  const wayPath = (roadId: number, x: number, y: number) => {
+    const key = `way:${roadId}:${x},${y}`;
+    let cached = paths.get(key);
+    if (!cached) paths.set(key, cached = { path: roads ? denseWay(roads.crossingPath(roadId, x, y, MAX_REACH), () => {}) : [], diagnostics: [] });
+    return cached.path;
+  };
 
   const linkEnv: LinkEnv = { heightAt, margin: (q, extra) => margin(q, extra, false), roads, obstacle: route.obstacle, railway: route.railway, streams: route.streams,
     houses: route.houses, houseCost: route.houseCost, memo: linkMemo };
@@ -865,7 +873,7 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
   /** the crossed road's level (a mapped bridge's deck, a tunnel's road), the ground elsewhere */
   const levelAt = level ?? heightAt;
   return { cuts, squares, anchorBuilds, anchorMemo, slopes, pieces, at, project, margin, reads, terrainPoint, groundPoint, levelAt, diagnose, homesOf,
-    rawPaths, rawOf, squaredPaths, survivingSides, anchors, maxLinkWidth, getPath, linkEnv, cutOf,
+    rawPaths, rawOf, squaredPaths, survivingSides, anchors, maxLinkWidth, getPath, wayPath, linkEnv, cutOf,
     squarePath, ours };
 }
 type CrossingTools = ReturnType<typeof crossingTools>;
@@ -1815,7 +1823,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
 /** Stage 4: terrain-only spans refined against the ground between their samples, the works on each crossing
  * (regrades, walls) measured, and the diagnostics turned into the crossings' issues (returned). */
 function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heightAt: (x: number, y: number) => number, roads: RoadNet | undefined, anchorOnly: ReadonlySet<CrossingResult> | undefined, tools: ReturnType<typeof crossingTools>) {
-  const { terrainPoint, diagnose, project, squaredPaths, getPath, margin, homesOf, slopes } = tools;
+  const { terrainPoint, diagnose, project, squaredPaths, getPath, wayPath, margin, homesOf, slopes } = tools;
   // Refine terrain-only spans against interior elevations, not just their endpoints. This prevents
   // a nominally draped 10 m chord from floating over a sharp gully between its stored samples.
   // Original OSM vertices and engineered boundaries retain object identity; recursion and output
@@ -1900,10 +1908,10 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
     const houses = new Set(c.houses ?? []), ties: CrossingTie[] = [];
     // (its own way's line and the way it is led to are the reroute itself: crossing-works' source)
     const source: XY[] = roads ? [...getPath(c.roadId, c.x, c.y, g)] : [];
-    // (the way it is led to, as far each way from where each link meets it as a tie reaches: a link joining it
-    // mid-way lies on it, not beside it; worksClashes counts that way the reroute's own too)
-    if (roads && c.targetRoadId !== undefined) for (const path of g.links) for (const q of [path[0], path[path.length - 1]])
-      if (q) source.push(SOURCE_BREAK, ...denseWay(roads.connectedCrossingPath(c.targetRoadId, q.x, q.y, MAX_RAMP_LENGTH), () => {}));
+    // (the way it is led to, through its own crossing of ours: a link joining it mid-way lies on it, not beside it;
+    // worksClashes counts that way the reroute's own too. That way alone: another way continuing it is another road.)
+    const target = c.targetS === undefined ? undefined : crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId);
+    if (roads && target?.roadId !== undefined) source.push(SOURCE_BREAK, ...wayPath(target.roadId, target.x, target.y));
     g.links = g.links.map(path => {
       const key = `${g.width}|${c.roadId}|${c.targetRoadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
       let own = slopes.get(key);
