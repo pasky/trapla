@@ -48,6 +48,8 @@ export interface MapGestureContext extends Pick<MapPicks, 'canvasBox' | 'routeAt
   switchRoute(id: RouteId, created?: boolean, oneDirection?: boolean): boolean;
   showSource(hit: SourceHit): void;
   showNoLinks(): void;
+  /** the dashed official / planned line's card (ui/route-cards.ts officialCard) */
+  showOfficial(): void;
   deletePi(i: number): void;
   placeAt(clientX: number, clientY: number, x: number, y: number): Placement;
   legacyRoadAt(x: number, y: number): boolean;
@@ -121,6 +123,7 @@ export function createMapGestures(app: MapGestureContext) {
       const ground = !t && !app.transportGraph && app.pack.transportMeta ? app.view.pick(clientX, clientY) : null;
       if (t?.kind === 'route-hit') { if (app.switchRoute(t.routeId) && app.store.read()) app.selectPiece(t.s); }
       else if (t?.kind === 'source') app.showSource(t.hit);
+      else if (t?.kind === 'official') app.showOfficial();
       else if (!t && app.legacyRoadAt(_x, _y)) app.showNoLinks();
       else if (t) app.select(t);
       else { if (app.roadSelected) deselectedAt = performance.now(); app.deselect(); }

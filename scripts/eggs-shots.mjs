@@ -212,5 +212,27 @@ try {
     await T((id) => window.trapla.setActiveRoute(id), slips[0]);
     assert.equal(await T(() => window.trapla.sweeping()), false, 'once only');
   }
+  // 10. the dashed official line answers a click: what it is, where it comes from, its real price, the D11's tunnel name
+  if (want('official')) {
+    await game.open('scenario=d11&preset=d11-motorway');
+    const xy = JSON.parse(readFileSync('public/scenarios/d11/meta.json', 'utf8')).official.xy;
+    // a point of it well away from our road (at the start our road lies along it)
+    const road = await T(() => { const r = window.trapla.result(); return { x: [...r.x], y: [...r.y] }; });
+    let far = null, gap = 0;
+    for (let k = 1; k < xy.length; k++) {
+      const x = (xy[k - 1][0] + xy[k][0]) / 2, y = (xy[k - 1][1] + xy[k][1]) / 2;
+      let d = Infinity; for (let i = 0; i < road.x.length; i += 4) d = Math.min(d, Math.hypot(road.x[i] - x, road.y[i] - y));
+      if (d > gap && d < 400) { gap = d; far = { x, y }; }
+    }
+    assert.ok(far && gap > 60, `a point of the official line clear of our road (${gap.toFixed(0)} m)`);
+    await T(([x, y]) => window.trapla.lookAt(x, y, 700, 0, 60), [far.x, far.y]); await still(); await idle();
+    const view = await page.locator('#view').boundingBox();
+    const p = await T(([x, y]) => { const g = window.trapla.groundScreen(x, y); return window.trapla.screenOf(x, y, window.trapla.pick ? 0 : 0) && g; }, [far.x, far.y]);
+    await page.mouse.move(view.x + p.sx, view.y + p.sy - 1); await page.waitForTimeout(300);
+    await page.mouse.click(view.x + p.sx, view.y + p.sy - 1); await idle(300);
+    const text = await inspector();
+    assert.match(text, /^Official D11/); assert.match(text, /as OpenStreetMap maps it/); assert.match(text, /11\.71 bn CZK/); assert.match(text, /Opevnění/);
+    await game.park(); await shot(681, 'official-line-card');
+  }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

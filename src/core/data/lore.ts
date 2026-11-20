@@ -44,6 +44,12 @@ export const MINED_TUNNEL_LORE: Readonly<Record<string, string>> = {
   d11: 'St Barbara, tunnellers’ patron, stands at its portal, as at the real Poříčí tunnel here since November 2026.',
 };
 
+/** The dashed official / planned line's card on these maps (research/94: ŘSD leaflet 04/2026, "Druhý tunel Opevnění";
+ * the name as the project's own context reports it, not that the tunnel passes under a fort). */
+export const OFFICIAL_LORE: Readonly<Record<string, string>> = {
+  d11: 'Its second tunnel is to be called Opevnění, “fortifications”, after the border forts built here in the 1930s.',
+};
+
 /** Every line, for the player-text guard. */
 export const ALL_LORE: readonly Lore[] = [...MAPPED_LORE.values(), ...Object.values(BY_REF).map(r => r.lore),
-  ...Object.values(MINED_TUNNEL_LORE).map(line => ({ line }))];
+  ...Object.values(MINED_TUNNEL_LORE).map(line => ({ line })), ...Object.values(OFFICIAL_LORE).map(line => ({ line }))];

@@ -35,7 +35,7 @@ import { type StorageGuard, showStorageNotice } from './ui/storage-guard';
 import { RouteBar } from './ui/route-bar';
 import { CurveEditor } from './ui/curve-edit';
 import { Hud } from './ui/hud';
-import { noLinksCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
+import { noLinksCard, officialCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
 import { ProfilePanel } from './ui/profile';
 import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
@@ -54,7 +54,8 @@ import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { earnedRecord } from './ui/records';
 import { slipDrive } from './ui/slip-sweep';
-import { MINED_TUNNEL_LORE } from './core/data/lore';
+import { MISSION_TWISTS } from './core/data/twists';
+import { MINED_TUNNEL_LORE, OFFICIAL_LORE } from './core/data/lore';
 import { shownS } from './ui/chainage';
 import { watershedLine, type BasinData } from './core/basins';
 import { createFlyAlong } from './ui/fly-along';
@@ -283,6 +284,11 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     deselect(); inspector.host(); links.editor.show(hit); hud.revealContext('inspector');
   };
   const showNoLinks = () => { deselect(); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
+  const showOfficial = () => {
+    deselect();
+    officialCard(() => inspector.host(), () => select(null), { label: scenario.labels.official, real: MISSION_TWISTS[presetId]?.real, lore: OFFICIAL_LORE[scenario.id] });
+    hud.revealContext('inspector');
+  };
 
   // ---- edits (ui/design-edits.ts) ----
   const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, setEnd, inspectorEvents, decisionEvents } = createDesignEdits({
@@ -337,7 +343,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
 
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----
   // what is under the pointer (ui/map-picks.ts)
-  const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt } = createMapPicks({
+  const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt, officialAt } = createMapPicks({
     view, pack, extras, buildingPicker, transportData,
     get projectFull() { return session.projectFull; }, get last() { return session.last; }, get activeRouteId() { return store.activeRouteId; },
     get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
@@ -351,7 +357,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get sourceEditor() { return links.editor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
     get roadSelected() { return selection.roadSelected; }, get sel() { return session.sel; },
-    ensureTransport, select, selectPiece, deselect, selectRoad, switchRoute, showSource, showNoLinks, deletePi, placeAt, legacyRoadAt,
+    ensureTransport, select, selectPiece, deselect, selectRoad, switchRoute, showSource, showNoLinks, showOfficial, deletePi, placeAt, legacyRoadAt,
   });
   view.ev = mapEvents;
 
@@ -367,7 +373,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
 
   // ---- hover links between the map and the profile, the map's cursor (ui/map-hover.ts) ----
   const { highlightBend } = installMapHover({
-    view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
+    view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, officialAt,
     get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
     get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     get roadSelected() { return selection.roadSelected; }, get selectedCrossing() { return session.sel?.kind === 'crossing' ? session.sel.roadId : null; },
