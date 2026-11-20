@@ -20,7 +20,7 @@ import {
   type CostBreakdown, type CostParts,
 } from './cost';
 import { heldRailway, RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
-import { WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG, type BesideHit } from './crossing-works';
+import { WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG, type BesideHit, type CrossingTie } from './crossing-works';
 import { buildCrossingGeometry, crossingBridgeMask, ownHomes, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingIssue, type CrossingOverride, type CrossingResult, type CrossingRoute } from './crossings';
 import { buildCrossings, type KeptCrossings } from './crossings-kept';
 export type { CrossingResult } from './crossings';
@@ -106,7 +106,10 @@ export interface EvalContext {
   junctions?: readonly EndpointJunction[];
 }
 
-export interface EndpointJunction { x: number; y: number; kind: EndpointJunctionKind; ways: readonly number[] }
+export interface EndpointJunction { x: number; y: number; kind: EndpointJunctionKind; ways: readonly number[];
+  /** the node raised with a rebuilt stretch's end (project-road.ts): the other roads meeting there regraded down from it
+   * (crossing-works.ts nodeTies), built, drawn and billed (`tiesCost`, CZK) with the junction */
+  ties?: readonly CrossingTie[]; tiesCost?: number }
 
 export interface Result {
   length: number;
@@ -284,6 +287,9 @@ export interface EvalOptions {
   /** Where a higher-ranking designed road's crossing holds this road: Auto keeps the grade between
    * `min` and `max` (absolute) at station `s` (low enough under its bridge, on its deck, at its level
    * in a junction). By-hand heights are the player's. */
+  /** The steepest Auto grade within `zone` m of an end (a rebuilt stretch ending in a junction: a junction's grade,
+   * tie-in.ts TIE_IN_RULES.maxGrade); ignored in a preview window. */
+  endGrades?: { a?: { zone: number; grade: number }; b?: { zone: number; grade: number } };
   holds?: readonly { s: number; min: number; max: number;
     /** its bridge over the other road: this road is a bridge over that span (project-road.ts) */
     bridge?: [number, number] }[];
@@ -1000,7 +1006,8 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
     // (one direction of a split motorway ends a quarter of the formation beside the mission's port: project-motorway.ts)
     const near = (p: { x: number; y: number }) => Math.hypot(j.x - p.x, j.y - p.y) < CATEGORIES[pairedCategoryOf(d.category) ?? 'D27.5'].crownWidth / 4 + 1e-3;
     const end = near(ctx.a) ? 'a' as const : near(ctx.b) ? 'b' as const : null;
-    return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
+    return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind],
+      ...(j.ties?.length ? { ties: j.ties, cost: ENDPOINT_JUNCTIONS[j.kind].cost + (j.tiesCost ?? 0) } : {}) }] : [];
   });
   // The road an end joins, met again inside that junction (an end placed a metre beside the mapped line,
   // leaving it at an angle), is the junction itself, not a crossing to cut and reconnect.
@@ -1473,10 +1480,12 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         if (hold.max < Infinity) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], hold.max + both - ground[i]);
       }
     }
+    const ends = win ? undefined : opts.endGrades;
     const apOpt = {
       endpointElevations: opts.endpointElevations, ...(win ? { startGrade: win.grades.a, endGrade: win.grades.b } : {}),
       maxGradient, minCrest: vlim.crestMin, minSag: vlim.sagMin,
-      ...(vlim.gradeAt ? { gradeAt: vlim.gradeAt } : {}),
+      ...(vlim.gradeAt || ends ? { gradeAt: ends ? (s0: number, s1: number) => Math.min(vlim.gradeAt ? vlim.gradeAt(s0, s1) : maxGradient,
+        ends.a && s0 < ends.a.zone ? ends.a.grade : Infinity, ends.b && s1 > al.length - ends.b.zone ? ends.b.grade : Infinity) : vlim.gradeAt } : {}),
       ...(typeof vlim.crest === 'number' ? {} : { crestAt: vlim.crest }), ...(typeof vlim.sag === 'number' ? {} : { sagAt: vlim.sag }),
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: either, structureKind: manualStructures, pins: d.gradePins,
       ...(pinBounds ? { pinBounds } : {}),
@@ -2372,6 +2381,15 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
       const { i, earthCell } = e.at;
       cones.push(c); coneFill[earthCell] += c.volume; conePaving[i] += conePavingCost(c);
     }
+  }
+  // (a rebuilt stretch's end raised with its junction, junction-raise.ts: its fill runs on round the node as a cone
+  // sloped 1:1.5 down to the ground, the roads meeting there on their ties over it; no paving, no deck over it)
+  if (!preview) for (const j of setup.endJunctions) if (j.ties?.length) {
+    const i = j.end === 'a' ? 0 : n - 1, out = j.end === 'a' ? -1 : 1;
+    if (kind[i] !== KIND.earth) continue;
+    const p = lineAt(setup.st.s[i] + (win?.s0 ?? 0)), zf = elevations(prof, [setup.st.s[i]])[0];
+    const c = abutmentCone(setup.terrain, { s: setup.st.s[i], x: p.x, y: p.y, tx: p.tx * out, ty: p.ty * out, i, earthCell: i }, zf + CONE.deckDepth, cat.crownWidth / 2, cat.crownWidth / 2);
+    if (c) { cones.push({ ...c, end: true }); coneFill[i] += c.volume; }
   }
   // --- earthworks ---
   const vol = volumes(ds, sec.cut, sec.fill, kind, usable);

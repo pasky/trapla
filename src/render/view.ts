@@ -1079,7 +1079,7 @@ export class View {
       for (let a = 0; a < nu; a++) for (let q = 0; q < nv; q++) {
         const u = Math.min(U, u0 + a * G), vv = -side + q * G * (2 * side) / ((nv - 1) * G);
         const x = c.x + c.tx * u - c.ty * vv, y = c.y + c.ty * u + c.tx * vv, g = natural(x, y);
-        const zc = coneSurface(c, Math.max(0, u), vv), paved = Math.abs(vv) <= deckHalf && u >= CONE.berm;
+        const zc = coneSurface(c, Math.max(0, u), vv), paved = !c.end && Math.abs(vv) <= deckHalf && u >= CONE.berm;
         above.push(zc > g + 0.05);
         ids.push(push(x, y, Math.max(zc, g) + groundLift, paved ? concrete : fillC, Math.max(zc, g), slopeInk, paved ? EW_KIND.structure : EW_KIND.fill));
       }

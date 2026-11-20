@@ -145,7 +145,9 @@ export function hasCrossingPath(g?: CrossingGeometry): boolean {
 export function footprintSurfaces(conflicts: readonly FootprintConflict[], height: (x: number, y: number) => number): CrossingSurface[] {
   // Only footprint relocation support is priced as retaining faces. Ordinary crossing
   // cut approaches also carry support tags, but retain their existing daylight rendering.
-  return crossingSurfaces(conflicts.filter(c => c.feature === 'road' && c.action === 'relocation' && hasCrossingPath(c.geometry)).map(c => ({
+  // (and a raised junction's ties: the roads meeting there regraded down from it, core/crossing-works.ts nodeTies)
+  return crossingSurfaces(conflicts.filter(c => c.feature === 'road' && (c.action === 'relocation' && hasCrossingPath(c.geometry)
+    || c.action === 'junction' && !!c.geometry?.ties?.length)).map(c => ({
     s: (c.s0 + c.s1) / 2, i: c.i, x: c.x, y: c.y, h: 0, cost: c.cost,
     cls: c.cls ?? 'unclassified', roadId: c.roadId, type: 'diversion', geometry: c.geometry,
   })), height, height, true);

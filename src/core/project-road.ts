@@ -11,6 +11,7 @@ import { replacementWorks, type Replacement, type ReplacementWork } from './proj
 import { applyKept, heldOnOldLine, lineAsDrawn, plannedKept, releaseHeld } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
 import { CATEGORIES } from './data/categories';
+import { holdMiss, RAISE_MEETS, RAISE_PASSES, raisableEnds, raiseEnds, type RaisedEnd } from './junction-raise';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
@@ -98,7 +99,6 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   // stretch's ends continue as its old road.
   const forms = route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms ?? {} : {};
   const ties = route.role === 'auxiliary' && roads ? tieIns(roads, route.endpoints, !!route.source, forms) : [];
-  const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
   // Where a rebuilt stretch's line stays on its old road, the old road is kept as it is (project-kept.ts).
   // Known before the kernel runs (it depends on the line only), so the kernel builds nothing there.
   let kept: Uint8Array | undefined, held: EvalOptions['line'], oldPath: { x: number; y: number }[] = [];
@@ -122,12 +122,33 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     const port = c.ports.find(p => p.kind === 'source'), way = port?.kind === 'source' ? options.sourceWays?.get(port.location.sourceId) : undefined;
     return way === undefined ? [] : [{ way, x: c.position.x, y: c.position.y }];
   }) : [];
-  const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
+  // (a rebuilt stretch's ends where it rejoins its old road: a junction's grade where other roads meet there; raised with
+  // the ramps to a deck it is held on where they cannot get down within it, junction-raise.ts)
+  // (not an end kept as its old road: nothing is built there)
+  const { ends: raisable, endGrades } = route.source ? raisableEnds(ties.filter(t => !kept?.[t.end === 'a' ? 0 : kept.length - 1])) : { ends: [], endGrades: {} };
+  const solve = (raised: { a?: RaisedEnd; b?: RaisedEnd }) => evaluate({ ...ctx, roads, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
-    maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
-  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(held ? { line: held } : {}), ...(sideWays.length ? { sideWays } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
+    maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin },
+    ...(ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => raised[t.end] ? { ...t.junction, ties: raised[t.end]!.ties, tiesCost: raised[t.end]!.cost } : t.junction)] } : {}) }, design,
+  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(held ? { line: held } : {}), ...(sideWays.length ? { sideWays } : {}),
+    endpointElevations: { a: raised.a?.z ?? explicitZ(a), b: raised.b?.z ?? explicitZ(b) }, ...(endGrades.a || endGrades.b ? { endGrades } : {}),
+    operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
+  let result = solve({});
+  // (raised only where that meets its holds: else it stays at its old road's level there, its problems say so)
+  if (raisable.length && options.holds?.length && roads) {
+    let raised: { a?: RaisedEnd; b?: RaisedEnd } = {}, best = result;
+    for (let pass = 0; pass < RAISE_PASSES; pass++) {
+      const next = raiseEnds(best, options.holds, raisable, raised, endGrades, [Array.from({ length: best.n }, (_, i) => ({ x: best.x[i], y: best.y[i] })), oldPath],
+        roads, ctx.terrain, CATEGORIES[design.category].crownWidth, ctx.buildings);
+      if (!next) break;
+      const again = solve(next);
+      if (holdMiss(again, options.holds).miss >= holdMiss(best, options.holds).miss) break;
+      best = again; raised = next;
+    }
+    if (best !== result && holdMiss(best, options.holds).miss <= RAISE_MEETS) result = best;
+  }
   if (ties.length && roads && !options.preview) {
     const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);
     if (found.length) { result.violations.push(...found); result.valid = false; }

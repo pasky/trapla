@@ -1,7 +1,7 @@
 // Conflicts beyond centreline intersections. Network segments are queried through their existing
 // spatial grids; raster work visits only cells in the constructed footprint (never the whole map).
 import { bridgeLayout, frameColumns } from './bridge';
-import { bridgeEnd, coneGround } from './abutment-cone';
+import { bridgeEnd, coneGround, coneSurface } from './abutment-cone';
 import { planRoadRealignment, roadRealignmentCrossingIntervals, severedCrossingIntervals, type RoadSourceInterval, type RoadRealignmentPlan, type PreservedRoadConnection } from './road-realignment';
 import { RoadRemedyLedger } from './road-remedy-ledger';
 import type { Violation } from './checks';
@@ -10,6 +10,7 @@ import type { RetainingFeatureCache } from './retaining';
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossings';
 import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
 import { TIE_IN_RULES } from './tie-in';
+import type { CrossingTie } from './crossing-works';
 import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
@@ -89,7 +90,10 @@ export interface FootprintRoute {
   deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
 }
 export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string;
-  /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean }
+  /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean;
+  /** its node raised with our end: the other roads meeting there regraded down from it (crossing-works.ts nodeTies; billed
+   * in `cost`), their pavement there rebuilt at the tie's height */
+  ties?: readonly CrossingTie[] }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'];
   /** under a bridge end or tunnel entrance whose road is moved with the earthworks beside it (not under earth) */ support?: true;
@@ -195,6 +199,18 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const u = (row.u0 + row.u1) / 2, sc = e.s + into * u;
       cells.push({ i: Math.max(0, Math.min(r.n - 1, Math.round(sc / r.ds))), s: sc, x: e.x + e.tx * u, y: e.y + e.ty * u, tx: e.tx, ty: e.ty,
         structure: 'abutment', along: (row.u1 - row.u0) / 2, left: row.left, right: row.right });
+    }
+  }
+  // the cone of fill round a rebuilt stretch's end raised with its junction (evaluate.ts, junction-raise.ts): earth over
+  // what it covers, the ways meeting there on their ties over it
+  for (const j of r.junctions ?? []) if (j.ties?.length) {
+    const i = j.end === 'a' ? 0 : r.n - 1, out = j.end === 'a' ? -1 : 1;
+    if (r.kind[i] !== KIND.earth) continue;
+    const e = { s: r.s[i], into: out, x: r.x[i], y: r.y[i], tx: r.tx[i] * out, ty: r.ty[i] * out, top: r.grade[i], ground: terrain.heightAt(r.x[i], r.y[i]) };
+    const cone = { x: e.x, y: e.y, tx: e.tx, ty: e.ty, half: r.crownWidth / 2, top: e.top };
+    for (const row of coneGround(terrain, e, r.crownWidth / 2)) {
+      const u = (row.u0 + row.u1) / 2;
+      cells.push({ i, s: r.s[i], x: e.x + e.tx * u, y: e.y + e.ty * u, tx: e.tx, ty: e.ty, along: (row.u1 - row.u0) / 2, left: row.left, right: row.right, cone });
     }
   }
   const grid = new FootprintGrid(cells);
@@ -311,6 +327,17 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   /** How much deeper than the junction `j` rebuilds it (junctionRegrade) our body (the formation, its slopes straight from
    * the crown edge to the daylight point, as walls cut them short) buries a road's pavement along a hit, m: the most at
    * any metre of it (≤ 0: the junction's own works). */
+  /** the height a junction's tie rebuilds a way's pavement at (x, y) at (undefined: on none of its ties) */
+  const tieZ = (j: FootprintJunction, x: number, y: number) => {
+    let z: number | undefined, gap = Infinity;
+    for (const tie of j.ties ?? []) for (let k = 1; k < tie.path.length; k++) {
+      const a = tie.path[k - 1], b = tie.path[k], dx = b.x - a.x, dy = b.y - a.y;
+      const u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      const d = Math.hypot(x - a.x - u * dx, y - a.y - u * dy);
+      if (d < gap && d <= (ROAD_CLASSES[tie.cls]?.width ?? 0) / 2 + 1) { gap = d; z = a.z + (b.z - a.z) * u; }
+    }
+    return z;
+  };
   const buriedDepth = (cell: FootprintCell, segment: RoadSegment, hit: [number, number], j: FootprintJunction) => {
     const i = cell.i, w = r.crownWidth / 2, z = r.grade[i], end = j.end === 'a' ? 0 : r.n - 1, half = existingHalfWidth(segment.cls);
     let deepest = -Infinity;
@@ -320,9 +347,19 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const x = segment.ax + t * (segment.bx - segment.ax), y = segment.ay + t * (segment.by - segment.ay);
       // (at its near edge: half its width nearer our centreline)
       const v = -(x - r.x[i]) * r.ty[i] + (y - r.y[i]) * r.tx[i], day = v >= 0 ? r.dayL[i] : r.dayR[i], zDay = v >= 0 ? r.zDayL[i] : r.zDayR[i];
-      const at = Math.max(0, Math.abs(v) - half), surface = at <= w || day <= w ? z : z + (zDay - z) * Math.min(1, (at - w) / (day - w));
+      const at = Math.max(0, Math.abs(v) - half);
+      let surface = at <= w || day <= w ? z : z + (zDay - z) * Math.min(1, (at - w) / (day - w));
+      // (on the cone round a raised end: its surface at the way's nearest edge)
+      const c = cell.cone;
+      if (c) {
+        const u = (x - c.x) * c.tx + (y - c.y) * c.ty, off = Math.max(0, Math.abs(-(x - c.x) * c.ty + (y - c.y) * c.tx) - c.half);
+        surface = coneSurface(c, Math.max(0, Math.hypot(Math.max(0, u), off) - half), 0);
+      }
       const ex = r.x[i] - r.ty[i] * Math.sign(v || 1) * at, ey = r.y[i] + r.tx[i] * Math.sign(v || 1) * at;
-      if (at <= day) deepest = Math.max(deepest, Math.abs(surface - terrain.heightAt(ex, ey)) - junctionRegrade(j.zone, Math.hypot(x - r.x[end], y - r.y[end])));
+      // (on a tie its pavement is rebuilt at the tie's height there: our slope below it is the tie's own embankment)
+      const tz = at <= day || c ? tieZ(j, x, y) : undefined, over = tz !== undefined ? Math.max(0, surface - tz)
+        : c ? Math.max(0, surface - terrain.heightAt(x, y)) : Math.abs(surface - terrain.heightAt(ex, ey));
+      if (at <= day || c) deepest = Math.max(deepest, over - junctionRegrade(j.zone, Math.hypot(x - r.x[end], y - r.y[end])));
     }
     return deepest;
   };
@@ -424,7 +461,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     conflicts.push({ id: `junction:${junction.end}`, feature: 'road', action: 'junction', i, s0, s1,
       x: r.x[i], y: r.y[i], length: covered, affectedLength: covered, cost: junction.cost, lumpCost: junction.cost,
       ...(way !== undefined && roads ? { roadId: way, cls: roads.wayClass(way) } : {}),
-      ...(junction.continuation ? { continuation: true } : {}), junction: { ways: [...junction.ways], zone: junction.zone }, detail: '', source: junction.source });
+      ...(junction.continuation ? { continuation: true } : {}), junction: { ways: [...junction.ways], zone: junction.zone }, detail: '', source: junction.source,
+      ...(junction.ties?.length ? { geometry: { ties: junction.ties.map(t => ({ ...t, path: [...t.path] })), width: ROAD_CLASSES[junction.ties[0].cls]?.width ?? 6, schematic: false as const } } : {}) });
   }
   // (the old roads accepted plans take up: no road to a building any more, for the plans after them)
   const removedPieces: { way: number; a: number; b: number }[] = [];

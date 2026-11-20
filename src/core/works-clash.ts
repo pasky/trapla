@@ -19,8 +19,9 @@ import type { RoadNet } from './roadnet';
 import { clearedHit } from './mapped-structures';
 import { junctionRegrade, junctionRejoin } from './footprint';
 import { SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
+import { coneCovers, coneSurface } from './abutment-cone';
 import { roadRealignmentCrossingIntervals, severedCrossingIntervals } from './road-realignment';
-import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../render/crossing-surface';
+import { crossingBaseHeight, crossingSurfaces, footprintSurfaces, groundSegment, turnaroundSurfaces } from '../render/crossing-surface';
 
 /** The network each full result was engineered against (a road of the project: the network as the player edited it,
  * project-roadnet.ts editedNetwork) and its crown width. Kept beside the result, never posted with it; keyed by its line
@@ -89,7 +90,8 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       else piers.push({ x, y });
     }
   }
-  const surfaces = crossingSurfaces(r.crossings, natural, base);
+  // (and a raised junction's ties at our ends: the roads meeting there regraded down from it, junction-raise.ts)
+  const surfaces = [...crossingSurfaces(r.crossings, natural, base), ...footprintSurfaces(r.footprintConflicts.filter(f => f.action === 'junction'), natural)];
   // the paved turning disks at the ends of closed public roads: no house left standing on one
   if (ctx.buildings) for (const t of turnaroundSurfaces(surfaces, natural)) {
     const c = t.crossing, bld = ctx.buildings, inside = (x: number, y: number) => Math.hypot(x - t.center.x, y - t.center.y) < t.radius + strip;
@@ -235,6 +237,31 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       }
     }
   }
+  // the cone of fill round an end raised with its junction (evaluate.ts): no house under it, no road but those meeting
+  // there (on their ties over it)
+  for (const c of r.cones ?? []) if (c.end) {
+    const covers = coneCovers(c, c.length, 0, natural), i = c.i, joined = new Set(r.footprintConflicts.filter(f => f.action === 'junction' && f.i === i).flatMap(f => f.junction?.ways ?? []));
+    const reach = c.length + c.side + strip;
+    if (ctx.buildings) ctx.buildings.near(c.x, c.y, reach, j => {
+      const b = ctx.buildings!, x = (b as any).ox[j], y = (b as any).oy[j];
+      if (!gone.has(j) && !seen.has(`cone:${i}:${j}`) && b.anyPoint(j, 1, coneCovers(c, c.length, strip, natural))) {
+        seen.add(`cone:${i}:${j}`); out.push({ path: 'cone', i, s: r.s[i], cls: 'house', type: 'end', what: 'house', x, y, j });
+      }
+    });
+    if (roads) roads.nearSegments([c.x - reach, c.y - reach, c.x + reach, c.y + reach], q => {
+      if (joined.has(q.way) || roads.isDesigned(q.way) || q.length <= 0 || seen.has(`cone:${i}:r${q.way}`)) return;
+      const count = Math.min(400, Math.max(1, Math.ceil(q.length)));
+      for (let k = 0; k <= count; k++) {
+        const x = q.ax + (q.bx - q.ax) * k / count, y = q.ay + (q.by - q.ay) * k / count;
+        if (!covers(x, y) || ours(x, y)) continue;
+        const u = (x - c.x) * c.tx + (y - c.y) * c.ty, v = -(x - c.x) * c.ty + (y - c.y) * c.tx, depth = coneSurface(c, Math.max(0, u), v) - natural(x, y);
+        if (depth <= DRAPED + SAMPLING) continue;
+        seen.add(`cone:${i}:r${q.way}`);
+        out.push({ path: 'cone', i, s: r.s[i], roadId: q.way, cls: q.cls, type: 'end', what: 'road', x, y, way: q.way, wayCls: q.cls, depth });
+        return;
+      }
+    });
+  }
   if (roads) out.push(...bodyClashes(r, crownWidth, ctx.terrain, roads, ctx.buildings, gone));
   return out;
 }
@@ -268,7 +295,17 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
   /** the junctions at our ends (footprint.ts): each joined way's pavement inside the zone is rebuilt at the junction's level
    * as far as a junction can regrade it (junctionRegrade) */
   const junctions = r.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'junction' && f.junction)
-    .map(f => ({ ways: f.junction!.ways, x: r.x[f.i], y: r.y[f.i], zone: f.junction!.zone }));
+    .map(f => ({ ways: f.junction!.ways, x: r.x[f.i], y: r.y[f.i], zone: f.junction!.zone, ties: f.geometry?.ties ?? [] }));
+  /** the height a raised junction's tie rebuilds a way's pavement at (x, y) at (footprint.ts tieZ; undefined: none) */
+  const tieZ = (way: number, x: number, y: number) => {
+    let z: number | undefined, gap = Infinity;
+    for (const j of junctions) if (j.ways.includes(way)) for (const tie of j.ties) for (let k = 1; k < tie.path.length; k++) {
+      const a = tie.path[k - 1], b = tie.path[k], dx = b.x - a.x, dy = b.y - a.y;
+      const u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1))), d = Math.hypot(x - a.x - u * dx, y - a.y - u * dy);
+      if (d < gap && d <= (ROAD_CLASSES[tie.cls]?.width ?? 0) / 2 + 1) { gap = d; z = a.z + (b.z - a.z) * u; }
+    }
+    return z;
+  };
   const tolerance = (way: number, x: number, y: number) => Math.max(DRAPED,
     ...junctions.filter(j => j.ways.includes(way)).map(j => junctionRegrade(j.zone, Math.hypot(x - j.x, y - j.y))));
   /** stations of our road where a conflict already settles (or reports) that way */
@@ -326,7 +363,9 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
         if (v === null || rejoined(s.way, d)) continue;
         // (its near edge: half its width nearer our centreline)
         const at = Math.sign(v || 1) * Math.max(0, Math.abs(v) - half), qx = cx - r.ty[i] * at, qy = cy + r.tx[i] * at;
-        if (Math.abs(surfaceAt(at) - terrain.heightAt(qx, qy)) <= tolerance(s.way, px, py)) continue;
+        // (on a raised junction's tie: our slope below its pavement is the tie's own embankment)
+        const tz = tieZ(s.way, px, py);
+        if ((tz === undefined ? Math.abs(surfaceAt(at) - terrain.heightAt(qx, qy)) : Math.max(0, surfaceAt(at) - tz)) <= tolerance(s.way, px, py)) continue;
         if (roads.structure(s.way) && clearedHit(roads, s, [d, d], r.grade[i], terrain)) continue;
         seen.add(`r${s.way}`);
         out.push({ path: 'body', i, s: r.s[i], roadId: s.way, cls: s.cls, type: 'body', what: 'road', x: px, y: py, way: s.way, wayCls: s.cls });
