@@ -24,6 +24,8 @@ export class ProjectStore implements ProjectStoreApi {
   /** per history entry: the label the step to it was committed with */
   private notes: (string | undefined)[] = [undefined];
   private index = 0;
+  private moves = 0;
+  get historyMoves(): number { return this.moves; }
   private baseline: ProjectDesign | null = null;
   private listeners = new Set<(snapshot: ProjectSnapshot, committed: boolean) => void>();
   private versions = new Map<string, number>();
@@ -142,7 +144,7 @@ export class ProjectStore implements ProjectStoreApi {
     this.history = this.history.slice(0, this.index + 1); this.notes = this.notes.slice(0, this.index + 1);
     this.history.push(copy(design)); this.notes.push(label);
     if (this.history.length > 200) { this.history.shift(); this.notes.shift(); }
-    this.index = this.history.length - 1;
+    this.index = this.history.length - 1; this.moves++;
     this.baseline = null;
     this.publish(design, true);
   }
@@ -170,7 +172,7 @@ export class ProjectStore implements ProjectStoreApi {
     if (index < 0 || index >= this.history.length) return;
     const design = this.revised(this.history[index]);
     persistProjectSave(this.options, { schemaVersion: 1, design, best: this.savedBest });
-    this.index = index; this.publish(design, true);
+    this.index = index; this.moves++; this.publish(design, true);
   }
   undo(): void { this.moveHistory(this.index - 1); }
   redo(): void { this.moveHistory(this.index + 1); }

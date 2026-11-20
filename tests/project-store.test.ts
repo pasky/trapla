@@ -123,17 +123,17 @@ it('makes promotion one atomic undo step, cancels drafts, and reloads stable rou
   expect(data.get(keys.project)).toBe(initial);
   expect(store.canUndo()).toBe(false);
   store.cancel(); expect(store.snapshot.design.routes).toHaveLength(1);
-  expect(store.snapshot.design.connections).toHaveLength(0);
+  expect(store.snapshot.design.connections).toHaveLength(0); expect(store.historyMoves).toBe(0);
   store.dispatch({ type: 'promote', routes: [added], connections: [] });
   const committedRevision = store.snapshot.revision;
   expect(store.canUndo()).toBe(true);
-  store.undo(); expect(store.snapshot.design.routes).toHaveLength(1);
+  store.undo(); expect(store.snapshot.design.routes).toHaveLength(1); expect(store.historyMoves).toBe(2);
   expect(store.snapshot.revision).toBeGreaterThan(committedRevision);
   store.begin();
   store.update(d => { d.routes[0].specification.designSpeed = 90; });
   store.update(d => { d.routes[0].specification.designSpeed = 80; });
   store.commit(); // out-and-back drag is not an edit and must not truncate redo.
-  expect(store.canUndo()).toBe(false); expect(store.canRedo()).toBe(true);
+  expect(store.canUndo()).toBe(false); expect(store.canRedo()).toBe(true); expect(store.historyMoves).toBe(2); // (a toast's Undo stays)
   store.redo(); expect(store.snapshot.design.routes[1].id).toBe('route:side');
   const reloaded = openProjectStore({ ...options, epoch: 'load-2' }).store!;
   expect(reloaded.snapshot.design).toEqual(store.snapshot.design);
