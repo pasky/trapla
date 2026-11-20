@@ -18,7 +18,7 @@ import type { MapPicks } from './map-picks';
 import type { ProfilePanel } from './profile';
 import type { CrossingDragPlan } from './crossing-drag';
 
-export interface MapHoverContext extends Pick<MapPicks, 'routeAt' | 'roadAt' | 'crossingAt' | 'crossingWorksAt' | 'buildingAt' | 'sourceAt'> {
+export interface MapHoverContext extends Pick<MapPicks, 'routeAt' | 'roadAt' | 'crossingAt' | 'crossingWorksAt' | 'buildingAt' | 'sourceAt' | 'officialAt'> {
   readonly view: View; readonly pack: Pack; readonly profile: ProfilePanel; readonly extras: RouteExtras; readonly buildTool: BuildRoadTool;
   /** the active road's shown result (a preview while dragging) and its last full one; its design (throws when not editable) */
   readonly last: Result | null; readonly lastFull: Result | null; readonly design: Design;
@@ -100,7 +100,7 @@ export function installMapHover(app: MapHoverContext): { highlightBend(i: number
         // a click selects it (its card: the stretch a drag would rebuild, or why it cannot be changed)
         cursor = 'pointer'; key = 'select-source';
         if (key !== mapHoverKey) { const g = app.view.pick(at.x, at.y); if (g) app.view.setHover({ x: g.x, y: g.y, z: app.view.drape(g.x, g.y) }, SELECT_TEXT.hover); }
-      }
+      } else if (app.officialAt(at.x, at.y)) { cursor = 'pointer'; key = 'official'; } // (a click: its card)
     }
     // before the road links are loaded (fetched when idle, parsed on first need): the first hover starts
     // them, and a mapped road already shows that a click picks it

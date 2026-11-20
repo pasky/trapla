@@ -2689,6 +2689,56 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   bands, preview bases), and its typed arrays are the cheap part of the message (objects are most of its decode).
 
 
+## Small details (owner request "fun non-cringe but delightful easter eggs", no model version, 2026-11-20)
+
+A board of three models brainstormed and cross-examined (memo of 2026-11-19); this is the slate built. Quiet, earned,
+true: no pop-up, no emoji, nothing in the drag path; every fact sourced like a price (research/96–101). Bills and
+validity unchanged. `node scripts/eggs-shots.mjs [--docs] [--only …]` plays each one and asserts it (screenshots 660–683).
+
+- **Local knowledge** (`core/data/lore.ts`, research/96): one grey line, last on the card a mapped way already opens
+  (before every early return of `MappedRoadCard.show()`): Ecce Homo on III/44423, the Žampach viaduct (its own title),
+  the Hřebeč tunnel (on the I/35 ways either side: the tunnel way is not drawn), R35 on the I/35 in Český ráj, trains on
+  to Lubawka and Sędzisław (title "Trutnov – Lubawka railway"); the D11's end B card: the Polish S3. A railway's `ref`
+  ("625 00", a track code) is never its name. `tests/player-text.test.ts` checks each line (≤ 18 words).
+- **Records** (`core/data/records.ts`, `ui/records.ts`, research/97): above the larger published figure only (Panenská
+  2,168 m, Ejpovice 4,150 m, Radotín 2,291 m, Negrelli 1,120 m, Žďákov 90 m), dated 11/2026; never on the unedited
+  starter nor on a starter's structure the player has not touched (plan moved over it, a pin, a painted structure,
+  By hand), against both the start and From scratch. Recheck when the Plasy bridge (2028) or a longer tunnel opens.
+- **Failure screens' signs** (`ui/signs.ts`, research/98): Z 2, A 6a, IP 10a, IS 11c, aria-hidden;
+  `release-shots.mjs` checks two of them on the built site.
+- **Fly along** (`ui/fly-along.ts`, `View.holdCamera`): from an end's card; max(ground + 26, deck + 15) m, smoothed;
+  45 m/s, at most ≈ 2 min; markers, labels, the planned line and bought-out marks hidden; Esc, a press or a wheel stops
+  it and restores the view. Frame times (`eggs-shots.mjs --gpu --only fly --frames`, the whole D3 0302 flight, 5,711
+  frames, land cover streaming, ce0443c): median 16.7, p95 16.7, max 16.8 ms. Not a cab view (no tunnel inside).
+- **Ground band** (`ui/ground-words.ts`, research/99): Key ▾ → Ground (off by default, remembered), a 6 px band under the
+  ground line in muted colours, the classes listed; a cut's More "Mapped ground: …". Unmapped ground: nothing.
+- **Watershed** (`core/basins.ts`, `pipeline/build_basins.py` → a pack's `basins.json`, research/100): each end of a tunnel
+  or cut on DIBAVOD A10; the D35 tunnel under the Hřebeč ridge (North Sea / Black Sea). The official line also puts the
+  D11's and the railway's last km in the Odra basin (the board's own flood test said not). The i35 packs have no file
+  (their cached inputs differ from their manifests): nothing said there.
+- **St Barbara** (research/96 §7): a mined tunnel's More on the D11 map. **The reveal's minutes** (research/96 §8):
+  "Yours took N minutes. The real one was in environmental review by YEAR." (CENIA's earliest dated document; none on the
+  railway). **A slip road's stroke** (`ui/slip-sweep.ts`, `View.sweepLine`): the first selection of a finished slip road,
+  once a session. **The planned line's card** (`ui/route-cards.ts` officialCard): what it is, OpenStreetMap, the real
+  price (data/twists.ts), the D11's Opevnění name; a pointer over it.
+- **Print bridge card** (`ui/bridge-print.ts`, `pipeline/build_water_names.py` → `water-names.json`, research/101): beam and
+  long-span bridges (no arch yet); both faces at one true scale; checked as PDF, not yet on paper (the owner's print and
+  fold decides whether it stays).
+
+New pack sidecars (gitignored, like `structures.json`): `basins.json` and `water-names.json`; copy them with the packs, or
+run `uv run --with pyshp --with shapely python pipeline/build_basins.py` and `uv run python pipeline/build_water_names.py`
+on a pack built without them (the main checkout's packs need it once). Without them the watershed line and the card's
+stream names are simply absent. The i35 packs are left without both for now (no `basins.json`: their cached inputs
+differ from their manifests; no `water-names.json`: no cached watercourse snapshot); rebuilding them would add both.
+
+Ideas left for the owner: **carbon-3c** "Hear the level difference" (an opt-in sound on a house's noise card: a fixed
+sourced traffic sample at the floor's level with and without walls; the game's first sound, needs the EN 1793-3 table
+in research/ and the owner wanting sound). **Second wave:** the curated camera views "Look from here" at hand-checked
+lookouts (fable-9: they read at Raisova and Žampach, not at Trosky or Máj; overlays and the scene's own lines hidden;
+"over the terrain, trees not drawn"), clickable viewpoints with the Cimrman lookout entry (carbon-1 card), place-name
+glosses (Dakota / Toronto), read-only structure names (fable-2, needs river names, now in `water-names.json`), the
+specimen envelope (astra-2, the rival of the ground band).
+
 ## A pin the player set is honoured (owner request, cost model 59, 2026-11-20)
 
 **The owner's report** (I/35 Turnov → Valdštejnsko): a pin 256.0 m at km 0.29, where our road crosses the Liberec

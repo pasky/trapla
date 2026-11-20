@@ -393,10 +393,11 @@ export function roadRemedySource(plan: Pick<RoadRealignmentPlan, 'roadCode' | 'c
 const NUMBERED: Record<string, string> = { primary: 'I', secondary: 'II', tertiary: 'III' };
 /** A mapped road's name as Czech maps and signs write it: its own name, else "road III/1057" (class and
  * number; a stretch shared by two numbers names both), else the kind of road ("local road"). */
-export function mappedRoadName(tags: { highway?: string; ref?: string; name?: string } | undefined, fallback = 'road'): string {
+export function mappedRoadName(tags: { highway?: string; railway?: string; ref?: string; name?: string } | undefined, fallback = 'road'): string {
   if (tags?.name) return tags.name;
   const label = ROAD_CLASSES[tags?.highway ?? '']?.label ?? fallback, cls = NUMBERED[tags?.highway ?? ''];
-  const numbers = (tags?.ref ?? '').split(';').map(r => r.trim()).filter(Boolean);
+  // (a railway's ref is a track code, "625 00", not a name anyone uses: research/96 §6)
+  const numbers = tags?.railway ? [] : (tags?.ref ?? '').split(';').map(r => r.trim()).filter(Boolean);
   if (!numbers.length) return label;
   return cls ? `road ${numbers.map(n => `${cls}/${n}`).join(' and ')}` : `${label} ${numbers.join(', ')}`;
 }
@@ -446,6 +447,8 @@ export interface EndConnection {
   with: string;
   /** a section end: the section the motorway goes on as (at B) or comes from (at A) */
   section?: string;
+  /** local knowledge: one grey sourced line about the real place (research/96) */
+  lore?: string;
 }
 /** The end's card: a title and short lines, plain words. */
 export function endCard(info: EndConnection, end: 'a' | 'b', line: OurLine = 'motorway'): { title: string; lines: string[] } {

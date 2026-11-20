@@ -3,6 +3,7 @@
 import './loading.css';
 import { onPackProgress, packProgress } from '../pack-fetch';
 import { megabytes } from '../packs';
+import { signSvg } from './signs';
 
 export class Loading {
   readonly el: HTMLElement;
@@ -57,6 +58,9 @@ export class Loading {
     this.el.classList.remove('busy'); this.el.classList.add('failed');
     this.el.setAttribute('role', 'alert');
     this.el.querySelector('.loading-kicker')!.textContent = 'The map could not be loaded';
+    // the road-closed barrier above it (research/98)
+    const sign = document.createElement('div'); sign.className = 'notice-sign-box'; sign.innerHTML = signSvg('closed');
+    this.el.prepend(sign);
     this.line.textContent = message;
     const again = document.createElement('button'); again.type = 'button'; again.textContent = 'Try again';
     again.onclick = () => location.reload();

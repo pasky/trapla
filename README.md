@@ -263,6 +263,28 @@ A mission without twists says so ([the class I road](docs/screenshots/653-no-twi
 ([the whole D3](docs/screenshots/654-whole-route-twists.png)). Each twist is offered only where a reference design meets it
 (`npx tsx scripts/twists-check.ts`, PLAN.md "Twists and curveballs").
 
+### Small details
+
+A few quiet, sourced lines on cards you already open, never a pop-up (research/96–101, PLAN.md "Small details"): a mapped
+road or railway that has a story says it in one grey line (the Ecce Homo hill-climb on Opavská, [Šternberk](docs/screenshots/660-lore-ecce-homo.png);
+[the Žampach viaduct](docs/screenshots/661-lore-zampach.png); [the Hřebeč tunnel](docs/screenshots/662-lore-hrebec.png);
+[R35](docs/screenshots/663-lore-r35.png); [trains on to Lubawka](docs/screenshots/664-lore-kralovec.png); the D11's end,
+[the Polish S3](docs/screenshots/665-lore-s3.png)). A bridge or tunnel of yours that beats a Czech record says so once
+([longer than Panenská](docs/screenshots/666-record-tunnel.png)), never on the starter's own. The failure screens carry a
+Czech road sign ([http](docs/screenshots/667-sign-insecure.png), [no WebGL](docs/screenshots/668-sign-webgl.png),
+[small window](docs/screenshots/669-sign-small.png), [download failed](docs/screenshots/670-sign-loading-failed.png)).
+*Fly along* on an end's card flies 28 m over the line ([a cut](docs/screenshots/671-fly-along-1124.png),
+[the Sázava bridge](docs/screenshots/672-fly-along-2356.png), [over the hill where it tunnels](docs/screenshots/673-fly-along-over-tunnel.png));
+Esc or a click stops it. Key ▾ → *Ground* draws the mapped ground under the profile's ground line
+([key](docs/screenshots/674-ground-band-key.png), [band](docs/screenshots/675-ground-band.png)); a cut's More names it
+([card](docs/screenshots/676-ground-cut-card.png)). A tunnel or cut whose ends drain to different seas says so
+([the D35 under the Hřebeč ridge](docs/screenshots/677-watershed-tunnel.png)); St Barbara at the real Poříčí portal, on a mined tunnel's card on the
+D11 ([card](docs/screenshots/678-barbara-tunnel.png)); the reveal says how long yours took ([reveal](docs/screenshots/679-reveal-took.png));
+a slip road is drawn once in its driving direction when first selected ([stroke](docs/screenshots/680-slip-road-stroke.png));
+the dashed planned line answers a click ([card](docs/screenshots/681-official-line-card.png)); and a bridge's More →
+*Print bridge card* prints one A4 to fold and stand on a desk ([the Sázava bridge](docs/screenshots/682-bridge-card-d3-0302.png),
+[Šternberk](docs/screenshots/683-bridge-card-i46-sternberk.png)). `node scripts/eggs-shots.mjs` plays them all.
+
 ### Scenarios
 
 The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),

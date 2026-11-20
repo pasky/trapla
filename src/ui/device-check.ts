@@ -2,6 +2,7 @@
 // without WebGL 2 cannot draw the map, and a phone or a small window cannot fit it. All are told plainly instead of
 // a broken page; a small screen may go on anyway.
 import './scenario-picker.css';
+import { signSvg } from './signs';
 
 const ANYWAY = 'trapla.small-screen-ok';
 
@@ -48,7 +49,10 @@ export function showDeviceNotice(kind: 'webgl' | 'small' | 'insecure', onAnyway?
   }
   const about = document.createElement('a'); about.href = 'about.html'; about.textContent = 'About Trapla'; about.className = 'scenario-picker-link';
   actions.append(about);
-  content.append(brand, h, p, more, actions);
+  // a road sign above the text (research/98): a detour, a dead end, the road narrowing
+  const sign = document.createElement('div'); sign.className = 'notice-sign-box';
+  sign.innerHTML = signSvg(kind === 'insecure' ? 'detour' : kind === 'webgl' ? 'deadEnd' : 'narrows');
+  content.append(brand, sign, h, p, more, actions);
   root.append(content);
   document.body.append(root);
   document.getElementById('status')?.style.setProperty('display', 'none');

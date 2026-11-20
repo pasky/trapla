@@ -10,6 +10,7 @@ import type { View } from '../render/view';
 import { derivedStretch } from './road-edit';
 import { mappedLineKindFor, type MappedLineKind } from './route-kinds';
 import { coveredText, mappedRoadName, namedByNumber } from '../core/terms';
+import { mappedLore } from '../core/data/lore';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const node = document.createElement(tag); node.textContent = text; return node;
@@ -32,7 +33,9 @@ export class MappedRoadCard {
     /** the dead ends the player cut back, and the handles that cut them (ui/dead-end.ts) */
     private taken: () => readonly TakenUpPiece[] = () => [], private deadEnds?: DeadEndHandles,
     /** where roads of the project end on mapped roads */
-    private joins: () => readonly { sourceId: string; s: number }[] = () => []) {}
+    private joins: () => readonly { sourceId: string; s: number }[] = () => [],
+    /** the terrain pack shown (local knowledge keyed by pack, core/data/lore.ts) */
+    private pack: () => string | undefined = () => undefined) {}
   get selected() { return this.hit; }
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
@@ -69,26 +72,32 @@ export class MappedRoadCard {
     root.replaceChildren(); root.className = 'card ctx inspector k-source';
     const header = el('div'); header.className = 'ctx-h';
     const label = ROAD_CLASSES[source.tags.highway ?? '']?.label ?? (source.kind === 'railway' ? 'railway' : 'road');
-    const name = mappedRoadName(source.tags, label);
+    // local knowledge: one grey sourced line, the card's last whatever else it says (research/96)
+    const lore = mappedLore(this.pack(), source.id, source.tags);
+    const name = lore?.title ?? mappedRoadName(source.tags, label);
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Close (Esc)'; close.type = 'button';
     close.onclick = () => { this.clear(); this.onClose?.(); };
     // "Road III/1057" already says its class
     // ("Street" with no name of its own: said once)
-    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label ? [] : [el('small', cap(label))]), close);
+    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label || lore?.title ? [] : [el('small', cap(label))]), close);
     root.append(header);
-    if (!what.ok) { root.append(el('p', what.why)); return; }
+    const body = (...nodes: HTMLElement[]) => {
+      root.append(...nodes);
+      if (lore) { const note = el('div', lore.line); note.className = 'sub lore'; root.append(note); }
+    };
+    if (!what.ok) { body(el('p', what.why)); return; }
     // its open dead ends: a handle each, dragged back to shorten it (ui/dead-end.ts)
     const taken = this.taken().filter(t => t.interval.sourceId === source.id), ends = deadEnds(this.base, source.id, this.claimed(), taken, this.joins());
     this.deadEnds?.show(ends, cap(name));
     const cut = taken.reduce((m, t) => m + t.interval.s1 - t.interval.s0, 0);
     const short = cut > 0 ? [el('div', DEAD_END_TEXT.shortened(Math.round(cut)))] : [];
     for (const e of short) e.className = 'sub';
-    if (under) { root.append(el('p', coveredText(under.by)), ...short); return; }
-    if (!this.interval) { root.append(el('p', TOO_SHORT), ...short); return; }
+    if (under) { body(el('p', coveredText(under.by)), ...short); return; }
+    if (!this.interval) { body(el('p', TOO_SHORT), ...short); return; }
     const how = el('p', ends.length ? 'Drag it to change its line, its End to shorten it.' : 'Drag it to change its line.'); how.className = 'mapped-how';
     const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.becomes}.`);
     stretch.className = 'sub';
-    root.append(how, stretch, ...short);
+    body(how, stretch, ...short);
   }
   /** Is this map point on the highlighted stretch (within `reach` metres of its line)? */
   covers(x: number, y: number, reach: number): boolean {

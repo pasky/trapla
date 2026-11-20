@@ -4,6 +4,7 @@
 //  - the card of a proposed change that is not checked yet;
 //  - the card of a mapped road in a pack without road links.
 // They read the project through `RouteCardDeps` and change it only through its commands.
+import { czk } from './costgroups';
 import { ENDPOINT_JUNCTIONS, ROAD_CLASSES } from '../core/data/urban';
 import { UNCOUNTED_TRAFFIC } from '../core/data/traffic';
 import type { Result } from '../core/evaluate';
@@ -241,6 +242,23 @@ export function proposalCard(deps: RouteCardDeps): void {
     if (mission && mission !== route.id) deps.switchRoute(mission);
   };
   root.append(h, state, note, size, remove);
+}
+
+/** The dashed official / planned line (the pack's mapped line of the real project): what it is, where it comes from,
+ * the real project's price where one is public (data/twists.ts `real`), and one line about the place (data/lore.ts). */
+export function officialCard(host: () => HTMLElement, onClose: () => void, what: { label: string; real?: { price?: number; priceText: string }; lore?: string }): void {
+  const root = host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
+  root.replaceChildren(); root.className = 'card ctx inspector k-source';
+  h.className = 'ctx-h'; title.textContent = what.label.charAt(0).toUpperCase() + what.label.slice(1);
+  close.className = 'x'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.type = 'button'; close.onclick = onClose; h.append(title, close);
+  const p = document.createElement('p'); p.textContent = 'The real project’s line, as OpenStreetMap maps it.';
+  root.append(h, p);
+  if (what.real) {
+    const price = document.createElement('div'); price.className = 'sub';
+    price.textContent = what.real.price ? `The real project: ${czk(what.real.price)} (${what.real.priceText}).` : `${what.real.priceText}.`;
+    root.append(price);
+  }
+  if (what.lore) { const l = document.createElement('div'); l.className = 'sub lore'; l.textContent = what.lore; root.append(l); }
 }
 
 /** a mapped road in a pack without road links: its card says it cannot be changed here */
