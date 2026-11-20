@@ -16,7 +16,7 @@
 //     the same old road"; the north-east exit, just past it, over its new link); the south-west entry dragged off
 //     Nudvojovická, a bend too close to the north-east exit's end removed, the crossroads roundabouts on the cards: VALID.
 // node scripts/interchange-scene.mjs [--gpu] [--docs] [--only i35|nudvojovicka] [--save-i35 <file>] [--save-nudvojovicka <file>]
-//   (--docs: docs/screenshots/620–633, 710–719 and 720–724; --save-i35 / --save-nudvojovicka: a diamond's project, tests/fixtures/interchange)
+//   (--docs: docs/screenshots/620–633, 710–719 and 727–731; --save-i35 / --save-nudvojovicka: a diamond's project, tests/fixtures/interchange)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { checker, startGame } from './lib/browser.mjs';
 
@@ -344,7 +344,7 @@ try {
   const p0 = await at(onLine), p1 = await at(await groundAt(2740, 3235));
   await page.mouse.move(p0.x, p0.y, { steps: 4 }); await page.waitForTimeout(200); await page.mouse.down();
   await page.mouse.move(p1.x, p1.y, { steps: 12 }); await page.waitForTimeout(400);
-  await game.frames(3); await page.screenshot({ path: `${out}/720-nudvojovicka-entry-dragged-off-the-road.png` }); // (no park: the button is down)
+  await game.frames(3); await page.screenshot({ path: `${out}/727-nudvojovicka-entry-dragged-off-the-road.png` }); // (no park: the button is down)
   await page.mouse.up(); await game.idle();
   const dragged = await page.evaluate(() => { const t = window.trapla, r = t.projectResult().routes[t.activeRoute()].legacy; return { pis: t.getDesign().pis.length, crosses: r.crossings.some(c => c.cls === 'tertiary') }; });
   ok(dragged.pis === 2 && !dragged.crosses, `dragged, it leaves Nudvojovická square and crosses it no more (${dragged.pis} bends)`);
@@ -362,7 +362,7 @@ try {
     const id = await page.evaluate((n) => window.trapla.getProject().routes.find(r => r.name === n).id, name);
     await page.evaluate((id) => window.trapla.setActiveRoute(id), id); await game.idle();
     await page.locator(`.route-junctions button[data-end="${k % 2 === 0 ? 'b' : 'a'}"]`, { hasText: 'Roundabout' }).click(); await game.idle();
-    if (k === 0) await shot('721-nudvojovicka-roundabout-on-the-card');
+    if (k === 0) await shot('728-nudvojovicka-roundabout-on-the-card');
   }
   const n2 = await issues();
   ok(n2.valid && n2.total !== null && n2.list.length === 0, `the Nudvojovická diamond is VALID and priced: ${(n2.total / 1e9).toFixed(4)} bn (${n2.list.join('; ') || 'no problems'})`);
@@ -370,11 +370,11 @@ try {
   if (saveNud) { writeFileSync(saveNud, JSON.stringify(await page.evaluate(() => window.trapla.getProject()), null, 1) + '\n'); console.log(`saved ${saveNud}`); }
   await page.evaluate(() => window.trapla.setActiveRoute('route:motorway-forward')); await game.idle();
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 1000, 0, 89), [nud.x, nud.y]);
-  await game.idle(); await game.still(); await shot('722-nudvojovicka-diamond-valid-overview');
+  await game.idle(); await game.still(); await shot('729-nudvojovicka-diamond-valid-overview');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 620, 150, 40), [nud.x, nud.y]);
-  await game.idle(); await game.still(); await shot('723-nudvojovicka-diamond-oblique');
+  await game.idle(); await game.still(); await shot('730-nudvojovicka-diamond-oblique');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x + 60, y - 10, 380, 200, 50), [nud.led.x, nud.led.y]);
-  await game.idle(); await game.still(); await shot('724-nudvojovicka-exit-over-the-local-road-s-new-link');
+  await game.idle(); await game.still(); await shot('731-nudvojovicka-exit-over-the-local-road-s-new-link');
   }
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }

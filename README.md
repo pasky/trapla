@@ -419,7 +419,7 @@ motorway moves tracks aside: `d3-0303-diamond.json`). Its gore slides along the 
 goes with it). Slip roads already in the motorway's price (earth-built ones of one interchange every 7 km, SPK)
 are credited. Not yet: a slip road over or under its own motorway (a trumpet's or cloverleaf's loop),
 interchange spacing (research/90). Real-mouse check: `node scripts/interchange-scene.mjs [--docs]` (screenshots
-620–633; the I/35 diamonds 710–724).
+620–633; the I/35 diamonds 710–719, Nudvojovická 727–731).
 
 | The diamond, valid and priced | Slip roads and motorway in one cutting by their gores |
 |---|---|
@@ -440,9 +440,9 @@ above](docs/screenshots/719-i35-gores-from-above.png), [the north-east slip road
 Přepeřská](docs/screenshots/718-i35-north-east-slip-roads.png).
 
 Where our road cuts a road and leads it elsewhere, its slip roads cross that road as our road leaves it (on its new link,
-not its old line), one design with ours: [a diamond at Nudvojovická](docs/screenshots/722-nudvojovicka-diamond-valid-overview.png)
-(I/35 km 1.67, `i35-nudvojovicka-diamond.json`), [its exit over the local road's new link](docs/screenshots/724-nudvojovicka-exit-over-the-local-road-s-new-link.png),
-[its entry dragged off Nudvojovická](docs/screenshots/720-nudvojovicka-entry-dragged-off-the-road.png).
+not its old line), one design with ours: [a diamond at Nudvojovická](docs/screenshots/729-nudvojovicka-diamond-valid-overview.png)
+(I/35 km 1.67, `i35-nudvojovicka-diamond.json`), [its exit over the local road's new link](docs/screenshots/731-nudvojovicka-exit-over-the-local-road-s-new-link.png),
+[its entry dragged off Nudvojovická](docs/screenshots/727-nudvojovicka-entry-dragged-off-the-road.png).
 
 A selected crossing's parts drag too (select first, then drag): its ring slides where the crossed road crosses ours
 along our road (the road rebuilt around the crossing, its angle kept; undo "moving where … crosses"), its lit works bend

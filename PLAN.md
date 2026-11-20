@@ -2565,7 +2565,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   design identical; D3 0303 and 0304 identical; the I/35 Turnov diamond 6.2054996382 bn (+0.00009 CZK: its north-east
   exit's network no longer has the service way our road closes at km 1.18).
 - **Result:** the Nudvojovická diamond, built with the mouse (`scripts/interchange-scene.mjs --only nudvojovicka`,
-  screenshots 720–724): gores 430 m before the bridge on both sides, 450 m after it on the forward side, the north-east exit
+  screenshots 727–731): gores 430 m before the bridge on both sides, 450 m after it on the forward side, the north-east exit
   200 m after it, just past the local road; crossroads on Nudvojovická 290 m south-west and 185 m north of the bridge as
   roundabouts (the sight lines along it are short). The south-west entry, which Build runs along Nudvojovická (the road
   runs nearly towards its gore, so Build gives no square bend), dragged off it square; the north-east exit's square bend,
