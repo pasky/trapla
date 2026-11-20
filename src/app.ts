@@ -53,6 +53,8 @@ import { createMapGestures } from './ui/map-gestures';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { earnedRecord } from './ui/records';
+import { shownS } from './ui/chainage';
+import { watershedLine, type BasinData } from './core/basins';
 import { createFlyAlong } from './ui/fly-along';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
@@ -189,11 +191,21 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   /** shaping reroutes on the map (constructed once the store hooks exist) */
   let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined, mappedNet: RoadNet | undefined;
+  /** which sea each place drains to: loaded on first need (undefined: not asked yet) */
+  let basins: BasinData | null | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
     radiusNote: (i, r) => radiusNotes.get(store.activeRouteId, i, r),
     natureNotes: (r, d, s0, s1) => natureNotes(pack.terrain, r, d, s0, s1),
+    // the ends of a tunnel or a cut in different seas' basins (core/basins.ts; loaded on the first such card)
+    watershed: (r, i0, i1, s0, s1) => {
+      if (basins === undefined) { basins = null; void pack.loadBasins().then(b => { basins = b; if (b) inspector.render(); }); return null; }
+      if (!basins) return null;
+      // (the km as the card shows them: counted from the line's own start, the nearer end first)
+      const ends = [{ x: r.x[i0], y: r.y[i0], s: shownS(s0) }, { x: r.x[i1], y: r.y[i1], s: shownS(s1) }].sort((p, q) => p.s - q.s);
+      return watershedLine(basins, ends[0], ends[1]);
+    },
     // a record beaten, only where the player made the structure (against the start and the From scratch straight)
     record: (r, d, run) => {
       const now = store.readIn(projectStore.snapshot.design);

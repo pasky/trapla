@@ -159,6 +159,8 @@ export class Inspector {
     onRing?: (j: number) => boolean;
     /** a mapped road's own name or number, by its index in the pack's network (ui/road-links.ts), if it has one */
     roadName?: RoadNamer;
+    /** where a tunnel's or cut's ends (stations i0, i1) drain to different seas, the card's line (core/basins.ts) */
+    watershed?: (r: Result, i0: number, i1: number, s0: number, s1: number) => string | null;
     /** a Czech record this bridge or tunnel of the player's beats, said once (ui/records.ts) */
     record?: (r: Result, d: Design, run: Run) => string | null;
   }) {
@@ -423,10 +425,11 @@ export class Inspector {
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
     }
     const run = tunnel ?? bridge, record = run && this.ctx.record?.(r, d, run);
+    const shed = sel.piece === 'tunnel' || sel.piece === 'cut' ? this.ctx.watershed?.(r, tunnel?.i0 ?? i0, tunnel?.i1 ?? i1, s0, s1) : null;
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
-      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}${record ? `<div class="sub lore">${esc(record)}</div>` : ''}</div>
+      <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}${(this.ctx.natureNotes?.(r, d, s0, s1) ?? []).map((t) => `<div class="sub">${esc(t)}</div>`).join('')}${shed ? `<div class="sub lore">${esc(shed)}</div>` : ''}${record ? `<div class="sub lore">${esc(record)}</div>` : ''}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', this.structureOptions(r, sel.piece, s0, s1, mine), active)}
       ${method}

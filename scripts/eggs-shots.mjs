@@ -1,4 +1,4 @@
-// The small details (research/96–99): each one clicked or played as a player would, its screenshot taken, what it says
+// The small details (research/96–100): each one clicked or played as a player would, its screenshot taken, what it says
 // asserted. Real mouse where a player would use one.
 //   node scripts/eggs-shots.mjs [--gpu] [--docs] [--only lore,records,signs,fly,…]   (--docs: docs/screenshots/660…, else /tmp/trapla-eggs)
 //   flock -x /tmp/trapla-browser.lock node scripts/eggs-shots.mjs --gpu --only fly --frames   (the fly-along's frame times)
@@ -153,6 +153,15 @@ try {
     await shot(676, 'ground-cut-card');
     await page.locator('#inspector .more-t').click(); // (More back as it was)
     await page.locator('#key-toggle').click(); await page.locator('#ground-band').uncheck(); await page.locator('#key-toggle').click();
+  }
+  // 6. the watershed (core/basins.ts, research/100): the D35 tunnel under the Hřebeč ridge, each end in another sea's basin
+  if (want('watershed')) {
+    await game.open('scenario=d35&preset=d35-stage1-motorway');
+    const t = await T(() => window.trapla.result().runs.filter(q => q.kind === 2).sort((p, q) => q.length - p.length)[0]);
+    await T((s) => window.trapla.selectPiece(s), (t.s0 + t.s1) / 2); await idle(300);
+    await page.waitForFunction(() => /different seas/.test(document.getElementById('inspector').innerText), null, { timeout: 20000 });
+    assert.match(await inspector(), /rain at its km 4\.\d\d end runs to the North Sea, at its km 7\.\d\d end to the Black Sea/);
+    await shot(677, 'watershed-tunnel');
   }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

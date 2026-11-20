@@ -1,5 +1,6 @@
 // Browser-side loading of a scenario pack (see README.md for the format).
 
+import { validBasins, type BasinData } from './core/basins';
 import type { GroundMeta } from './core/ground';
 import type { BuildingInfo } from './core/buildings';
 import { withStructures, type RoadNetData, type StructureData } from './core/roadnet';
@@ -100,6 +101,9 @@ export interface Pack {
    * graph on first need. Null: the pack ships none, or it is unreadable; rebuilt roads then start with
    * the average traffic of their class. Never rejects. */
   loadTraffic: () => Promise<TrafficCensus | null>;
+  /** which sea each place drains to (`basins.json`, pipeline/build_basins.py), loaded on first need; null: the pack
+   * ships none or it is unreadable. Never rejects. */
+  loadBasins: () => Promise<BasinData | null>;
 }
 
 /** a pack file, unpacked if it is gzipped (src/pack-fetch.ts: the start screen may have started it already) */
@@ -176,6 +180,13 @@ export async function loadPack(base: string): Promise<Pack> {
     if (!validTrafficCensus(census)) throw new Error('Unsupported traffic census');
     return census;
   })().catch((error) => { console.warn('Traffic census unavailable', error); return null; });
+  let basins: Promise<BasinData | null> | null = null;
+  const loadBasins = () => basins ??= (async () => {
+    const data: unknown = await optional(`${base}/basins.json`);
+    if (data === ABSENT) return null;
+    if (!validBasins(data)) throw new Error('Unsupported basins file');
+    return data;
+  })().catch((error) => { console.warn('Basins unavailable', error); return null; });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
@@ -185,5 +196,5 @@ export async function loadPack(base: string): Promise<Pack> {
   const ownStructures = structures && structures.transport === transportMeta?.fingerprint ? structures : null;
   if (structures && !ownStructures) console.warn('Mapped bridges file is from another build of this map: run pipeline/build_structures.py');
   const roadNet = overlays.net ? withStructures(overlays.net, ownStructures) : undefined;
-  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic };
+  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic, loadBasins };
 }

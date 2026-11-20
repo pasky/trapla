@@ -15,6 +15,7 @@ import { evaluate } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
 import { ALL_LORE } from '../src/core/data/lore';
 import { RECORDS } from '../src/core/data/records';
+import { watershedLine } from '../src/core/basins';
 import { ROW_HELP, rowHelp } from '../src/ui/hud';
 import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -89,6 +90,9 @@ describe('player-facing text', () => {
       for (const text of [card.title, ...card.lines, ...(info.lore ? [info.lore] : [])]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
     }
     expect(ends).toBeGreaterThan(8);
+    // a tunnel's ends in two seas' basins (research/100)
+    const basins = { version: 1 as const, source: 's', basins: [{ sea: 'north' as const, river: 'Elbe', rings: [[0, 0, 10, 0, 10, 10, 0, 10]] }, { sea: 'black' as const, river: 'Danube', rings: [[10, 0, 20, 0, 20, 10, 10, 10]] }] };
+    check('watershed line', watershedLine(basins, { x: 5, y: 5, s: 4100 }, { x: 15, y: 5, s: 7080 }) ?? 'missing line');
     // local knowledge on mapped ways' cards (research/96) and records (research/97): one short sentence each
     for (const lore of [...ALL_LORE, ...RECORDS]) for (const text of [lore.line, 'title' in lore ? lore.title : undefined]) {
       check('local knowledge', text);
