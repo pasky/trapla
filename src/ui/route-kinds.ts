@@ -19,7 +19,8 @@ import { ROAD_CLASSES } from '../core/data/urban';
 import { KIND } from '../core/structures';
 import { CATEGORIES } from '../core/data/categories';
 import { moveStretchEnds, newRoad, newSlipRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
-import { carriagewayOf, gore, isSlipRoad, sideAt, SLIP_ROAD } from '../core/slip-roads';
+import { carriagewayOf, gore, isSlipRoad, sideAt, SLIP_ROAD, SLIP_SECTIONS } from '../core/slip-roads';
+import { motorwayCategory } from '../core/route-section';
 import { mappedRoadName } from '../core/terms';
 import { stationIndex } from '../core/range';
 
@@ -120,7 +121,7 @@ export const ROAD_BUILD: BuildKind = {
   },
   onRoute(route, result, s) {
     const r = result.legacy;
-    if (route.kind === 'motorway') return { ok: false, why: 'A road joins a motorway by slip roads: Build → Slip road.' };
+    if (route.kind === 'motorway') return { ok: false, why: `A road joins a ${SLIP_SECTIONS[motorwayCategory(route)].word} by slip roads: Build → Slip road.` };
     if (route.kind !== 'road') return { ok: false, why: 'A road cannot end on a railway.' };
     if (!r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
     const i = stationIndex(r, s);
@@ -134,7 +135,7 @@ export const ROAD_BUILD: BuildKind = {
  * (a junction, as Build → Road's) (core/slip-roads.ts). */
 export const SLIP_BUILD: BuildKind = {
   kind: 'road', label: 'Slip road',
-  hint: 'Traffic runs from its start to its end: start it beside a motorway to leave it, end it there to join it. Its other end joins a road.',
+  hint: 'Traffic runs from its start to its end: start it beside a motorway or four-lane road to leave it, end it there to join it. Its other end joins a road.',
   onSource(base, sourceId, s, where) {
     const source = base.source(sourceId);
     if (source && ROAD_CLASSES[source.tags.highway ?? '']?.noAtGrade) return { ok: false, why: 'A slip road joins a motorway built in this game only.' };
@@ -156,21 +157,22 @@ export const SLIP_BUILD: BuildKind = {
       return SLIP_BUILD.onSource(where.base, e.anchor.location.sourceId, e.anchor.location.s, { design: where.design });
     }
     if (route.kind !== 'motorway') return ROAD_BUILD.onRoute(route, result, s, where);
+    const category = motorwayCategory(route), word = SLIP_SECTIONS[category].word;
     const r = result.legacy, carriageway = where && carriagewayOf(where.design, route.id);
-    if (!r || !where || !carriageway) return { ok: false, why: 'This motorway is not checked yet, so nothing can join it.' };
-    if (!carriageway.paired) return { ok: false, why: 'A slip road joins a motorway where both its directions run side by side.' };
+    if (!r || !where || !carriageway) return { ok: false, why: `This ${word} is not checked yet, so nothing can join it.` };
+    if (!carriageway.paired) return { ok: false, why: `A slip road joins a ${word} where both its directions run side by side.` };
     const i = stationIndex(r, s);
-    if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A slip road cannot leave or join the motorway on a bridge or in a tunnel.' };
+    if (r.kind[i] !== KIND.earth) return { ok: false, why: `A slip road cannot leave or join the ${word} on a bridge or in a tunnel.` };
     const corridor = where.design.corridors.find(c => c.id === carriageway.corridorId)!;
     const side = sideAt(r, s, where.at), id = side === 1 ? corridor.children.forward : corridor.children.reverse;
-    const g = gore(r, s, side);
-    return { ok: true, label: `the motorway, towards ${side === 1 ? where.towards.forward : where.towards.reverse}`,
+    const g = gore(r, s, side, category);
+    return { ok: true, label: `the ${word}, towards ${side === 1 ? where.towards.forward : where.towards.reverse}`,
       end: { position: { x: g.x, y: g.y, z: g.z }, anchor: { kind: 'route', routeId: id, s: g.s }, travel: g.travel } };
   },
   refuse(a, b) {
     const onMotorway = (e: PlacedEnd) => !!e.travel;
-    if (onMotorway(a) && onMotorway(b)) return 'A slip road leaves or joins the motorway at one end only: put its other end on a road.';
-    if (!onMotorway(a) && !onMotorway(b)) return 'A slip road leaves or joins a motorway: put one of its ends beside the motorway.';
+    if (onMotorway(a) && onMotorway(b)) return 'A slip road leaves or joins at one end only: put its other end on a road.';
+    if (!onMotorway(a) && !onMotorway(b)) return 'A slip road leaves or joins a motorway or four-lane road: put one of its ends beside it.';
     return null;
   },
   create: (project, a, b, ids) => newSlipRoad(project, a, b, ids),

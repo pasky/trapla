@@ -122,6 +122,9 @@ export interface Result {
   /** display only, never set by the kernel: where a cutting's face meets another road's beside it, the ridge's height
    * (render/slip-merge.ts; NaN: the face ends on the ground) */
   apexL?: Float32Array; apexR?: Float32Array;
+  /** display only, never set by the kernel: extra crown on one side per station, m (a speed-change lane's paving beside
+   * a paired road's carriageway, render/slip-merge.ts) */
+  widenL?: Float32Array; widenR?: Float32Array;
   oob: Uint8Array;
   runs: Run[];
   vpis: VPI[];

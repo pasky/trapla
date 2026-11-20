@@ -210,7 +210,8 @@ export class RouteExtras {
       const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[i]) / r.ds));
       const lerp = (a: ArrayLike<number>) => a[i] + t * (a[i + 1] - a[i]);
       const tx = lerp(r.tx), ty = lerp(r.ty), norm = Math.hypot(tx, ty) || 1;
-      const o = (off === 'wall' ? (side ? lerp(side.wallOff) : this.crown / 2 + NOISE.wallEdgeOffset) : off) + extra;
+      // (beside a speed-change lane the formation is wider on that side, Result.widenL / widenR: the wall that much further out)
+      const wide = (w.side === 'L' ? r.widenL : r.widenR), o = (off === 'wall' ? (side ? lerp(side.wallOff) : this.crown / 2 + NOISE.wallEdgeOffset) : off) + extra + (wide ? lerp(wide) : 0);
       const foot = off === 'wall' && side ? lerp(side.wallFoot) : 0;
       out.push(lerp(r.x) - ty / norm * o * sgn, lerp(r.y) + tx / norm * o * sgn, lerp(r.grade) + foot + dz);
     }
@@ -237,8 +238,9 @@ export class RouteExtras {
     if (r.kind[i] !== KIND.earth) return z;
     if (side && side.wallFoot[i] > 0) return z - 0.3;
     const day = w.side === 'L' ? r.dayL[i] : r.dayR[i], zDay = w.side === 'L' ? r.zDayL[i] : r.zDayR[i];
-    const off = side ? side.wallOff[i] : this.crown / 2 + NOISE.wallEdgeOffset;
-    const t = Math.max(0, Math.min(1, (off - this.crown / 2) / Math.max(.1, day - this.crown / 2)));
+    const wide = (w.side === 'L' ? r.widenL : r.widenR)?.[i] ?? 0;
+    const off = (side ? side.wallOff[i] : this.crown / 2 + NOISE.wallEdgeOffset) + wide, edge = this.crown / 2 + wide;
+    const t = Math.max(0, Math.min(1, (off - edge) / Math.max(.1, day - edge)));
     return Math.min(z, z + (zDay - r.grade[i]) * t);
   }
 

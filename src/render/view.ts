@@ -24,7 +24,7 @@ import { buildRouteSurfaces, routeSurfaceContext, routeSurfaceContextSliced, typ
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, slopeKnee, groundStations } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, crownExtra, daylightSections, slopeKnee, groundStations } from './earthwork-surface';
 import { FACE_AT } from '../core/sections';
 import { carriagewaySlot, isCarriagewaySlot, isPairedSlot, pairedSlot, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, setPairedSections, terrainUniforms } from './terrainMaterial';
 import { MOTORWAY_MARKINGS, PAIRED_SECTIONS } from '../core/data/motorway';
@@ -766,8 +766,10 @@ export class View {
 
   /** Lines a slip road's speed-change lane paints on the motorway (core/slip-roads.ts): flat white strips on the
    * carriageway, `dashed` 1.5 m dash / 1.5 m gap (VL 3 V 2b), else solid; `width` m. */
-  setLaneMarks(lines: readonly { points: readonly { x: number; y: number; z: number }[]; dashed: boolean; width: number }[]) {
-    const key = JSON.stringify(lines.map(l => [l.dashed, l.width, l.points.length, l.points[0]?.x, l.points[0]?.y, l.points.at(-1)?.x, l.points.at(-1)?.z]));
+  /** `paving`: a strip of asphalt instead of a line, each point's half width (a speed-change lane's paving beyond the
+   * hard shoulder), drawn under the lines */
+  setLaneMarks(lines: readonly { points: readonly { x: number; y: number; z: number }[]; dashed: boolean; width: number; paving?: readonly number[] }[]) {
+    const key = JSON.stringify(lines.map(l => [l.dashed, l.width, l.points.length, l.points[0]?.x, l.points[0]?.y, l.points.at(-1)?.x, l.points.at(-1)?.z, l.paving?.[0], l.paving?.at(-1)]));
     if (key === this.laneKey) return;
     this.laneKey = key;
     if (this.laneMarks) { this.world.remove(this.laneMarks); this.laneMarks.geometry.dispose(); (this.laneMarks.material as THREE.Material).dispose(); this.laneMarks = null; }
@@ -786,8 +788,17 @@ export class View {
       const t = Math.max(0, Math.min(1, (u - d[k - 1]) / ((d[k] - d[k - 1]) || 1))), p = pts[k - 1], q = pts[k];
       return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t };
     };
+    // (the paving first, a little lower: the lines over it)
+    for (const line of lines) if (line.paving && line.points.length > 1) for (let k = 1; k < line.points.length; k++) {
+      const p = line.points[k - 1], q = line.points[k], dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy); if (!(len > 1e-6)) continue;
+      const ux = -dy / len, uy = dx / len, hp = line.paving[k - 1], hq = line.paving[k];
+      const c = [[p.x + ux * hp, p.y + uy * hp, p.z], [p.x - ux * hp, p.y - uy * hp, p.z], [q.x + ux * hq, q.y + uy * hq, q.z], [q.x - ux * hq, q.y - uy * hq, q.z]]
+        .map(([x, y, z]) => { this.local(x, y, z + lift - 0.05, v); return [v.x, v.y, v.z]; });
+      pos.push(...c[0], ...c[1], ...c[2], ...c[1], ...c[3], ...c[2]);
+      for (let j = 0; j < 6; j++) col.push(asphalt.r, asphalt.g, asphalt.b);
+    }
     for (const line of lines) {
-      const pts = line.points; if (pts.length < 2) continue;
+      const pts = line.points; if (pts.length < 2 || line.paving) continue;
       const d = [0]; for (let k = 1; k < pts.length; k++) d.push(d[k - 1] + Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y));
       if (!line.dashed) { for (let k = 1; k < pts.length; k++) quad(pts[k - 1], pts[k], line.width / 2); continue; }
       // (the gaps in asphalt: the carriageway's solid edge line under it is broken there)
@@ -956,15 +967,16 @@ export class View {
       const gp = r.geology.profiles[r.geology.ids[i]];
       const geoAt = (depth: number) => (gp.normMix ? [-3, -3, r.s[i]] : [depth - gp.classIto, depth - gp.classIIto, r.s[i]]);
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
-      const wi = w + (r.widen?.[i] ?? 0); // a hairpin's widened lanes
-      const xel = x + nx * wi, yel = y + ny * wi, xer = x - nx * wi, yer = y - ny * wi;
+      // a hairpin's widened lanes; a speed-change lane's paving on one side
+      const wl = w + crownExtra(r, i, 1), wr = w + crownExtra(r, i, -1);
+      const xel = x + nx * wl, yel = y + ny * wl, xer = x - nx * wr, yer = y - ny * wr;
       sv.push({
         dl: push(xl, yl, (Number.isFinite(r.apexL?.[i]) ? r.apexL![i] : natural(xl, yl)) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * wl, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * wr, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, (Number.isFinite(r.apexR?.[i]) ? r.apexR![i] : natural(xr, yr)) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
@@ -1195,16 +1207,23 @@ export class View {
           // Interpolate the crown's chord edges exactly; normalising tangents would widen the split.
           return { x: value(r.x), y: value(r.y), z: value(r.grade), tx: value(r.tx), ty: value(r.ty) };
         };
+        // (a deck's outer edge on a side a speed-change lane widens: that much further out, Result.widenL / widenR)
+        const edgeOut = (s: number, o: number) => {
+          const wide = o > 0 ? r.widenL : r.widenR;
+          if (!wide || Math.abs(Math.abs(o) - w) > 1e-9) return o;
+          const i = Math.max(0, Math.min(n - 2, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[i]) / (r.s[i + 1] - r.s[i])));
+          return o + Math.sign(o) * (wide[i] + (wide[i + 1] - wide[i]) * t);
+        };
         for (let i = Math.max(0, run.i0 - 1); i <= Math.min(n - 2, run.i1); i++) {
           for (const segment of bridgeDeckSegments(spans,r.s[i],r.s[i+1])) {
             const a = at(segment.s0), b = at(segment.s1), deck = segment.depth;
             for (const o of strips.flat()) {
-              const c = shade(concrete, o > 0 ? 0.95 : 0.75), [ax, ay] = across(a, o), [bx, by] = across(b, o);
+              const c = shade(concrete, o > 0 ? 0.95 : 0.75), [ax, ay] = across(a, edgeOut(segment.s0, o)), [bx, by] = across(b, edgeOut(segment.s1, o));
               quad(push(ax,ay,a.z+lift,c), push(bx,by,b.z+lift,c), push(ax,ay,a.z-deck,c), push(bx,by,b.z-deck,c));
             }
             const u = shade(concrete, 0.55);
             for (const [lo, hi] of strips) {
-              const [a0x, a0y] = across(a, hi), [a1x, a1y] = across(a, lo), [b0x, b0y] = across(b, hi), [b1x, b1y] = across(b, lo);
+              const [a0x, a0y] = across(a, edgeOut(segment.s0, hi)), [a1x, a1y] = across(a, edgeOut(segment.s0, lo)), [b0x, b0y] = across(b, edgeOut(segment.s1, hi)), [b1x, b1y] = across(b, edgeOut(segment.s1, lo));
               quad(push(a0x,a0y,a.z-deck,u), push(a1x,a1y,a.z-deck,u), push(b0x,b0y,b.z-deck,u), push(b1x,b1y,b.z-deck,u));
             }
           }
