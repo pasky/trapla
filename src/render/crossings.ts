@@ -129,6 +129,25 @@ class MeshBuilder {
     }
   }
 }
+/** a footprint conflict's path drawn on the map: a removed old road, or a proposal that cannot be built (dashed) */
+const annotationLine = (proposed: boolean) => new THREE.LineDashedMaterial({
+  color: proposed ? 0xe0a800 : 0xc83d32, dashSize: 12, gapSize: 8, transparent: true, opacity: .8, depthTest: false, depthWrite: false,
+});
+/** a blocked footprint conflict's marker: a red cross */
+function blockedMarker() {
+  const material = new THREE.PointsMaterial({ color: 0xd7301f, size: 13, sizeAttenuation: false, depthTest: false, depthWrite: false });
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>',
+      '#include <clipping_planes_fragment>\nif (abs(abs(gl_PointCoord.x - .5) - abs(gl_PointCoord.y - .5)) > .13) discard;');
+  };
+  material.customProgramCacheKey = () => 'footprint-blocked-cross';
+  return material;
+}
+/** one object of each annotation material, for View.warm (with positions, as drawn: a program differs without) */
+export const annotationSamples = () => {
+  const points = () => new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(1, 0, 0)]);
+  return [new THREE.Line(points(), annotationLine(false)), new THREE.Points(points(), blockedMarker())];
+};
 type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & Partial<Pick<Result, 'tx' | 'ty' | 'dayL' | 'dayR'>> & { footprintConflicts?: readonly FootprintConflict[]; railCrossings?: Result['railCrossings'] };
 
 /** Width of an underpass wing wall's coping beyond its face, m (display). */
@@ -286,22 +305,14 @@ export class CrossingRenderer {
     if (!blocked.length) return;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(blocked, 3));
-    const material = new THREE.PointsMaterial({ color: 0xd7301f, size: 13, sizeAttenuation: false, depthTest: false, depthWrite: false });
-    material.onBeforeCompile = shader => {
-      shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>',
-        '#include <clipping_planes_fragment>\nif (abs(abs(gl_PointCoord.x - .5) - abs(gl_PointCoord.y - .5)) > .13) discard;');
-    };
-    material.customProgramCacheKey = () => 'footprint-blocked-cross';
-    const markers = new THREE.Points(geometry, material);
+    const markers = new THREE.Points(geometry, blockedMarker());
     markers.name = 'footprint-blocked'; markers.renderOrder = 6; out.push(markers);
   }
   private conflictPath(c: FootprintConflict, path: CrossingPoint[], proposed: boolean, out: THREE.Object3D[]) {
     const points = path.map(p => this.view.local(p.x, p.y, this.view.drape(p.x, p.y) + .3));
     // Annotations, not surviving roads: legible even under fill. Blocked proposals must not
     // carve terrain or mark the original as removed because the mitigation cannot be built.
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineDashedMaterial({
-      color: proposed ? 0xe0a800 : 0xc83d32, dashSize: 12, gapSize: 8, transparent: true, opacity: .8, depthTest: false, depthWrite: false,
-    }));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), annotationLine(proposed));
     line.computeLineDistances(); line.name = proposed ? 'footprint-proposed' : 'footprint-removed'; line.userData.conflictId = c.id;
     line.renderOrder = 5; out.push(line);
   }
