@@ -104,6 +104,8 @@ export interface Pack {
   /** which sea each place drains to (`basins.json`, pipeline/build_basins.py), loaded on first need; null: the pack
    * ships none or it is unreadable. Never rejects. */
   loadBasins: () => Promise<BasinData | null>;
+  /** the watercourses' names by reach id (`water-names.json`, pipeline/build_water_names.py), on first need; empty: none */
+  loadWaterNames: () => Promise<ReadonlyMap<number, string>>;
 }
 
 /** a pack file, unpacked if it is gzipped (src/pack-fetch.ts: the start screen may have started it already) */
@@ -187,6 +189,13 @@ export async function loadPack(base: string): Promise<Pack> {
     if (!validBasins(data)) throw new Error('Unsupported basins file');
     return data;
   })().catch((error) => { console.warn('Basins unavailable', error); return null; });
+  let waterNames: Promise<ReadonlyMap<number, string>> | null = null;
+  const loadWaterNames = () => waterNames ??= (async () => {
+    const data = await optional<{ version: number; names: Record<string, string> }>(`${base}/water-names.json`);
+    if (data === ABSENT) return new Map<number, string>();
+    if (data?.version !== 1 || typeof data.names !== 'object') throw new Error('Unsupported water names file');
+    return new Map(Object.entries(data.names).map(([id, name]) => [Number(id), String(name)]));
+  })().catch((error) => { console.warn('Water names unavailable', error); return new Map<number, string>(); });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
@@ -196,5 +205,5 @@ export async function loadPack(base: string): Promise<Pack> {
   const ownStructures = structures && structures.transport === transportMeta?.fingerprint ? structures : null;
   if (structures && !ownStructures) console.warn('Mapped bridges file is from another build of this map: run pipeline/build_structures.py');
   const roadNet = overlays.net ? withStructures(overlays.net, ownStructures) : undefined;
-  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic, loadBasins };
+  return { base, meta, terrain, q, lc, overlays, roadNet, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic, loadBasins, loadWaterNames };
 }

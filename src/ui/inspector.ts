@@ -47,6 +47,8 @@ export type Sel =
 
 export interface InspectorEvents {
   close?: () => void;
+  /** print this bridge as a card to fold and stand on a desk (ui/bridge-print.ts) */
+  printBridge?: (r: Result, run: Run) => void;
   /** fly along our line from this end (ui/fly-along.ts) */
   fly?: (r: Result, from: 'a' | 'b') => void;
   select?: (sel: Sel) => void;
@@ -444,6 +446,7 @@ export class Inspector {
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
           : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height pin here</button></div>`}
         ${this.costLines(r, i0, i1)}
+        ${bridge && bridge.style !== 'arch' ? `<div class="ctx-row"><button type="button" data-print-bridge="${bridge.s0}" title="One A4 sheet: fold it along the middle and stand it on a desk. Side view on one face, from above on the other, both to scale.">Print bridge card</button></div>` : ''}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
   }
@@ -826,6 +829,7 @@ export class Inspector {
       try { localStorage.setItem(MORE_KEY, this.more ? '1' : '0'); } catch { /* private mode */ }
       this.render(); return;
     }
+    if (b.dataset.printBridge) { const run = r.runs.find((q) => q.kind === KIND.bridge && q.s0 === Number(b.dataset.printBridge)); if (run) this.ev.printBridge?.(r, run); return; }
     if (b.dataset.fly) { this.ev.fly?.(r, b.dataset.fly as 'a' | 'b'); return; }
     if (b.dataset.roadCard) { this.ev.select?.({ kind: 'crossing', roadId: Number(b.dataset.roadCard) }); return; }
     if (b.dataset.stretch) { const [s0, s1] = b.dataset.stretch.split(',').map(Number); this.ev.select?.({ kind: 'stretch', s0, s1 }); return; }

@@ -27,7 +27,7 @@ import type { PickedScenario } from './ui/scenario-picker';
 import { startEvalWorkers } from './eval-workers';
 import { newSession } from './session';
 import { openProjectStore } from './project-store';
-import { makeLegacyProjectContext } from './core/project-legacy';
+import { legacyDesignForRoute, makeLegacyProjectContext } from './core/project-legacy';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -55,8 +55,9 @@ import { natureNotes } from './ui/nature-notes';
 import { earnedRecord } from './ui/records';
 import { slipDrive } from './ui/slip-sweep';
 import { MISSION_TWISTS } from './core/data/twists';
-import { MINED_TUNNEL_LORE, OFFICIAL_LORE } from './core/data/lore';
-import { shownS } from './ui/chainage';
+import { MINED_TUNNEL_LORE, OFFICIAL_LORE, mappedLore } from './core/data/lore';
+import { bridgeSheetSvg, printBridgeSheet } from './ui/bridge-print';
+import { shownRange, shownS } from './ui/chainage';
 import { watershedLine, type BasinData } from './core/basins';
 import { createFlyAlong } from './ui/fly-along';
 import { hudEvents } from './ui/hud-events';
@@ -69,8 +70,8 @@ import { Intro } from './ui/intro';
 import { createTwists } from './ui/twists';
 import type { TwistId } from './core/twists';
 import type { ProjectResult } from './core/project';
-import { normalizeVpis } from './core/evaluate';
-import { KIND } from './core/structures';
+import { normalizeVpis, type Result } from './core/evaluate';
+import { KIND, type Run } from './core/structures';
 import { toast } from './ui/toast';
 
 const status = document.getElementById('status')!;
@@ -294,10 +295,32 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, setEnd, inspectorEvents, decisionEvents } = createDesignEdits({
     store, profile, get last() { return session.last; }, select: (next, fly) => select(next, fly), deselect: () => deselect(),
   });
+  // a bridge printed as a card for the desk (ui/bridge-print.ts): what the game built, over what passes under it
+  const printBridge = async (r: Result, run: Run) => {
+    await links.ensure().catch(() => undefined);
+    const names = await pack.loadWaterNames(), design = projectStore.snapshot.design, full = session.projectFull;
+    const mid = { x: r.x[Math.round((run.i0 + run.i1) / 2)], y: r.y[Math.round((run.i0 + run.i1) / 2)] };
+    const decks = Object.entries(full?.routes ?? {}).flatMap(([id, q]) => {
+      const lr = id === store.activeRouteId ? r : q.legacy; if (!lr) return [];
+      let half = 5; try { half = CATEGORIES[legacyDesignForRoute(design, id).category].crownWidth / 2; } catch { /* not a road the widgets edit */ }
+      return lr.runs.filter(d => d.kind === KIND.bridge && Math.hypot(lr.x[d.i0] - mid.x, lr.y[d.i0] - mid.y) < run.length + 400).map(d => ({ r: lr, run: d, half }));
+    });
+    let high = 0; for (let i = run.i0; i <= run.i1; i++) high = Math.max(high, r.grade[i] - r.ground[i]);
+    const [a, b] = shownRange(run.s0, run.s1), m0 = (v: number) => Math.round(v).toLocaleString('en-US');
+    const net = pack.roadNet?.ways ?? [], widths: Record<string, number> = { motorway: 27.5, trunk: 11.5, primary: 9.5, secondary: 8, tertiary: 7 };
+    const svg = bridgeSheetSvg({ title: scenario.title, sub: `Your bridge · km ${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)} · ${m0(run.length)} m long · up to ${m0(high)} m high`,
+      r, run, decks,
+      roads: net.map((w, j) => ({ xy: w.slice(1), width: widths[pack.roadNet!.cls[w[0]]] ?? 4, name: j < (pack.overlays.net?.ways.length ?? 0) ? links.wayName(j) : undefined })),
+      railways: (links.graph?.sources ?? []).filter(q => q.kind === 'railway').map(q => ({ xy: q.xy, tunnel: q.tunnel,
+        name: mappedLore(scenario.id, q.id, q.tags)?.title ?? (q.tunnel ? 'railway, in a tunnel' : 'railway') })),
+      water: (pack.terrain.watercourses?.data.reaches ?? []).map(w => ({ points: w.points, width: w.width ?? (w.kind === 'river' ? 15 : 3), name: names.get(w.id) })),
+      credit: 'Trapla · your design · terrain © ČÚZK, DMR 5G, CC BY 4.0 · map © OpenStreetMap contributors, ODbL' });
+    printBridgeSheet(svg);
+  };
   // fly along the line from an end (ui/fly-along.ts): only when asked, the map's markers hidden meanwhile (made
   // before the shortcuts: its Esc goes first)
   const flyAlong = createFlyAlong(view, document.getElementById('overlay')!, (x, y) => pack.terrain.heightAt(x, y));
-  inspector.ev = { ...inspectorEvents, fly: (r, from) => flyAlong.start(r, from) };
+  inspector.ev = { ...inspectorEvents, fly: (r, from) => flyAlong.start(r, from), printBridge: (r, run) => { void printBridge(r, run); } };
   decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });

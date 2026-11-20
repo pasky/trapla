@@ -543,3 +543,11 @@ canvas.placing { cursor: crosshair !important; }
 #viol li.not-checked:hover { background: #f0f2f5; }
 /* the motorway's own card carries the direction switch: the Motorway section's copy steps aside meanwhile */
 #hud:has(.motorway-head) #directions { display: none; }
+/* the printed bridge card (ui/bridge-print.ts): the sheet alone on a landscape A4 */
+#print-sheet { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 0; }
+  body.printing > *:not(#print-sheet) { display: none !important; }
+  body.printing #print-sheet { display: block; }
+  body.printing #print-sheet svg { display: block; width: 297mm; height: 210mm; }
+}

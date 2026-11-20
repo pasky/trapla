@@ -1,4 +1,4 @@
-// The small details (research/96–100): each one clicked or played as a player would, its screenshot taken, what it says
+// The small details (research/96–101): each one clicked or played as a player would, its screenshot taken, what it says
 // asserted. Real mouse where a player would use one.
 //   node scripts/eggs-shots.mjs [--gpu] [--docs] [--only lore,records,signs,fly,…]   (--docs: docs/screenshots/660…, else /tmp/trapla-eggs)
 //   flock -x /tmp/trapla-browser.lock node scripts/eggs-shots.mjs --gpu --only fly --frames   (the fly-along's frame times)
@@ -233,6 +233,27 @@ try {
     const text = await inspector();
     assert.match(text, /^Official D11/); assert.match(text, /as OpenStreetMap maps it/); assert.match(text, /11\.71 bn CZK/); assert.match(text, /Opevnění/);
     await game.park(); await shot(681, 'official-line-card');
+  }
+  // 11. a bridge for your desk: More → Print bridge card, one landscape A4 (as a PDF here) to fold once
+  if (want('print')) {
+    for (const [n, query, name] of [[682, 'scenario=d3-0302&preset=d3-0302-motorway', 'd3-0302'], [683, 'scenario=i46-sternberk', 'i46-sternberk']]) {
+      await game.open(query);
+      const b = await T(() => window.trapla.result().runs.filter(q => q.kind === 1).sort((p, q) => q.length - p.length)[0]);
+      await T((s) => window.trapla.selectPiece(s), (b.s0 + b.s1) / 2); await idle(300);
+      if (!/Less ▴/.test(await inspector())) await page.locator('#inspector .more-t').click();
+      await T(() => { window.__printed = 0; window.print = () => { window.__printed++; }; });
+      await page.getByRole('button', { name: 'Print bridge card' }).click();
+      await page.waitForFunction(() => window.__printed === 1, null, { timeout: 30000 });
+      assert.equal(await page.locator('#print-sheet svg').count(), 1);
+      await page.emulateMedia({ media: 'print' });
+      await page.pdf({ path: `${out}/bridge-card-${name}.pdf`, width: '297mm', height: '210mm', printBackground: true });
+      await page.setViewportSize({ width: 1123, height: 794 }); await page.waitForTimeout(300);
+      await page.screenshot({ path: `${out}/${n}-bridge-card-${name}.png` });
+      await page.emulateMedia({ media: 'screen' }); await page.setViewportSize({ width: 1440, height: 900 });
+      await T(() => window.dispatchEvent(new Event('afterprint')));
+      assert.equal(await page.locator('#print-sheet').count(), 0, 'gone after the print');
+      await page.locator('#inspector .more-t').click();
+    }
   }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }
