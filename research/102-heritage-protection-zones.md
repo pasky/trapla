@@ -148,3 +148,12 @@ I/35 Rovensko, Královec), part of the default difficulty.
 - **Šternberk: not here.** No listed place outside the town's zones comes within any ring of a bypass east of the town
   (the castle 1.2 km off, its 1 km setting would still not reach); the villa garden stays a curveball. The twist screen says
   so on Hands off's card ("No listed place near enough", and why on hover).
+- **References** (`scripts/twists/<preset>/`, `twists-check.ts --find … --goal`, new search knobs `STEP=` (bends moved a
+  fraction as far) and `WEIGHT=landmarks:6` (a design that meets it holds on to it); `--edit` now keeps the height pins and
+  painted structures on the ground when bends move): Earth balance, Hands off and every news under the goal on D35 stage 1
+  (12.78 bn), D3 0301 (4.07 bn, also under the last news' 85 % money), 0302 (5.48 bn), 0303 (4.84 bn), Rovensko (3.92 bn),
+  Královec (9.01 bn). **D3 0305**: the fort site's ring takes in the line where it drops to the Mastník viaduct; led ≈ 200 m
+  east the line costs 0.4–0.7 bn more and seven searches got no lower than 8.78 bn (the goal 8.41 bn, the round-3
+  reference 8.36). Hands off is offered there **off at first** (`notDefault`; the twist screen says "no line we found keeps
+  it, the goal and all the news together"); its reference (`hands-off.json`, 8.90 bn) meets it with Earth balance and every
+  news.
