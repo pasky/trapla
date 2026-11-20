@@ -47,6 +47,7 @@
 .reveal-real { margin: 0 0 6px; font-size: 13px; }
 .reveal-real small { display: block; color: #667; }
 .reveal-story { margin: 0 0 10px; font-size: 14px; font-style: italic; color: #2b3440; }
+.reveal-took { margin: -4px 0 10px; font-size: 13px; color: #667; }
 ul.reveal-twists { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 ul.reveal-twists li { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 11px; background: #e6f4ea; color: #17663a; }
 .reveal-btns { text-align: right; }

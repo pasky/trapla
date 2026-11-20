@@ -181,5 +181,19 @@ try {
     assert.doesNotMatch(await inspector(), /St Barbara/);
     await page.locator('#inspector .more-t').click();
   }
+  // 8. the reveal says how long yours took against the real one's years (research/96 §8), seen again from the twists card
+  if (want('reveal')) {
+    const key = 'trapla.twists.v1.i46-sternberk.i46-sternberk-road';
+    await game.open('scenario=i46-sternberk');
+    await T((key) => { const s = JSON.parse(localStorage.getItem(key) ?? '{}'); localStorage.setItem(key, JSON.stringify({ on: ['earth', 'landmarks', 'curveballs'], chosen: true, fired: [], playMs: 41 * 60_000 + 20_000,
+      firedAtMs: 0, editsSince: 0, firstValid: true, scratch: false, ...s, revealed: { cost: 791e6, on: ['earth', 'landmarks', 'curveballs'], playMs: 41 * 60_000 + 20_000 } })); }, key);
+    await page.reload(); await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 }); await idle(500);
+    await page.locator('#chip-twists').click(); await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'The real project' }).click();
+    const text = await page.locator('.reveal').innerText();
+    assert.match(text, /Yours took 41 minutes\. The real one was in environmental review by 2003\./);
+    await page.waitForTimeout(900); await shot(679, 'reveal-took');
+    await page.locator('.reveal').getByRole('button', { name: 'Keep improving' }).click();
+  }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }
