@@ -31,6 +31,8 @@ export const CROSSING_DRAG_TEXT = {
   bend: (name: string) => `drag to bend ${name}`,
   /** a cut way: nothing crosses our road there to move */
   cut: 'Cut here: pick how it crosses in the card',
+  /** a road of the project joins the crossed road's stretch (a slip road's junction) */
+  joined: 'A road you built joins it here: move that road’s end first',
   /** the undo step of a slide */
   undo: (name: string) => `moving where ${name} crosses`,
 };
@@ -107,6 +109,10 @@ export function createCrossingDrag(app: CrossingDragContext) {
     if (!on || (part === 'works' && on.d > ON_WAY)) return null;
     const stretch = app.sourceEditor.stretchAt(id, on.s);
     if (!stretch.ok) return { ok: false, hover: stretch.why };
+    // (a road of the project ends on that stretch, a slip road's junction: it would lose where it joins)
+    const { s0, s1 } = stretch.interval;
+    if (app.routes.some(r => [r.endpoints.a.anchor, r.endpoints.b.anchor].some(e => e.kind === 'source' && e.location.sourceId === id && e.location.s >= s0 - 1 && e.location.s <= s1 + 1)))
+      return { ok: false, hover: CROSSING_DRAG_TEXT.joined };
     // (a cut way's works away from our road: its own old line, rebuilt there as a drag on it selected does)
     return { ok: true, part, hover: hover(stretch.name), name: stretch.name, crossing: c, target: { kind: 'mapped', interval: stretch.interval, lineKind: stretch.lineKind } };
   };

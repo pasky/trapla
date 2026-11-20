@@ -10,6 +10,7 @@ import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type Interactio
 import { evaluateProjectRoad, type SourceWays } from './project-road';
 import type { KeepClear } from './keep-clear';
 import type { Replacement, ReplacementWork } from './project-replacement';
+import { takenUpOutcome } from './taken-up';
 import { designedTieIn } from './tie-in';
 import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, slipRoadAtMotorway } from './slip-roads';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
@@ -630,6 +631,25 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
   }
 }
 
+/** Stage 2b: dead ends the player cut back (core/taken-up.ts): gone from the map, billed with the project's own road
+ * (the mission's; a paired corridor's forward direction), and the houses they were the only road to. */
+function projectTakenUp(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>): ProjectIssue[] {
+  const { design, result, engineered, ownWorks, legacyOf } = start;
+  const roads = ctx.legacy.roads;
+  if (!design.takenUp?.length || !roads) return [];
+  for (const t of design.takenUp) result.acceptedReplacements.push({ ...t.interval });
+  const mission = design.routes.find(r => r.role === 'mission') ?? design.routes[0];
+  const corridor = mission && corridorOfRoute(design, mission.id), payer = corridor?.mode === 'paired' ? corridor.children.forward : mission?.id;
+  const legacy = payer ? legacyOf.get(payer) : undefined;
+  if (!payer || !legacy) return [];
+  const edited = editedNetwork(roads, design, [], ctx.sourceWays)?.roads ?? roads;
+  const gone = new Set<number>([...design.buildingOverrides.filter(b => b.action === 'buy').map(b => b.j),
+    ...engineered.flatMap(({ route, legacy }) => ownBuildings(route, legacy).filter(b => b.action !== 'retain').map(b => b.buildingIndex))]);
+  const out = takenUpOutcome(design, roads, edited, ctx.sourceWays, ctx.legacy.buildings, gone, payer, (x, y) => legacy.s[nearestStation(legacy, x, y)]);
+  if (out.works.length) ownWorks.set(payer, [...ownWorks.get(payer) ?? [], ...out.works]);
+  return out.issues;
+}
+
 /** Stage 3: the junctions where a side road meets another designed road (built and billed by the side road),
  * and every road's own works listed. */
 function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>) {
@@ -1213,11 +1233,17 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   const start = projectStart(ctx, snapshot, keepClear);
   const { design, result, engineered, ownWorks } = start;
   projectRoutes(ctx, snapshot, start);
+  const taken = projectTakenUp(ctx, start);
   projectWorks(ctx, start);
   const grouped = projectUnits(start);
   const { units } = grouped;
   const network = projectNetwork(ctx, start);
   const { unprice } = network;
+  // a house a dead end cut back was the only road to: the billing road's unit is not valid
+  for (const i of taken) {
+    const unit = units.find(u => u.members.includes(i.scope.routeIds[0]));
+    if (unit) { unit.issues.push(i); unit.valid = false; } else result.issues.push(i);
+  }
   // a road that ends nowhere: its unit is priced and not valid (a road not priced for another reason: listed)
   for (const i of network.nowhere) {
     const unit = units.find(u => u.members.includes(i.scope.routeIds[0]));

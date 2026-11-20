@@ -189,6 +189,15 @@ export function crossingTargetsOf(project: ProjectDesign, overrides: readonly Cr
   });
 }
 
+/** The pack ways' dead ends taken up (ProjectDesign.takenUp), as trims of their legacy ways. */
+export function takenUpTrims(roads: RoadNet, design: ProjectDesign, sourceWays: SourceWays | undefined): { way: number; d0: number; d1: number; trim: true }[] {
+  return (design.takenUp ?? []).flatMap(t => {
+    const way = sourceWays?.get(t.interval.sourceId);
+    if (way === undefined) return [];
+    const d = roads.wayStation(way, t.at.x, t.at.y), total = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
+    return t.end === 'a' ? [{ way, d0: 0, d1: d, trim: true as const }] : [{ way, d0: d, d1: total, trim: true as const }];
+  });
+}
 export interface EditedNetwork {
   roads: RoadNet;
   /** way index → the designed road drawn there */
@@ -225,11 +234,14 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   // (after the rebuilt stretches' slots: their remnants keep the numbers every other road sees)
   const rebuilt = rebuiltSlots(design).length;
   moved?.cuts.forEach((c, k) => cuts.push({ ...c, slot: rebuilt + k }));
+  // dead ends the player cut back (core/taken-up.ts): gone, what is left keeps its way's number
+  const trims = takenUpTrims(roads, design, sourceWays);
+  const all: Parameters<RoadNet['edited']>[0] = [...cuts, ...trims];
   const slots = designedSlots(design);
   const drawn = slots.map(r => owners.length > 0 && owners.every(o => o !== r && draws(design, o, r)));
-  if (!cuts.length && !drawn.some(Boolean) && !moved?.ways.length) return { roads, designed: new Map(), lines: new Map() };
+  if (!all.length && !drawn.some(Boolean) && !moved?.ways.length) return { roads, designed: new Map(), lines: new Map() };
   const ends = slots.map((r, k) => drawn[k] ? endsOf(r) : undefined);
-  const key = JSON.stringify([cuts.map(c => [c.way, c.d0.toFixed(2), c.d1.toFixed(2), c.slot]),
+  const key = JSON.stringify([all.map(c => [c.way, c.d0.toFixed(2), c.d1.toFixed(2), c.slot ?? 'trim']),
     slots.map((r, k) => drawn[k] ? [r.id, r.endpoints, ends[k], r.alignment.kind === 'pi' ? r.alignment.pis : null, r.specification,
       // (its old line, where it keeps an old road's own curves: planLine)
       r.source?.intervals ?? null, oldKey(oldOf?.(r)),
@@ -237,7 +249,7 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   const at = cache.findIndex(c => c.key === key && c.base === roads);
   if (at >= 0) { const [hit] = cache.splice(at, 1); cache.unshift(hit); return hit.net; }
   const lines = slots.map((r, k) => drawn[k] ? planLine(r, ends[k], LINE_STEP, design, oldOf?.(r), true) : []);
-  const net: EditedNetwork = { roads: roads.edited(cuts, slots.map((r, k) => ({ cls: mapClass(design, r)!, xy: lines[k] })), moved?.ways ?? []),
+  const net: EditedNetwork = { roads: roads.edited(all, slots.map((r, k) => ({ cls: mapClass(design, r)!, xy: lines[k] })), moved?.ways ?? []),
     designed: new Map(slots.flatMap((r, k) => drawn[k] ? [[roads.wayCount + k, r.id] as const] : [])),
     lines: new Map(slots.flatMap((r, k) => drawn[k] ? [[r.id, lines[k]] as const] : [])) };
   cache.unshift({ key, base: roads, net }); cache.length = Math.min(cache.length, CACHE);

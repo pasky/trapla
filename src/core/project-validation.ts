@@ -215,6 +215,15 @@ export function assertProjectDesign(value: unknown, allowStaleBindings = false):
         : port.kind === 'route' && routeMap.has(port.routeId as string) && number(port.s) && port.s >= 0))) fail('connection');
     unique((c as Obj).id);
   }
+  if (p.takenUp !== undefined) {
+    if (!list(p.takenUp)) fail('taken-up pieces');
+    const pieces = new Set<string>();
+    for (const t of p.takenUp as unknown[]) {
+      if (!object(t) || !interval(t.interval) || !choice(t.end, ['a', 'b']) || !xyz(t.at)) fail('taken-up piece');
+      const id = `${((t as Obj).interval as Obj).sourceId as string}:${(t as Obj).end as string}`;
+      if (pieces.has(id)) fail('taken-up piece'); pieces.add(id);
+    }
+  }
   const buildings = new Set<number>();
   for (const b of p.buildingOverrides as unknown[]) {
     if (!object(b) || !integer(b.j) || buildings.has(b.j) || !choice(b.action, ['buy', 'keep'])) fail('building decision');

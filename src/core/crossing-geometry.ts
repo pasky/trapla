@@ -44,7 +44,7 @@ const TURN_ON_KEPT = 'turning area on a kept house';
 const KEPT_END = 5;
 /** PROVISIONAL: a piece cut off that reaches no further than this over the network, with no house within
  * STUB_HOUSE of it, serves nothing and is left unconnected, m. */
-const STUB_LENGTH = 100, STUB_HOUSE = 30;
+export const STUB_LENGTH = 100, STUB_HOUSE = 30;
 /** PROVISIONAL: a cut way is led under our bridge (Auto's candidate) where that bridge begins within this far along
  * our road, m; the new road passes this far inside the bridge's end (clear of the abutment, short of its first pier
  * at the ≤ 30 m spans of bridgeLayout), m. */

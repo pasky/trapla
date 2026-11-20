@@ -1,7 +1,8 @@
 // Any mapped road: click selects it (one card, its stretch highlighted); a drag on the highlighted
 // stretch rebuilds it as a project road (main.ts dispatches road-edit's command). Nothing is created
 // by a click, and nothing needs confirming first.
-import type { SourceInterval } from '../core/project';
+import type { SourceInterval, TakenUpPiece } from '../core/project';
+import { DEAD_END_TEXT, deadEnds, type DeadEndHandles } from './dead-end';
 import type { ProjectTransportIndex } from '../core/project-network';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { SourceHit } from '../render/source-pick';
@@ -27,11 +28,14 @@ export class MappedRoadCard {
   constructor(private root: () => HTMLElement, private view: View, private base: ProjectTransportIndex,
     private claimed: () => readonly SourceInterval[],
     /** the parts of a mapped road other project roads' earthworks cover (road-edit.ts coveredStretches) */
-    private covered: (sourceId: string) => readonly (SourceInterval & { by: string })[] = () => []) {}
+    private covered: (sourceId: string) => readonly (SourceInterval & { by: string })[] = () => [],
+    /** the dead ends the player cut back, and the handles that cut them (ui/dead-end.ts) */
+    private taken: () => readonly TakenUpPiece[] = () => [], private deadEnds?: DeadEndHandles) {}
   get selected() { return this.hit; }
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
-    if (this.hit) this.view.setSourceSelection(null);
+    if (this.hit && !this.deadEnds?.dragging) this.view.setSourceSelection(null);
+    if (!this.deadEnds?.dragging) this.deadEnds?.hide();
     this.hit = null; this.interval = null; this.path = []; this.lineKind = null;
   }
   /** What a drag of this mapped line at station s would rebuild: the stretch and the kind that rebuilds it, or why it
@@ -71,12 +75,18 @@ export class MappedRoadCard {
     header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label ? [] : [el('small', cap(label))]), close);
     root.append(header);
     if (!what.ok) { root.append(el('p', what.why)); return; }
-    if (under) { root.append(el('p', coveredText(under.by))); return; }
-    if (!this.interval) { root.append(el('p', TOO_SHORT)); return; }
-    const how = el('p', 'Drag it to change its line.'); how.className = 'mapped-how';
+    // its open dead ends: a handle each, dragged back to shorten it (ui/dead-end.ts)
+    const taken = this.taken().filter(t => t.interval.sourceId === source.id), ends = deadEnds(this.base, source.id, this.claimed(), taken);
+    this.deadEnds?.show(ends, cap(name));
+    const cut = taken.reduce((m, t) => m + t.interval.s1 - t.interval.s0, 0);
+    const short = cut > 0 ? [el('div', DEAD_END_TEXT.shortened(Math.round(cut)))] : [];
+    for (const e of short) e.className = 'sub';
+    if (under) { root.append(el('p', coveredText(under.by)), ...short); return; }
+    if (!this.interval) { root.append(el('p', TOO_SHORT), ...short); return; }
+    const how = el('p', ends.length ? 'Drag it to change its line, its End to shorten it.' : 'Drag it to change its line.'); how.className = 'mapped-how';
     const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.becomes}.`);
     stretch.className = 'sub';
-    root.append(how, stretch);
+    root.append(how, stretch, ...short);
   }
   /** Is this map point on the highlighted stretch (within `reach` metres of its line)? */
   covers(x: number, y: number, reach: number): boolean {

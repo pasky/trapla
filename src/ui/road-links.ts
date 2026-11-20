@@ -16,6 +16,7 @@ import type { WorkerIn } from '../worker-protocol';
 import type { ActiveRouteStore } from './active-route-store';
 import type { Sel } from './inspector';
 import { MappedRoadCard } from './mapped-road';
+import { DeadEndHandles } from './dead-end';
 import { mappedRoadName } from '../core/terms';
 import { coveredStretches } from './road-edit';
 import { mappedLineKindOf } from './route-kinds';
@@ -40,7 +41,9 @@ export function createRoadLinks(app: RoadLinksContext) {
   let transportGraph: TransportGraphData | null = null, sourceEditor: MappedRoadCard | null = null, stretchEnds: StretchEnds | null = null;
   const syncEnds = () => (stretchEnds as StretchEnds | null)?.sync(app.store.route);
   const inspectorEl = document.getElementById('inspector')!;
-  const claimedSources = () => app.projectStore.snapshot.design.routes.flatMap(r => r.source?.intervals ?? []);
+  // (a dead end taken up is gone too: nothing rebuilds it)
+  const claimedSources = () => [...app.projectStore.snapshot.design.routes.flatMap(r => r.source?.intervals ?? []),
+    ...(app.projectStore.snapshot.design.takenUp ?? []).map(t => t.interval)];
   let transportReady: Promise<void> | null = null;
   const ensureTransport = () => transportReady ??= (async () => {
     let graph: TransportGraphData | null;
@@ -64,10 +67,35 @@ export function createRoadLinks(app: RoadLinksContext) {
       const built = app.session.projectFull?.routes[r.id]?.legacy;
       return built && !r.source?.intervals.some(i => i.sourceId === sourceId) ? [{ ...built, name: r.role === 'mission' ? 'our road' : r.name }] : [];
     }));
-    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, app.view, transportIndex, claimedSources, covered);
+    // a selected road's dead end cut back (ui/dead-end.ts): one undo step, the card shown again as it is now
+    const deadEndHandles = new DeadEndHandles(document.getElementById('overlay')!, app.view, transportIndex, {
+      shorten: (sourceId, end, piece, label) => {
+        const store = app.projectStore;
+        if (store.inTransaction) store.commit();
+        store.begin();
+        try {
+          store.update(d => {
+            const rest = (d.takenUp ?? []).filter(t => !(t.interval.sourceId === sourceId && t.end === end));
+            if (piece) rest.push(piece);
+            if (rest.length) d.takenUp = rest; else delete d.takenUp;
+          });
+          store.commit(label);
+        } catch (error) { store.cancel(); console.warn('Not shortened', error); toast('This road cannot be shortened here.'); }
+      },
+    });
+    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, app.view, transportIndex, claimedSources, covered,
+      () => app.projectStore.snapshot.design.takenUp ?? [], deadEndHandles);
     editor.onClose = () => app.select(null);
+    // (a step, an undo or a redo: the selected road's card as it is now, its station kept on what is left of it)
+    app.projectStore.subscribe((_snapshot, committed) => {
+      const hit = editor.selected;
+      if (!committed || !hit || deadEndHandles.dragging) return;
+      const piece = (app.projectStore.snapshot.design.takenUp ?? []).find(t => t.interval.sourceId === hit.sourceId && hit.s >= t.interval.s0 && hit.s <= t.interval.s1);
+      editor.show(piece ? { ...hit, s: piece.end === 'a' ? piece.interval.s1 + 1 : piece.interval.s0 - 1 } : hit);
+    });
     const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, app.view, transportIndex,
-      () => app.projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))));
+      () => [...app.projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))),
+        ...(app.projectStore.snapshot.design.takenUp ?? []).map(t => ({ routeId: '', interval: t.interval }))]);
     ends.onMove = (id, s0, s1) => {
       const kind = mappedLineKindOf(app.store.route!);
       try { if (!kind) throw new Error('No kind moves these ends'); app.store.editProject(d => { const next = kind.moveEnds(transportIndex!, d, id, s0, s1); Object.assign(d, next); }); }
