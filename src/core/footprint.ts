@@ -98,6 +98,18 @@ const SAMPLE = 5, TIE_IN_SETBACK = 3;
 /** the longest end of a way under our earthworks rejoined to the road our junction rebuilds where it meets it, m
  * (PROVISIONAL: a short junction arm; a longer stretch runs along our earthworks and is moved aside) */
 const JUNCTION_TIE_IN = 30;
+/** A way whose end meets a road our junction rebuilds, within what it rebuilds: its end under our earthworks (way stations
+ * a … b, at most JUNCTION_TIE_IN) is rejoined to the rebuilt road there (the junction's tie-in), not a road to move aside. */
+export function junctionRejoin(crossings: readonly CrossingResult[], roads: RoadNet) {
+  const junctionRebuilt = roadRealignmentCrossingIntervals(crossings.filter(c => c.type === 'junction'), roads);
+  return (way: number, a: number, b: number) => {
+    if (!junctionRebuilt.length || b - a > JUNCTION_TIE_IN) return false;
+    const path = roads.wayPath(way, 0, Infinity);
+    if (path.length < 2) return false;
+    return [path[0], path[path.length - 1]].some(end => Math.min(Math.abs(a - end.d), Math.abs(b - end.d)) <= 0.5
+      && roads.connections(end).some(c => c.way !== way && junctionRebuilt.some(iv => iv.way === c.way && c.d >= iv.a - 0.5 && c.d <= iv.b + 0.5)));
+  };
+}
 /** How much earth over a joined road's pavement inside a junction's zone is the junction rebuilding that pavement at its
  * level, m: the draped-road tolerance (crossing-works.ts DRAPED) plus what the joined road can be regraded by within the
  * zone, back to its own level at the zone's edge no steeper than a junction allows (TIE_IN_RULES.maxGrade, VL 3 to ČSN
@@ -287,14 +299,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   const roadHits = new Map<string, { way: number; cls: string; hits: Hit[] }>();
   // A way whose end meets a road our junction rebuilds, within what it rebuilds: its end under our earthworks is
   // rejoined to the rebuilt road there (the junction's tie-in), not a road to move aside.
-  const junctionRebuilt = roads ? roadRealignmentCrossingIntervals(crossings.filter(c => c.type === 'junction'), roads) : [];
-  const rejoinsJunction = (way: number, a: number, b: number) => {
-    if (!junctionRebuilt.length || b - a > JUNCTION_TIE_IN) return false;
-    const path = roads!.wayPath(way, 0, Infinity);
-    if (path.length < 2) return false;
-    return [path[0], path[path.length - 1]].some(end => Math.min(Math.abs(a - end.d), Math.abs(b - end.d)) <= 0.5
-      && roads!.connections(end).some(c => c.way !== way && junctionRebuilt.some(iv => iv.way === c.way && c.d >= iv.a - 0.5 && c.d <= iv.b + 0.5)));
-  };
+  const rejoinsJunction = roads ? junctionRejoin(crossings, roads) : () => false;
   const streamHits = new Map<string, { segment: WaterSegment; hits: Hit[]; axisHits: [number, number][] }>();
   // Raster classes are independent flags: a road-painted rail/water crossing remains protected.
   const rasterHits = new Map<string, { feature: 'railway' | 'water' | 'stream'; structure?: FootprintCell['structure']; hits: Map<number, { x: number; y: number; count: number }> }>();

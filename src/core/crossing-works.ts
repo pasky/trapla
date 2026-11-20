@@ -88,6 +88,13 @@ function onSource(q: XY, source: readonly XY[]): boolean {
   for (const i of grid.get(cellKey(Math.floor(q.x / CELL), Math.floor(q.y / CELL))) ?? []) if (segDist(q, source[i - 1], source[i]) < ON_PATH) return true;
   return false;
 }
+/** A segment of the crossed road itself: on its line all along (both ends on it, and every STEP between: a long
+ * segment of another way can join the line at both ends, a loop). */
+function alongSource(s: RoadSegment, source: readonly XY[]) {
+  const count = Math.max(1, Math.ceil(s.length / STEP));
+  for (let k = 0; k <= count; k++) if (!onSource({ x: s.ax + (s.bx - s.ax) * k / count, y: s.ay + (s.by - s.ay) * k / count }, source)) return false;
+  return true;
+}
 /** Section normal exactly as the renderer builds it (neighbouring samples). */
 function normal(road: readonly CrossingPoint[], i: number) {
   const a = road[Math.max(0, i - 1)], b = road[Math.min(road.length - 1, i + 1)];
@@ -268,7 +275,7 @@ function besideRoads(works: CrossingWorks, road: readonly CrossingPoint[], width
     const r = half + Math.abs(road[i].z - road[i].ground) * SLOPE * 4 + 30;
     x0 = Math.min(x0, road[i].x - r); y0 = Math.min(y0, road[i].y - r); x1 = Math.max(x1, road[i].x + r); y1 = Math.max(y1, road[i].y + r);
   }
-  if (x0 < x1) roads.nearSegments([x0, y0, x1, y1], s => { if (!any && !(onSource({ x: s.ax, y: s.ay }, source) && onSource({ x: s.bx, y: s.by }, source))) any = true; });
+  if (x0 < x1) roads.nearSegments([x0, y0, x1, y1], s => { if (!any && !alongSource(s, source)) any = true; });
   if (!any) return;
   const normals = road.map((_, i) => normal(road, i));
   const toes: [number, number][] = road.map((p, i) => engineered(i)
@@ -291,7 +298,7 @@ function besideRoads(works: CrossingWorks, road: readonly CrossingPoint[], width
       const key = `${s.ax},${s.ay},${s.bx},${s.by}`;
       if (seen.has(key)) return;
       seen.add(key);
-      if (s.length <= 0 || (onSource({ x: s.ax, y: s.ay }, source) && onSource({ x: s.bx, y: s.by }, source))) return;
+      if (s.length <= 0 || alongSource(s, source)) return;
       (segments.get(s.way) ?? segments.set(s.way, []).get(s.way)!).push(s);
     });
   }
@@ -396,7 +403,13 @@ function besideRoads(works: CrossingWorks, road: readonly CrossingPoint[], width
         // An arm running into our own earthworks is rebuilt by our road's footprint works (moved
         // beside them, reconnected to this crossing); it is not regraded twice.
         const reach = Math.max(foot ? Math.abs(foot.d) : ctx.maxTie, mouth);
-        if (arm.some(q => Math.abs(q.d) <= reach && ctx.ours(q, armHalf))) { resolved.push(stretch(p, arm, reach + armHalf)); continue; }
+        // Up to there it still runs under this stretch's slopes: buried beyond the junction's mouth, nothing rebuilds it.
+        const enters = arm.find(q => Math.abs(q.d) <= reach && ctx.ours(q, armHalf));
+        if (enters) {
+          const before = stretch(p, arm, Math.abs(enters.d)), mouthed = stretch(p, arm, mouth + armHalf);
+          if (list.some(h => onPath(h.q, before, armHalf + ON_PATH) && !onPath(h.q, mouthed, armHalf + ON_PATH)) && !works.problems.includes(WORKS_COVER_ROAD)) works.problems.push(WORKS_COVER_ROAD);
+          resolved.push(stretch(p, arm, reach + armHalf)); continue;
+        }
         if (!foot) { if (!works.problems.includes(WORKS_TIE_TOO_LONG)) works.problems.push(WORKS_TIE_TOO_LONG); continue; }
         const run = Math.abs(foot.d), points: CrossingPoint[] = [];
         const corners = [{ x: p.x, y: p.y, d: 0 }, ...vertices.filter(q => Math.abs(q.d) < run), foot];

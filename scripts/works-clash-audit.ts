@@ -38,14 +38,15 @@ export function* starterClashes(): Generator<{ name: string; preset: string; res
  * stations a little). */
 export const clashKey = (preset: string, c: WorksClash) => `${preset} ${c.cls}:${c.roadId ?? ''} ${c.type} ${c.what}:${c.way ?? ''}`;
 /** Auto's own clashes on the starters, known and open (PLAN.md "One screen for every earthwork"): the screen does not
- * fail on these (up to the count listed); anything else, on a starter or after a player's edit, fails the gate. */
+ * fail on these; anything else, on a starter or after a player's edit, fails the gate. */
 export const KNOWN_FILE = 'scripts/works-clash-known.json';
 export const known = (): Record<string, number> => existsSync(KNOWN_FILE) ? JSON.parse(readFileSync(KNOWN_FILE, 'utf8')).clashes : {};
 /** What of these clashes (one project's routes) the known list does not cover. */
 export function unknownClashes(preset: string, clashes: WorksClash[], list = known()): WorksClash[] {
   const count = new Map<string, WorksClash[]>();
   for (const c of clashes) { const k = clashKey(preset, c); (count.get(k) ?? count.set(k, []).get(k)!).push(c); }
-  return [...count].flatMap(([k, l]) => l.length > (list[k] ?? 0) ? l : []);
+  // (a known key covers all its clashes: a slope's clash spots are counted per 5 m, so their number moves with the line)
+  return [...count].flatMap(([k, l]) => list[k] ? [] : l);
 }
 /** Each route of a project, evaluated as the browser does: its clashes. */
 export function projectClashes(design: ProjectDesign) {

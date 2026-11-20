@@ -17,7 +17,7 @@ import { protectedRasterCells } from './protected-raster';
 import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { clearedHit } from './mapped-structures';
-import { junctionRegrade } from './footprint';
+import { junctionRegrade, junctionRejoin } from './footprint';
 import { SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
 import { roadRealignmentCrossingIntervals, severedCrossingIntervals } from './road-realignment';
 import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../render/crossing-surface';
@@ -281,6 +281,13 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
   // (a crossing's way within its own works: the crossing's treatment owns it there)
   for (const c of r.crossings) if (c.roadId !== undefined) for (const way of [c.roadId, c.targetRoadId, ...(c.geometry?.ties ?? []).map(t => t.way)])
     if (way !== undefined) (settled.get(way) ?? settled.set(way, []).get(way)!).push([c.s - CROSSING_REACH, c.s + CROSSING_REACH]);
+  // (a way's end under our body rejoined to the road our junction rebuilds there: footprint.ts junctionRejoin)
+  const rejoins = junctionRejoin(r.crossings, roads), wayEnd = new Map<number, number>();
+  const rejoined = (way: number, d: number) => {
+    let end = wayEnd.get(way);
+    if (end === undefined) wayEnd.set(way, end = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0);
+    return [0, end].some(e => rejoins(way, Math.min(d, e), Math.max(d, e)));
+  };
   const seen = new Set<string>(), ends = new Map<number, Set<number>>();
   const endWays = (i: number) => {
     let set = ends.get(i);
@@ -316,7 +323,7 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
         const d = s.d + s.length * k / count, px = s.ax + (s.bx - s.ax) * k / count, py = s.ay + (s.by - s.ay) * k / count;
         if (owned.get(s.way)?.some(([a, b]) => d >= a - 0.5 && d <= b + 0.5)) continue;
         const v = inside(px, py);
-        if (v === null) continue;
+        if (v === null || rejoined(s.way, d)) continue;
         // (its near edge: half its width nearer our centreline)
         const at = Math.sign(v || 1) * Math.max(0, Math.abs(v) - half), qx = cx - r.ty[i] * at, qy = cy + r.tx[i] * at;
         if (Math.abs(surfaceAt(at) - terrain.heightAt(qx, qy)) <= tolerance(s.way, px, py)) continue;
