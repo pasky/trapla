@@ -19,7 +19,7 @@ export const CHAIN_KEEP_CLEAR = 5;
 /** A way of the same number or name goes on as the road through a turn up to this (cos 75°); any other way only
  * within 45° of straight on: the straightest (game tolerances, PROVISIONAL; project-replacement.ts uses 45° for the
  * road going on at a stretch's end). Headings over 20 m. */
-const SAME_ROAD_COS = Math.cos(75 * Math.PI / 180), STRAIGHT_COS = Math.SQRT1_2, HEADING_LOOK = 20;
+const SAME_ROAD_COS = 0.25881904510252074 /* cos 75° */, STRAIGHT_COS = Math.SQRT1_2, HEADING_LOOK = 20;
 
 const nodeAt = (source: TransportSource, s: number): string | undefined => {
   const st = source.stations;

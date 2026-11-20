@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import type { ProjectDesign } from '../src/core/project';
+import { assertProjectDesign } from '../src/core/project-validation';
 
 const D11 = 'public/scenarios/d11';
 const III = 'osm:way:236292102', NEXT = 'osm:way:236292104', BRIDGE = 'osm:way:141372695', AFTER = 'osm:way:141372692', BEFORE = 'osm:way:28729805';
@@ -37,7 +38,6 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a rebuilt stretch over
     const { evaluateProject } = await import('../src/core/project-evaluate');
     const { BRIDGE_DEMOLITION_PER_M2 } = await import('../src/core/project-replacement');
     const { ROAD_CLASSES } = await import('../src/core/data/urban');
-    const { assertProjectDesign } = await import('../src/core/project-validation');
     const { nearestLeg } = await import('../src/core/horizontal');
     const one = { transportData: index.transportData, sourceId: III, s0: 228.22363998839083, s1: 701.7636570937792 };
     const command = rebuildCommand(index, one, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
