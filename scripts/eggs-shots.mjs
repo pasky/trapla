@@ -108,7 +108,7 @@ try {
     // (the shots held at their place: a software renderer draws a frame in ≈ 0.6 s, so a time-based shot misses it)
     let n = 671;
     await page.waitForTimeout(process.argv.includes('--frames') ? 0.95 * r.L / speed * 1000 : Math.min(15000, 0.3 * r.L / speed * 1000));
-    for (const s of process.argv.includes('--frames') ? [] : [0.25 * r.L, r.high - 450, r.high]) {
+    for (const s of process.argv.includes('--frames') ? [] : [0.25 * r.L, r.high - 450]) {
       await T((s) => window.trapla.flyAlong('a', s), s); await game.frames(4); await page.waitForTimeout(1500); await game.frames(2);
       await shot(n++, `fly-along-${Math.round(s)}`);
     }
@@ -121,6 +121,19 @@ try {
     // (--frames: the whole flight flown, nothing else; a timed run: flock -x, --gpu)
     const q = (p) => gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))];
     console.log(`fly-along frames: ${gaps.length}, median ${q(0.5).toFixed(1)} ms, p95 ${q(0.95).toFixed(1)} ms, p99 ${q(0.99).toFixed(1)} ms, max ${gaps.at(-1).toFixed(1)} ms`);
+    // over a tunnel it flies over the hill (the D35 under the Hřebeč ridge), held there for the shot
+    if (!process.argv.includes('--frames')) {
+      await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+      await game.open('scenario=d35&preset=d35-stage1-motorway');
+      const t = await T(() => window.trapla.result().runs.filter(q => q.kind === 2).sort((p, q) => q.length - p.length)[0]);
+      await T((s) => window.trapla.flyAlong('a', s), t.s0 + 0.4 * (t.s1 - t.s0)); await game.frames(4); await page.waitForTimeout(1500); await game.frames(2);
+      const over = await T(() => window.trapla.cameraPose());
+      assert.ok(over.aboveGround >= 25, `over the hill, ${over.aboveGround.toFixed(0)} m above it`);
+      await shot(n++, 'fly-along-over-tunnel');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+      await game.open('scenario=d3-0302&preset=d3-0302-motorway');
+      await T(() => window.trapla.select({ kind: 'end', end: 'a' })); await idle(300);
+    }
     // a click stops it too, and selects nothing
     assert.match(await inspector(), /^Interchange/, 'its card stays');
     await page.getByRole('button', { name: 'Fly along' }).click(); await page.waitForTimeout(800);

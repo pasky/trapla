@@ -170,4 +170,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   preview), never changing the bill or validity; `npx tsx scripts/twists-check.ts` (run by tests/twists.test.ts) proves each offered twist with a
   VALID reference design in `scripts/twists/<preset>/`; a change of the bills can break a reference (search again with
   `--find`). Curveballs exist for Šternberk only (TODO for D3, D35, D11, Královec: research/92–94).
+- Small details (PLAN.md "Small details", research/96–101): sourced grey lines on existing cards, records only where the
+  player made the structure, fly-along, the ground band, the watershed line, the printed bridge card. Two new pack
+  sidecars, `basins.json` and `water-names.json` (pipeline/build_basins.py, build_water_names.py): copy them with the
+  packs; without them those lines are absent.
 - See PLAN.md "Next steps" and each section's "Known issues".
