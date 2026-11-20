@@ -2545,8 +2545,40 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   houses along Přepeřská), `tests/fixtures/interchange/i35-turnov-diamond.json`, `tests/slip-roads.test.ts`,
   `scripts/interchange-scene.mjs` section 4 (screenshots 710–719).
 - **Known gaps:** as for the motorway's (above); the noise model's barrier still stands at the crown edge where a lane widens
-  it (drawn moved out); the motorway crossing's reroutes are still not seen by its slip roads (a slip road crossing a way the
-  motorway reconnects is "two roads change the same old road": I/35 km 1.67, a diamond on the class III Nudvojovická).
+  it (drawn moved out; see "Slip roads see our road's crossings").
+
+## Slip roads see our road's crossings (owner request, cost model 61, 2026-11-20)
+
+- **Gap:** a slip road saw its motorway's footprint relocations but not what the motorway's crossings do to the roads they
+  cross. At Nudvojovická (I/35 km 1.67) our road cuts a local road at km 1.81 and leads both its ends to Nudvojovická: the
+  slip roads crossed that local road's old line (an underpass of a stretch our road takes out) and the screen said "two roads
+  change the same old road" (the project unpriced).
+- **Now** (`project-evaluate.ts movedByMotorway`, `road-realignment.ts crossingChange`): a slip road is built against the
+  roads as our road's crossings leave them, like the relocations: where a crossing moves a road's plan (a reconnection or
+  diversion: cut, its links to the other road; a way moved aside or squared) that stretch is cut from the slip road's network
+  and the new pieces are ground ways of it, in our road's order (every slip road numbers them alike); every crossing's
+  stretch (also one only raised over our road or lowered under it) is a zone where the slip road's changes of that road are
+  one design with ours (`ScreenRoute.sharedWays`). The road a slip road's own end joins keeps its line (the interchange's
+  terminals, `interchangeTerminals`). The three earlier diamonds: identical.
+- **Build → Slip road's square bend** (found here): where the road at a slip road's end runs nearly towards its gore
+  (Nudvojovická from the south-west, 71° off the normal) Build gave no square bend (under cos 0.35 off it), and the entry ran
+  along Nudvojovická and crossed it, the crossing engine cutting Nudvojovická between the junction and its bridge. Now the
+  square bend is given down to 80° off the normal (`SQUARE_MIN`), its leg at least 85 m long under 70° where it leads away
+  from the motorway (a 50 km/h slip road's 85 m radius through about 70°; `SQUARE_TURN_LEG`, game rule).
+- **Result:** the Nudvojovická diamond (gores 430 m before and 450 m after the bridge, crossroads on Nudvojovická 290 m
+  south-west and 185 m north of it, as roundabouts: the sight lines along it are short): 6.5495 bn valid (+920 M: the
+  north-east slip roads buy out the industrial buildings by the bridge, the south-west ones houses of Nudvojovice); the
+  north-east exit crosses the local road's new link (underpass), not its old line; `tests/fixtures/interchange/
+  i35-nudvojovicka-diamond.json`, `tests/slip-roads.test.ts` (with the old Build shape of its south-west entry across what
+  our road leaves of the local road: one design, priced), `scripts/interchange-scene.mjs --only nudvojovicka` (screenshots
+  720–724).
+- **Not done: the noise barrier along a lane.** The motorway's noise (its walls, their height, the houses bought out) is
+  solved in its own evaluation, before its slip roads exist; the lanes come from the slip roads, built against the finished
+  motorway. Moving the barrier out with the lane means re-solving the motorway's noise after its slip roads (or the lanes
+  before them): not small. Drawn, the wall stands beyond the lane (2.5 m further out on S 21.5, 0.5 m on D 27.5); billed and
+  heard at the crown edge.
+- **Known gaps:** a crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road,
+  as a moved piece is); a slip road's own crossing of a link our road builds is its own (billed by it).
 
 ## Twists and curveballs (owner request, no model version, 2026-11-20)
 

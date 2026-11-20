@@ -133,6 +133,20 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
   return source;
 }
 
+/** What a crossing of ours does to the crossed road, for a road built with ours that meets the same ground (a slip road,
+ * project-evaluate.ts movedByMotorway): the stretches of mapped ways it changes (`intervals`), the stretch's line as the
+ * crossing leaves it (`path`, its own way chainages), and where its plan moves (a reconnection or diversion led to
+ * another road, a way moved aside or squared) the new pieces in its place (`pieces`; empty: the way keeps its plan, only
+ * its level or a structure under or over it changes). Undefined: nothing of the way changes (our bridge over it, a kept
+ * mapped structure) or its geometry is not known. */
+export function crossingChange(c: CrossingResult, roads: RoadNet): { intervals: RoadSourceInterval[]; path: Point2[]; pieces: CrossingPoint[][] } | undefined {
+  const g = c.geometry, source = crossingSource(c, roads);
+  if (!g || !source) return undefined;
+  const plan = c.type === 'reconnection' || c.type === 'diversion' || c.moved ? (g.links ?? []).filter(l => l.length > 1)
+    : c.squared !== undefined && g.road ? [g.road] : [];
+  return { intervals: source.intervals, path: source.path, pieces: plan };
+}
+
 /** Add these exact connected-way intervals to the caller's crossing coverage BEFORE collecting
  * or subtracting relocation hits. A T-arm is not covered merely by touching this old path. */
 export function roadRealignmentCrossingIntervals(crossings: readonly CrossingResult[], roads: RoadNet): RoadSourceInterval[] {

@@ -263,8 +263,13 @@
  * for the paired road's formation only where it is (wider by the lane up to the gore only: past it a slip road beside
  * the carriageway was credited as on it) and held at its level from its crown's edge there. Hand-built diamonds:
  * D3 0303 5.7349 → 5.7382 bn, D3 0304 10.2330 → 10.2377 bn; every frozen bill, starter and saved design unchanged
- * (scripts/exact.ts: 243 of 243 identical). PLAN.md "Slip roads on any divided road". */
-export const COST_MODEL_VERSION = 60;
+ * (scripts/exact.ts: 243 of 243 identical). PLAN.md "Slip roads on any divided road".
+ * Model 61: a slip road is built against the roads its motorway's crossings change as they leave them (a reconnection's or
+ * diversion's cut and new links, a way moved or squared), and its changes of those roads near them are one design with
+ * the motorway's (they were "two roads change the same old road", the project unpriced; or it built a crossing of a
+ * stretch the motorway takes out). Such player projects are priced or billed differently; every frozen bill, starter,
+ * saved design and hand-built diamond unchanged (scripts/exact.ts). PLAN.md "Slip roads see our road's crossings". */
+export const COST_MODEL_VERSION = 61;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

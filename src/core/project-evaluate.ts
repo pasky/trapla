@@ -13,6 +13,7 @@ import type { Replacement, ReplacementWork } from './project-replacement';
 import { takenUpOutcome } from './taken-up';
 import { designedTieIn } from './tie-in';
 import type { RoadNet } from './roadnet';
+import { crossingChange } from './road-realignment';
 import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, SLIP_SECTIONS, slipHost, slipRoadAtMotorway } from './slip-roads';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
@@ -240,14 +241,17 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
     }
   }
   return routeProposal(ctx, snapshot, route, true, prices, undefined, ends, [...holds.flatMap(h => heldBands(placedHold(h, line))), ...slipBands(design, route, ends, legacyOf)],
-    r => lineEnds(design, r, legacyOf), undefined, movedByMotorway(design, route, legacyOf, ctx.legacy.roads?.wayCount ?? 0)).route;
+    r => lineEnds(design, r, legacyOf), undefined, movedByMotorway(design, route, legacyOf, ctx.legacy.roads)).route;
 }
-/** The existing ways a slip road's motorway moves aside (all its footprint relocations, in its own order, so that every
- * slip road of one motorway numbers them alike): the slip road is built with it, against the ground as the motorway
- * leaves it (those stretches gone, the pieces moved aside there instead), so the two never change one old road as two
- * designs. `wayCount`: the pack's ways (a relocation of a piece of a rebuilt road is not cut from the pack's network). */
-function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (id: string) => Result | undefined, wayCount: number): (MovedWays & {
-  /** the motorway's directions, and each relocation's reach (the slip road's changes of what is left of those ways
+/** The existing ways a slip road's motorway changes: all its footprint relocations and its crossings' changes of the
+ * roads it crosses (a reconnection's or diversion's cut and new links, a way moved aside or squared), in its own order,
+ * so that every slip road of one motorway numbers them alike. The slip road is built against the ground as the motorway
+ * leaves it (those stretches gone, the pieces moved or led elsewhere there instead), so the two never change one old road
+ * as two designs; its changes of what is left of those ways near them (and of a road the motorway only raises over itself
+ * or lowers under it) are one design with the motorway's (`zones`, ScreenRoute.sharedWays). `roads`: the pack's network (a
+ * relocation of a piece of a rebuilt road is not cut from it). */
+function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (id: string) => Result | undefined, roads: RoadNet | undefined): (MovedWays & {
+  /** the motorway's directions, and each change's reach (the slip road's changes of what is left of those ways
    * near them are designed with them: ScreenRoute.sharedWays) */
   hosts: string[]; zones: { way: number; x: number; y: number; r: number }[] }) | undefined {
   if (!isSlipRoad(route)) return undefined;
@@ -255,6 +259,7 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
   const corridor = anchor?.kind === 'route' ? design.corridors.find(c => c.children.forward === anchor.routeId || c.children.reverse === anchor.routeId) : undefined;
   const host = corridor && legacyOf(corridor.children.forward);
   if (!corridor || !host) return undefined;
+  const wayCount = roads?.wayCount ?? 0, reachOf = (r: number) => r + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance;
   const out = { cuts: [] as MovedWays['cuts'], ways: [] as MovedWays['ways'], hosts: [corridor.children.forward, corridor.children.reverse], zones: [] as { way: number; x: number; y: number; r: number }[] };
   for (const f of host.footprintConflicts) {
     if (f.action !== 'relocation' || f.feature !== 'road' || !f.sourceIntervals?.length || f.cls === undefined) continue;
@@ -265,10 +270,25 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
     for (const i of intervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
     for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]) });
     // (its reach: the moved piece, and the junction mouths where it meets what is left)
-    const r = Math.max(f.length, ...paths.flat().map(q => Math.hypot(q.x - f.x, q.y - f.y))) + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance;
+    const r = reachOf(Math.max(f.length, ...paths.flat().map(q => Math.hypot(q.x - f.x, q.y - f.y))));
     for (const way of new Set(intervals.map(i => i.way))) out.zones.push({ way, x: f.x, y: f.y, r });
   }
-  return out.cuts.length ? out : undefined;
+  // (the stretches of the roads its own ends join: the interchange's terminals, interchangeTerminals, not cut here)
+  const ends = roads ? (['a', 'b'] as const).flatMap(e => { const a = route.endpoints[e].anchor, p = route.endpoints[e].position;
+    const way = a.kind === 'source' ? roads.nearestWay(p.x, p.y, 2) : undefined;
+    return way === undefined ? [] : [{ way, d: roads.wayStation(way, p.x, p.y) }]; }) : [];
+  if (roads) for (const c of host.crossings) {
+    if (c.shared || c.roadId === undefined) continue;
+    const change = crossingChange(c, roads), intervals = change?.intervals.filter(i => i.way < wayCount) ?? [];
+    if (!change || !intervals.length) continue;
+    const r = reachOf(Math.max(0, ...[...change.path, ...change.pieces.flat()].map(q => Math.hypot(q.x - c.x, q.y - c.y))));
+    for (const way of new Set(intervals.map(i => i.way))) out.zones.push({ way, x: c.x, y: c.y, r });
+    // (where its plan moves: cut out, its new pieces in its place; the road a slip road's end joins keeps its line)
+    if (!change.pieces.length || ends.some(e => intervals.some(i => i.way === e.way && e.d >= i.a - 1 && e.d <= i.b + 1))) continue;
+    for (const i of intervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
+    for (const p of change.pieces) out.ways.push({ cls: c.cls, xy: p.flatMap(q => [q.x, q.y]) });
+  }
+  return out.cuts.length || out.zones.length ? out : undefined;
 }
 /** A paired road in the player's words for a slip road that meets none: the project's own kind where it has one kind. */
 function pairedWord(design: ProjectDesign) {
@@ -553,7 +573,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design, oldLineOf(ctx)(route)) : [];
     let holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
     const merge = slipBands(design, route, ends, evaluated);
-    const moved = movedByMotorway(design, route, evaluated, ctx.legacy.roads?.wayCount ?? 0);
+    const moved = movedByMotorway(design, route, evaluated, ctx.legacy.roads);
     if (moved) {
       let shared = start.sharedWays.get(route.id); if (!shared) start.sharedWays.set(route.id, shared = []);
       for (const z of moved.zones) for (const id of moved.hosts) shared.push({ routeId: id, ...z });
