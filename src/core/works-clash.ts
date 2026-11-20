@@ -18,6 +18,7 @@ import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { clearedHit } from './mapped-structures';
 import { junctionRegrade } from './footprint';
+import { SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
 import { roadRealignmentCrossingIntervals, severedCrossingIntervals } from './road-realignment';
 import { crossingBaseHeight, crossingSurfaces, groundSegment, turnaroundSurfaces } from '../render/crossing-surface';
 
@@ -38,10 +39,14 @@ export const networkOf = (r: Pick<Result, 'x' | 'y'>): RoadNet | undefined => no
 export const crownOf = (r: Pick<Result, 'x' | 'y'>): number | undefined => noted(r)?.crown;
 
 export interface WorksClash { path: string; i: number; s: number; roadId?: number; cls: string; type: string; what: 'house' | 'railway' | 'pier' | 'deck' | 'ours' | 'road';
-  /** the other mapped way buried (what 'road') and its class */ way?: number; wayCls?: string; x: number; y: number; j?: number }
+  /** the other mapped way buried (what 'road') and its class */ way?: number; wayCls?: string; x: number; y: number; j?: number;
+  /** how deep its first buried point lies under (or over) the works, m */ depth?: number }
 
 /** Earth this thin is the drape tolerance, not a slope (crossing-works.ts DRAPED). */
 export const DRAPED = 0.3;
+/** The screen samples the drawn sections (render/crossing-surface.ts refines them), the engine its own points: the same
+ * slope read at a slightly different spot differs by centimetres; a road's edge is buried where both agree, m. */
+const SAMPLING = 0.05;
 
 export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buildings' | 'roads'>, crownWidth = crownOf(r) ?? 9.5): WorksClash[] {
   const roads = noted(r) ? networkOf(r) : ctx.roads;
@@ -59,8 +64,10 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       const lat = ((y - r.y[i]) * dx - (x - r.x[i]) * dy) / Math.sqrt(len2 || 1);
       const k = t < 0.5 ? i : i + 1;
       // (over a tunnel or under a bridge is no clash with our body: piers are checked on their own)
-      if (r.kind[k] !== KIND.earth) continue;
-      const reach = lat >= 0 ? r.dayL[k] : r.dayR[k];
+      if (r.kind[k] !== KIND.earth || r.keptCells?.[k]) continue;
+      // (the daylight line between two stations, as render/earthwork-surface.ts draws it and crossing-geometry.ts's
+      // margin reads it)
+      const day = lat >= 0 ? r.dayL : r.dayR, reach = r.kind[i] === r.kind[i + 1] ? day[i] + (day[i + 1] - day[i]) * t : day[k];
       if (Math.abs(lat) > reach - inset) continue;
       if (Math.abs(lat) <= crownWidth / 2 + 1) return 'formation';
       // (dug away where the natural ground stands above our grade there)
@@ -206,20 +213,24 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
             if (u < 0 || u > 1 || paths.some(path => onPath(path, px, py, 1))) continue;
             if (nodes.some(p => Math.hypot(px - p.x, py - p.y) <= mouthOf(p) + half)) continue;
             const v = -(px - a.p.x) * ty + (py - a.p.y) * tx, side: 0 | 1 = v >= 0 ? 1 : 0;
+            // (a way joining it that runs on under its pavement is paved with it: crossing-works.ts besideRoads)
+            if (nodes.length && Math.abs(v) <= edgeOf(a, side) + (edgeOf(b, side) - edgeOf(a, side)) * u) continue;
             // (its near edge, not its centreline: half its width nearer us)
             const at = Math.max(0, Math.abs(v) - half), toe = reach(a, side) + (reach(b, side) - reach(a, side)) * u;
             if (at >= toe - 0.25) continue;
             const edge = edgeOf(a, side) + (edgeOf(b, side) - edgeOf(a, side)) * u;
             const ze = a.edge[side].z + (b.edge[side].z - a.edge[side].z) * u;
             const qx = a.p.x + (b.p.x - a.p.x) * u - ty * (v >= 0 ? at : -at), qy = a.p.y + (b.p.y - a.p.y) * u + tx * (v >= 0 ? at : -at), g = natural(qx, qy);
-            const toeZ = natural(a.toe[side].x + (b.toe[side].x - a.toe[side].x) * u, a.toe[side].y + (b.toe[side].y - a.toe[side].y) * u);
-            const z = at <= edge ? ze : ze + (toeZ - ze) * (at - edge) / Math.max(1e-6, toe - edge);
-            if (Math.abs(z - g) > DRAPED && !ours(px, py)) { addRoad(s.way, s.cls, px, py); break; }
+            // (the slope at 1:1.5 from the paved edge, as crossing-works.ts besideRoads measures the earth on it: the
+            // drawn slope runs straight to the toe over ground that is not)
+            const ex = a.edge[side].x + (b.edge[side].x - a.edge[side].x) * u, ey = a.edge[side].y + (b.edge[side].y - a.edge[side].y) * u, fill = ze >= natural(ex, ey);
+            const z = at <= edge ? ze : fill ? ze - (at - edge) / SLOPE : ze + (at - edge) / SLOPE, depth = fill ? z - g : g - z;
+            if (depth > DRAPED + SAMPLING && !ours(px, py)) { addRoad(s.way, s.cls, px, py, depth); break; }
           }
         });
-        function addRoad(way: number, cls: string, px: number, py: number) {
+        function addRoad(way: number, cls: string, px: number, py: number, depth: number) {
           const key = `${c.s}:${c.roadId}:road:${way}`;
-          if (!seen.has(key)) { seen.add(key); out.push({ path: pathKind, i: at, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what: 'road', x: px, y: py, way, wayCls: cls }); }
+          if (!seen.has(key)) { seen.add(key); out.push({ path: pathKind, i: at, s: c.s, roadId: c.roadId, cls: c.cls, type: c.type, what: 'road', x: px, y: py, way, wayCls: cls, depth }); }
         }
       }
     }
@@ -283,7 +294,8 @@ export function bodyClashes(r: Result, crownWidth: number, terrain: EvalContext[
     return set;
   };
   for (let i = 0; i < r.n; i++) {
-    if (r.kind[i] !== KIND.earth) continue;
+    // (a stretch kept as the old road builds no body: project-kept.ts applyKept, drawn on the ground)
+    if (r.kind[i] !== KIND.earth || r.keptCells?.[i]) continue;
     const shift = i === 0 ? r.ds / 4 : i === r.n - 1 ? -r.ds / 4 : 0, along = shift ? r.ds / 4 : r.ds / 2;
     const cx = r.x[i] + r.tx[i] * shift, cy = r.y[i] + r.ty[i] * shift, reach = Math.max(r.dayL[i], r.dayR[i]) + along;
     const surfaceAt = (v: number) => {

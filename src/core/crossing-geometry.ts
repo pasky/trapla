@@ -10,7 +10,7 @@ import { CLOSURE_ROUND, PIECE_SEARCH, pieceAccess, type PieceAccess } from './wa
 export { CLOSURE_ROUND } from './way-pieces';
 import { smoothLink } from './crossing-link';
 import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
-import { crossingWorks, slopeWorks, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
+import { crossingWorks, slopeWorks, type CrossingTie, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LINK_MAX_SUPPORT, LOWERING_RULES, MAX_RAMP_LENGTH, OVERBRIDGE_CLEARANCE as CLEARANCE, RETAINING_RULES, retainingAssembly, sagDrainage, SQUARE_BELOW, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
 export { SQUARE_BELOW };
 import { slopeSurfaceAt } from './sections';
@@ -1889,19 +1889,24 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
     if (works.tieLength > 0) c.tieLength = works.tieLength;
     if (works.wallLength > 0) c.wallLength = works.wallLength;
   }
-  // A reroute's own slopes too: walls where they would run into our earthworks, a railway or a house kept,
-  // houses under them bought out (link-route.ts keeps the road itself off them).
+  // A reroute's own slopes too: walls where they would run into our earthworks, a railway, a house kept or another
+  // mapped road (a side road joining it regraded to meet it, as a crossing's own stretch: crossing-works.ts), houses
+  // under them bought out (link-route.ts keeps the road itself off them).
   for (const c of crossings) {
     const g = c.geometry!;
     if (!g.links || anchorOnly?.has(c) || g.diagnostics?.length || (c.type !== 'reconnection' && c.type !== 'diversion')) continue;
-    let cost = 0, wallLength = 0;
-    const houses = new Set(c.houses ?? []);
+    let cost = 0, wallLength = 0, tieLength = 0;
+    const houses = new Set(c.houses ?? []), ties: CrossingTie[] = [];
+    // (its own way's line and the way it is led to are the reroute itself: crossing-works' source)
+    const source = roads ? [...getPath(c.roadId, c.x, c.y, g)] : [];
     g.links = g.links.map(path => {
-      const key = `${g.width}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
+      const key = `${g.width}|${c.roadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
       let own = slopes.get(key);
-      if (!own) slopes.set(key, own = slopeWorks(path, g.width, { heightAt, ours: (q, pad) => margin(q, pad) <= 0, body, gap: q => margin(q, 0, false), ...(route.beside ? { beside: route.beside } : {}) }));
+      const screen = { heightAt, ours: (q: XY, pad: number) => margin(q, pad) <= 0, body, gap: (q: XY) => margin(q, 0, false), ...(route.beside ? { beside: route.beside } : {}) };
+      if (!own) slopes.set(key, own = roads ? crossingWorks(path, g.width, source, { ...screen, roads, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed })
+        : slopeWorks(path, g.width, screen));
       for (const message of own.problems) diagnose(g, message);
-      cost += own.cost; wallLength += own.wallLength;
+      cost += own.cost; wallLength += own.wallLength; tieLength += own.tieLength; ties.push(...own.ties);
       for (const j of own.houses) houses.add(j);
       if (!own.walls.size) return path;
       const walled = [...path];
@@ -1909,6 +1914,7 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
       return walled;
     }) as [CrossingPoint[], CrossingPoint[]];
     if (cost > 0) { c.worksCost = cost; c.cost += cost; c.wallLength = wallLength; }
+    if (ties.length) { g.ties = ties; c.tieLength = tieLength; }
     const added = [...houses].filter(j => !c.houses?.includes(j));
     if (added.length) {
       const extra = added.reduce((sum, j) => sum + (route.houseCost?.(j) ?? 0), 0);
