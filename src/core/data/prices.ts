@@ -247,8 +247,18 @@
  * Model 58: slip roads (Build → Slip road, core/slip-roads.ts): a new cross-section and its lanes, credits and checks on
  * the motorway; the independence screen takes a new road's junction with a road to change that road only within its own
  * works (it changed the whole road, so a junction near another road's change of the same road left the project unpriced:
- * such player projects are priced now). Every frozen bill unchanged (eval-regression). PLAN.md "Hand-built interchanges". */
-export const COST_MODEL_VERSION = 58;
+ * such player projects are priced now). Every frozen bill unchanged (eval-regression). PLAN.md "Hand-built interchanges".
+ * Model 59: a height pin the player set is honoured (the owner): one out of the norm's reach, or met only by missing a
+ * crossing Auto's own line clears, is met by Auto's own line re-solved within 500 m (1, 2 km where no line is found) of
+ * it, steeper there than the norm if it must be (at most STEEP_MAX, 2.5 times: game rule, PROVISIONAL), the crossing
+ * missed if it must be, each such problem's fix the pin (the height model 51's rule reaches, or unpin); only a pin out of
+ * any reach is left out. No lift raises a structure at a crossing a pin holds too low. Every frozen bill, starter and
+ * saved design unchanged (no frozen design has such a pin; twists' references unchanged); pinned edits
+ * (scripts/edit-locality.ts): Královec pin 441.9 m at km 2.03 10.76 → 10.54 bn (too steep next to it, the stream at km
+ * 2.087 in the cut), 439.5 m there 10.76 → 10.62 bn, +5 m at km 4.2 10.69 → 10.77 bn, D11 −8 m at km 7.2 3.66 → 3.68 bn,
+ * the owner's I/35 pin 256.0 m at km 0.29 5.63 → 5.36 bn, all not valid; nothing beyond 10 km of a pin changes (PLAN.md
+ * "A pin the player set is honoured"). */
+export const COST_MODEL_VERSION = 59;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

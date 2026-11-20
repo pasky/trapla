@@ -590,6 +590,12 @@ stream at km 2.09 in an open cut: out of reach, the tunnel kept](docs/screenshot
 [D35 km 4.2 dragged back past bend 2: the bend left on the line, "turns 0°"](docs/screenshots/484-d35-zero-turn-bend-before.png),
 [now gone on release](docs/screenshots/485-d35-zero-turn-bend-dropped.png); [a 2° neighbour the curve fit leaves out, gone on
 release too](docs/screenshots/492-d35-left-out-bend-dropped-on-release.png), [one left out that stays: its card](docs/screenshots/493-d35-left-out-bend-card.png).
+A pin the player set is honoured (cost model 59, `node scripts/pin-honour-shots.mjs`): [the owner's I/35 pin 256.0 m at km
+0.29: our road meets the Liberec railway at its level, one problem there, its fix the pin: raise it for our bridge](docs/screenshots/690-i35-pin-honoured-railway-too-low.png)
+([the problem's card](docs/screenshots/691-i35-pin-railway-problem-card.png), [the pin's: at a cost](docs/screenshots/692-i35-pin-card-at-a-cost.png)),
+[its button: 260.7 m, VALID](docs/screenshots/693-i35-pin-set-by-button-valid.png); [the Královec pin 441.9 m at km 2.03, out of
+reach of the climb: steeper next to it, said there](docs/screenshots/694-kralovec-pin-honoured-steep.png) ([its card](docs/screenshots/695-kralovec-pin-steep-card.png)),
+[100 m higher, out of any reach: left out, said at the pin](docs/screenshots/696-kralovec-pin-out-of-any-reach.png).
 Cost model 53 (before | after, `node scripts/render-works-strip-shots.mjs`): [Královec km 12.98: the houses beside road
 II/2253's ramps, 0.2–0.3 m from their toes, bought out with the working strip](docs/screenshots/510-rail-kralovec-km-12-98-ramps-keep-the-strip-before-after.png)
 ([one's card](docs/screenshots/511-rail-kralovec-km-12-98-house-card-before-after.png)), [III/3012's corner kept on its old
