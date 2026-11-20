@@ -45,7 +45,7 @@ try {
   await page.locator('.twist-picker').waitFor({ timeout: 30000 });
   const names = await page.locator('.twist-picker-list b').allTextContents();
   ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,Nobody moves,Spare the forest,Few bridges,From scratch,By hand', `the Jičín stage offers its full set (${names.join(', ')})`);
-  ok(/listed monuments near the line and their protection zones/.test(await page.locator('.twist-picker').textContent()), 'Hands off says what it keeps clear of: listed monuments and their zones');
+  ok(/shaded historic areas and the rings round listed monuments/.test(await page.locator('.twist-picker').textContent()), 'Hands off says what it keeps clear of: the historic areas and the monuments’ rings');
   await shot('i35-jicin-twist-screen');
   await page.locator('.twist-start').click();
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
@@ -56,7 +56,7 @@ try {
     'the card: the planned line cuts through the Studeňany village protection zone');
   await page.locator('#twists li[data-id="landmarks"] button', { hasText: 'Show' }).first().click();
   await game.still();
-  ok(await page.locator('.twist-marks path.heritage.broken').count() === 1, 'the zone on the map, red: our road in it');
+  ok(await page.locator('.twist-marks path.heritage.broken:not(.fill)').count() === 1, 'the zone on the map, red: our road in it');
   await game.park(); await shot('i35-jicin-zone-broken');
   // (a point inside the zone, south-west of where the line crosses it: pack metres)
   const tip = await hoverAt(10300, 3000);
@@ -73,7 +73,7 @@ try {
   }
   await page.locator('#chip-twists').click(); await page.waitForTimeout(400);
   ok(/Hands off the castle \d+ kept clear/.test(await twistCard()), 'a line led north and east round the zone keeps clear of it');
-  ok(await page.locator('.twist-marks path.heritage.ok').count() >= 1 && !(await page.locator('.twist-marks path.heritage.broken').count()), 'the zone in the twist’s colour, none red');
+  ok(await page.locator('.twist-marks path.heritage.ok:not(.fill)').count() >= 1 && !(await page.locator('.twist-marks path.heritage.broken:not(.fill)').count()), 'the zone in the twist’s colour, none red');
   await page.evaluate(() => window.trapla.lookAt(11000, 2600, 2600, 0, 50)); await game.still();
   await game.park(); await shot('i35-jicin-zone-kept-clear');
   // ---- I/35 Turnov: the church of St John the Baptist ----

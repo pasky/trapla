@@ -4,8 +4,9 @@
 // the reference designs that show each offered twist can be met.
 import type { Result } from './evaluate';
 import type { ProjectResult, RouteId } from './project';
-import { KIND } from './structures';
+import { cutCoverAt, KIND, portalCells } from './structures';
 import { STRUCTURE_RULES } from './data/prices';
+import { cutCoverPitHalfWidth } from './cost';
 import { bridgeLayout } from './bridge';
 import { TWIST_NAMES, TWIST_ORDER, type Landmark, type TwistId, type TwistTerms } from './twist-words';
 export * from './twist-words';
@@ -25,13 +26,18 @@ export const LANDMARK_USES: readonly Use[] = ['cut', 'fill', 'bridge', 'cover'];
 /** Where our line breaks a place's rule: a run of stations. */
 export interface ZoneRun { routeId: RouteId; s0: number; s1: number; use: Use; x: number; y: number }
 
-const MINED = STRUCTURE_RULES.tunnelMinDepth;
-/** What our line does at station i. A tunnel with less ground over it than a mined one needs is dug from the
- * surface (cut and cover): it digs the place up, though it is no open cut. */
+/** What our line does at station i. A tunnel cell built cut and cover (as the evaluator builds it: too little ground
+ * over it to mine, its portals' blocks, or a tunnel the player chose to dig so: structures.ts cutCoverAt) is dug from
+ * the surface: it digs the place up, though it is no open cut. */
 export function useAt(r: Result, i: number): Use {
   const k = r.kind[i];
   if (k === KIND.bridge) return 'bridge';
-  if (k === KIND.tunnel) return r.ground[i] - r.grade[i] >= MINED ? 'tunnel' : 'cover';
+  if (k === KIND.tunnel) {
+    const run = r.runs.find(u => u.kind === KIND.tunnel && u.i0 <= i && i <= u.i1);
+    if (!run) return r.ground[i] - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth ? 'tunnel' : 'cover';
+    // (station i as the first of a one-station array: the run's ends counted from it)
+    return !cutCoverAt([r.grade[i] - r.ground[i]], run.i0 - i, run.i1 - i, 0, portalCells(r.ds), run.method === 'cut') ? 'tunnel' : 'cover';
+  }
   return r.grade[i] >= r.ground[i] ? 'fill' : 'cut';
 }
 
@@ -62,7 +68,8 @@ export function segmentTouches(shape: Shape, ax: number, ay: number, bx: number,
     const t = l2 ? Math.max(0, Math.min(1, ((shape.x - ax) * dx + (shape.y - ay) * dy) / l2)) : 0;
     return Math.hypot(ax + t * dx - shape.x, ay + t * dy - shape.y) <= shape.r;
   }
-  if (inside(shape, ax, ay) || inside(shape, bx, by)) return true;
+  // (its middle too: a segment through two corners of a shape crosses no edge strictly)
+  if (inside(shape, ax, ay) || inside(shape, bx, by) || inside(shape, (ax + bx) / 2, (ay + by) / 2)) return true;
   for (const p of shapeRings(shape)) for (let i = 0, j = p.length - 1; i < p.length; j = i++) if (segmentsCross(ax, ay, bx, by, p[j][0], p[j][1], p[i][0], p[i][1])) return true;
   return false;
 }
@@ -80,7 +87,9 @@ export function zoneRuns(r: Result, routeId: RouteId, shape: Shape, forbid: read
       if (forbid.includes(use)) {
         // across the body: left of travel is (−ty, tx)
         // (a bridge's deck, not the ground's slopes under it)
-        const nx = -r.ty[i], ny = r.tx[i], deck = use === 'bridge' || use === 'tunnel' || use === 'cover', l = deck ? deckHalf : r.dayL[i] || 0, rr = deck ? deckHalf : r.dayR[i] || 0;
+        // (a tunnel dug from the surface: its pit's width at the ground)
+        const nx = -r.ty[i], ny = r.tx[i], deck = use === 'bridge' || use === 'tunnel', pit = use === 'cover' ? cutCoverPitHalfWidth(r.ground[i] - r.grade[i], 2 * deckHalf) : 0;
+        const l = deck ? deckHalf : pit || r.dayL[i] || 0, rr = deck ? deckHalf : pit || r.dayR[i] || 0;
         hit = segmentTouches(shape, x + nx * l, y + ny * l, x - nx * rr, y - ny * rr);
       }
     }

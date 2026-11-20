@@ -11,8 +11,9 @@
 //   npx tsx scripts/twists-check.ts --edit <preset> <file.json|-> --out f.json op…
 //                                                      a design edited by hand (- : the starter) and what it meets; ops:
 //                                                      move:i:dx,dy (bend i by metres) set:i:x,y add:x,y (a bend, in order
-//                                                      along the line) del:i pin:s,z unpin:s0,s1 paint:s0,s1,kind (0 earth,
-//                                                      1 bridge, 2 tunnel) unpaint:s0,s1; TW=a,b: the twists shown
+//                                                      along the line) del:i pin:s,z unpin:s0,s1 (Auto heights only)
+//                                                      paint:s0,s1,kind (0 earth, 1 bridge, 2 tunnel) unpaint:s0,s1 (back
+//                                                      to Auto there); TW=a,b: the twists shown
 //
 // A reference design is a whole project (as window.trapla.getProject() gives it) with what it claims:
 //   { "preset", "purpose", "meets": [twist ids; "curveballs" = every curveball of the mission has arrived], "goal": bool, "design" }
@@ -204,6 +205,7 @@ export function checkMission(preset: string, log: (line: string) => void = conso
     console.log(`  starter ${c.id}: ${c.met ? 'meets it' : 'breaks it'} (${c.status})`);
     if (c.met) fail(`${c.id}: the starter already meets it (not a challenge)`);
   }
+  if (MISSION_TWISTS[preset].offer.includes('landmarks') && !m.pack.heritage) fail(`Hands off offered, public/scenarios/${m.scenario.id}/heritage.json missing (pipeline/build_heritage.py)`);
   if (mt.offer.includes('landmarks') && !m.setup.terms.landmarks.length) fail('landmarks offered, none near the line');
   const dir = `scripts/twists/${preset}`, files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.json')).sort() : [];
   const claimed = new Set<TwistId>();
@@ -298,17 +300,20 @@ else if (args[0] === '--show') {
     else if (k === 'set') { const [x, y] = n(b), i = Number(a); d.pis[i] = { ...d.pis[i], x, y }; delete d.pis[i].mapped; }
     else if (k === 'add') { const [x, y] = n(a), s = nearestS(L0, x, y); d.pis.splice(d.pis.filter(p => nearestS(L0, p.x, p.y) < s).length, 0, { x, y, r: null }); }
     else if (k === 'del') d.pis.splice(Number(a), 1);
+    else if ((k === 'pin' || k === 'unpin') && d.profileMode === 'manual') throw new Error(`${op}: this design's heights are by hand (height pins of Auto do nothing)`);
     else if (k === 'pin') { const [s, z] = n(a); d.gradePins = [...(d.gradePins ?? []).filter(p => Math.abs(p.s - s) > 30), { s, z }].sort((p, q) => p.s - q.s); }
     else if (k === 'unpin') { const [s0, s1] = n(a); d.gradePins = (d.gradePins ?? []).filter(p => p.s < s0 || p.s > (s1 ?? s0)); }
     else if (k === 'paint') { const [s0, s1, kind] = n(a); d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, kind as typeof KIND[keyof typeof KIND]); }
-    else if (k === 'unpaint') { const [s0, s1] = n(a); d.structureOverrides = (d.structureOverrides ?? []).filter(o => o.s1 < s0 || o.s0 > s1); }
+    // (that stretch back to Auto; painted structures beside it keep their ends)
+    else if (k === 'unpaint') { const [s0, s1] = n(a); d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, null); }
     else throw new Error(`unknown edit ${op}`);
   }
   const next = replaceRouteFromLegacy(fx.design, id, d), r = evalDesign(m, next);
   console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).slice(0, 5).join('; '));
   for (const c of check(m, next, r, (process.env.TW?.split(',') ?? m.setup.mission.offer) as TwistId[]))
     console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.slice(0, 5).map(i => `\n      ${i.text}${i.s0 !== undefined ? ` (km ${(i.s0 / 1000).toFixed(2)}–${((i.s1 ?? i.s0) / 1000).toFixed(2)})` : ''}`).join('')}`);
-  writeFileSync(out, JSON.stringify({ ...fx, meets: [], design: next } satisfies Fixture, null, 1));
+  // (what it meets is for twists-check to say: claimed nothing yet)
+  writeFileSync(out, JSON.stringify({ ...fx, meets: [], goal: false, design: next } satisfies Fixture, null, 1));
 } else if (args[0] === '--find') {
   const preset = args[1], twists = (opt('--twists') ?? '').split(',').filter(Boolean) as TwistId[];
   find(preset, twists, args.includes('--goal'), opt('--from'), Number(opt('--iters') ?? 600), Number(opt('--seed') ?? 1),

@@ -1,6 +1,6 @@
 {
  "preset": "i35-turnov-road",
- "purpose": "Spare the forest (at most 0.8 ha) under the goal: a search from all-news.json of round 3 (--find --twists forest --goal, seed 31)",
+ "purpose": "Spare the forest (at most 0.6 ha) under the goal: a search from all-news.json of round 3 (--find --twists forest --goal, seed 31)",
  "meets": [
   "forest"
  ],

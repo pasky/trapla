@@ -29,7 +29,9 @@ anything, since the areas are very far from any plausible route." The twist now 
     (`typochranykod` OP / PR / PZ, `upresnenitypuochrany` MPR, VPR, MPZ, VPZ…, `rejstrikovecislouskp`, `nazev`, `urlext` the
     catalogue page, `priznakplatny` P = in force, `verejny`);
   - `…/Hosted/kp/FeatureServer/10` (kulturní památka) and `/11` (národní kulturní památka) — every listed monument as a
-    point (`nazevprvku` its name, `obec`, `fazeochranykod` P = protected, `rejstrikovecislouskp`).
+    point (`nazevprvku` its name, `obec`, `fazeochranykod` P = protected or R = protected with its extent revised,
+    "památkově chráněno, rozsah revidován": both kept; `rejstrikovecislouskp`). A monument listed both as national and as
+    ordinary (same name and place) is one landmark.
 - **Names** of areas the geoportal leaves unnamed: the open data lists `https://www.pamatkovykatalog.cz/opendata/npu_opendata_{OP,PR,PZ}.csv`
   (open data date 31 Oct 2026), by ÚSKP number.
 - **Licence**: the National Open Data Catalogue's record of the protection zones dataset
@@ -71,10 +73,11 @@ anything, since the areas are very far from any plausible route." The twist now 
 | whole D3 | the same | yes |
 | whole D35 | within 50 m of the Holy Trinity column at Mohelnice | yes (round 3's reference keeps clear) |
 | D11 motorway | within 100 m of the memorial to the Austrian gunners of 1866 (Trutnov) | yes |
-| I/35 Jičín | through the Studeňany village protection zone (declared 26 Jun 2026, ÚSKP 3260, several km² of the village's setting) | yes: round 3's line led north and east round it by hand |
+| I/35 Jičín | through the Studeňany village protection zone (declared 13 Aug 1997, its polygon updated 26 Jun 2026; ÚSKP 3260, 712 ha of the village's setting) | yes: round 3's line led north and east round it by hand |
 | I/35 Turnov | within 200 m of the church of St John the Baptist (Turnov) | see below |
 | whole I/35 | both of the stages' | see below |
-| Šternberk, D3 0301–0303, 0305, D35 stage 1, I/35 Rovensko, Královec | nothing: the planned lines keep clear of every listed monument and zone | no |
+| Šternberk, D3 0301–0303, 0305, D35 stage 1, I/35 Rovensko | nothing: the planned lines keep clear of every listed monument and zone | no |
+| Královec railway | only the listed road bridge at Trutnov station, at its fixed start (left out) | no |
 
 There the planned line already keeps clear of every listed monument and heritage area near it, so the twist would ask
 nothing of it: it is not offered.
@@ -87,7 +90,7 @@ nothing of it: it is not offered.
   under the church, the yard and Nudvojovice prices at 11.6 bn, the goal is 5.07). By hand (`twists-check.ts --edit`):
   the first two bends moved 254 m north-east, round the ring and the factory's north side (5.56 bn, industrial buildings
   bought out, invalid at a railway), then searched (seeds 2 → 3 → 8): **4.77 bn, VALID, every curveball met, earth balanced 4 %**.
-- **Jičín, the Studeňany village protection zone** (ÚSKP 3260, declared 26 Jun 2026, ≈ 730 ha round the Studeňany village
+- **Jičín, the Studeňany village protection zone** (ÚSKP 3260, declared 13 Aug 1997, its polygon updated 26 Jun 2026; 712 ha round the Studeňany village
   heritage zone): the planned line runs through its north-east part for 1.9 km (km 11.4–13.3; a cut). Round 3's reference
   moved north and east of it by hand (its last two bends; 4.55 bn), then searched: **4.14 bn**. It passes by Radim on the
   zone's north-east corner and buys out homes there: the price of keeping out of the zone.

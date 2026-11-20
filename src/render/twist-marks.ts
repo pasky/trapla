@@ -19,9 +19,9 @@ export interface TwistMark {
   at: { x: number; y: number };
 }
 
-/** an outline is cut this far in front of the camera, as a share of its distance to what it looks at (nearer, a point
- * projects far off the screen: a huge shape to fill) */
-const NEAR_SHARE = 0.25;
+/** an outline is cut this far in front of the camera, as a share of its distance to what it looks at, at least NEAR_MIN m
+ * (nearer, a point projects far off the screen: a huge shape to fill) */
+const NEAR_SHARE = 0.05, NEAR_MIN = 5;
 const rank = (m: TwistMark) => (m.fresh ? 2 : 0) + (m.state === 'broken' ? 1 : 0);
 /** the outlines every ≤ 15 m, so they follow the ground */
 function outline(shape: Shape): { x: number; y: number }[][] {
@@ -45,7 +45,8 @@ function outline(shape: Shape): { x: number; y: number }[][] {
 
 export class TwistMarks {
   private svg: SVGSVGElement;
-  private items: { mark: TwistMark; rings: { x: number; y: number; z: number }[][]; path: SVGPathElement; dot: SVGCircleElement; label: HTMLElement; z: number }[] = [];
+  /** `fill`: the inside, clipped to what lies in front of the camera; `path`: the outline where it is in view */
+  private items: { mark: TwistMark; rings: { x: number; y: number; z: number }[][]; fill: SVGPathElement; path: SVGPathElement; dot: SVGCircleElement; label: HTMLElement; z: number }[] = [];
   onClick?: (id: string) => void;
   /** the name of what is under the pointer (a heritage area's, a ring's) */
   private tip: HTMLElement;
@@ -92,20 +93,22 @@ export class TwistMarks {
   private placedFor = '';
 
   set(marks: readonly TwistMark[]) {
-    for (const it of this.items) { it.path.remove(); it.dot.remove(); it.label.remove(); }
+    for (const it of this.items) { it.fill.remove(); it.path.remove(); it.dot.remove(); it.label.remove(); }
     this.items = marks.map(mark => {
+      const fill = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      fill.setAttribute('class', `fill ${mark.kind} ${mark.state}`);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       path.setAttribute('class', `${mark.kind} ${mark.state}${mark.fresh ? ' fresh' : ''}`);
       dot.setAttribute('class', `${mark.kind} ${mark.state}`);
-      this.svg.append(path, dot);
+      this.svg.append(fill, path, dot);
       const label = document.createElement('div');
       label.className = `twist-label ${mark.kind} ${mark.state}${mark.fresh ? ' fresh' : ''}`;
       label.textContent = mark.label;
       label.addEventListener('click', () => this.onClick?.(mark.id));
       this.overlay.append(label);
       const rings = outline(mark.shape).map(r => r.map(p => ({ ...p, z: this.heightAt(p.x, p.y) + 1 })));
-      return { mark, rings, path, dot, label, z: this.heightAt(mark.at.x, mark.at.y) + 1 };
+      return { mark, rings, fill, path, dot, label, z: this.heightAt(mark.at.x, mark.at.y) + 1 };
     });
     this.placedFor = '';
     this.place();
@@ -119,24 +122,27 @@ export class TwistMarks {
     // broken and new first: they keep their names when labels crowd
     const order = [...this.items].sort((a, b) => rank(b.mark) - rank(a.mark));
     for (const it of order) {
-      let d = '';
-      const NEAR = NEAR_SHARE * this.view.cameraDistance;
+      let d = '', f = '';
+      const NEAR = Math.max(NEAR_MIN, NEAR_SHARE * this.view.cameraDistance);
       for (const ring of it.rings) {
-        // the outline clipped to what lies in front of the camera (also past its far plane: a zone reaching off the
-        // view still fills), so it stays one closed shape
-        const q = ring.map(p => this.view.project(p.x, p.y, p.z)), out: string[] = [];
+        const q = ring.map(p => this.view.project(p.x, p.y, p.z)), poly: string[] = [];
+        let open = false, all = true;
         for (let i = 0; i < ring.length; i++) {
-          const a = q[i], b = q[(i + 1) % ring.length];
-          if (a.depth > NEAR) out.push(`${a.sx.toFixed(1)},${a.sy.toFixed(1)}`);
+          const a = q[i], b = q[(i + 1) % ring.length], at = `${a.sx.toFixed(1)},${a.sy.toFixed(1)}`;
+          // the outline: where it lies in front of the camera
+          if (a.depth > NEAR) { d += `${open ? 'L' : 'M'}${at}`; open = true; poly.push(at); } else { open = false; all = false; }
+          // the inside: the outline cut where it passes behind, so it stays one closed shape
           if ((a.depth > NEAR) !== (b.depth > NEAR)) {
             const t = (NEAR - a.depth) / (b.depth - a.depth), p0 = ring[i], p1 = ring[(i + 1) % ring.length];
             const c = this.view.project(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t, p0.z + (p1.z - p0.z) * t);
-            out.push(`${c.sx.toFixed(1)},${c.sy.toFixed(1)}`);
+            poly.push(`${c.sx.toFixed(1)},${c.sy.toFixed(1)}`);
           }
         }
-        if (out.length > 1) d += `M${out.join('L')}Z`;
+        if (all && ring.length) d += 'Z';
+        if (poly.length > 2) f += `M${poly.join('L')}Z`;
       }
       it.path.setAttribute('d', d);
+      it.fill.setAttribute('d', f);
       const c = this.view.project(it.mark.at.x, it.mark.at.y, it.z);
       // a monument's name only close up (its ring and dot from afar), a heritage area's on hover (and while broken), a
       // curveball's place always; never over another name

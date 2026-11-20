@@ -2615,7 +2615,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
 - **Where** (round 4: Hands off on the register, the I/35's full set): Hands off is offered on D3 0304 and the whole D3
   (the ruin of Stejc castle), the whole D35 (the Holy Trinity column at Mohelnice), the D11 motorway (the memorial to the
   Austrian gunners of 1866), the I/35 Turnov stage (the church of St John the Baptist: its reference moves the line 254 m
-  north-east, under the goal at 4.77 bn), Jičín (the Studeňany village protection zone, declared 26 Jun 2026: its reference
+  north-east, under the goal at 4.77 bn), Jičín (the Studeňany village protection zone, declared 1997: its reference
   goes north and east round it, 4.14 bn) and the whole I/35 (both); not where the planned line keeps clear of every
   listed monument and zone (Šternberk, D3 0301–0303 and 0305, D35 stage 1, I/35 Rovensko) nor on the Královec railway (its
   only one, the listed road bridge at Trutnov station, is at its fixed start). The I/35 stages and the whole route: Turnov

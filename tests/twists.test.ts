@@ -57,6 +57,9 @@ describe('twists', () => {
     expect(found.map(l => `${l.name} ${l.ring}`)).toEqual(['Near zone 0', 'Kříž, Ves 50']);
     const zone = landmarkShape(found[0]);
     expect([inside(zone, 1200, 0), inside(zone, 1500, 0), inside(zone, 2500, 0)]).toEqual([true, false, false]); // the hole is outside
+    expect(inside(zone, found[0].x, found[0].y)).toBe(true); // its name stands in it, not in the hole
+    // an end in the hole, 100 m from the zone's ground: the zone still counts
+    expect(missionLandmarks({ initial: { pis: [] } } as never, { ...frame, a: { x: 1500, y: 0 } }, heritage).map(l => l.name)).toContain('Near zone');
   });
 
   for (const preset of Object.keys(MISSION_TWISTS)) {

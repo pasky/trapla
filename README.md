@@ -290,7 +290,7 @@ the dashed planned line answers a click ([card](docs/screenshots/681-official-li
 
 ### Scenarios
 
-The start screen ([now](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),
+The start screen ([now](docs/screenshots/720-start-here-d35.png), [before round 4 of the twists](docs/screenshots/551-start-screen.png), [before](docs/screenshots/550-start-screen-before.png),
 [at 1280 × 800](docs/screenshots/552-start-screen-1280x800.png)) offers one mission first, *Start here*: the D35's first
 section, Opatovec → Staré Město (a 5 MB map, a 17 km motorway with a bit of everything: the open D35 to join, villages
 and streams, a protected slope over a tunnel, a ridge; [the card](docs/screenshots/720-start-here-d35.png); until round 4

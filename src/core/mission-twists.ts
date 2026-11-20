@@ -19,24 +19,28 @@ const lineDist = (x: number, y: number, pts: readonly { x: number; y: number }[]
   return d;
 };
 
-/** Where a zone's name stands: the middle of its largest part, moved onto the part along its row where the middle falls
- * outside it (a bent zone). */
+/** even-odd over all of a zone's rings (a hole is outside) */
+const insideRings = (rings: readonly (readonly (readonly [number, number])[])[], q: { x: number; y: number }) => {
+  let c = false;
+  for (const p of rings) for (let i = 0, j = p.length - 1; i < p.length; j = i++)
+    if ((p[i][1] > q.y) !== (p[j][1] > q.y) && q.x < (p[j][0] - p[i][0]) * (q.y - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
+  return c;
+};
+/** Where a zone's name stands: the middle of its largest part, moved along its row to the middle of the widest stretch
+ * inside the zone where the middle falls outside it (a bent zone, or a hole there). */
 function labelPoint(rings: readonly (readonly (readonly [number, number])[])[]): { x: number; y: number } {
   const areaOf = (p: readonly (readonly [number, number])[]) => p.reduce((a, q, i) => { const o = p[(i + p.length - 1) % p.length]; return a + o[0] * q[1] - q[0] * o[1]; }, 0) / 2;
   const p = [...rings].sort((a, b) => Math.abs(areaOf(b)) - Math.abs(areaOf(a)))[0];
-  let x = p.reduce((a, q) => a + q[0], 0) / p.length;
-  const y = p.reduce((a, q) => a + q[1], 0) / p.length;
-  // (the row through the middle: its crossings with the outline, the widest span inside)
+  const x = p.reduce((a, q) => a + q[0], 0) / p.length, y = p.reduce((a, q) => a + q[1], 0) / p.length;
+  if (insideRings(rings, { x, y })) return { x, y };
+  // (the row through the middle: its crossings with every outline, the widest span between two inside)
   const xs: number[] = [];
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++)
-    if ((p[i][1] > y) !== (p[j][1] > y)) xs.push(p[i][0] + (y - p[i][1]) * (p[j][0] - p[i][0]) / (p[j][1] - p[i][1]));
+  for (const r of rings) for (let i = 0, j = r.length - 1; i < r.length; j = i++)
+    if ((r[i][1] > y) !== (r[j][1] > y)) xs.push(r[i][0] + (y - r[i][1]) * (r[j][0] - r[i][0]) / (r[j][1] - r[i][1]));
   xs.sort((a, b) => a - b);
-  const spans = Array.from({ length: Math.floor(xs.length / 2) }, (_, k) => [xs[2 * k], xs[2 * k + 1]] as const);
-  if (spans.length && !spans.some(([a, b]) => x > a && x < b)) {
-    const [a, b] = spans.reduce((w, s) => s[1] - s[0] > w[1] - w[0] ? s : w);
-    x = (a + b) / 2;
-  }
-  return { x, y };
+  let best = { x, w: -1 };
+  for (let k = 0; k + 1 < xs.length; k += 2) if (xs[k + 1] - xs[k] > best.w) best = { x: (xs[k] + xs[k + 1]) / 2, w: xs[k + 1] - xs[k] };
+  return { x: best.x, y };
 }
 const segSeg = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number) => {
   const d1 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax), d2 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
@@ -52,14 +56,9 @@ const zoneDist = (rings: readonly (readonly (readonly [number, number])[])[], pt
   return d;
 };
 
-/** how far our body and its slopes reach from a mission's fixed end, m (a motorway's half-width with its slopes) */
+/** how far our body and its slopes reach from a mission's fixed end, m: a game approximation (a motorway's half-width
+ * with its slopes) */
 const END_REACH = 50;
-const insideRing = (p: readonly (readonly [number, number])[], q: { x: number; y: number }) => {
-  let c = false;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++)
-    if ((p[i][1] > q.y) !== (p[j][1] > q.y) && q.x < (p[j][0] - p[i][0]) * (q.y - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
-  return c;
-};
 
 /** The listed monuments whose ring, and the heritage areas that, come near the starting line or the straight line A–B
  * (the pack's heritage.json, in its own metres), inside the map. */
@@ -72,7 +71,7 @@ export function missionLandmarks(scenario: Pick<ScenarioParams, 'initial'>, fram
   for (const z of heritage?.zones ?? []) {
     const rings = zoneRings(z);
     if (Math.min(zoneDist(rings, starter), zoneDist(rings, straight)) > LANDMARK_REACH) continue;
-    if (atEnd(p => zoneDist(rings, [p, p])) || rings.some(r => insideRing(r, frame.a) || insideRing(r, frame.b))) continue;
+    if (atEnd(p => zoneDist(rings, [p, p])) || insideRings(rings, frame.a) || insideRings(rings, frame.b)) continue;
     out.push({ name: z.name, kind: 'zone', ...labelPoint(rings), ring: 0, rings });
   }
   for (const { name, kind, x, y } of heritage?.monuments ?? []) {
@@ -90,8 +89,10 @@ export interface MissionTwistSetup { mission: MissionTwists; terms: TwistTerms; 
 /** Everything the twists of mission `presetId` need on this map; undefined where it offers none. */
 export function missionTwistSetup(presetId: string, scenario: Pick<ScenarioParams, 'initial' | 'maxTravelMin'>, frame: PackFrame,
   heritage: HeritageData | null | undefined): MissionTwistSetup | undefined {
-  const mission = missionTwists(presetId);
-  if (!mission) return undefined;
+  const listed = missionTwists(presetId);
+  if (!listed) return undefined;
+  // (a pack without its listed monuments, or whose file did not load, offers no Hands off: it would be met on nothing)
+  const mission = heritage ? listed : { ...listed, offer: listed.offer.filter(t => t !== 'landmarks') };
   const terms: TwistTerms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: mission.offer.includes('landmarks') ? missionLandmarks(scenario, frame, heritage) : [] };
   const curveballs = mission.curveballs.map(id => {
     const c = CURVEBALLS[id];

@@ -7,7 +7,13 @@ import { RoadNet, withStructures } from '../src/core/roadnet';
 import { decodeHeights, Terrain } from '../src/core/terrain';
 import { endpointJunctions, packIdentities } from '../src/scenario';
 import type { TrafficCensus } from '../src/core/traffic-census';
-import type { HeritageData } from '../src/core/heritage';
+import { validHeritageData, type HeritageData } from '../src/core/heritage';
+
+/** the pack's heritage.json as the browser takes it (src/scenario.ts): one it would refuse is an error here */
+function heritageFile(data: unknown): HeritageData {
+  if (!validHeritageData(data)) throw new Error('heritage.json: not a heritage file the game reads');
+  return data;
+}
 import type { EvalContext } from '../src/core/evaluate';
 import type { ScenarioParams } from '../src/core/data/scenario';
 import type { ProjectEvalContext } from '../src/core/project-evaluate';
@@ -38,7 +44,7 @@ export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAU
     /** The pack's traffic census (pipeline/build_traffic.py), if it ships one. */
     census: existsSync(`${dir}/traffic.json`) ? JSON.parse(readFileSync(`${dir}/traffic.json`, 'utf8')) as TrafficCensus : null,
     /** The pack's listed monuments and heritage areas (pipeline/build_heritage.py), if it ships them: the twists'. */
-    heritage: existsSync(`${dir}/heritage.json`) ? JSON.parse(readFileSync(`${dir}/heritage.json`, 'utf8')) as HeritageData : null,
+    heritage: existsSync(`${dir}/heritage.json`) ? heritageFile(JSON.parse(readFileSync(`${dir}/heritage.json`, 'utf8'))) : null,
     /** Declared end connections (none for D11); spread into every EvalContext built from this pack. */
     junctions: endpointJunctions(meta),
   };

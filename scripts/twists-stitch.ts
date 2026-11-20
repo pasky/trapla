@@ -51,14 +51,21 @@ let design = replaceRouteFromLegacy(baseDesign, wr, stage1);
 const L1 = evalDesign(whole, design).routes[wr]!.legacy!;
 // the heights and the painted structures, their stations measured anew on the stitched line
 const sOn = (q: typeof sections[number], s: number) => { const p = q.conv(at(q.L, s)); return nearestS(L1, p.x, p.y); };
-const gradePins = sections.flatMap(q => (q.d.gradePins ?? []).map(p => ({ s: Math.round(sOn(q, p.s)), z: p.z }))).sort((a, b) => a.s - b.s);
+const outside = (s: number) => !sections.some(q => s >= q.s0 - 1 && s <= q.s1 + 1);
+const onStitched = (s: number) => nearestS(L1, ...(Object.values(at(L0, s)) as [number, number]));
+const gradePins = [...sections.flatMap(q => (q.d.gradePins ?? []).map(p => ({ s: Math.round(sOn(q, p.s)), z: p.z }))),
+  // (--base: its own height pins outside the sections)
+  ...(baseFile ? (base.gradePins ?? []).filter(p => outside(p.s)).map(p => ({ s: Math.round(onStitched(p.s)), z: p.z })) : [])].sort((a, b) => a.s - b.s);
 // --painted none|tunnels: leave the sections' painted structures out (or all but their tunnels): Auto chooses again on the whole line
 const painted = args.includes('--painted') ? args[args.indexOf('--painted') + 1] : 'all';
 const structureOverrides = sections.flatMap(q => (q.d.structureOverrides ?? []).filter(so => painted === 'all' || (painted === 'tunnels' && so.kind === KIND.tunnel))
   .map(so => ({ ...so, s0: sOn(q, so.s0), s1: sOn(q, so.s1) })));
-// (--base: its own painted structures outside the sections, re-measured on the stitched line)
-if (baseFile) structureOverrides.push(...(base.structureOverrides ?? []).filter(so => !sections.some(q => so.s1 >= q.s0 && so.s0 <= q.s1))
-  .map(so => ({ ...so, s0: nearestS(L1, ...(Object.values(at(L0, so.s0)) as [number, number])), s1: nearestS(L1, ...(Object.values(at(L0, so.s1)) as [number, number])) })));
+// (--base: its own painted structures outside the sections, cut at the sections' ends, re-measured on the stitched line)
+if (baseFile) for (const so of base.structureOverrides ?? []) {
+  let parts = [[so.s0, so.s1]];
+  for (const q of sections) parts = parts.flatMap(([a, b]) => [[a, Math.min(b, q.s0)], [Math.max(a, q.s1), b]]).filter(([a, b]) => b - a > 1);
+  for (const [a, b] of parts) structureOverrides.push({ ...so, s0: onStitched(a), s1: onStitched(b) });
+}
 structureOverrides.sort((a, b) => a.s0 - b.s0);
 // --manual: the sections' own grade lines as the whole's heights by hand (where their pins do not solve on the whole line)
 // (where no section covers the line, the starter's own heights, re-measured on the stitched line)

@@ -163,14 +163,16 @@ def monuments(scenario: dict, zs: list[dict]) -> list[dict]:
     for layer in ("nkp", "kp"):
         for feature in raw(scenario["id"], layer):
             a, g = feature["attributes"], feature.get("geometry") or {}
-            if a.get("fazeochranykod") != "P" or "x" not in g:
+            # P: protected; R: protected, its extent revised (NPÚ: "památkově chráněno, rozsah revidován")
+            if a.get("fazeochranykod") not in ("P", "R") or "x" not in g:
                 continue
             name = (a.get("nazevprvku") or a.get("nazevprstavu") or "").strip()
             kind = kind_of(name)
             x, y = g["x"] - x0, g["y"] - y0
             if not kind or not (0 <= x <= x1 - x0 and 0 <= y <= y1 - y0):
                 continue
-            key = (a.get("prstavid"), name.lower(), round(x / 10), round(y / 10))
+            # (one monument listed twice, as a national and an ordinary one: one landmark)
+            key = (name.lower(), round(x / 10), round(y / 10))
             if key in seen:
                 continue
             seen.add(key)
@@ -186,11 +188,9 @@ def monuments(scenario: dict, zs: list[dict]) -> list[dict]:
     return out
 
 
-def build(scenario: dict, out: Path) -> dict:
+def data_for(scenario: dict) -> dict:
     zs = zones(scenario, area_names())
-    data = {"version": 1, "source": SOURCE, "zones": zs, "monuments": monuments(scenario, zs)}
-    (out / FILE).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
-    return data
+    return {"version": 1, "source": SOURCE, "zones": zs, "monuments": monuments(scenario, zs)}
 
 
 def publish(sid: str) -> None:
@@ -199,6 +199,8 @@ def publish(sid: str) -> None:
     meta = json.loads((out / "meta.json").read_text())
     if [float(v) for v in meta["origin"]] != [float(v) for v in scenario["bbox5514"][:2]]:
         raise ValueError(f"{sid}: pack origin {meta['origin']} differs from the scenario's play area")
+    # (everything read and checked before the published pack is touched: a missing input leaves it as it was)
+    data = data_for(scenario)
     with generation.lock(out):
         complete = scenario.get("requireComplete", False)
         if complete:
@@ -207,7 +209,7 @@ def publish(sid: str) -> None:
                       for name in recorded}
             manifest = generation.verify(out, scenario, inputs)
             (out / "ready.json").unlink()
-        data = build(scenario, out)
+        (out / FILE).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
         if complete:
             generation.publish(out, scenario, manifest["inputs"])
     kinds = {}

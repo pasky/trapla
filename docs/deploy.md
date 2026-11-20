@@ -72,17 +72,17 @@ evaluation has settled.
 |---|---|---|---|---|
 | before (main bd42ffe, served at `/`; Start here Jílové → Hostěradice, 3.9 MB) | 0.59 s | 2.91 s / 3.77 s | ≈ 2.9 s / 3.8 s (the download starts at the click) | 9.9 s / 12.8 s |
 | 2026-11-18 (Jílové → Hostěradice, 3.9 MB) | 0.29 s | 2.95 s / 3.90 s | 1.28 s / 2.12 s | 9.8 s / 12.9 s |
-| now (Start here Opatovec → Staré Město, 5.2 MB with its startup files) | 0.27 s | 3.57 s / 5.32 s | 1.47 s / 3.27 s | 9.9 s / 12.6 s |
+| now (Start here Opatovec → Staré Město: 5.0 MB of pack before the first frame, 5.2 MB downloaded with the page) | 0.27 s | 3.57 s / 5.32 s | 1.47 s / 3.27 s | 9.9 s / 12.6 s |
 
 (2026-11-18, host load ≈ 7–16; the last row 2026-11-20, host load ≈ 7–26. The D35 first section is the Start here
-mission since 2026-11-20: a bigger map than the Sázava bridge, 5.2 MB against 3.9, and a 17 km line whose first price
-takes ≈ 1.8 s from the map against ≈ 0.9 s; after 3 s of reading its map shows 1.5 s after the click.) A load by link is bound by the download (5.2 MB take 2.1 s at 20 Mbit/s, 17 MB
+mission since 2026-11-20: a bigger map than the Sázava bridge, 5.0 MB against 3.9, and a 17 km line whose first price
+takes ≈ 1.8 s from the map against ≈ 0.9 s; after 3 s of reading its map shows 1.5 s after the click.) A load by link is bound by the download (5.2 MB downloaded take 2.1 s at 20 Mbit/s, 17 MB
 6.8 s) and then ≈ 1.5 s (5.2 MB) to ≈ 3 s (17 MB) of 4×-throttled main-thread work: unpacking and decoding the pack,
 then building the 3D terrain; the first price follows ≈ 1–3 s later from the worker. What changed for a visitor: the
 start screen comes up in half the time (its code is split from the game's, which loads behind it); on a first visit
 the *Start here* mission's map downloads while the visitor reads the start screen (stopped if another mission is
 picked), and any mission's from when the pointer reaches its Start button (at most one fetched ahead). The loading
-card says what loads and how much ("1.3 of 5.0 MB"), then "Drawing the terrain…"; the map is drawn and can be looked
+card says what loads and how much ("1.3 of 5 MB"), then "Drawing the terrain…"; the map is drawn and can be looked
 around before its first price ("Working out the cost…" over the map until then).
 
 ## Host 1: a VPS with Caddy or nginx, copied with rsync
