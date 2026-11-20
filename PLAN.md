@@ -2956,7 +2956,10 @@ crown's reach so that a wall stood there. Nothing of it showed in the crossings 
   grade; a track or service road just ends (no turning area: none at a crossing's closed track either); a dead end whose
   end lies beyond our works is taken up from where they cover it, as far as it serves nothing (no further: else it is moved
   aside as any road); a dead end whose pavement our earthworks cover at its end (its centre line beside a bridge end) is
-  one too. The piece taken up is billed beyond our earthworks at the taken-up rates (OTSKP 113131 / 11333 / 18231 / 18242,
+  one too; so is one whose piece serving nothing reaches into our works while the way runs on under them past it (no
+  other way joining it there: the way under our works goes with them, and no more is taken up beyond them than the piece's
+  length; playtest B, D11 demo with its 7th bend moved: track 4830's piece of 100 m, our cut over 80–153 m of it, was left
+  *blocked* and the fix not a button). The piece taken up is billed beyond our earthworks at the taken-up rates (OTSKP 113131 / 11333 / 18231 / 18242,
   `project-replacement.ts REMOVAL`; under them it goes with our earthworks, as before), drawn as removed (dashed) and gone
   from the map (project `acceptedReplacements`). The card: "Local road: its last 32 m taken up, a turning area where it
   now ends"; a track: "its last 24 m taken up (a dead end under our earthworks)".
@@ -3022,7 +3025,9 @@ taken up the structure choice fills 90 m of it, houses and borrow it does not we
 random designs, straight starts) move both ways, where the search's railway bridge price does not foresee the walls
 beside it. Twists: the start bills; I/35 Turnov offers no earth balance (its starter balances its earth now); references
 searched again where the planned line's lower bill moved a curveball's limit (D11 motorway, D3 0301, 0305, I/35 Turnov,
-whole I/35).
+whole I/35). The piece reaching into our works (above) moves only the whole I/35's reference design: 15,406.1 →
+15,403.7 M (track 2973 at km 17.57: its last 143 m taken up, 0.11 M, instead of moved aside beside us, 1.88 M; 242 of
+243 results identical to before it).
 - Checked: `scripts/dead-end-audit.ts`, `scripts/rail-dead-end-shots.mjs [--docs]` (screenshots 740–745: the I/35 dead
   end in the quantities and close up, D11 km 14.13's railway over our cutting and its card, our bridge chosen instead,
   the profile, the pin's two ways), `tests/dead-ends.test.ts`, `tests/road-realignment.test.ts`, `tests/retaining.test.ts`,

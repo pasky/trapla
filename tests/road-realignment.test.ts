@@ -116,6 +116,29 @@ describe('bounded real road relocation', () => {
     expect(ends.cost).toBe(ends.takenUp!.cost);
   });
 
+  it('ends a piece serving nothing whose way runs on under our works, unless another way joins it there', () => {
+    // (playtest B, D11 track 4830: its 100 m dead-end piece reached into our cut, which covered the way on past it)
+    const ways = [[0, 1180, 260, 1000, 260, 1000, 600], [0, 1000, 600, 1300, 600], [0, 1000, 600, 700, 600]];
+    const dead = (extra: number[][] = []) => {
+      const input = setup([...ways, ...extra], ['track']);
+      Object.assign(input, { hit: { a: 75, b: 190, i: 88, j: 100 }, deadEnds: [[0, 100]] });
+      return planRoadRealignment(input);
+    };
+    const ended = dead();
+    expect(ended.problems).toEqual([]);
+    expect(ended.length).toBe(0);
+    // (taken up to just beyond our works: 75 m before them, 5 m after, within the piece's 100 m)
+    expect(ended.takenUp!.length).toBeCloseTo(195, 6);
+    expect(ended.cost).toBe(ended.takenUp!.cost);
+    const beyond = ended.cost / removalPerMetre(ROAD_CLASSES.track.width); // (to its samples, 5 m apart, at both edges)
+    expect(beyond).toBeGreaterThan(80 - 10);
+    expect(beyond).toBeLessThan(80 + 10);
+    // another way joining it under our works keeps it: moved aside as without the piece
+    const kept = dead([[0, 1000, 263, 900, 400]]);
+    expect(kept.takenUp).toBeUndefined();
+    expect(kept.length).toBeGreaterThan(150);
+  });
+
   it('keeps an untouched old road beyond a dead end\'s turning area at its own grade (the norm\'s ramp is for new pavement)', () => {
     // (I/35 Turnov km 3.0: a local road climbing 15 % away from our earthworks)
     const input = setup([[0, 500, 260, 1250, 260]], ['unclassified']);

@@ -265,7 +265,8 @@
  * D3 0303 5.7349 → 5.7382 bn, D3 0304 10.2330 → 10.2377 bn; every frozen bill, starter and saved design unchanged
  * (scripts/exact.ts: 243 of 243 identical). PLAN.md "Slip roads on any divided road".
  * Model 61: a mapped dead end serving nothing beyond our works is ended there by Auto (core/dead-ends.ts): never bridged
- * for under our crown, cut back to a turning area whose old road beyond keeps its own grade (a track just ends), its piece
+ * for under our crown, cut back to a turning area whose old road beyond keeps its own grade (a track just ends; the way on
+ * from a piece reaching into our works goes with them where no other way joins it there), its piece
  * taken up billed beyond our earthworks at the taken-up rates and gone from the map, a building it was the only road to
  * bought out where our earthworks bury its way in; an existing railway may be carried over our road on a new bridge
  * (core/rail-over.ts, research/105: ČSN 73 6201 clearance, SPOŽES H01/H02 + H07), weighed by the grade search, chosen on

@@ -305,7 +305,18 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   // (or whose pavement there our earthworks cover: the hit reaches the end, its centreline beside a bridge end)
   // (or one that serves nothing beyond our works from where they cover it: dead-ends.ts)
   const total = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
-  const beyond = (i: number) => !!input.deadEnds?.some(([a, b]) => i ? a <= h.a + 1e-6 && b >= total - 1e-6 : a <= 1e-6 && b >= h.b - 1e-6);
+  /** does another way join this one between d0 and d1 (way chainages)? */
+  const joinedBetween = (d0: number, d1: number) => {
+    const path = roads.wayPath(way, Math.min(d0, d1), Math.max(d0, d1));
+    for (let k = 1; k < path.length; k++) for (const j of roads.junctions(path[k - 1], path[k]))
+      if (j.connections.some(c => c.way !== way)) return true;
+    return false;
+  };
+  // (a piece serving nothing that reaches into our works: the way on from it under them goes with them, as long as no
+  // other way joins it there; only what lies beyond our works is taken up, and that no more than the piece: STUB_LENGTH)
+  const piece = (i: number) => input.deadEnds?.find(([a, b]) => i ? b >= total - 1e-6 : a <= 1e-6);
+  const into = (i: number) => { const p = piece(i); return !!p && (i ? p[0] <= h.b + 1e-6 && !joinedBetween(h.a, p[0]) : p[1] >= h.a - 1e-6 && !joinedBetween(p[1], h.b)); };
+  const beyond = (i: number) => !!input.deadEnds?.some(([a, b]) => i ? a <= h.a + 1e-6 && b >= total - 1e-6 : a <= 1e-6 && b >= h.b - 1e-6) || into(i);
   const cutOff = ends.map((p, i) => Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6 && Math.abs(p.d - (i ? total : 0)) < 1e-6 && beyond(i) && roads.isDeadEnd(p));
   const dead = ends.map((p, i) => cutOff[i] || Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6
     && (grid.near(p).some(c => !c.structure && insideFootprint(p, c, half)) || Math.abs((i ? h.b : h.a) - p.d) < 0.01) && roads.isDeadEnd(p));
@@ -445,7 +456,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     if (cutOff[reverse ? 1 : 0]) {
       const pieces = input.deadEnds!.filter(([a, b]) => reverse ? b >= total - 1e-6 : a <= 1e-6);
       const from = reverse ? Math.min(...pieces.map(([a]) => a)) : Math.max(...pieces.map(([, b]) => b));
-      if (reverse ? turn.d < from - 1e-6 : turn.d > from + 1e-6) return planRoadRealignment({ ...input, deadEnds: undefined }, junctionRetry);
+      // (past the piece's end under our works: what is taken up beyond them, before and after, within the piece's length)
+      const outside = reverse ? (total - h.b) + (h.a - turn.d) : h.a + (turn.d - h.b), length = reverse ? total - from : from;
+      const past = reverse ? turn.d < from - 1e-6 : turn.d > from + 1e-6;
+      if (past && (outside > length + 1e-6 || joinedBetween(from, turn.d))) return planRoadRealignment({ ...input, deadEnds: undefined }, junctionRetry);
     }
     if (minor) {
       // (where that would leave a building without its road, as little as our earthworks cover: the track then ends at
