@@ -6,7 +6,7 @@ import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import type { ScenarioParams } from '../core/data/scenario';
 import { CATEGORIES } from '../core/data/categories';
 import { checkTwists, landmarkName, landmarkShape, landmarkWords, shapeRings, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type Shape, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
-import { baselineWords, GOAL_SHARE } from '../core/data/twists';
+import { baselineWords, GOAL_SHARE, missionDefaults } from '../core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup, type PackFrame } from '../core/mission-twists';
 import type { HeritageData } from '../core/heritage';
 import { corridorOfRoute } from '../core/project-motorway';
@@ -59,7 +59,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   if (!setup) { app.chip.hidden = true; app.section.hidden = true; return null; }
   const offer = setup.mission.offer;
   app.section.hidden = false;
-  const state = loadTwistState(app.scenario.id, app.presetId, offer);
+  const state = loadTwistState(app.scenario.id, app.presetId, offer, missionDefaults(setup.mission));
   const save = () => saveTwistState(app.scenario.id, app.presetId, state);
   const goal = (1 - GOAL_SHARE) * setup.mission.startBill;
   let last: { result: ProjectResult; checks: TwistCheck[] } | null = null;

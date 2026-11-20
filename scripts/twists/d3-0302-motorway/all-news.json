@@ -1,8 +1,9 @@
 {
  "preset": "d3-0302-motorway",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 2 → 12 → 24) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the St Joseph adit and the \u017dampach viaduct) and every curveball, under the goal: searches from round 4's all-news.json (seeds 2 \u2192 4 \u2192 6 \u2192 10), its bends 2\u20133 moved 30\u201380 m west by hand with the S\u00e1zava bridge painted (--edit), then searched (seed 16, STEP=0.2 WEIGHT=landmarks:6)",
  "meets": [
   "earth",
+  "landmarks",
   "curveballs"
  ],
  "goal": true,
@@ -16,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Hostěradice (on to 0303)",
+    "name": "Motorway towards Host\u011bradice (on to 0303)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -67,7 +68,7 @@
    },
    {
     "id": "route:motorway-reverse",
-    "name": "Motorway towards Jílové (from 0301)",
+    "name": "Motorway towards J\u00edlov\u00e9 (from 0301)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -159,58 +160,57 @@
      "kind": "pi",
      "pis": [
       {
-       "x": 2759.223828053339,
-       "y": 7237.879110244549,
+       "x": 2893.470016101756,
+       "y": 7241.743831434029,
        "r": null
       },
       {
-       "x": 2787.8135427621164,
-       "y": 6838.2365729199155,
+       "x": 2777.050323618976,
+       "y": 6695.986108713893,
        "r": null
       },
       {
-       "x": 2909.3130992171314,
-       "y": 5832.947956272574,
+       "x": 2845.4994270638695,
+       "y": 6098.357262107968,
        "r": null
       },
       {
-       "x": 3084.3688365816947,
-       "y": 4013.5743761884155,
+       "x": 2863.50208951585,
+       "y": 5952.933216807708,
        "r": null
       },
       {
-       "x": 3545.7307851595465,
-       "y": 3405.417286937847,
+       "x": 2839.2002929737596,
+       "y": 5462.186104974732,
+       "r": null
+      },
+      {
+       "x": 2838.291539474135,
+       "y": 5305.382779177666,
+       "r": null
+      },
+      {
+       "x": 2813.1886268043286,
+       "y": 4644.731087450175,
+       "r": null
+      },
+      {
+       "x": 3186.79872318975,
+       "y": 3556.4010021207123,
+       "r": null
+      },
+      {
+       "x": 3430.489487529824,
+       "y": 3314.469930067943,
        "r": null
       }
      ],
      "controls": {
       "structureOverrides": [
        {
-        "s0": 1950.1384909282049,
-        "s1": 2143.6127511585087,
-        "kind": 0
-       },
-       {
-        "s0": 2143.6127511585087,
-        "s1": 2154.3657993281213,
+        "s0": 2046.943860416486,
+        "s1": 3374.961096686694,
         "kind": 1
-       },
-       {
-        "s0": 2154.3657993281213,
-        "s1": 2249.310803287239,
-        "kind": 1,
-        "style": "long"
-       },
-       {
-        "s0": 3070.768086312142,
-        "s1": 3204.8621083654793,
-        "kind": 1
-       },
-       {
-        "s0": 3643.6466529625677,
-        "s1": 3772.918404674305,
-        "kind": 0
        }
       ]
      },
@@ -218,8 +218,20 @@
       "kind": "auto",
       "pins": [
        {
-        "s": 1129,
-        "z": 404.9
+        "s": 300,
+        "z": 419.3
+       },
+       {
+        "s": 1499,
+        "z": 398.4
+       },
+       {
+        "s": 2187,
+        "z": 371.6
+       },
+       {
+        "s": 3226,
+        "z": 331.3
        }
       ],
       "manualVpis": []
@@ -235,7 +247,7 @@
    "ports": [
     {
      "id": "a",
-     "name": "Jílové (from 0301)",
+     "name": "J\u00edlov\u00e9 (from 0301)",
      "position": {
       "x": 2825.3,
       "y": 7524.5,
@@ -244,7 +256,7 @@
     },
     {
      "id": "b",
-     "name": "Hostěradice (on to 0303)",
+     "name": "Host\u011bradice (on to 0303)",
      "position": {
       "x": 3602,
       "y": 3203.8,

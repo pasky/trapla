@@ -1,5 +1,5 @@
 // Twists as a first-time player meets them on the Šternberk bypass: the start screen → the twist screen (the default
-// two on: no listed monument near its planned line) → the starter with its twists card → a height pinned by dragging the profile → a
+// two on; Hands off says no listed place is near its planned line) → the starter with its twists card → a height pinned by dragging the profile → a
 // design that meets the twists and the goal, and the first news from the site (the villa) on top of it → the fix, by
 // dragging a bend on the map → the reveal → the next news at its pace → changing twists mid-game → From scratch.
 //
@@ -32,7 +32,9 @@ try {
   // ---- the twist screen ----
   await page.locator('.twist-picker').waitFor({ timeout: 30000 });
   const names = await page.locator('.twist-picker-list b').allTextContents();
-  ok(names.join() === 'Earth balance,Curveballs,Spare the forest,Few bridges,From scratch,By hand', `the twist screen lists Šternberk's twists (${names.join(', ')})`);
+  ok(names.join() === 'Earth balance,Hands off the castle,Curveballs,Spare the forest,Few bridges,From scratch,By hand', `the twist screen lists Šternberk's twists as cards (${names.join(', ')})`);
+  ok(await page.locator('.tw-card.unavailable[data-t="landmarks"]').count() === 1 && /No listed place near enough/.test(await page.locator('.tw-card[data-t="landmarks"]').textContent()),
+    'Hands off is there and says no listed place is near enough');
   ok(await page.locator('.twist-picker-list input:checked').count() === 2, 'the default two are on');
   ok(/Goal: a valid design under 792 M CZK/.test(await page.locator('.twist-picker-goal').textContent()), 'it says the goal');
   await shot('twist-screen');
@@ -118,7 +120,8 @@ try {
     await page.locator('.twist-picker').waitFor({ timeout: 30000 });
   };
   await pick('Voračice → Nová Hospoda');
-  ok(await page.locator('.twist-picker-list input:checked').count() === 2, 'D3 0305: the default twists on (Earth balance, Curveballs)');
+  ok(await page.locator('.twist-picker-list input:checked').count() === 2 && !(await page.locator('.tw-card[data-t="landmarks"] .tw-default').count()),
+    'D3 0305: Earth balance and Curveballs on; Hands off offered, off at first (no line found keeps the fort’s setting under the goal)');
   await page.locator('.twist-start').click();
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
   await game.idle(600);

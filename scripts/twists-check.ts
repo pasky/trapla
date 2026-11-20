@@ -26,7 +26,7 @@ import type { ProjectDesign, ProjectResult } from '../src/core/project';
 import { corridorOfRoute } from '../src/core/project-motorway';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
 import { checkTwists, earthShare, shapeRings, ourResults, twistFacts, useAt, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
-import { GOAL_SHARE, MISSION_TWISTS } from '../src/core/data/twists';
+import { GOAL_SHARE, missionDefaults, MISSION_TWISTS } from '../src/core/data/twists';
 import { missionLandmarks, missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
 import { CATEGORIES } from '../src/core/data/categories';
 import type { Design } from '../src/core/evaluate';
@@ -68,6 +68,10 @@ export function check(m: Mission, d: ProjectDesign, r: ProjectResult, on: readon
 export const evalDesign = (m: Mission, d: ProjectDesign) => evaluateProject(m.ctx, { epoch: 'twists', revision: 1, design: d });
 
 // ---- search ----------------------------------------------------------------------------------------
+// (STEP=0.2: bends moved a fifth as far, for a design a few metres off what it needs)
+const SCALE = Number(process.env.STEP ?? 1);
+// (WEIGHT=landmarks:5: what a twist still broken weighs, ×; a search from a design that meets it holds on to it)
+const WEIGHT: Record<string, number> = Object.fromEntries((process.env.WEIGHT ?? '').split(',').filter(Boolean).map(w => { const [k, v] = w.split(':'); return [k, Number(v)]; }));
 function find(preset: string, twists: TwistId[], goal: boolean, from: string | undefined, iters: number, seed: number, out: string) {
   const m = mission(preset);
   let rng = seed * 2654435761 % 2147483647 || 1;
@@ -86,7 +90,7 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
       // (a cap: how far over it, so the search sees the way down)
       else if (c.id === 'forest') p += 0.15 * bill + 0.05 * bill * Math.max(0, f.forestM2 / 1e4 - (m.setup.terms.forestHa ?? 0));
       else if (c.id === 'bridges') p += 0.15 * bill + 0.0005 * bill * Math.max(0, f.bridges.reduce((a, b) => a + b.s1 - b.s0, 0) - (m.setup.terms.bridgeM ?? 0));
-      else p += 0.15 * bill * Math.max(1, c.issues.reduce((a, i) => a + Math.max(1, ((i.s1 ?? 0) - (i.s0 ?? 0)) / 20), 0));
+      else p += (WEIGHT[c.id] ?? 1) * 0.15 * bill * Math.max(1, c.issues.reduce((a, i) => a + Math.max(1, ((i.s1 ?? 0) - (i.s0 ?? 0)) / 20), 0));
     }
     if (goal && r.cost.total !== null && r.cost.total > target) p += 0.5 * (r.cost.total - target);
     // a curveball's cap on the bill: how far over it
@@ -103,7 +107,7 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
   for (let k = 1; k <= iters; k++) {
     const d0 = legacyDesignForRoute(cur, routeId), d: Design = structuredClone(d0), L = curR.routes[routeId]?.legacy;
     if (!L) break;
-    const heat = 1 - k / iters, step = 30 + 170 * heat * rand();
+    const heat = 1 - k / iters, step = SCALE * (30 + 170 * heat * rand());
     const kind = rand();
     // a repair aimed at something a twist still finds: a bridge over a place that takes one, a bend pushed off a place
     const broken = curS.checks.flatMap(c => c.issues.filter(i => Number.isFinite(i.x) && (!i.routeId || i.routeId === routeId)));
@@ -127,7 +131,7 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
       else if (d.pis.length) {
         const c = placeOf(m, i.ref) ?? { x: i.x, y: i.y }, s = i.s0 ?? nearestS(L, i.x, i.y);
         const near = d.pis.map((p, k2) => ({ k2, d: Math.abs(nearestS(L, p.x, p.y) - s) })).sort((a, b) => a.d - b.d)[Math.floor(rand() * Math.min(2, d.pis.length))].k2;
-        const p = d.pis[near], dx = p.x - c.x, dy = p.y - c.y, len = Math.hypot(dx, dy) || 1, push = 20 + rand() * 120;
+        const p = d.pis[near], dx = p.x - c.x, dy = p.y - c.y, len = Math.hypot(dx, dy) || 1, push = SCALE * (20 + rand() * 120);
         d.pis[near] = { ...p, x: p.x + dx / len * push + gauss() * 15, y: p.y + dy / len * push + gauss() * 15 }; delete d.pis[near].mapped;
       }
     } else if (kind < 0.45 && d.pis.length) { const i = Math.floor(rand() * d.pis.length); d.pis[i] = { ...d.pis[i], x: d.pis[i].x + gauss() * step, y: d.pis[i].y + gauss() * step }; delete d.pis[i].mapped; }
@@ -226,7 +230,8 @@ export function checkMission(preset: string, log: (line: string) => void = conso
   const dir = `scripts/twists/${preset}`, files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.json')).sort() : [];
   const claimed = new Set<TwistId>();
   let reveal = false;
-  const defaults = DEFAULT_TWISTS.filter(t => mt.offer.includes(t));
+  const defaults = missionDefaults(mt);
+  for (const t of mt.notDefault ?? []) if (!DEFAULT_TWISTS.includes(t) || !mt.offer.includes(t)) fail(`notDefault: ${t} is not a default twist offered here`);
   for (const file of files) {
     const fx = JSON.parse(readFileSync(`${dir}/${file}`, 'utf8')) as Fixture;
     if (fx.preset !== preset) { fail(`${file}: belongs to ${fx.preset}`); continue; }

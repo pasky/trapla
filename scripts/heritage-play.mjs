@@ -81,7 +81,7 @@ try {
   await game.idle(600);
   await page.locator('#chip-twists').click(); await page.waitForTimeout(400);
   const turnov = await twistCard();
-  ok(/within 200 m of Kostel sv\. Jana Křtitele, Turnov/.test(turnov), 'Turnov: the planned line passes within 200 m of the church of St John the Baptist');
+  ok(/within 200 m of Church of St John the Baptist, Turnov/.test(turnov) && /Church of St John the Baptist, Turnov · church · 200 m ring/.test(turnov), 'Turnov: the planned line passes within 200 m of the church of St John the Baptist');
   await page.evaluate(() => window.trapla.lookAt(2869, 3314, 1500, 0, 55)); await game.still();
   ok(await page.locator('.twist-label.landmark.broken').count() >= 1, 'the church’s ring on the map, red, named');
   await game.park(); await shot('i35-turnov-church-ring');
@@ -89,7 +89,7 @@ try {
   await game.open('scenario=d11&preset=d11-motorway');
   await game.idle(600);
   await page.locator('#chip-twists').click(); await page.waitForTimeout(400);
-  ok(/Pomník rakouských dělostřelců z války 1866/.test(await twistCard()), 'D11: the planned line passes the memorial to the Austrian gunners of 1866');
+  ok(/Memorial to the Austrian gunners of 1866, Trutnov/.test(await twistCard()), 'D11: the planned line passes the memorial to the Austrian gunners of 1866');
   await page.locator('#twists li[data-id="landmarks"] button', { hasText: 'Show' }).first().click();
   await game.still(); await game.park(); await shot('d11-memorial-ring');
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);

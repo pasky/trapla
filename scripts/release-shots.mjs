@@ -85,6 +85,15 @@ try {
     const box = await page.locator('[data-start-here] button').boundingBox();
     ok(box && box.y + box.height < 800, 'at 1280 × 800 the Start here button is in view without scrolling');
     await shot(page, 552, 'start-screen-1280x800');
+    // its twist screen: a card per twist, each a checkbox, all of it in view (scripts/twist-picker-shots.mjs looks closer)
+    await page.locator('[data-start-here] button').click();
+    await page.locator('.twist-picker').waitFor({ timeout: 30000 });
+    const boxes = page.getByRole('checkbox');
+    const fit = await page.evaluate(() => { const r = document.querySelector('.twist-start').getBoundingClientRect(); return { scroll: document.querySelector('.twist-picker').scrollHeight, bottom: r.bottom }; });
+    ok(await boxes.count() === 8 && await page.locator('.tw-card svg.tw-art').count() === 8 && fit.scroll <= 800 && fit.bottom <= 800,
+      `at 1280 × 800 the twist screen's eight cards, each a checkbox with its picture, and Start are in view without scrolling (${await boxes.count()} boxes, ${fit.scroll} px)`);
+    ok(/Chapel of St Roch/.test(await page.locator('.tw-card[data-t="landmarks"]').textContent()) && await page.locator('.tw-card.on').count() === 3,
+      'Hands off names the chapel of St Roch; the three default twists are on');
     await context.close();
   }
   // ---- older saves: a save of a retired mission is listed apart ----

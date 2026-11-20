@@ -2,7 +2,7 @@
 // scripts/twists-check.ts finds a VALID reference design that meets it (scripts/twists/<preset>/*.json, tests/twists.test.ts),
 // and only where it asks for something: the starting design breaks it, or it rules out what the cheap designs use.
 // Game rules, not norms: none changes the bill or validity.
-import type { LandmarkKind, TwistId, TwistTerms } from '../twist-words';
+import { DEFAULT_TWISTS, type LandmarkKind, type TwistId, type TwistTerms } from '../twist-words';
 import type { MonumentKind } from '../heritage';
 
 /** Earth balance: at most this share of the fill trucked away or brought in. A game rule: the starters bring in
@@ -16,11 +16,12 @@ export const EARTH_SHARE = 0.1;
  * chapel's, memorial's or technical monument's its own plot and approach, a cross's or a statue's its verge. */
 export const LANDMARK_RING: Record<MonumentKind, number> = { castle: 400, fort: 200, church: 200, chapel: 100, memorial: 100, technical: 100, cross: 50 };
 /** "Hands off the castle" where the planned line keeps out of every monument's own ring (LANDMARK_RING) and every heritage
- * area: the mission puts the monuments nearest it in play (`MissionTwists.inPlay`, `setting`) with this wider ring, their
- * setting, m. A game scale, the same for every monument of a kind; within the sizes of the protection zones NPÚ has declared
- * round monuments of the kind (research/102 "Round 5": the larger quarter of 563 zones reach 470 m round churches, 440 m round
- * memorials, 370 m round technical monuments, 660 m round forts, 940 m round castles; the largest 2.3, 1.7, 0.9, 1.6, 5.0 km).
- * Chapels count as churches (two declared zones only); crosses and statues keep 200 m (three zones, the largest 190 m). */
+ * area: the mission names the monuments nearest it (`MissionTwists.inPlay`, `setting`) with this wider ring, their
+ * setting, m. A game scale, the same for every monument of a kind, about as large as the larger quarter of the
+ * protection zones NPÚ has declared round monuments of that kind (research/102 "Round 5", pipeline/heritage_zone_sizes.py:
+ * of 455 zones in force, the upper quartile of their equivalent radii is 970 m round castles, 550 m round churches, 700 m
+ * round forts, 440 m round memorials, 500 m round technical monuments; the largest 5.0, 2.3, 1.6, 1.7, 0.9 km). Chapels
+ * count as churches (one declared zone only); crosses and statues keep 200 m (two zones, the larger 190 m). */
 export const SETTING_RING: Record<MonumentKind, number> = { castle: 1000, fort: 600, church: 600, chapel: 600, memorial: 600, technical: 600, cross: 200 };
 /** A landmark a mission names on its twist screen (the pack's heritage.json by its ÚSKP number; scripts/twists-check.ts checks
  * each is there, of that kind, and that the starter breaks one of them and nothing else): its name in the player's words;
@@ -42,6 +43,9 @@ export interface MissionTwists {
   inPlay?: readonly InPlay[];
   /** Hands off the castle not offered: why, in plain words (the twist screen says it) */
   noLandmarks?: string;
+  /** default twists (DEFAULT_TWISTS) offered here but not on at first: no reference meets them with the other defaults
+   * under the goal (scripts/twists-check.ts checks that one meets them, and the rest of the defaults with the goal) */
+  notDefault?: readonly TwistId[];
   /** the starting design's bill as the game prices it (scripts/twists-check.ts checks it), CZK */
   startBill: number;
   terms: Omit<TwistTerms, 'maxTravelMin' | 'landmarks'>;
@@ -99,5 +103,8 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
 };
 
 export const missionTwists = (presetId: string): MissionTwists | undefined => MISSION_TWISTS[presetId];
+/** the twists a mission starts with: the owner's default difficulty, where offered and reachable together */
+export const missionDefaults = (m: Pick<MissionTwists, 'offer' | 'notDefault'>): TwistId[] =>
+  DEFAULT_TWISTS.filter(t => m.offer.includes(t) && !m.notDefault?.includes(t));
 /** what the goal is measured from, in the player's words */
 export const baselineWords = (m: MissionTwists) => m.baseline ?? 'the planned line';

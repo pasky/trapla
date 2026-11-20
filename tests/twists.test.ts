@@ -3,11 +3,11 @@
 // and the goal can be met together (the reveal can be reached); and every word of them a player reads is plain.
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
-import { MISSION_TWISTS } from '../src/core/data/twists';
+import { MISSION_TWISTS, SETTING_RING } from '../src/core/data/twists';
 import { CURVEBALLS } from '../src/core/data/curveballs';
 import { PRESETS } from '../src/core/data/scenario';
 import { jargonIn } from '../src/core/terms';
-import { checkTwists, inside, landmarkShape, twistLine, TWIST_NAMES, TWIST_ORDER, zoneRuns, type TwistFacts } from '../src/core/twists';
+import { checkTwists, inside, landmarkShape, landmarkWords, OFF_AT_FIRST, twistLine, twistShort, TWIST_NAMES, TWIST_ORDER, zoneRuns, type TwistFacts } from '../src/core/twists';
 import { missionLandmarks } from '../src/core/mission-twists';
 import type { HeritageData } from '../src/core/heritage';
 import type { Result } from '../src/core/evaluate';
@@ -16,9 +16,10 @@ describe('twists', () => {
   it('say what they ask in plain words', () => {
     const texts: string[] = [];
     const terms = { earthShare: 0.1, bridgeM: 300, forestHa: 5, budget: 2e9, maxTravelMin: 4, landmarks: [] };
-    for (const t of TWIST_ORDER) texts.push(TWIST_NAMES[t], twistLine(t, terms));
+    for (const t of TWIST_ORDER) texts.push(TWIST_NAMES[t], twistLine(t, terms), twistShort(t, terms));
+    texts.push(OFF_AT_FIRST);
     for (const c of Object.values(CURVEBALLS)) texts.push(c.headline, c.story, c.ask, c.zone?.label ?? '');
-    for (const m of Object.values(MISSION_TWISTS)) texts.push(m.real.story, m.real.priceText);
+    for (const m of Object.values(MISSION_TWISTS)) texts.push(m.real.story, m.real.priceText, m.noLandmarks ?? '', ...(m.inPlay ?? []).map(p => landmarkWords({ ...p, ring: 600 })));
     // what the card says, broken and met
     const facts: TwistFacts = { valid: true, cost: 1e9, travelMin: 4, cut: 1e5, fill: 2e5, surplus: 0, deficit: 5e4, forestM2: 9e4,
       tunnels: [{ routeId: 'r', s0: 0, s1: 300, x: 0, y: 0 }], bridges: [{ routeId: 'r', s0: 0, s1: 400, x: 0, y: 0 }], homes: [{ j: 1, x: 0, y: 0 }], results: [] };
@@ -58,6 +59,9 @@ describe('twists', () => {
     const zone = landmarkShape(found[0]);
     expect([inside(zone, 1200, 0), inside(zone, 1500, 0), inside(zone, 2500, 0)]).toEqual([true, false, false]); // the hole is outside
     expect(inside(zone, found[0].x, found[0].y)).toBe(true); // its name stands in it, not in the hole
+    // a monument the mission names with its setting: the wider ring and the mission's name for it
+    const set = missionLandmarks({ initial: { pis: [] } } as never, frame, heritage, [{ code: '3', name: 'Cross at Ves', kind: 'cross', setting: true }]);
+    expect(set.find(l => l.code === '3')).toMatchObject({ name: 'Cross at Ves', ring: SETTING_RING.cross, setting: true });
     // an end in the hole, 100 m from the zone's ground: the zone still counts
     expect(missionLandmarks({ initial: { pis: [] } } as never, { ...frame, a: { x: 1500, y: 0 } }, heritage).map(l => l.name)).toContain('Near zone');
   });

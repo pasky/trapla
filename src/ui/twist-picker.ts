@@ -6,8 +6,8 @@
 import './scenario-picker.css';
 import './twist-picker.css';
 import type { ScenarioParams } from '../core/data/scenario';
-import { baselineWords, GOAL_SHARE, LANDMARK_RING, missionTwists, SETTING_RING, type InPlay, type MissionTwists } from '../core/data/twists';
-import { DEFAULT_TWISTS, landmarkWords, twistLine, twistShort, TWIST_NAMES, TWIST_ORDER, type TwistId } from '../core/twist-words';
+import { baselineWords, GOAL_SHARE, LANDMARK_RING, missionDefaults, missionTwists, SETTING_RING, type InPlay, type MissionTwists } from '../core/data/twists';
+import { landmarkWords, OFF_AT_FIRST, twistLine, twistShort, TWIST_NAMES, TWIST_ORDER, type TwistId } from '../core/twist-words';
 import { loadTwistState } from './twist-state';
 import { twistArt } from './twist-art';
 import { validHeritageData, zoneRings } from '../core/heritage';
@@ -67,7 +67,7 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
   const offer = TWIST_ORDER.filter(t => mission.offer.includes(t));
   // (the cards: what is offered, and Hands off where the mission says why not)
   const cards = TWIST_ORDER.filter(t => offer.includes(t) || (t === 'landmarks' && !!mission.noLandmarks));
-  const state = loadTwistState(scenario.id, presetId, offer);
+  const defaults = missionDefaults(mission), state = loadTwistState(scenario.id, presetId, offer, defaults);
   const terms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: [] };
   const landmarks = landmarksWords(mission);
   const on = new Set(state.on);
@@ -89,7 +89,7 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
   root.querySelector('.twist-picker-goal')!.textContent = `Goal: a valid design under ${(goal / (bn ? 1e9 : 1e6)).toLocaleString('en-US', { maximumFractionDigits: bn ? 2 : 0 })} ${bn ? 'bn' : 'M'} CZK, ${Math.round(GOAL_SHARE * 100)} % under ${baselineWords(mission)}.`;
   const list = root.querySelector('ul')!, start = root.querySelector<HTMLButtonElement>('.twist-start')!;
   const detail = root.querySelector<HTMLElement>('.twist-picker-detail')!;
-  const longOf = (t: TwistId) => t === 'landmarks' ? landmarks.long : twistLine(t, terms);
+  const longOf = (t: TwistId) => `${t === 'landmarks' ? landmarks.long : twistLine(t, terms)}${mission.notDefault?.includes(t) ? ` ${OFF_AT_FIRST}` : ''}`;
   // one card per twist; built once, its state kept in step (the focus stays where it is)
   const boxes = new Map<TwistId, HTMLInputElement>();
   for (const t of cards) {
@@ -105,7 +105,7 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
     const name = document.createElement('b'); name.textContent = TWIST_NAMES[t];
     const line = document.createElement('small'); line.textContent = t === 'landmarks' ? landmarks.short : twistShort(t, terms);
     const desc = document.createElement('span'); desc.id = `tw-desc-${t}`; desc.hidden = true; desc.textContent = longOf(t);
-    label.insertAdjacentHTML('beforeend', `<span class="tw-check" aria-hidden="true">${CHECK}</span>${DEFAULT_TWISTS.includes(t) && here ? '<span class="tw-default">Default</span>' : ''}${twistArt(t)}`);
+    label.insertAdjacentHTML('beforeend', `<span class="tw-check" aria-hidden="true">${CHECK}</span>${defaults.includes(t) ? '<span class="tw-default">Default</span>' : ''}${twistArt(t)}`);
     label.prepend(box); label.append(name, line, desc);
     const tell = () => { detail.textContent = `${TWIST_NAMES[t]}: ${longOf(t)}`; };
     label.addEventListener('pointerenter', tell); box.addEventListener('focus', tell);

@@ -19,8 +19,9 @@ export interface TwistState {
   scratch: boolean;
 }
 const key = (scenarioId: string, presetId: string) => `trapla.twists.v1.${scenarioId}.${presetId}`;
-export function loadTwistState(scenarioId: string, presetId: string, offer: readonly TwistId[]): TwistState {
-  const fresh: TwistState = { on: DEFAULT_TWISTS.filter(t => offer.includes(t)), chosen: false, fired: [], playMs: 0, firedAtMs: 0, editsSince: 0, firstValid: false, scratch: false };
+/** `defaults`: what a fresh start has on (data/twists.ts missionDefaults; else the default twists offered) */
+export function loadTwistState(scenarioId: string, presetId: string, offer: readonly TwistId[], defaults?: readonly TwistId[]): TwistState {
+  const fresh: TwistState = { on: (defaults ?? DEFAULT_TWISTS).filter(t => offer.includes(t)), chosen: false, fired: [], playMs: 0, firedAtMs: 0, editsSince: 0, firstValid: false, scratch: false };
   try {
     const raw = localStorage.getItem(key(scenarioId, presetId));
     if (!raw) return fresh;

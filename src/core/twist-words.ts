@@ -7,6 +7,9 @@ export const TWIST_ORDER: readonly TwistId[] = ['earth', 'landmarks', 'curveball
 /** the owner's default difficulty, where a mission offers them */
 export const DEFAULT_TWISTS: readonly TwistId[] = ['earth', 'landmarks', 'curveballs'];
 
+/** a default twist a mission has off at first (data/twists.ts notDefault), on the twist screen */
+export const OFF_AT_FIRST = 'Off at first here: no line we found keeps it and the goal together.';
+
 /** What the "Hands off" twist keeps clear (a pack's heritage.json, core/heritage.ts): a listed monument with a ring
  * round it, or a heritage area (a protection zone, a heritage reserve or zone) itself. */
 export type LandmarkKind = MonumentKind | 'zone';
