@@ -2432,7 +2432,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   (the middle stage's 1.5 km reference crossed one lengthwise; its reference is 1.0 km); a bridge running 400 m along a
   railway right under it stands its piers on the track where no frame pier's columns miss it (a 100 m drag on the last
   stage, 1 of 72); Auto takes the Pelešany stretch in cuts and on bridges and buys out homes where the real design
-  tunnels under the houses; the interchanges are not built.
+  tunnels under the houses; the interchanges are not built (slip roads can be built by hand: "Slip roads on any divided road").
 - **A reroute's drag on a whole route was not live** (found here, not new; fixed: "Reroute drags on whole routes"
   below): dragging the longest reroute (a 1.4 km diversion along our embankment at km 14.4 of the whole I/35) took
   latency p50 70–95 ms (budget 60), the whole D3's 170 ms: its first drag was never a window.
@@ -2511,6 +2511,42 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   embankments is not filled; a small
   light speck can remain at a dug ridge's nose; slip-road traffic starts as the average class II road (labelled);
   the A.4.N proxy for what the motorway's norm includes.
+
+## Slip roads on any divided road: the four-lane S 21.5 (owner request, cost model 60, 2026-11-20)
+
+- **Bug (owner):** on the I/35 Turnov mission a slip road said "Slip roads not yet on a four-lane road · Engine limit: slip
+  roads are built to the D 27.5 motorway's widths and price only". The limit is gone: a slip road meets any paired road the
+  game builds (D 27.5, S 21.5, any `PAIRED_SECTIONS` entry) at that road's own cross-section, speed and price
+  (`core/slip-roads.ts SLIP_SECTIONS`, `laneLengths`, `SlipHost`; research/90 §4c).
+- **Lanes:** the speed-change lane takes the paved shoulder's place there too (VL 3 400.11–12 "na dálnicích a rychlostních
+  silnicích"; S 21.5 is the old R 21.5): 3.50 m + 0.25 m guide strip + 0.25 m shoulder, the S 21.5's carriageway paved
+  **2.5 m wider** along it (D 27.5: 0.5 m), its gore 10.75 m off the line (D 27.5: 11.75). Lengths by the paired road's design
+  speed at the gore (a slowed bend's there; ČSN 73 6102 as the ČVUT K612 course reproduces it): at 110 km/h exit 198 m (Lv
+  100 + Ld 98), entry 295 m; at 100: 151 / 255 m; at 90: 117 / 230 m; from 120 up the D35 design's 234 / 295 m as before (a
+  D 27.5 at 110 now gets the 110 row).
+- **Slip road:** the same V 7.25 at 50 / 40 km/h (no class-I rule found; VL 3's slip-road shoulder covers both).
+- **Price:** the lane per m² of the road's own SPK row (S 21.5: D 21.5 rows); the credit for earth-built slip roads already in the
+  price holds, SPK putting them in every divided road "od kategorie S 20,75 výše" (a 5.7 km stage: 5.7 / 7 of one interchange).
+- **Drawn:** along each lane the paired road's formation is drawn that much wider on its side (its slope moved out, a deck
+  wider on a bridge, its noise wall moved out with it: `Result.widenL / widenR`, display only, `render/slip-merge.ts`), the
+  paving beyond the old shoulder drawn (`View.setLaneMarks` paving strips), merge holds, dug ridges, gore credits, clashes
+  and the cards in the road's own widths and words ("the four-lane road", "our road").
+- **Found on the way (fixed, the model's change):** (0) a slip road was credited for the motorway's formation, and held at
+  its level, out to the lane's widening past the gore too, where the lane has ended: an entry running 2.5 m off the S 21.5's
+  crown was credited for 158 m "on its formation" (−20.5 M); now the formation is the road's own past the gore (D3 0303 5.7349
+  → 5.7382 bn, D3 0304 10.2330 → 10.2377 bn). (1) A slip road's crossroads on the road its motorway crosses was one
+  interchange with that crossing only where the two were one OSM way; a road mapped as several ways (road II/610 /
+  Přepeřská) flagged "earthworks closer than 10 m" and missed "joins the road on the ramp to its bridge" (now: the ways it
+  runs on along its straightest continuation, out to 750 m from the junction, `roadWays`). (2) At a gore where the slip
+  road starts on a fill the motorway's slope was ended under it and the slip road's own end section stood open: a hole to
+  the sky (the motorway's slope now closes it).
+- **Result:** the I/35 Turnov diamond at km 0.98 (road II/610 over the four-lane road; gores 350 m either side, crossroads on
+  road II/610 230 m south-west and on Přepeřská 150 m north-east): 6.2055 bn valid (+576 M; the north-east slip roads buy out
+  houses along Přepeřská), `tests/fixtures/interchange/i35-turnov-diamond.json`, `tests/slip-roads.test.ts`,
+  `scripts/interchange-scene.mjs` section 4 (screenshots 710–719).
+- **Known gaps:** as for the motorway's (above); the noise model's barrier still stands at the crown edge where a lane widens
+  it (drawn moved out); the motorway crossing's reroutes are still not seen by its slip roads (a slip road crossing a way the
+  motorway reconnects is "two roads change the same old road": I/35 km 1.67, a diamond on the class III Nudvojovická).
 
 ## Twists and curveballs (owner request, no model version, 2026-11-20)
 
@@ -2903,3 +2939,22 @@ main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before;
   and D11 road III/3012 with the real mouse (no camera move, the crossing where it was dragged, undo labels), a second
   slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
   (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.
+
+## Start over keeps its Undo; the frames after Start over (playtest flake, no model version, 2026-11-20)
+
+The toast's Undo after Start over vanished in `scripts/playtest.mjs` on the built site under load. No store event was
+the cause; the toast's own 6 s ran out before the page could take the click. Now the 6 s count only while the page
+answers (`ui/toast.ts`: from the next idle moment, a late tick counts as on time), and only the player's next edit
+hides it (a gesture under way, or a step committed / undone / redone: `ProjectStore.historyMoves`). playtest.mjs
+blocks the page 7 s after Start over and checks the Undo is still there.
+
+Performance item, measured on D11 (`scenario=d11`, the demo design, Start over from the design panel, host load ≈ 12):
+- in headless Chromium on SwiftShader (the browser gates' default, no `--gpu`): the first two frames after Start over
+  take ≈ 2.1 s each: one at once, one ≈ 2.2 s later when the new scene first draws. No main-thread long task
+  (PerformanceObserver `longtask`: none or one of 74 ms). The worker's evaluation returns at ≈ 0.85–1.0 s and the scene
+  is idle (`whenIdle`) at ≈ 1.2–1.4 s, so the main thread is free. The time goes into software GL drawing the
+  overview the camera reset shows, and into the first draw of the rebuilt meshes. A Playwright click waits for stable
+  frames, so it lands ≈ 2–3.3 s after Start over;
+- with the GPU (`GPU=1`): no frame over 50 ms, the result at ≈ 0.53–0.63 s, idle at ≈ 0.76–0.88 s.
+Not a player-facing problem on real hardware. It slows and destabilises the SwiftShader browser gates. Open: find what
+those two frames draw (the overview's buildings / terrain at full detail, or buffer uploads) before changing it.

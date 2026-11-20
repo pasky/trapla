@@ -1,10 +1,12 @@
 // Slip roads of a hand-built interchange (core/slip-roads.ts): where a slip road meets a carriageway, its
 // speed-change lane, and a whole diamond the owner asked to build by hand (D3 0304 at km 4.49, road II/114 under
 // the motorway's bridge: four slip roads, saved from the game; the exit and the entry on each side share a
-// junction), valid and priced; and one at D3 0303 km 3.06, where the motorway moves aside tracks a slip road crosses.
+// junction), valid and priced; one at D3 0303 km 3.06, where the motorway moves aside tracks a slip road crosses; and one
+// on the four-lane class I road S 21.5 of the I/35 Turnov stage (km 0.98, road II/610 over it), on that road's own lanes.
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { dugRidge, gore, MERGE_GAP, MERGE_REACH, MERGE_SLOPE, MERGE_TOLERANCE, mergeBands, SLIP_ROAD, speedChangeLane } from '../src/core/slip-roads';
+import { dugRidge, gore, laneLengths, MERGE_GAP, MERGE_REACH, MERGE_SLOPE, MERGE_TOLERANCE, mergeBands, SLIP_ROAD, SLIP_SECTIONS, speedChangeLane } from '../src/core/slip-roads';
+import { PAIRED_SECTIONS } from '../src/core/data/motorway';
 import { squareBend } from '../src/ui/road-edit';
 import { CATEGORIES } from '../src/core/data/categories';
 import { ENDPOINT_JUNCTIONS } from '../src/core/data/urban';
@@ -19,29 +21,56 @@ const line = (bridge: [number, number] = [0, -1]) => {
     kind: s.map(v => v >= bridge[0] && v <= bridge[1] ? 1 : 0) } as unknown as Result;
 };
 
+const D = SLIP_SECTIONS['D27.5'], D130 = { category: 'D27.5' as const, speed: 130 };
 describe('a slip road meets one carriageway', () => {
   it('its gore lies on the side of its traffic, the lane before it (an exit) or after it (an entry)', () => {
     const l = line();
     // forward (+x) traffic keeps right: the gore is at y < 0; the other direction's at y > 0
-    expect(gore(l, 1000, 1)).toMatchObject({ x: 1000, z: 300, travel: { x: 1, y: 0 } });
-    expect(gore(l, 1000, 1).y).toBeCloseTo(-SLIP_ROAD.goreOffset);
-    expect(gore(l, 1000, -1).y).toBeCloseTo(SLIP_ROAD.goreOffset);
+    expect(gore(l, 1000, 1, 'D27.5')).toMatchObject({ x: 1000, z: 300, travel: { x: 1, y: 0 } });
+    expect(gore(l, 1000, 1, 'D27.5').y).toBeCloseTo(-D.goreOffset);
+    expect(gore(l, 1000, -1, 'D27.5').y).toBeCloseTo(D.goreOffset);
     const at = { s0: 0, s1: 100 };
-    expect(speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', at)).toMatchObject({ s0: 1000 - 234, s1: 1000, violations: [] });
-    expect(speedChangeLane(l, 1000, 1, 'entry', 50, 'hilly', at)).toMatchObject({ s0: 1000, s1: 1000 + 295 });
-    expect(speedChangeLane(l, 1000, -1, 'exit', 50, 'hilly', at)).toMatchObject({ s0: 1000, s1: 1000 + 234 });
+    expect(speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', at, D130)).toMatchObject({ s0: 1000 - 234, s1: 1000, violations: [] });
+    expect(speedChangeLane(l, 1000, 1, 'entry', 50, 'hilly', at, D130)).toMatchObject({ s0: 1000, s1: 1000 + 295 });
+    expect(speedChangeLane(l, 1000, -1, 'exit', 50, 'hilly', at, D130)).toMatchObject({ s0: 1000, s1: 1000 + 234 });
     // paved 0.5 m wider along it, the taper at half
-    const exit = speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', at);
-    expect(exit.area.ground).toBeCloseTo(SLIP_ROAD.widening * (234 - 100 / 2), 0);
+    const exit = speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', at, D130);
+    expect(exit.area.ground).toBeCloseTo(D.widening * (234 - 100 / 2), 0);
     expect(exit.lines[0].every(p => p.y < 0)).toBe(true);
   });
   it('a lane past the motorway\'s end, or into a tunnel, is a problem; on a bridge it is priced as bridge', () => {
     const l = line([1100, 1200]);
-    expect(speedChangeLane(l, 100, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }).violations.map(v => v.fix)).toEqual(['Move this end at least 140 m further along the motorway']);
-    const over = speedChangeLane(l, 1000, 1, 'entry', 50, 'hilly', { s0: 0, s1: 100 });
+    expect(speedChangeLane(l, 100, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, D130).violations.map(v => v.fix)).toEqual(['Move this end at least 140 m further along the motorway']);
+    const over = speedChangeLane(l, 1000, 1, 'entry', 50, 'hilly', { s0: 0, s1: 100 }, D130);
     expect(over.area.bridge).toBeGreaterThan(40);
     const tunnel = line([1100, 1200]); for (let i = 110; i <= 120; i++) (tunnel.kind as unknown as number[])[i] = 2;
-    expect(speedChangeLane(tunnel, 1000, 1, 'entry', 50, 'hilly', { s0: 0, s1: 100 }).violations.map(v => v.title)).toEqual(['Its entry lane runs into a tunnel']);
+    expect(speedChangeLane(tunnel, 1000, 1, 'entry', 50, 'hilly', { s0: 0, s1: 100 }, D130).violations.map(v => v.title)).toEqual(['Its entry lane runs into a tunnel']);
+  });
+});
+
+describe('a slip road on a four-lane road (S 21.5) meets it at its own cross-section, speed and price', () => {
+  it('its lane takes the paved shoulder\'s place; its lengths follow the road\'s design speed', () => {
+    const l = line(), d = PAIRED_SECTIONS['S21.5'], through = d.median / 2 + d.innerPavedShoulder + d.innerLane + d.outerLane;
+    // the gore on the speed-change lane's middle, beside the 3.50 + 3.25 m lanes
+    expect(gore(l, 1000, 1, 'S21.5').y).toBeCloseTo(-(through + 0.25 + 1.75));
+    const exit = speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, { category: 'S21.5', speed: 110 });
+    // where full width, the carriageway is paved out to the lane's own 0.25 m shoulder: its 1.5 m paved shoulder is gone
+    const outer = Math.max(...exit.lines[2].map(p => -p.y + p.halfWidth!));
+    expect(outer).toBeCloseTo(through + 0.25 + 3.5 + 0.25);
+    expect(exit.widen.every(w => w.extra <= outer - (through + d.outerPavedShoulder) + 1e-9)).toBe(true);
+    // billed per m² of the road's own SPK row (D 21.5), the taper at half
+    const per = CATEGORIES['S21.5'];
+    expect(exit.cost / exit.area.ground).toBeCloseTo(per.normPerKm.hilly / 1000 / per.crownWidth);
+    expect(exit.area.ground).toBeCloseTo(SLIP_SECTIONS['S21.5'].widening * (exit.length - laneLengths(110).exit.taper / 2), 0);
+    // slower roads need shorter lanes (ČSN 73 6102); a D 27.5 at 120–130 keeps the D35 design's 234 / 295 m
+    const at = (v: number, k: 'exit' | 'entry') => laneLengths(v)[k].length[50];
+    expect(at(90, 'exit')).toBeLessThan(at(100, 'exit')); expect(at(100, 'exit')).toBeLessThan(at(110, 'exit'));
+    expect([at(90, 'entry'), at(100, 'entry'), at(110, 'entry')]).toEqual([230, 255, 295]);
+    expect([at(130, 'exit'), at(120, 'exit'), at(130, 'entry')]).toEqual([234, 234, 295]);
+    expect(exit.length).toBe(at(110, 'exit'));
+    // at a bend slowed to 90 km/h, its row there
+    const slowed = { category: 'S21.5' as const, speed: 110, stretches: [{ s0: 0, s1: 900, speed: 110 }, { s0: 900, s1: 2000, speed: 90 }] };
+    expect(speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, slowed).length).toBe(at(90, 'exit'));
   });
 });
 
@@ -49,14 +78,14 @@ describe('a slip road meets the motorway level and the road square', () => {
   it('beside the motorway it is held within a low slope\'s fall of its height, then let go', () => {
     // a slip road leaving a level motorway along +x (its line 13.5 m off) and diverging 1 m in 10
     const l = line(), xy: number[] = [];
-    for (let k = 0; k <= 40; k++) xy.push(1000 + 10 * k, -(SLIP_ROAD.goreOffset + k));
-    const bands = mergeBands(xy, 'a', l), edges = CATEGORIES['D27.5'].crownWidth / 2 + SLIP_ROAD.widening + CATEGORIES['V7.25'].crownWidth / 2;
+    for (let k = 0; k <= 40; k++) xy.push(1000 + 10 * k, -(D.goreOffset + k));
+    const bands = mergeBands(xy, 'a', l, 'D27.5'), edges = CATEGORIES['D27.5'].crownWidth / 2 + CATEGORIES['V7.25'].crownWidth / 2;
     expect(bands[0]).toMatchObject({ s: 0, min: 300 - MERGE_TOLERANCE, max: 300 + MERGE_TOLERANCE });
     for (const b of bands) {
-      const gap = SLIP_ROAD.goreOffset + b.s / Math.hypot(10, 1) - edges;
+      const gap = D.goreOffset + b.s / Math.hypot(10, 1) - edges;
       expect(b.max - 300).toBeCloseTo(MERGE_TOLERANCE + Math.max(0, gap - MERGE_GAP) / MERGE_SLOPE, 1);
     }
-    expect(SLIP_ROAD.goreOffset + bands.at(-1)!.s / Math.hypot(10, 1) - edges).toBeLessThanOrEqual(MERGE_REACH + 1);
+    expect(D.goreOffset + bands.at(-1)!.s / Math.hypot(10, 1) - edges).toBeLessThanOrEqual(MERGE_REACH + 1);
   });
   it('Build → Slip road bends it to meet a crossing road square, kept clear of the motorway where the road is askew', () => {
     const g = { x: 0, y: -13.5, travel: { x: 1, y: 0 } }, first = { x: 150, y: -21.5 };
@@ -117,7 +146,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   it('a slip road with both ends on the motorway is a problem and earns no credit (review: it was credited twice)', () => {
     const d = structuredClone(design), first = d.routes.find(q => q.name === 'Slip road')!;
     const line = run({ ...d, routes: d.routes.slice(0, 2) }).routes['route:motorway-forward'].legacy!, k = Math.round(4160 / line.ds);
-    const g = gore(line, line.s[k], 1);
+    const g = gore(line, line.s[k], 1, 'D27.5');
     first.endpoints.b = { position: { x: g.x, y: g.y, z: g.z }, anchor: { kind: 'route', routeId: 'route:motorway-forward', s: g.s }, binding: 'resolved' };
     if (first.alignment.kind === 'pi') first.alignment.pis = [];
     const r = run(d);
@@ -150,4 +179,28 @@ describe('a slip road is drawn with its own markings', () => {
     expect(sections).toBeLessThan(Math.min(RAIL_SECTION, RAIL2_SECTION, CARRIAGEWAY_SECTION, PAIRED_SECTION));
     expect(ROAD_SECTIONS).toBe(PAIRED_SECTION + 1);
   });
+});
+
+describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`public/scenarios/i35-turnov/${f}`)))('a diamond on a four-lane road', async () => {
+  const { projectContext } = await import('../scripts/eval-project');
+  const design = JSON.parse(readFileSync('tests/fixtures/interchange/i35-turnov-diamond.json', 'utf8')) as ProjectDesign;
+  const run = (d: ProjectDesign) => evaluateProject(projectContext(d).ctx, { epoch: 'e', revision: 1, design: d });
+  it('I/35 Turnov km 0.98, road II/610 (built in the game): valid and priced on the S 21.5\'s own lanes, its bill unchanged', () => {
+    const r = run(design), slips = design.routes.filter(q => q.name.startsWith('Slip road'));
+    expect(slips).toHaveLength(4);
+    expect(r.issues.map(i => i.violation.title)).toEqual([]);
+    expect(r.valid).toBe(true);
+    expect(r.cost.total).not.toBeNull();
+    const alone = run({ ...design, routes: design.routes.filter(q => !slips.includes(q)) });
+    expect(r.routes['route:motorway-forward'].legacy!.cost.total).toBe(alone.routes['route:motorway-forward'].legacy!.cost.total);
+    // its lanes at 110 km/h, 2.5 m wider than its paved shoulder; the D 21.5 row's earth-built slip roads credited once
+    const lanes = r.works.items.filter(w => w.id.includes(':lane:')).map(w => w.label!);
+    expect(lanes.sort()).toEqual([...Array(2).fill('Entry lane on the four-lane road, 295 m (its hard shoulder, paved 2.5 m wider)'),
+      ...Array(2).fill('Exit lane on the four-lane road, 198 m (its hard shoulder, paved 2.5 m wider)')]);
+    const allowance = r.works.items.filter(w => w.label?.startsWith('Already in the four-lane road\'s price')).reduce((t, w) => t + w.cost, 0);
+    // (a 5.7 km stage: its price includes 5.7 / 7 of one interchange)
+    const km = r.routes['route:motorway-forward'].legacy!.length / 1000;
+    expect(allowance).toBeCloseTo(-Math.min(1, km * SLIP_ROAD.allowance.perKm) * SLIP_ROAD.allowance.perInterchange, -3);
+    expect(r.cost.total! - alone.cost.total!).toBeGreaterThan(100e6);
+  }, 120_000);
 });

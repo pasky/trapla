@@ -12,10 +12,15 @@ export type EarthworkRoute = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'grade
   wallSurfaceL?: Float64Array; wallSurfaceR?: Float64Array;
   /** a hairpin's widened lanes, extra crown on each side (Result.widen) */
   widen?: Float32Array;
+  /** extra crown on one side (a speed-change lane's paving, Result.widenL / widenR) */
+  widenL?: Float32Array; widenR?: Float32Array;
   /** where a cutting's face meets another road's cutting face beside it (render/slip-merge.ts): the height of that
    * ridge at its daylight point (NaN: the face ends on the ground). Drawn: no ground collar beyond it. */
   apexL?: Float32Array; apexR?: Float32Array;
 };
+/** Extra crown at station i on one side (side > 0: left), m: a hairpin's and a speed-change lane's. */
+export const crownExtra = (r: Pick<EarthworkRoute, 'widen' | 'widenL' | 'widenR'>, i: number, side: number) =>
+  (r.widen?.[i] ?? 0) + ((side > 0 ? r.widenL : r.widenR)?.[i] ?? 0);
 export function daylightPoint(r: EarthworkRoute, i: number, side: number, extra = 0) {
   const off = ((side > 0 ? r.dayL[i] : r.dayR[i]) + extra) * side;
   return { x: r.x[i] - r.ty[i] * off, y: r.y[i] + r.tx[i] * off };
@@ -51,7 +56,7 @@ export function groundStations(r: EarthworkRoute, natural: (x: number, y: number
 export function slopeKnee(r: EarthworkRoute & Pick<Result, 'zDayL' | 'zDayR' | 'geology'>, i: number, side: number,
   halfWidth: number): { u: number; dz: number } | null {
   if (Number.isFinite((side > 0 ? r.wallSurfaceL : r.wallSurfaceR)?.[i])) return null;
-  halfWidth += r.widen?.[i] ?? 0;
+  halfWidth += crownExtra(r, i, side);
   const z = r.grade[i], day = side > 0 ? r.dayL[i] : r.dayR[i], zDay = side > 0 ? r.zDayL[i] : r.zDayR[i];
   const run = day - halfWidth, height = zDay - z;
   if (run <= 0.5) return null;
@@ -79,7 +84,7 @@ export function daylightSections(r: EarthworkRoute, i: number, side: number, hal
   if (i + 1 >= r.n || (ground ? !ground[i] || !ground[i + 1] : r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth)) return [];
   const a = daylightPoint(r, i, side), b = daylightPoint(r, i + 1, side);
   const ao = daylightPoint(r, i, side, GROUND_COLLAR), bo = daylightPoint(r, i + 1, side, GROUND_COLLAR);
-  const edge = (j: number) => { const h = halfWidth + (r.widen?.[j] ?? 0); return { x: r.x[j] - r.ty[j] * h * side, y: r.y[j] + r.tx[j] * h * side, z: r.grade[j] }; };
+  const edge = (j: number) => { const h = halfWidth + crownExtra(r, j, side); return { x: r.x[j] - r.ty[j] * h * side, y: r.y[j] + r.tx[j] * h * side, z: r.grade[j] }; };
   const ae = edge(i), be = edge(i + 1);
   const wall = side > 0 ? r.wallSurfaceL : r.wallSurfaceR;
   const wallA = Number.isFinite(wall?.[i]), wallB = Number.isFinite(wall?.[i+1]);

@@ -42,7 +42,7 @@ export interface ReplacementWork {
   /** buildings this work removes (a roundabout's ring) */
   removes?: number[];
   /** what it paints on another road (a slip road's speed-change lane on the motorway: its lines), drawn */
-  lines?: { x: number; y: number; z: number }[][];
+  lines?: { x: number; y: number; z: number; halfWidth?: number }[][];
 }
 export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
   /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,

@@ -60,6 +60,8 @@ export interface ProjectStoreApi {
   undo(): void;
   redo(): void;
   canUndo(): boolean;
+  /** Counts every move of the undo history (a step committed, undone or redone): unchanged, Undo still means the same. */
+  readonly historyMoves: number;
   canRedo(): boolean;
   /** The designs either side of the step an undo (redo) would take back (do again), for its label; null: none. */
   historyStep?(step: 'undo' | 'redo'): readonly [ProjectDesign, ProjectDesign] | null;

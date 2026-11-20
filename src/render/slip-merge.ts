@@ -4,17 +4,19 @@
 //   between them (the slip road's inner slope and the motorway's outer slope there are under the other's pavement);
 // - where both are in cutting with a ridge too narrow to keep between them, it is dug out (and billed so): one slope
 //   from crown edge to crown edge, each face ending halfway on it;
-// - embankments side by side are drawn as they are (the higher face is the surface, as built).
+// - embankments side by side are drawn as they are (the higher face is the surface, as built);
+// - along a speed-change lane the paired road's formation is wider on its side by the paving the lane adds (as billed,
+//   core/slip-roads.ts speedChangeLane), its slope moved out with it.
 // Returns shallow copies with those stations' daylight changed (and the ridge heights), or the inputs unchanged.
-import { CATEGORIES } from '../core/data/categories';
+import { CATEGORIES, type PairedCategoryId } from '../core/data/categories';
 import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
 import { FACE_AT } from '../core/sections';
-import { dugRidges, STEP_TOLERANCE } from '../core/slip-roads';
+import { dugRidges, SLIP_SECTIONS, STEP_TOLERANCE, type SpeedChangeLane } from '../core/slip-roads';
 
 // (`faceL`/`faceR`: the engine's face samples, dropped where a face is ended here: drawn straight to its new end)
 type Arrays = { dayL: Float64Array; dayR: Float64Array; zDayL: Float64Array; zDayR: Float64Array; apexL: Float32Array; apexR: Float32Array;
-  faceL: (number[] | undefined)[]; faceR: (number[] | undefined)[] };
+  faceL: (number[] | undefined)[]; faceR: (number[] | undefined)[]; widenL?: Float32Array; widenR?: Float32Array };
 const copy = (r: Result): Arrays => ({ dayL: Float64Array.from(r.dayL), dayR: Float64Array.from(r.dayR), zDayL: Float64Array.from(r.zDayL),
   zDayR: Float64Array.from(r.zDayR), apexL: r.apexL ? Float32Array.from(r.apexL) : new Float32Array(r.n).fill(NaN), apexR: r.apexR ? Float32Array.from(r.apexR) : new Float32Array(r.n).fill(NaN),
   faceL: r.faceL ? r.faceL.slice() : new Array(r.n).fill(undefined), faceR: r.faceR ? r.faceR.slice() : new Array(r.n).fill(undefined) });
@@ -25,12 +27,25 @@ function set(a: Arrays, left: boolean, i: number, day: number, z: number, apex: 
 }
 /** at most this many motorway stations in a row met by no slip road station, between two that are, follow them */
 const GAP = 2;
-export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heightAt: (x: number, y: number) => number): { motorway: Result; slips: Result[] } {
-  const wm = CATEGORIES['D27.5'].crownWidth / 2, wr = CATEGORIES['V7.25'].crownWidth / 2;
+/** `c`: the paired road's category; `lanes`: the speed-change lanes of its slip roads (core/slip-roads.ts laneOf). */
+export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heightAt: (x: number, y: number) => number, c: PairedCategoryId,
+  lanes: readonly Pick<SpeedChangeLane, 'side' | 'widen'>[] = []): { motorway: Result; slips: Result[] } {
+  const wm = SLIP_SECTIONS[c].half, wr = CATEGORIES['V7.25'].crownWidth / 2;
   const own: { m: Arrays | null } = { m: null };
   const out: Result[] = [];
+  // the formation along each lane: wider on its side, its slope moved out with it (display: the lane's paving is billed per m²)
+  for (const lane of lanes) for (const { k, extra } of lane.widen) {
+    // (on a bridge its deck that much wider; a lane into a tunnel is a problem, not drawn)
+    if (!(extra > 1e-6) || motorway.kind[k] === KIND.tunnel) continue;
+    const m = own.m ??= copy(motorway), left = lane.side > 0;
+    const wide = left ? (m.widenL ??= new Float32Array(motorway.n)) : (m.widenR ??= new Float32Array(motorway.n));
+    if (extra <= wide[k]) continue;
+    if (motorway.kind[k] === KIND.earth) (left ? m.dayL : m.dayR)[k] += extra - wide[k];
+    wide[k] = extra;
+  }
+  const extraAt = (k: number, left: boolean) => (left ? own.m?.widenL : own.m?.widenR)?.[k] ?? 0;
   for (const ramp of slips) {
-    const mine: { r: Arrays | null } = { r: null }, ridge = dugRidges(ramp, motorway, heightAt);
+    const mine: { r: Arrays | null } = { r: null }, ridge = dugRidges(ramp, motorway, heightAt, c);
     let last = -1;
     for (let q = 0; q < ramp.n; q++) {
       // (the nearest station of the motorway: searched near the last one after the first)
@@ -43,16 +58,17 @@ export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heigh
       // across the motorway's line towards the slip road: which side of each faces the other
       const nx = (ramp.x[q] - motorway.x[k]) / dd, ny = (ramp.y[q] - motorway.y[k]) / dd;
       const mLeft = -motorway.ty[k] * nx + motorway.tx[k] * ny > 0, rLeft = -ramp.ty[q] * -nx + ramp.tx[q] * -ny > 0;
-      const dayM = (mLeft ? motorway.dayL : motorway.dayR)[k], zm = motorway.grade[k];
+      const wk = wm + extraAt(k, mLeft), dayM = (mLeft ? motorway.dayL : motorway.dayR)[k] + extraAt(k, mLeft), zm = motorway.grade[k];
       const dayR = (rLeft ? ramp.dayL : ramp.dayR)[q], zr = ramp.grade[q];
       const setM = (day: number, z: number, apex: number) => set(own.m ??= copy(motorway), mLeft, k, day, z, apex);
       const setR = (day: number, z: number, apex: number) => set(mine.r ??= copy(ramp), rLeft, q, day, z, apex);
-      if (dd - wr <= wm + 1e-6) {
+      if (dd - wr <= wk + 1e-6) {
         // crowns side by side or overlapping, at one height: one paved area, no slope between them (at another height
         // each keeps its slopes, drawn as built: the clash is the slip road's problem, core/slip-roads.ts)
         if (Math.abs(zm - zr) > STEP_TOLERANCE) continue;
-        // (ended at the pavement's edge, as a ridge: no ground collar over the other road)
-        if (dayM > wm) setM(Math.min(dayM, Math.max(wm, dd - wr)), zm, zm);
+        // (ended at the pavement's edge, as a ridge: no ground collar over the other road; not where the slip road's
+        // body ends at its gore: the motorway's slope closes the end of the slip road's there)
+        if (dayM > wk && q > 0 && q < ramp.n - 1) setM(Math.min(dayM, Math.max(wk, dd - wr)), zm, zm);
         if (dayR > wr) setR(wr, zr, zr);
       }
     }
@@ -64,7 +80,7 @@ export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heigh
     for (let q = 0; q < ramp.n; q++) {
       if (!Number.isFinite(ridge.x[q])) continue;
       const kr = ridge.k[q], ml = ridge.mLeft[q] === 1, m = own.m ??= copy(motorway), zk = motorway.grade[kr], d = ridge.d[q], zr = ramp.grade[q];
-      set(m, ml, kr, wm, zk, zk);
+      set(m, ml, kr, wm + extraAt(kr, ml), zk, zk);
       const r = mine.r ??= copy(ramp), rl = ridge.rLeft[q] === 1;
       // (measured across the slip road, which may run askew to the motorway there; a hand's breadth under the
       // motorway's crown edge: no sliver of sky between them)

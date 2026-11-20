@@ -16,7 +16,8 @@ import { ROUNDABOUT_HOSTS } from '../core/tie-in';
 import { classTraffic } from '../core/traffic-census';
 import { fillDirections, type DirectionsState } from './hud';
 import { DEFAULT_SPEED, isTraffic, SLIP_ROAD_TRAFFIC, startSpeed, strayDistance } from './road-edit';
-import { isSlipRoad } from '../core/slip-roads';
+import { isSlipRoad, SLIP_SECTIONS } from '../core/slip-roads';
+import { motorwayCategory, routeWord } from '../core/route-section';
 import { pieceDepth, topPieces } from './pieces';
 import { toast } from './toast';
 
@@ -99,7 +100,7 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
   } else {
     const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
       : e.anchor.kind === 'route' ? (() => { const host = deps.design().routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
-        return !host ? 'a road' : host.kind === 'motorway' ? (host.role === 'mission' ? 'our motorway' : 'the motorway')
+        return !host ? 'a road' : host.kind === 'motorway' ? (host.role === 'mission' ? `our ${routeWord(host)}` : `the ${SLIP_SECTIONS[motorwayCategory(host)].word}`)
           : host.role === 'mission' ? 'our road' : host.name; })()
       : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
         : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
