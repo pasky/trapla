@@ -115,8 +115,10 @@ export interface AutoProfileOptions {
   balance?: BalanceSearch;
   /** optional per-station minimum h (NaN = none), e.g. bridge clearance over a river */
   minH?: ArrayLike<number>;
-  /** Disjunctive crossing clearance: pass above a channel OR tunnel sufficiently below it. */
-  eitherH?: { above: ArrayLike<number>; below: ArrayLike<number> };
+  /** Disjunctive crossing clearance: pass above a channel OR tunnel sufficiently below it. `belowCost` (per
+   * station, 0 none): what passing below costs beyond the line's own works (a railway carried over us on its new
+   * bridge, evaluate.ts), added where the line passes below. */
+  eitherH?: { above: ArrayLike<number>; below: ArrayLike<number>; belowCost?: ArrayLike<number> };
   /** With pins: the clearances a pin may not make the line miss (a line through the pin that misses one Auto's own
    * line keeps leaves the pin out). The crossings' own, where a retry has raised the search's bounds for a margin
    * or added floors; default `minH` / `maxH` / `eitherH`. */
@@ -1102,6 +1104,7 @@ function searchProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProf
     for (let q = clrStart[r.ka]; q < clrStart[r.kb]; q++) {
       const i = clrIdx[q];
       add(clrX[q]); add(g[i]); add(minH?.[i] ?? NaN); add(maxH?.[i] ?? NaN); add(opt.eitherH?.above[i] ?? NaN); add(opt.eitherH?.below[i] ?? NaN);
+      if (opt.eitherH?.belowCost?.[i]) add(opt.eitherH.belowCost[i]);
       add(penaltyAt ? penaltyAt[i] : clearancePenalty); add(hard?.[i] ?? 0);
     }
     add(opt.tunnelHardGrade ?? NaN); add(opt.tunnelHardFrom ?? NaN);
@@ -1473,6 +1476,7 @@ function searchProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProf
             if (minH && h < minH[i] + CLEARANCE_MARGIN) { c += pen; ci += pen; }
             if (maxH && h > maxH[i] - CLEARANCE_MARGIN) { c += pen; ci += pen; }
             if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) { c += pen; ci += pen; }
+            else if (opt.eitherH?.belowCost?.[i] && h <= opt.eitherH.below[i] - CLEARANCE_MARGIN) { c += opt.eitherH.belowCost[i]; ci += opt.eitherH.belowCost[i]; }
           }
           if (steepNorm === steepNorm) {
             const ex = Math.abs(slope + cSlope) / steepNorm - 1;

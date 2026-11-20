@@ -109,3 +109,39 @@ export const STATION_AXIS_RADIUS_M = 100;
 /** PROVISIONAL game assumption (no source): where a new line joins or leaves an existing track along the
  * way, the track's own space is shared over about a turnout's length beyond the last parallel station. */
 export const RAIL_TURNOUT_M = 50;
+
+/** An existing railway carried over our road on a new bridge, our road in a cutting under it (research/105). */
+export const RAIL_OVER = {
+  /** Height of the traffic space under a bridge by the road passing under it, m: motorways, expressways, class I and
+   * II roads 4.80; class III and fast or collector local roads 4.50; local access and public-purpose roads 4.20
+   * (ČSN 73 6201 as summarised by VŠB-TUO VMK 02 p. 12 and ŘSD R 111 p. 1, research/105). The game's local road
+   * (M 7.5) takes the collector value. */
+  clearance: { motorway: 4.8, I: 4.8, II: 4.8, local: 4.5, track: 4.2 } as Record<string, number>,
+  /** The safety gap between that space and the underside of the bridge, m (ŘSD R 111 p. 1: "výška průjezdního
+   * prostoru + bezpečnostní vzdálenost 0,15 m"). */
+  safetyGap: 0.15,
+  /** PROVISIONAL construction depth, top of rail to the soffit, m: the upper end of the short-span ballasted Czech
+   * railway bridges found (1.29–1.77 m at 13.5–16.5 m spans, research/105 second pass); our cutting's span is longer,
+   * no rule was found. */
+  depth: 1.8,
+  /** PROVISIONAL deck width, m: single track 9.72 m between the railings (the Baláš frame, Otrokovice–Vizovice),
+   * double track 11.29 m (Chomutov, ČVUT thesis 2020): two examples, no rule (research/105 second pass). */
+  deckWidth: { 1: 9.72, 2: 11.29 } as Record<1 | 2, number>,
+  /** SPOŽES 2026 H01 "Nový železniční most - do 40 m", H02 "… nad 40 m, estakáda" (CZK per m², research/32, /105),
+   * with the P1 bridges mark-up (SPOZES.markup.bridges). */
+  perM2: 86_800, longPerM2: 173_400, longFrom: 40,
+  /** SPOŽES 2026 H07 "Mostní provizoria" (CZK per m²): the railway kept running over a provisional bridge while the
+   * new one is built (the staging of ŘSD's I/27 Přeštice bypass railway bridge: provisional structures in a first
+   * possession, the bridge in a second; research/105). PROVISIONAL scope: one provisional bridge of the new one's area;
+   * the possessions themselves (replacement buses, SPOŽES sheet NAD) are not priced. */
+  provisionalPerM2: 39_800,
+  /** PROVISIONAL (the raster gives no track count): one mapped railway line is drawn 10 m wide (pipeline/build_pack.py,
+   * 2 px at 5 m); a band wider than this across the railway is a double track, m. */
+  doubleBand: 12,
+  /** Engine bound: a band of railway this long along our road (a station's tracks, railways side by side) is not carried
+   * over us on one bridge, m. */
+  maxRun: 60,
+  /** PROVISIONAL engine bound: no railway bridge over us at a sharper angle than 30° to our road (the sine of the angle
+   * at least this): a railway running nearly along our road is bridged by us, or it is no crossing. */
+  minSine: 0.5,
+} as const;

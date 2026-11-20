@@ -32,6 +32,8 @@ export interface RetainingRoute extends Sections {
   /** Per way: the pieces of mapped dead ends that serve nothing beyond our works (dead-ends.ts): taken up where our
    * slopes reach them (road-realignment.ts), none bridged for (walls keep our slopes off them as off any road). */
   deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
+  /** 1: our crown passes under a railway carried over us here (rail-over.ts): its cells under the crown are on its bridge */
+  railCarried?: Uint8Array;
 }
 export interface RetainingPlan {
   walls: RetainingWall[]; perCell: Float64Array; landPerCell: Float64Array; forcedBridge: Uint8Array; forcedTunnel: Uint8Array;
@@ -42,6 +44,8 @@ export interface RetainingPlan {
   walledBuildings: WalledBuilding[];
   /** the dead ends' pieces the screen read (RetainingRoute.deadEnds): what the footprint screen takes up */
   deadEnds?: ReadonlyMap<number, readonly (readonly [number, number])[]>;
+  /** the stations where the screen took a railway as carried over our crown (RetainingRoute.railCarried) */
+  railCarried?: Uint8Array;
 }
 /** Buildings our works may reach: the player's kept ones are walled off wherever a wall can stand;
  * Auto walls off a building no one lives in that only the working strip beside our slopes reaches when
@@ -281,9 +285,10 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     return k === list.length;
   };
   /** the dead-end pieces (r.deadEnds) of the ways a station's candidates hold: a key of what its screening read of them */
-  const deadKey = (candidates: { roads: readonly RoadSegment[] } | undefined) => {
-    if (!r.deadEnds || !candidates) return '';
-    let key = '';
+  const deadKey = (candidates: { roads: readonly RoadSegment[] } | undefined, i: number) => {
+    if ((!r.deadEnds && !r.railCarried) || !candidates) return '';
+    let key = r.railCarried?.[i] ? 'R' : '';
+    if (!r.deadEnds) return key;
     for (const seg of candidates.roads) { const list = r.deadEnds.get(seg.way); if (list) key += `${seg.way}:${list.join(',')};`; }
     return key;
   };
@@ -301,7 +306,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   }
   for (let i = 1; i < n - 1; i++) {
     const grade = r.grade[i];
-    if (record && record.grade[i] === grade && record.left[i] === r.dayL[i] && record.right[i] === r.dayR[i] && record.dead[i] === deadKey(cache?.get(i))) {
+    if (record && record.grade[i] === grade && record.left[i] === r.dayL[i] && record.right[i] === r.dayR[i] && record.dead[i] === deadKey(cache?.get(i), i)) {
       const reads = record.reads[i];
       if (record.barrels[i] === (reads === '' || !barrels.length ? '' : barrelKeys.get(reads) ?? stationBarrels(cache!.get(i)!))) {
         const events = record.events[i];
@@ -324,7 +329,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       if (held) for (const x of held.records) if (x.grade.length === n) x.grade[i] = NaN;
     }
     // Which candidate roads are crossing ways (a strict retry removes some) is all the station reads.
-    const barrelKey = stationBarrels(candidates), near = candidates.roads, dead = deadKey(candidates);
+    const barrelKey = stationBarrels(candidates), near = candidates.roads, dead = deadKey(candidates, i);
     const memo = candidates.memos?.find(m => m.left === c.left && m.right === c.right && m.grade === grade && m.barrels === barrelKey && m.dead === dead && sameWays(near, m.ways));
     const events: StationEvent[] = memo?.events ?? [];
     if (record) {
@@ -362,6 +367,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         // A raster-only stream's crossing assembly already owns its local barrel; unknown
         // direction stays conservative, rather than paying both a wall and that same culvert.
         if (feature === 'stream' && barrels.some(b => barrelContains({ x, y }, b.envelope, step / 2))) continue;
+        // (a railway on its new bridge over our crown: rail-over.ts)
+        if (feature === 'railway' && r.railCarried?.[i] && Math.abs(off) <= w + step) continue;
         // Crown pixels become grade/structure constraints, never a wall through traffic.
         propose(c, off, step / 2, feature, x, y);
       }

@@ -1,3 +1,4 @@
+import { RAIL_OVER, TRACK_CENTRES_M } from '../core/data/railway';
 // Physical, depth-tested crossing roads. Geometry is built only on a worker result, and only for
 // surfaces whose inputs changed (a drag usually moves a few of ~40 crossings; see SurfaceKey).
 import * as THREE from 'three';
@@ -128,10 +129,12 @@ class MeshBuilder {
     }
   }
 }
-type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[] };
+type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[]; railCrossings?: Result['railCrossings'] };
 
 /** Width of an underpass wing wall's coping beyond its face, m (display). */
 const COPING = 1.5;
+/** PROVISIONAL drawing only: the deck's top this far under the rails (rails, sleepers, ballast), m. */
+const RAIL_DECK_TOP = 0.7;
 export class CrossingRenderer {
   private group = new THREE.Group();
   /** meshes of each crossing surface by its input key (see surfaceKey), reused while unchanged */
@@ -217,6 +220,7 @@ export class CrossingRenderer {
       }
       const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
       for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
+      for (const c of r.railCrossings ?? []) if (c.how === 'railway' && c.price) this.railBridge(c, structure);
       for (const head of heads) {
         terrain.groundHoles = allHeads.filter(other => other !== head);
         const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
@@ -488,6 +492,22 @@ export class CrossingRenderer {
         const end = head(side * (outer + .3 + reach * .5), 0, lip + reach);
         const ground = this.view.groundHeight(end.x, end.y);
         mesh.quad({ ...base, z: base.z - .3 }, { ...base, z: base.z + top + .2 }, { ...end, z: ground - .3 }, { ...end, z: ground + .6 }, side < 0 ? concrete : shade, 0, 0);
+      }
+    }
+  }
+  /** A railway carried over our cutting on its new bridge (rail-over.ts): its deck slab at the rails' level, as long as
+   * it is billed, the ballast on it and the rails of its tracks. */
+  private railBridge(c: NonNullable<Result['railCrossings']>[number], mesh: MeshBuilder) {
+    const p = c.price!, nx = -c.ty, ny = c.tx, at: CrossingPoint = { x: c.x, y: c.y, z: c.g, ground: c.g, surface: 'deck' };
+    const deckTop = c.g - RAIL_DECK_TOP, soffit = c.g - RAIL_OVER.depth;
+    this.box(mesh, at, nx, ny, p.width / 2, p.span / 2, soffit, deckTop, 0xb7b4a9);
+    this.box(mesh, at, nx, ny, p.width / 2, p.span / 2, deckTop, deckTop + 1.1, 0xc9c6bc); // (its parapets' height: drawn as a solid edge)
+    this.box(mesh, at, nx, ny, p.width / 2 - 0.3, p.span / 2, deckTop, c.g - 0.2, 0x7d7469);
+    for (let t = 0; t < c.tracks; t++) {
+      const off = (t - (c.tracks - 1) / 2) * TRACK_CENTRES_M;
+      for (const rail of [-0.72, 0.72]) {
+        const q = { ...at, x: c.x + nx * (off + rail), y: c.y + ny * (off + rail) };
+        this.box(mesh, q, nx, ny, 0.04, p.span / 2 + 2, c.g - 0.2, c.g, 0x4a4a4a);
       }
     }
   }

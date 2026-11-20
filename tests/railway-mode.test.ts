@@ -77,7 +77,10 @@ describe('new lines crossing a mapped railway', () => {
     if (evaluated.status !== 'evaluated') throw new Error('new line must be engineered');
     const r = evaluated.result;
     expect(r.violations).toEqual([]);
-    expect(r.kind[Math.round(1500 / r.ds)]).toBe(KIND.bridge);
+    // (a motorway passes under the railway's embankment instead: the railway carried over it on a new bridge is the
+    // cheaper here, rail-over.ts)
+    if (category === 'D27.5') expect(r.railCrossings?.map(c => c.how)).toEqual(['railway']);
+    else expect(r.kind[Math.round(1500 / r.ds)]).toBe(KIND.bridge);
     expect(r.grade[0]).toBeCloseTo(ends.a.position.z, 8);
     expect(r.grade[r.n - 1]).toBeCloseTo(ends.b.position.z, 8);
     if (category !== 'D27.5') expect(r.timing['count.separationRetry']).toBe(1);

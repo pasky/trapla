@@ -691,13 +691,32 @@ export function crossingViolation(s: number, what: string, above: number, need: 
   }
   const lower = Math.ceil((above + below) * 10 - 1e-6) / 10;
   const r = `Raise the road here by ${fmt(raise, 1)} m to bridge over it`, l = `lower it by ${fmt(lower, 1)} m to pass under it`;
+  // (a railway: no level crossing of a new road; under it, the railway is carried over our cutting on a new bridge,
+  // research/105)
+  const rail = what === 'railway';
   return {
     kind: 'crossing', s0: s, s1: s, clearance: 'either',
     title: `The ${what} cannot be crossed on the level`,
     fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
-    detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (then its own bridge carries it over our cutting); it is ${h(above)}.`,
-    basis: 'norm', rule: `ČSN 73 6101: motorways and expressways are crossed only at a different level. The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
+    detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (then ${rail ? 'the railway is carried over our cutting on a new bridge' : 'its own bridge carries it over our cutting'}); it is ${h(above)}.`,
+    basis: rail ? 'game' : 'norm', rule: rail
+      ? `Game rule: a new road crosses a railway over it or under a new bridge of the railway, never on the level. ${fmt(below, 1)} m: the clear height under a bridge (ČSN 73 6201) and the bridge's depth (a game estimate); ${fmt(need, 1)} m: a game estimate`
+      : `ČSN 73 6101: motorways and expressways are crossed only at a different level. The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
     size: Math.min(raise, lower),
+  };
+}
+
+/** The player chose the railway carried over our road on a new bridge (rail-over.ts), and our road is not low enough
+ * under it for that bridge. */
+export function railOverViolation(s: number, above: number, below: number): Violation {
+  const lower = Math.ceil((above + below) * 10 - 1e-6) / 10;
+  return {
+    kind: 'crossing', s0: s, s1: s, clearance: 'either',
+    title: 'Too high for the railway to pass over',
+    fix: `Lower the road here by ${fmt(lower, 1)} m, or choose "Our bridge over it"`,
+    detail: `For the railway to be carried over our road on a new bridge, the road must be at least ${fmt(below, 1)} m below the rails: the clear height under a bridge and the bridge's depth. It is ${fmt(Math.abs(above), 1)} m ${above >= 0 ? 'above' : 'below'} them.`,
+    basis: 'norm', rule: 'ČSN 73 6201: the clear height under a bridge (4.20–4.80 m by the road, and 0.15 m more to the bridge); the bridge\'s depth is a game estimate',
+    size: lower,
   };
 }
 

@@ -86,6 +86,21 @@ export function createMapPicks(app: MapPickContext) {
     return crossingPicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * app.view.metresPerPixel), SOURCE_PICK_SLACK_PX,
       (x, y, z) => app.view.project(x, y, z));
   };
+  /** the station of a railway carried over our road on its bridge whose deck is under the cursor (within its
+   * half-length along the railway, and its half-width) */
+  const railAt = (clientX: number, clientY: number): number | null => {
+    const r = app.last;
+    if (!r?.railCrossings?.some(c => c.how === 'railway')) return null;
+    const box = canvasBox(), px = clientX - box.left, py = clientY - box.top;
+    let best: number | null = null, bd = 14;
+    for (const c of r.railCrossings) if (c.how === 'railway' && c.price) for (let k = -4; k <= 4; k++) {
+      const t = k / 4 * c.price.span / 2, q = app.view.project(c.x + c.tx * t, c.y + c.ty * t, c.g);
+      if (!q?.vis) continue;
+      const d = Math.hypot(q.sx - px, q.sy - py);
+      if (d < bd) { bd = d; best = c.s; }
+    }
+    return best;
+  };
   const buildingAt = (clientX: number, clientY: number) => {
     if (!buildingsPickable()) return null;
     const g = app.view.pick(clientX, clientY);
@@ -110,6 +125,9 @@ export function createMapPicks(app: MapPickContext) {
     if (culvert) return { kind: 'culvert', id: culvert.id, s: culvert.s };
     const c = crossingAt(clientX, clientY);
     if (c) return { kind: 'crossing', roadId: c.roadId! };
+    // a railway carried over us on its new bridge: its deck (a short target over our road, at the rails' level)
+    const rail = railAt(clientX, clientY);
+    if (rail !== null) return { kind: 'rail', s: rail };
     const hit = routeAt(clientX, clientY, 10);
     if (hit) return { kind: 'route-hit', routeId: hit.routeId, s: hit.s };
     // a crossing's own works before the rest of the mapped road (whose card is the base road's)

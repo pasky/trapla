@@ -29,7 +29,8 @@ import { activeStructure } from './structure-bar';
 import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 import { stationIndex } from '../core/range';
 import { CULVERT_RULES } from '../core/data/culverts';
-import { culvertCard, SELECT_TEXT } from '../core/terms';
+import { culvertCard, RAIL_OPTIONS, railCrossingCard, SELECT_TEXT } from '../core/terms';
+import { RAIL_CHOICE_REACH } from '../core/rail-over';
 import { culvertSection } from '../render/culvert-geometry';
 
 export type Sel =
@@ -41,6 +42,8 @@ export type Sel =
   | { kind: 'building'; j: number }
   /** a stream culvert under our road (Result.waterCrossings): its stream and station */
   | { kind: 'culvert'; id: number; s: number }
+  /** a mapped railway our road crosses (Result.railCrossings): its station */
+  | { kind: 'rail'; s: number }
   /** a mission end that meets an interchange or a road (scenario data) */
   | { kind: 'end'; end: 'a' | 'b' };
 
@@ -54,6 +57,8 @@ export interface InspectorEvents {
   wall?: (sides: ('L' | 'R')[], height: number | null, s0: number, s1: number) => void;
   pin?: (s: number, z: number | null) => void;
   crossing?: (roadId: number, type: CrossingChoice | null) => void;
+  /** how our road crosses the mapped railway at (x, y): our bridge over it, the railway over us, or Auto (null) */
+  railCrossing?: (x: number, y: number, choice: 'bridge' | 'overbridge' | null) => void;
   /** back to the automatic path of a reroute the player shaped */
   crossingPathAuto?: (roadId: number) => void;
   /** where a reroute's new pieces lead: back to Auto's target */
@@ -267,6 +272,7 @@ export class Inspector {
     else if (sel?.kind === 'building') html = this.building(r, d, sel.j);
     else if (sel?.kind === 'end') html = this.end(r, sel.end);
     else if (sel?.kind === 'culvert') html = this.culvert(r, d, sel.id, sel.s);
+    else if (sel?.kind === 'rail') html = this.rail(r, d, sel.s);
     const shown = html ? sel : null;
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
@@ -417,6 +423,9 @@ export class Inspector {
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
     }
+    // the mapped railways this stretch crosses: each its own card (how it is crossed, the choice)
+    const rails = (r.railCrossings ?? []).filter((c) => c.s >= s0 && c.s <= s1).map((c) => `<div class="sub">${c.how === 'railway' ? 'Under the railway' : c.how === 'ours' ? 'Over the railway' : 'Across the railway'} at km ${km(c.s)} <button type="button" class="link" data-rail-card="${c.s}">Railway</button></div>`).join('');
+    method = rails + method;
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = stationIndex(r, pinAt);
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
@@ -605,6 +614,25 @@ export class Inspector {
       <div class="ctx-state"><b>${esc(card.state)} · ${czk(c.cost)}</b>${card.why.map(t => `<div class="why">${esc(t)}</div>`).join('')}</div>
       <div class="more-box">${card.more.map(t => `<div class="sub">${esc(t)}</div>`).join('')}</div>
       <div class="ctx-foot"><button type="button" data-fix-bridge="${s0},${s1}" title="Put our ${lineOf(CATEGORIES[d.category])} on a bridge over the stream here instead">Bridge instead</button>${this.moreToggle()}</div>`;
+  }
+
+  // ---- a mapped railway crossing ----
+  private rail(r: Result, d: Design, s: number) {
+    const c = railCrossingAt(r, s);
+    if (!c) return '';
+    const line = lineOf(CATEGORIES[d.category]), card = railCrossingCard({ ...c, tunnel: r.kind[c.i] === KIND.tunnel }, line);
+    const vio = r.violations.filter((v) => v.kind === 'crossing' && Math.abs(v.s0 - c.s) <= 50).map((v) => ({ v, fixes: this.fixes(v, d) }));
+    const options = RAIL_OPTIONS.map(([v, label, why]): [string, string, string] => [v, label, ourWords(why, line)]);
+    const buttons = `<div class="seg choice" id="rail-choice" role="group">${options.map(([v, label, title]) => {
+      const off = v === 'overbridge' && !c.price, on = (c.chosen ?? '') === v;
+      return `<button type="button" data-rail="${v}" class="${on ? 'on' : ''}" aria-pressed="${on}" ${off ? 'disabled' : ''} title="${esc(off ? card.more[0] : title)}">${label}</button>`;
+    }).join('')}</div>`;
+    return `${this.head(card.title, `km ${km(c.s)}`)}
+      <div class="ctx-state"><b>${esc(card.state)}${c.cost > 0 ? ` · ${czk(c.cost)}` : ''}</b>${card.why.map((t) => `<div class="why">${esc(t)}</div>`).join('')}</div>
+      ${this.issues(vio)}
+      ${buttons}
+      <div class="more-box">${card.more.map((t) => `<div class="sub">${esc(t)}</div>`).join('')}</div>
+      <div class="ctx-foot">${this.moreToggle()}</div>`;
   }
 
   // ---- height point (By hand) ----
@@ -816,6 +844,7 @@ export class Inspector {
       this.render(); return;
     }
     if (b.dataset.roadCard) { this.ev.select?.({ kind: 'crossing', roadId: Number(b.dataset.roadCard) }); return; }
+    if (b.dataset.railCard) { this.ev.select?.({ kind: 'rail', s: Number(b.dataset.railCard) }); return; }
     if (b.dataset.stretch) { const [s0, s1] = b.dataset.stretch.split(',').map(Number); this.ev.select?.({ kind: 'stretch', s0, s1 }); return; }
     if (b.dataset.piece) { const [s0, s1, kind] = b.dataset.piece.split(','); this.ev.select?.({ kind: 'stretch', s0: Number(s0), s1: Number(s1), piece: kind as PieceKind }); return; }
     if (b.dataset.fixWall) {
@@ -889,6 +918,10 @@ export class Inspector {
       return;
     }
     if (sel?.kind === 'building' && b.dataset.building !== undefined) this.ev.building?.([sel.j], (b.dataset.building || null) as BuildingOverride['action'] | null);
+    if (sel?.kind === 'rail' && b.dataset.rail !== undefined) {
+      const c = railCrossingAt(r, sel.s);
+      if (c) this.ev.railCrossing?.(c.x, c.y, (b.dataset.rail || null) as 'bridge' | 'overbridge' | null);
+    }
   }
 
   private change(e: Event) {
@@ -902,6 +935,12 @@ export class Inspector {
   }
 }
 
+/** the railway crossing nearest station s, if any within RAIL_CHOICE_REACH */
+export function railCrossingAt(r: Pick<Result, 'railCrossings'>, s: number) {
+  let best: NonNullable<Result['railCrossings']>[number] | undefined;
+  for (const c of r.railCrossings ?? []) if (Math.abs(c.s - s) < RAIL_CHOICE_REACH && (!best || Math.abs(c.s - s) < Math.abs(best.s - s))) best = c;
+  return best;
+}
 /** the culvert of stream `id` nearest station s (a pipe or a box under our earthworks), if any within 100 m */
 export function culvertAt(r: Pick<Result, 'waterCrossings'>, id: number, s: number) {
   let best: Result['waterCrossings'][number] | undefined;

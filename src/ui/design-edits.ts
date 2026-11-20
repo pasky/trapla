@@ -2,6 +2,7 @@
 // heights, bends, height points, crossing choices and reroute shapes, and the inspector's and the
 // decision list's events that call them. Moved out of main.ts verbatim; every edit goes through the
 // active-route store (one undo step each).
+import { RAIL_CHOICE_REACH } from '../core/rail-over';
 import { paintWallOverride, setBuildingOverride } from '../core/build-controls';
 import type { LinkEnd, LinkVia } from '../core/crossings';
 import { normalizeVpis, type Design, type Result } from '../core/evaluate';
@@ -105,6 +106,12 @@ export function createDesignEdits(app: DesignEditContext) {
       const ended = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.ends)?.ends : undefined;
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
       if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}), ...(ended ? { ends: ended } : {}) });
+    }),
+    // how our road crosses a mapped railway: the choice holds for the crossing nearest where it was made (rail-over.ts)
+    railCrossing: (x, y, choice) => app.store.update((d) => {
+      const rest = (d.railCrossings ?? []).filter((c) => Math.hypot(c.x - x, c.y - y) > RAIL_CHOICE_REACH);
+      if (choice) rest.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, choice });
+      if (rest.length) d.railCrossings = rest; else delete d.railCrossings;
     }),
     crossingPathAuto: (roadId) => setVia(roadId, null, true),
     crossingEndAuto: (roadId) => setEnd(roadId, null, null),

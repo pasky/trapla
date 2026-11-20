@@ -485,3 +485,31 @@ export function culvertCard(c: CulvertFacts, line: OurLine = 'road'): { title: s
     'Priced by its length under our earthworks and its two ends. The flood is a rough estimate from the land, not a survey.'];
   return { title, state: `${what} · ${Math.round(c.length)} m long`, why: why.map(t => ourWords(t, line)), more: more.map(t => ourWords(t, line)) };
 }
+
+/** A mapped railway's crossing (rail-over.ts RailCrossing): its card. */
+export interface RailCrossingFacts {
+  how: 'railway' | 'ours' | 'missed'; above: number; auto: boolean; chosen?: 'bridge' | 'overbridge'; tracks: 1 | 2; tunnel?: boolean;
+  price?: { span: number; width: number; area: number; bridge: number; provisional: number; cost: number; code: string };
+}
+/** The railway crossing's choices: [value, button label, what it means]. */
+export const RAIL_OPTIONS: readonly [string, string, string][] = [
+  ['', 'Auto', 'The cheaper of the two: our bridge over the railway, or the railway on a new bridge over our cutting.'],
+  ['bridge', 'Our bridge over it', 'Our road crosses over the railway on a bridge; it needs enough height above the wires.'],
+  ['overbridge', 'The railway over us', 'The railway is carried over our road on a new bridge; our road runs in a cutting under it.'],
+];
+export function railCrossingCard(c: RailCrossingFacts, line: OurLine = 'road'): { title: string; state: string; why: string[]; more: string[] } {
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1), p = c.price, ours = line === 'railway' ? 'our railway' : `our ${line}`;
+  const state = c.how === 'railway' && p ? `Carried over ${ours} on a new ${m(p.span)} m bridge`
+    : c.how === 'ours' ? (c.tunnel ? `${cap(ours)} passes under it in a tunnel` : `${cap(ours)} crosses over it on a bridge`)
+    : 'Crossed on the level: not allowed';
+  const why: string[] = [c.auto ? 'Auto: the cheaper of our bridge over it and the railway on a new bridge over us.' : 'Your choice.'];
+  if (c.how === 'railway') why.push(`${cap(ours)} runs ${c.above < 0 ? `${(-c.above).toFixed(1)} m` : 'just'} under the rails here.`);
+  else if (c.how === 'ours' && !c.tunnel) why.push(`${cap(ours)} is ${c.above.toFixed(1)} m above the rails here.`);
+  const more: string[] = [];
+  if (p) {
+    more.push(`The railway's bridge: ${m(p.span)} m long, ${p.width.toFixed(1)} m wide for ${c.tracks === 2 ? 'two tracks' : 'one track'}: ${money(p.bridge)} (SPOŽES 2026 ${p.code.split(' ')[2]}).`);
+    more.push(`While it is built, the trains run over a provisional bridge: ${money(p.provisional)} (SPOŽES 2026 H07).`);
+    if (c.how !== 'railway') more.push(`Carrying the railway over us would cost about ${money(p.cost)} here, with ${ours} lowered into a cutting under it.`);
+  } else more.push('The railway cannot be carried over us here: it crosses us at too sharp an angle, or too many tracks lie side by side.');
+  return { title: 'Railway', state, why, more };
+}

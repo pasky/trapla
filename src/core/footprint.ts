@@ -72,6 +72,8 @@ export interface FootprintRoute {
   railOurs?: Uint8Array;
   /** Railway rebuilding mapped stretches: whether a point lies on old track it takes up. */
   railRetired?: (x: number, y: number) => boolean;
+  /** 1: our crown passes under a railway carried over us here on its new bridge (rail-over.ts) */
+  railCarried?: Uint8Array;
   /** Our road is a motorway (a protected landscape area takes none, research/75). */
   motorway?: boolean;
   /** 1 = a tunnel cell built cut and cover, in an open pit (structures.ts cutCoverMask) */
@@ -339,6 +341,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       // Conservative raster-cell overlap; at most half a pixel uncertainty at the toe.
       if (!insideFootprint({ x, y }, cell, step / 2)) return;
       if (feature === 'railway' && (r.railOurs?.[cell.i] || r.railRetired?.(x, y))) return;
+      // (a railway on its new bridge over our crown)
+      if (feature === 'railway' && r.railCarried?.[cell.i] && Math.abs(-(x - cell.x) * cell.ty + (y - cell.y) * cell.tx) <= r.crownWidth / 2 + step) return;
       if (feature === 'stream' && !cell.structure && earthWater.some(c => barrelContains({ x, y }, barrels.get(c)!, step / 2))) return;
       const key = `${feature}:${cell.structure ?? 'earth'}`, seenKey = `${key}:${index}`;
       if (rasterSeen.has(seenKey)) return;

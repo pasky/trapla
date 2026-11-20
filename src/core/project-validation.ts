@@ -32,6 +32,9 @@ function controls(v: unknown): boolean {
   if (v.wallOverrides !== undefined && (!list(v.wallOverrides) || !v.wallOverrides.every(p => object(p)
     && number(p.s0) && p.s0 >= 0 && number(p.s1) && p.s1 > p.s0 && choice(p.side, ['L', 'R']) && number(p.height)
     && (p.height === 0 || p.height >= 2 && p.height <= 6)))) return false;
+  // how our road crosses a mapped railway, by where it crossed it (rail-over.ts)
+  if (v.railCrossings !== undefined && (!list(v.railCrossings) || !v.railCrossings.every(c => object(c) && number(c.x) && number(c.y)
+    && Math.abs(c.x as number) <= MAX_LINK_COORD && Math.abs(c.y as number) <= MAX_LINK_COORD && choice(c.choice, ['bridge', 'overbridge'])))) return false;
   if (v.junctionForms !== undefined && (!object(v.junctionForms)
     || !Object.entries(v.junctionForms).every(([end, form]) => choice(end, ['a', 'b']) && form === 'roundabout'))) return false;
   if (v.crossings !== undefined && (!list(v.crossings) || !v.crossings.every(c => {

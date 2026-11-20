@@ -62,7 +62,7 @@ function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
   // and its previews are windows on the full result before it, as a bend drag's; the plan comparison finds the stretch)
   const parts: unknown[] = [ctx.a, ctx.b, d.category, d.speed, d.pis.flatMap(p => p.speed != null || p.hairpin ? [[p.speed ?? null, p.hairpin ?? null]] : []), d.profileMode, d.structureOverrides ?? [],
     d.buildingOverrides ?? [], d.wallOverrides ?? [], d.objectData ?? null, opts.endpointElevations ?? null, opts.goals ?? null,
-    opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null];
+    opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null, d.railCrossings ?? []];
   parts.splice(CROSSINGS_AT, 0, shapeless(d.crossingOverrides));
   return JSON.stringify(parts);
   // Not keyed: a split direction's joined ranges follow its plan, and its preview prices crossings the

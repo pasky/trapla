@@ -50,6 +50,7 @@ function routeChange(a: RouteDesign, b: RouteDesign): string | null {
     if (!same(ca.structureOverrides, cb.structureOverrides)) return 'a bridge or tunnel';
     if (!same(ca.crossings, cb.crossings)) return crossingChange(ca.crossings, cb.crossings);
     if (!same(ca.wallOverrides, cb.wallOverrides)) return 'noise walls';
+    if (!same(ca.railCrossings, cb.railCrossings)) return 'a railway crossing';
     if (!same(ca.junctionForms, cb.junctionForms)) return 'a junction';
   }
   if (!same(a.endpoints, b.endpoints)) return same(a.endpoints.a, b.endpoints.a) ? 'moving the end' : same(a.endpoints.b, b.endpoints.b) ? 'moving the start' : 'moving the ends';
