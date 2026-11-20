@@ -1010,9 +1010,13 @@ export class View {
         const k0 = abutment ? null : slopeKnee(r, i, side, w), k1 = abutment ? null : slopeKnee(r, i + 1, side, w);
         // a fill face the engine bends more than once (on ground falling away beside it): drawn at its samples, as billed
         const faces = side > 0 ? r.faceL : r.faceR, walls = side > 0 ? r.wallSurfaceL : r.wallSurfaceR;
-        const multi = !abutment && !!(faces?.[i] || faces?.[i + 1]) && !Number.isFinite(walls?.[i]) && !Number.isFinite(walls?.[i + 1]);
-        /** a station's face at FACE_AT: height off its straight crown edge–daylight line */
+        // (beside a wall's last station too: the unretained station's face as the next stretch draws it, or a crack opens
+        // between the two at that station, a sky-coloured wedge where a railway's wing wall ends: D11 km 14.13)
+        const walled = (j: number) => Number.isFinite(walls?.[j]);
+        const multi = !abutment && !!((faces?.[i] && !walled(i)) || (faces?.[i + 1] && !walled(i + 1)));
+        /** a station's face at FACE_AT: height off its straight crown edge–daylight line (a wall's: straight) */
         const offLine = (j: number, kn: typeof k0) => FACE_AT.map((u, k) => {
+          if (walled(j)) return 0;
           const f = faces?.[j];
           if (f) return f[k] - (r.grade[j] + u * ((side > 0 ? r.zDayL : r.zDayR)[j] - r.grade[j]));
           return !kn ? 0 : u <= kn.u ? kn.dz * u / kn.u : kn.dz * (1 - u) / (1 - kn.u);

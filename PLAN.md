@@ -3054,9 +3054,15 @@ weighs it with its walls nearest our crown, RETAINING_RULES.minimumOffset). E.g.
   bridge where it passes over. Not at a sharper angle than 30° to our road or over a band of tracks longer than 60 m
   along it (engine bounds, PROVISIONAL): there our bridge as before. The retaining and footprint screens take its cells
   under our crown as on its bridge; beside them our slopes are walled (its wing walls, billed as retaining walls; the
-  search does not foresee them). Not modelled: ground water in the cutting under a railway in a valley floor. Open
-  (drawing): at D11 km 14.13 a sky-coloured wedge shows beside the deck where our cutting's walls beside the oblique
-  railway end (the slope's mesh between a walled and an open station; shot 742).
+  search does not foresee them). Not modelled: ground water in the cutting under a railway in a valley floor. Drawn: the
+  deck's ends on our cutting's walls as built (its station's daylight both sides, not centred on our line); a slope
+  beside a wall's last station drawn with the face the next stretch draws there (at D11 km 14.13 the stretch past the
+  oblique railway's wing wall had one bend and the next its face's samples: a sky-coloured wedge between them, shot 742).
+- A four-lane road's speed-change lane under the railway's bridge (I/35 Turnov km 0.47, the diamond at km 0.98): the
+  bridge spans the cutting the lane widens, that much longer on its side (the lane's widening / the crossing's sine),
+  billed with the lane (`SpeedChangeLane.rail`, the lane's line in the bill says so: "the railway's bridge over it 3 m
+  longer") and drawn so (render/slip-merge.ts; two lanes under one bridge each add theirs to Auto's bridge, the same
+  as the whole unless that crosses H01's 40 m).
 - The player: the railway's card (click its deck on the map, its mark in the profile, or "Railway" on our bridge's or
   cutting's card): how it is crossed and why, the price, Auto / Our bridge over it / The railway over us
   (`Design.railCrossings`: where it crossed then; a choice holds for the crossing nearest it within 150 m; validated in the
@@ -3095,6 +3101,17 @@ level: model 59 says so, "The railway cannot be crossed on the level"); D3 0301'
 earth-landmarks are this branch's searches, without Hands off (not offered there since round two). The piece reaching into our works (above) moves only the whole I/35's reference design: 15,406.1 →
 15,403.7 M (track 2973 at km 17.57: its last 143 m taken up, 0.11 M, instead of moved aside beside us, 1.88 M; 242 of
 243 results identical to before it).
+- Two roads and one dead end (the project ledger, project-ledger.ts): a dead end taken up serves nothing beyond, so no
+  traffic relies on a detour round it; it is not a closure whose detour another road's change could break (the I/35
+  diamond: our road takes up 41 m of a service road's dead end, slip road 3 ends the 6 m left of it, 9 m away: "Two
+  roads change the same old road", the project unpriced), and a slip road's change within the piece our road takes up
+  (its zone reaches as far as that piece, project-evaluate.ts movedByMotorway) is one design with it
+  (`tests/project-ledger.test.ts`).
+- The I/35 Turnov diamond at km 0.98 (tests/fixtures/interchange/i35-turnov-diamond.json, a player's design on Auto's
+  line, scripts/interchange-scene.mjs section 4) laid out again on this model's line: 1 m higher at road II/610's bridge,
+  whose ramps then reach further, so its south-west crossroads 68 m further along II/610 (250 m from the four-lane road,
+  past them: "It joins the road on the ramp to its bridge" before) and the south-west entry's square bend dragged 8 m
+  on along it; 4.9998 bn, valid (screenshots 710–719 again; 715 the lanes under the railway's bridge).
 - Checked: `scripts/dead-end-audit.ts`, `scripts/rail-dead-end-shots.mjs [--docs]` (screenshots 740–745: the I/35 dead
   end in the quantities and close up, D11 km 14.13's railway over our cutting and its card, our bridge chosen instead,
   the profile, the pin's two ways), `tests/dead-ends.test.ts`, `tests/road-realignment.test.ts`, `tests/retaining.test.ts`,

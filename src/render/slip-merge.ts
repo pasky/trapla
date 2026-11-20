@@ -16,7 +16,8 @@ import { dugRidges, SLIP_SECTIONS, STEP_TOLERANCE, type SpeedChangeLane } from '
 
 // (`faceL`/`faceR`: the engine's face samples, dropped where a face is ended here: drawn straight to its new end)
 type Arrays = { dayL: Float64Array; dayR: Float64Array; zDayL: Float64Array; zDayR: Float64Array; apexL: Float32Array; apexR: Float32Array;
-  faceL: (number[] | undefined)[]; faceR: (number[] | undefined)[]; widenL?: Float32Array; widenR?: Float32Array };
+  faceL: (number[] | undefined)[]; faceR: (number[] | undefined)[]; widenL?: Float32Array; widenR?: Float32Array;
+  railCrossings?: Result['railCrossings'] };
 const copy = (r: Result): Arrays => ({ dayL: Float64Array.from(r.dayL), dayR: Float64Array.from(r.dayR), zDayL: Float64Array.from(r.zDayL),
   zDayR: Float64Array.from(r.zDayR), apexL: r.apexL ? Float32Array.from(r.apexL) : new Float32Array(r.n).fill(NaN), apexR: r.apexR ? Float32Array.from(r.apexR) : new Float32Array(r.n).fill(NaN),
   faceL: r.faceL ? r.faceL.slice() : new Array(r.n).fill(undefined), faceR: r.faceR ? r.faceR.slice() : new Array(r.n).fill(undefined) });
@@ -29,7 +30,7 @@ function set(a: Arrays, left: boolean, i: number, day: number, z: number, apex: 
 const GAP = 2;
 /** `c`: the paired road's category; `lanes`: the speed-change lanes of its slip roads (core/slip-roads.ts laneOf). */
 export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heightAt: (x: number, y: number) => number, c: PairedCategoryId,
-  lanes: readonly Pick<SpeedChangeLane, 'side' | 'widen'>[] = []): { motorway: Result; slips: Result[] } {
+  lanes: readonly (Pick<SpeedChangeLane, 'side' | 'widen'> & Partial<Pick<SpeedChangeLane, 'rail'>>)[] = []): { motorway: Result; slips: Result[] } {
   const wm = SLIP_SECTIONS[c].half, wr = CATEGORIES['V7.25'].crownWidth / 2;
   const own: { m: Arrays | null } = { m: null };
   const out: Result[] = [];
@@ -42,6 +43,14 @@ export function mergeSlipRoads(motorway: Result, slips: readonly Result[], heigh
     if (extra <= wide[k]) continue;
     if (motorway.kind[k] === KIND.earth) (left ? m.dayL : m.dayR)[k] += extra - wide[k];
     wide[k] = extra;
+  }
+  // a railway's new bridge over the cutting a lane widens: that much longer on the lane's side (as billed with the lane)
+  for (const lane of lanes) for (const r of lane.rail ?? []) {
+    const m = own.m ??= copy(motorway), list = m.railCrossings ??= (motorway.railCrossings ?? []).map(c => ({ ...c, ...(c.price ? { price: { ...c.price } } : {}) }));
+    const c = list.find(q => q.s === r.s);
+    if (!c?.price) continue;
+    // (its deck's end on the wall moved out with the lane: render/crossings.ts draws it from the daylight widened above)
+    c.price.span += r.span; c.price.area = c.price.span * c.price.width; c.cost += r.cost; c.price.cost += r.cost;
   }
   const extraAt = (k: number, left: boolean) => (left ? own.m?.widenL : own.m?.widenR)?.[k] ?? 0;
   for (const ramp of slips) {

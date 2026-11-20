@@ -17,6 +17,7 @@ import { GRADE_PIN_TOLERANCE } from './grade-pins';
 import { LAND, PRICES } from './data/prices';
 import { speedStretches } from './design-speed';
 import { motorwayCategory } from './route-section';
+import { railOverPrice } from './rail-over';
 
 /** A slip road's speed-change lane beside the carriageway of a paired road (D 27.5, S 21.5): 3.50 m with 0.25 m guide
  * strips, the paved shoulder beside it narrowed to 0.25 m (D35 design p. 9; VL 3 sheets 400.11–12 "zpevněná krajnice
@@ -138,6 +139,10 @@ export interface SpeedChangeLane {
   lines: (XYZ & { halfWidth?: number })[][];
   /** how much wider the formation is on its side, at the paired road's stations `k` (drawn, as billed: `area`) */
   widen: { k: number; extra: number }[];
+  /** a railway carried over the paired road's cutting on its new bridge (rail-over.ts) where the lane widens that
+   * cutting: the bridge that much longer on its side (`span`, m, along the railway), and what that adds (`cost`, in
+   * `cost`; drawn: render/slip-merge.ts) */
+  rail: { s: number; extra: number; span: number; cost: number }[];
   /** the side of the paired road's line it is on (1: left of the line's direction) */
   side: 1 | -1;
   violations: Violation[];
@@ -185,9 +190,18 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
   for (let k = 0; k < line.n; k++) if (line.s[k] >= s0 && line.s[k] <= s1) widen.push({ k, extra: sec.widening * width(direction * (line.s[k] - upstream)) });
   if (tunnel) violations.push(issue(at.s0, at.s1, `Its ${what} runs into a tunnel`, `Move this end along ${word}, out of the tunnel`,
     'Game rule: a speed-change lane is built in the open (a wider tunnel is not in the game)'));
-  const cost = area.ground * perM2.ground + area.bridge * perM2.bridge;
+  // (a railway's new bridge over the cutting it widens spans its walls that much further apart: as wide as built; two
+  // lanes under one bridge each add theirs to the bridge as Auto priced it)
+  const rail: SpeedChangeLane['rail'] = [];
+  for (const c of line.railCrossings ?? []) {
+    const extra = c.how === 'railway' && c.price ? widen.find(w => w.k === c.i)?.extra ?? 0 : 0;
+    if (!(extra > 1e-6)) continue;
+    const longer = railOverPrice(c.price!.span * Math.max(0.3, Math.abs(c.sine)) + extra, c.sine, c.tracks);
+    rail.push({ s: c.s, extra, span: longer.span - c.price!.span, cost: longer.cost - c.price!.cost });
+  }
+  const cost = area.ground * perM2.ground + area.bridge * perM2.bridge + rail.reduce((a, r) => a + r.cost, 0);
   // (the right of travel on the forward carriageway is the line's right)
-  return { kind, s0, s1, length, area, cost, lines, widen, side: direction === 1 ? -1 : 1, violations };
+  return { kind, s0, s1, length, area, cost, lines, widen, rail, side: direction === 1 ? -1 : 1, violations };
 }
 
 /** A step between the two pavements this small is one body (the height a slip road is held at, MERGE_TOLERANCE), m. */

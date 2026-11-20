@@ -157,3 +157,26 @@ it('two changes of one old road conflict only where they reach each other along 
   expect(screen(500)).toEqual([]);
   expect(screen(150)).toEqual(['shared-road']);
 });
+
+// The I/35 Turnov diamond: our road takes up a service road's dead end (it serves nothing beyond our works) and a
+// slip road ends what is left of it 9 m away; a dead end taken up leaves no traffic to a detour, so another road's
+// change of a road near it is no "two roads change the same old road". A closure that relies on a detour still is.
+it('a dead end taken up relies on no detour: another road changing a road near it is no shared road', async () => {
+  const { screenIndependence } = await import('../src/core/project-ledger');
+  const road = (y: number, crossings: unknown[], footprintConflicts: unknown[] = []) => {
+    const n = 101, x = Float64Array.from({ length: n }, (_, i) => i * 10);
+    return { n, x, y: new Float64Array(n).fill(y), kind: new Uint8Array(n), dayL: new Float64Array(n).fill(8), dayR: new Float64Array(n).fill(8),
+      cell: { width: new Float64Array(n).fill(16) }, crossings, footprintConflicts, demolished: [], boughtOut: [], kept: [],
+      noise: { receivers: [] } } as unknown as import('../src/core/evaluate').Result;
+  };
+  const op = { aadt: 100, speed: 90, heavyShare: 0.1, halfWidth: 4.75 };
+  // our road (y 0) closes way 5 at x 500 (41 m of it); the other road (y 200) moves way 6 aside 30 m from there
+  const closure = (takenUp: boolean) => ({ feature: 'road', action: 'relocation', roadId: 5, cls: 'service', x: 500, y: 20, length: 0,
+    closed: { length: 41, detour: takenUp ? 0 : 300 }, ...(takenUp ? { takenUp: { length: 41, cost: 1, intervals: [{ way: 5, a: 0, b: 41 }] } } : {}),
+    sourceIntervals: [{ way: 5, a: 0, b: 41 }] });
+  const moved = { type: 'overbridge', roadId: 6, x: 520, y: 40, s: 520, i: 52, cls: 'track', span: 10, approachLength: 20, cost: 1 };
+  const screen = (takenUp: boolean) => screenIndependence([{ routeId: 'a', result: road(0, [], [closure(takenUp)]), ...op },
+    { routeId: 'b', result: road(200, [moved]), ...op }], undefined).interactions.map(i => i.reason);
+  expect(screen(true)).toEqual([]);
+  expect(screen(false)).toEqual(['shared-road']);
+});

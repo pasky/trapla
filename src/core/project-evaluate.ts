@@ -271,8 +271,9 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
     const paths = (f.geometry?.links ?? [f.geometry?.road ?? []]).filter(p => p.length > 1);
     for (const i of intervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
     for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]) });
-    // (its reach: the moved piece, and the junction mouths where it meets what is left)
-    const r = reachOf(Math.max(f.length, ...paths.flat().map(q => Math.hypot(q.x - f.x, q.y - f.y))));
+    // (its reach: the moved piece, and the junction mouths where it meets what is left; a dead end taken up: the piece
+    // taken up, which the slip road's ending of what is left of it continues)
+    const r = reachOf(Math.max(f.length, f.takenUp?.length ?? 0, ...paths.flat().map(q => Math.hypot(q.x - f.x, q.y - f.y))));
     for (const way of new Set(intervals.map(i => i.way))) out.zones.push({ way, x: f.x, y: f.y, r });
   }
   if (roads) {
@@ -857,7 +858,8 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   if (at.violations.length) { legacy.violations.push(...at.violations); legacy.valid = false; }
   const word = at.kind === 'exit' ? 'Exit' : 'Entry';
   list.push({ kind: 'lane', s: legacy.s[i], x: at.gore.x, y: at.gore.y, length: at.lane.length, cost: at.lane.cost, lines: at.lane.lines,
-    label: `${word} lane on ${the}, ${Math.round(at.lane.length)} m (its hard shoulder, paved ${sec.widening} m wider)` });
+    label: `${word} lane on ${the}, ${Math.round(at.lane.length)} m (its hard shoulder, paved ${sec.widening} m wider${at.lane.rail.length
+      ? `; the railway's bridge over it ${at.lane.rail.map(r => Math.round(r.span)).join(' and ')} m longer` : ''})` });
   if (at.credit > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: at.insideM, cost: -at.credit,
     label: `Its first ${Math.round(at.insideM)} m are on ${the}'s formation: not built twice` });
   if (at.overlap > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: -at.overlap,

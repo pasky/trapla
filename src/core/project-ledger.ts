@@ -248,7 +248,8 @@ function touchedRoads(result: Result): { roads: Map<number, { x: number; y: numb
     // road changes it only where the junction rebuilds its edge, within its zone)
     if (!f.continuation) add(f.roadId, f.x, f.y, f.action === 'junction' ? Math.max(f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) : Infinity);
     for (const interval of f.sourceIntervals ?? []) add(interval.way, f.x, f.y); // every removed old way
-    if (f.closed) closes.push({ x: f.x, y: f.y, reach: f.closed.length + f.closed.detour });
+    // (a dead end taken up serves nothing beyond: no traffic relies on a detour round it)
+    if (f.closed && !f.takenUp) closes.push({ x: f.x, y: f.y, reach: f.closed.length + f.closed.detour });
   }
   return { roads, closes };
 }

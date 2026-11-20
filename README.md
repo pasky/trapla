@@ -434,8 +434,8 @@ moves aside](docs/screenshots/633-d3-0303-slip-road-over-moved-track.png).
 |---|---|
 | ![I/35 diamond](docs/screenshots/712-i35-diamond-valid-overview.png) | ![I/35 gore](docs/screenshots/714-i35-exit-lane-and-gore.png) |
 
-Also: [its first slip road's card](docs/screenshots/711-first-slip-road-card-four-lane-road.png), [the lanes over a
-bridge, its decks wider](docs/screenshots/715-i35-lanes-over-a-bridge.png), [the gores from
+Also: [its first slip road's card](docs/screenshots/711-first-slip-road-card-four-lane-road.png), [the lanes under the
+railway's bridge, longer over them](docs/screenshots/715-i35-lanes-under-the-railway-bridge.png), [the gores from
 above](docs/screenshots/719-i35-gores-from-above.png), [the north-east slip roads along
 Přepeřská](docs/screenshots/718-i35-north-east-slip-roads.png).
 

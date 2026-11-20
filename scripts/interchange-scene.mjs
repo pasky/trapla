@@ -226,11 +226,13 @@ try {
     const c = r.crossings.find(c => c.cls === 'secondary' && Math.abs(c.s - 983) < 60); return { s: c.s, x: c.x, y: c.y, type: c.type }; });
   ok(four.type === 'overbridge', `road II/610 over the four-lane road at km ${(four.s / 1000).toFixed(2)} (${four.type})`);
   // (its gores 350 m either side of the bridge, on the carriageway's paved shoulder: 10.75 m from the line; its
-  // crossroads on road II/610 where the road is back on its ground past the bridge's ramps, as Build's checks say)
+  // crossroads on road II/610 where the road is back on its ground past the bridge's ramps, as Build's checks say: the
+  // south-west one 250 m along it from the four-lane road, past the ramp of its bridge (the line there 1 m higher than
+  // before cost model 62, which carries the railway at km 0.47 over our cutting))
   const gore4 = (s, dir) => page.evaluate(([s, dir]) => { const r = window.trapla.projectResult().routes['route:motorway-forward'].legacy, k = Math.round(s / r.ds), o = 10.5;
     return { x: r.x[k] + dir * r.ty[k] * o, y: r.y[k] - dir * r.tx[k] * o, z: r.grade[k] }; }, [s, dir]);
   const ground = (x, y) => page.evaluate(([x, y]) => ({ x, y, z: window.trapla.groundHeight(x, y) }), [x, y]);
-  const sw = await ground(2167, 3748), ne = await ground(2537, 3835);
+  const sw = await ground(2101, 3732), ne = await ground(2537, 3835);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 1250, 0, 89), [four.x, four.y]);
   await game.idle(); await game.still();
   const slips4 = [
@@ -252,11 +254,29 @@ try {
     if (k === 0) {
       const card = await page.locator('#inspector').innerText();
       ok(/Slip road, one way, from our road to road II\/610/.test(card), 'its card: one way, from our road');
-      ok(/Exit lane on the four-lane road, 198 m \(its hard shoulder, paved 2.5 m wider\)/.test(card), 'its exit lane: the S 21.5 at 110 km/h, 198 m, paved 2.5 m wider');
+      ok(/Exit lane on the four-lane road, 198 m \(its hard shoulder, paved 2.5 m wider; the railway's bridge over it 1 m longer\)/.test(card), 'its exit lane: the S 21.5 at 110 km/h, 198 m, paved 2.5 m wider, under the railway\'s bridge (1 m longer)');
       ok(!/not yet on a four-lane road/.test(card), 'no engine limit');
       await shot('711-first-slip-road-card-four-lane-road');
     }
   }
+  // the south-west entry: Build's square bend at the crossroads comes too close to its start; dragged 8 m on along the
+  // way it leaves the road, as a designer would
+  const second4 = await page.evaluate(() => window.trapla.getProject().routes.find(r => r.name === 'Slip road 2').id);
+  await page.evaluate((id) => window.trapla.setActiveRoute(id), second4); await game.idle();
+  if ((await issues()).list.some(t => /Slip road 2: Bend 1 is too close to its start/.test(t))) {
+    const bend = await page.evaluate(() => { const t = window.trapla, d = t.getDesign(), a = t.routeEndpoints().a.position, p = d.pis[0], L = Math.hypot(p.x - a.x, p.y - a.y);
+      return { p, to: { x: p.x + (p.x - a.x) / L * 8, y: p.y + (p.y - a.y) / L * 8 } }; });
+    const p = { ...bend.p, z: (await groundAt(bend.p.x, bend.p.y)).z }, to = await groundAt(bend.to.x, bend.to.y);
+    await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 160, 0, 89), [p.x, p.y]); await game.idle(); await game.still();
+    await page.evaluate(() => window.trapla.selectPi(0)); await game.idle();
+    const marker = await page.locator('.pi[data-i="0"]').filter({ visible: true }).first().boundingBox();
+    const from = await at(p), dest = await at(to), grab = { x: marker.x + marker.width / 2, y: marker.y + marker.height / 2 };
+    await page.mouse.move(grab.x, grab.y, { steps: 4 }); await page.waitForTimeout(200); await page.mouse.down();
+    await page.mouse.move(dest.x + grab.x - from.x, dest.y + grab.y - from.y, { steps: 10 }); await page.waitForTimeout(300);
+    await page.mouse.up(); await game.idle();
+    await page.evaluate(() => window.trapla.selectPi(null)); await game.idle();
+  }
+  ok(!(await issues()).list.some(t => /Slip road 2: Bend/.test(t)), 'the south-west entry\'s bends fit');
   const done4 = await issues();
   ok(done4.valid && done4.total !== null && done4.list.length === 0, `the I/35 diamond is VALID and priced: ${(done4.total / 1e9).toFixed(4)} bn (${done4.list.join('; ') || 'no problems'})`);
   ok(done4.total - i35.total > 100e6 && done4.total - i35.total < 1.5e9, `the interchange costs ${((done4.total - i35.total) / 1e6).toFixed(0)} M`);
@@ -275,10 +295,10 @@ try {
   const g4 = await gore4(four.s - 343, 1);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 45, 200, 30), [g4.x, g4.y]);
   await game.idle(); await game.still(); await shot('714-i35-exit-lane-and-gore');
-  // (the lanes run over a bridge 150 m before the gores: its twin decks that much wider)
-  const b4 = await gore4(four.s - 493, 1);
+  // (the lanes run under the railway's bridge 150 m before the gores: it spans our cutting that much wider)
+  const b4 = await gore4(four.s - 513, 1);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 80, 300, 25), [b4.x, b4.y]);
-  await game.idle(); await game.still(); await shot('715-i35-lanes-over-a-bridge');
+  await game.idle(); await game.still(); await shot('715-i35-lanes-under-the-railway-bridge');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 240, 160, 45), [sw.x, sw.y]);
   await game.idle(); await game.still(); await shot('716-i35-junction-on-road-ii-610');
   // a gore dragged along the four-lane road: it stays on it, the diamond valid

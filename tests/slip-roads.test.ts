@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { dugRidge, gore, laneLengths, MERGE_GAP, MERGE_REACH, MERGE_SLOPE, MERGE_TOLERANCE, mergeBands, SLIP_ROAD, SLIP_SECTIONS, speedChangeLane } from '../src/core/slip-roads';
 import { PAIRED_SECTIONS } from '../src/core/data/motorway';
+import { railOverPrice } from '../src/core/rail-over';
 import { squareBend } from '../src/ui/road-edit';
 import { CATEGORIES } from '../src/core/data/categories';
 import { ENDPOINT_JUNCTIONS } from '../src/core/data/urban';
@@ -45,6 +46,20 @@ describe('a slip road meets one carriageway', () => {
     expect(over.area.bridge).toBeGreaterThan(40);
     const tunnel = line([1100, 1200]); for (let i = 110; i <= 120; i++) (tunnel.kind as unknown as number[])[i] = 2;
     expect(speedChangeLane(tunnel, 1000, 1, 'entry', 50, 'hilly', { s0: 0, s1: 100 }, D130).violations.map(v => v.title)).toEqual(['Its entry lane runs into a tunnel']);
+  });
+  it('a lane under a railway carried over our cutting makes its bridge that much longer, billed with the lane', () => {
+    // (I/35 Turnov km 0.47: the bridge spans the cutting the lane widens; at 60° to our road, 1 / sin 60° longer per metre)
+    const l = line(), sine = Math.sin(Math.PI / 3), price = railOverPrice(30, sine, 1);
+    Object.assign(l, { railCrossings: [{ s: 900, i: 90, x: 900, y: 0, tx: 0.5, ty: sine, g: 310, above: -8, how: 'railway', auto: true, price, tracks: 1, sine, cost: price.cost }] });
+    const plain = speedChangeLane(line(), 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, D130), exit = speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, D130);
+    const extra = exit.widen.find(w => w.k === 90)!.extra, longer = railOverPrice(30 + extra, sine, 1);
+    expect(extra).toBeCloseTo(D.widening, 9);
+    expect(exit.rail).toEqual([{ s: 900, extra, span: longer.span - price.span, cost: longer.cost - price.cost }]);
+    expect(exit.rail[0].span).toBeCloseTo(D.widening / sine, 9);
+    expect(exit.cost).toBeCloseTo(plain.cost + longer.cost - price.cost, 6);
+    // (a railway our road passes over, or not under its lane: nothing)
+    Object.assign(l, { railCrossings: [{ ...(l as unknown as { railCrossings: object[] }).railCrossings[0], how: 'ours', cost: 0 }] });
+    expect(speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, D130).rail).toEqual([]);
   });
 });
 
@@ -195,8 +210,15 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(r.routes['route:motorway-forward'].legacy!.cost.total).toBe(alone.routes['route:motorway-forward'].legacy!.cost.total);
     // its lanes at 110 km/h, 2.5 m wider than its paved shoulder; the D 21.5 row's earth-built slip roads credited once
     const lanes = r.works.items.filter(w => w.id.includes(':lane:')).map(w => w.label!);
-    expect(lanes.sort()).toEqual([...Array(2).fill('Entry lane on the four-lane road, 295 m (its hard shoulder, paved 2.5 m wider)'),
-      ...Array(2).fill('Exit lane on the four-lane road, 198 m (its hard shoulder, paved 2.5 m wider)')]);
+    // (the west gores' lanes run under the railway at km 0.47, carried over our cutting on its new bridge: that bridge
+    // spans the cutting the lanes widen, billed with them, as long as the cutting is then wide)
+    expect(lanes.sort()).toEqual(['Entry lane on the four-lane road, 295 m (its hard shoulder, paved 2.5 m wider)',
+      'Entry lane on the four-lane road, 295 m (its hard shoulder, paved 2.5 m wider; the railway\'s bridge over it 3 m longer)',
+      'Exit lane on the four-lane road, 198 m (its hard shoulder, paved 2.5 m wider)',
+      'Exit lane on the four-lane road, 198 m (its hard shoulder, paved 2.5 m wider; the railway\'s bridge over it 1 m longer)']);
+    const rail = r.routes['route:motorway-forward'].legacy!.railCrossings!.find(c => c.how === 'railway')!, line = r.routes['route:motorway-forward'].legacy!;
+    // (what it spans is our cutting's width between its walls: where render/crossings.ts stands the deck's ends)
+    expect(rail.price!.span * Math.max(0.3, Math.abs(rail.sine))).toBeCloseTo(line.dayL[rail.i] + line.dayR[rail.i], 6);
     const allowance = r.works.items.filter(w => w.label?.startsWith('Already in the four-lane road\'s price')).reduce((t, w) => t + w.cost, 0);
     // (a 5.7 km stage: its price includes 5.7 / 7 of one interchange)
     const km = r.routes['route:motorway-forward'].legacy!.length / 1000;

@@ -129,7 +129,7 @@ class MeshBuilder {
     }
   }
 }
-type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[]; railCrossings?: Result['railCrossings'] };
+type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & Partial<Pick<Result, 'tx' | 'ty' | 'dayL' | 'dayR'>> & { footprintConflicts?: readonly FootprintConflict[]; railCrossings?: Result['railCrossings'] };
 
 /** Width of an underpass wing wall's coping beyond its face, m (display). */
 const COPING = 1.5;
@@ -220,7 +220,7 @@ export class CrossingRenderer {
       }
       const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
       for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
-      for (const c of r.railCrossings ?? []) if (c.how === 'railway' && c.price) this.railBridge(c, structure);
+      for (const c of r.railCrossings ?? []) if (c.how === 'railway' && c.price) this.railBridge(c, structure, r);
       for (const head of heads) {
         terrain.groundHoles = allHeads.filter(other => other !== head);
         const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
@@ -496,18 +496,25 @@ export class CrossingRenderer {
     }
   }
   /** A railway carried over our cutting on its new bridge (rail-over.ts): its deck slab at the rails' level, as long as
-   * it is billed, the ballast on it and the rails of its tracks. */
-  private railBridge(c: NonNullable<Result['railCrossings']>[number], mesh: MeshBuilder) {
-    const p = c.price!, nx = -c.ty, ny = c.tx, at: CrossingPoint = { x: c.x, y: c.y, z: c.g, ground: c.g, surface: 'deck' };
+   * it is billed, the ballast on it and the rails of its tracks; its ends on our cutting's walls as built (`r`: at its
+   * station, wider along a slip road's lane, render/slip-merge.ts), where they are what it spans. */
+  private railBridge(c: NonNullable<Result['railCrossings']>[number], mesh: MeshBuilder, r?: CrossingInput) {
+    const p = c.price!, nx = -c.ty, ny = c.tx, f = Math.max(0.3, Math.abs(c.sine));
+    const left = r?.dayL?.[c.i], right = r?.dayR?.[c.i], tx = r?.tx?.[c.i], ty = r?.ty?.[c.i];
+    // (along the railway towards our road's left: its end on the left wall that way)
+    let mid = 0;
+    if (left !== undefined && right !== undefined && tx !== undefined && ty !== undefined && Math.abs(left + right - p.span * f) < 0.01)
+      mid = (Math.sign(c.tx * -ty + c.ty * tx) || 1) * (left - right) / (2 * f);
+    const at: CrossingPoint = { x: c.x + c.tx * mid, y: c.y + c.ty * mid, z: c.g, ground: c.g, surface: 'deck' };
     const deckTop = c.g - RAIL_DECK_TOP, soffit = c.g - RAIL_OVER.depth;
     this.box(mesh, at, nx, ny, p.width / 2, p.span / 2, soffit, deckTop, 0xb7b4a9);
     // its parapets at the deck's edges (1.1 m, PROVISIONAL drawing), the ballast between them
-    for (const side of [-1, 1]) this.box(mesh, { ...at, x: c.x + nx * side * (p.width / 2 - 0.15), y: c.y + ny * side * (p.width / 2 - 0.15) }, nx, ny, 0.15, p.span / 2, deckTop, deckTop + 1.1, 0xc9c6bc);
+    for (const side of [-1, 1]) this.box(mesh, { ...at, x: at.x + nx * side * (p.width / 2 - 0.15), y: at.y + ny * side * (p.width / 2 - 0.15) }, nx, ny, 0.15, p.span / 2, deckTop, deckTop + 1.1, 0xc9c6bc);
     this.box(mesh, at, nx, ny, p.width / 2 - 0.3, p.span / 2, deckTop, c.g - 0.2, 0x7d7469);
     for (let t = 0; t < c.tracks; t++) {
       const off = (t - (c.tracks - 1) / 2) * TRACK_CENTRES_M;
       for (const rail of [-0.72, 0.72]) {
-        const q = { ...at, x: c.x + nx * (off + rail), y: c.y + ny * (off + rail) };
+        const q = { ...at, x: at.x + nx * (off + rail), y: at.y + ny * (off + rail) };
         this.box(mesh, q, nx, ny, 0.04, p.span / 2 + 2, c.g - 0.2, c.g, 0x4a4a4a);
       }
     }

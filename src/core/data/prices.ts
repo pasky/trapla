@@ -276,7 +276,8 @@
  * taken up billed beyond our earthworks at the taken-up rates and gone from the map, a building it was the only road to
  * bought out where our earthworks bury its way in; an existing railway may be carried over our road on a new bridge
  * (core/rail-over.ts, research/105: ČSN 73 6201 clearance, SPOŽES H01/H02 + H07), weighed by the grade search, chosen on
- * the railway's card, offered by a pin's fix. Frozen D11: straight −79.4 M, direct-80 −1.5, town-centre and town-controls
+ * the railway's card, offered by a pin's fix; a speed-change lane under it makes its bridge that much longer, billed with the
+ * lane; a dead end taken up relies on no detour (project-ledger.ts). Frozen D11: straight −79.4 M, direct-80 −1.5, town-centre and town-controls
  * −2.7, the others unchanged; starters: I/35 Turnov 5.63 → 4.49 bn, D35 stage 1 19.46 → 18.88 bn (PLAN.md "Dead ends at
  * our works; the railway carried over our road"). */
 export const COST_MODEL_VERSION = 62;
