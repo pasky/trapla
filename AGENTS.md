@@ -170,7 +170,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   `scripts/straighten-audit.ts`, `scripts/choice-audit.ts` and `scripts/toolbar-layout.mjs` are gates.
 - Hands off the castle (twists round 4, research/102) reads each pack's `heritage.json` (NPÚ's listed monuments and their
   protection zones, heritage reserves and zones; `pipeline/fetch_heritage.py`, `build_heritage.py`): copy it with the pack,
-  or run the script on a pack built without it. Offered only where the planned line breaks it.
+  or run the script on a pack built without it. Offered on every mission a listed place is near (round 5): where the planned
+  line keeps out of every monument's own ring, the mission names the nearest with their setting's wider ring (data/twists.ts
+  `inPlay`, `SETTING_RING`; twists-check checks the names and that the starter breaks one); Šternberk says why it has none.
 - Twists (PLAN.md "Twists and curveballs"): per-mission challenges checked after each full evaluation (never in a drag
   preview), never changing the bill or validity; `npx tsx scripts/twists-check.ts` (run by tests/twists.test.ts) proves each offered twist with a
   VALID reference design in `scripts/twists/<preset>/`; a change of the bills can break a reference (search again with

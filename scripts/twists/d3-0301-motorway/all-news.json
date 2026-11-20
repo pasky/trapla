@@ -1,8 +1,9 @@
 {
  "preset": "d3-0301-motorway",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 1 → 12 → 21); searched again from it for cost model 62 (seed 1) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the chapel of St Wenceslas, J\u00edlov\u00e9 u Prahy) and every curveball, under the goal and the last news' money: round 4's all-news.json with a bend added north of B by hand (--edit add:2790,3900), then searched (seeds 8 \u2192 14 \u2192 18 \u2192 20, WEIGHT=landmarks:6, STEP 0.4\u20130.8)",
  "meets": [
   "earth",
+  "landmarks",
   "curveballs"
  ],
  "goal": true,
@@ -16,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Jílové (on to 0302)",
+    "name": "Motorway towards J\u00edlov\u00e9 (on to 0302)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -159,66 +160,46 @@
      "kind": "pi",
      "pis": [
       {
-       "x": 5300.490596573257,
-       "y": 9673.825260551104,
+       "x": 5186.787473176254,
+       "y": 9259.470502430993,
        "r": null
       },
       {
-       "x": 5022.741000695795,
-       "y": 9041.943392560439,
+       "x": 4573.602519423384,
+       "y": 8093.7496230662855,
        "r": null
       },
       {
-       "x": 4889.029392624716,
-       "y": 8796.423072627234,
+       "x": 4131.854868491962,
+       "y": 7487.209614720787,
        "r": null
       },
       {
-       "x": 4435.705208972133,
-       "y": 7924.094598664535,
+       "x": 3290.440506221979,
+       "y": 6838.540072650634,
        "r": null
       },
       {
-       "x": 4183.2232312537235,
-       "y": 7510.4590124497645,
+       "x": 2650.0771440304165,
+       "y": 6198.823958006223,
        "r": null
       },
       {
-       "x": 2638.1394151425006,
-       "y": 6234.678269602507,
+       "x": 3485.1303830388915,
+       "y": 5203.095784106788,
        "r": null
       },
       {
-       "x": 3357.0107592554627,
-       "y": 5254.353820667818,
+       "x": 2814.6721896819067,
+       "y": 3648.9286705136324,
        "r": null
       }
      ],
      "controls": {
       "structureOverrides": [
        {
-        "s0": 2265.358045604504,
-        "s1": 2433.2885904465056,
-        "kind": 0
-       },
-       {
-        "s0": 3421.3056656887834,
-        "s1": 3656.6560268922553,
-        "kind": 0
-       },
-       {
-        "s0": 3714.0038530948427,
-        "s1": 3810.0119440219855,
-        "kind": 1
-       },
-       {
-        "s0": 5068.148399108496,
-        "s1": 5268.874750790931,
-        "kind": 0
-       },
-       {
-        "s0": 7222.533583752178,
-        "s1": 7493.228579354163,
+        "s0": 4290.085627565927,
+        "s1": 4381.753312418849,
         "kind": 0
        }
       ]
@@ -227,68 +208,64 @@
       "kind": "auto",
       "pins": [
        {
-        "s": 180,
-        "z": 355.4
+        "s": 500,
+        "z": 357
        },
        {
-        "s": 730,
-        "z": 359.4
+        "s": 590,
+        "z": 356.3
        },
        {
-        "s": 900,
-        "z": 363.6
+        "s": 1399,
+        "z": 372.6
        },
        {
-        "s": 1400,
-        "z": 371.8
+        "s": 1669,
+        "z": 376.4
        },
        {
-        "s": 1920,
-        "z": 376.9
+        "s": 2268,
+        "z": 370.9
        },
        {
-        "s": 2609,
-        "z": 368.1
+        "s": 2638,
+        "z": 366.1
        },
        {
-        "s": 3069,
-        "z": 362
-       },
-       {
-        "s": 3219,
-        "z": 363.2
+        "s": 3197,
+        "z": 364.8
        },
        {
         "s": 3989,
         "z": 369.9
        },
        {
-        "s": 4076,
-        "z": 368.2
+        "s": 4420,
+        "z": 357
        },
        {
-        "s": 4729,
-        "z": 350.7
+        "s": 4686,
+        "z": 352.1
        },
        {
-        "s": 6338,
-        "z": 350.5
+        "s": 5274,
+        "z": 329.4
        },
        {
-        "s": 6708,
-        "z": 365.2
+        "s": 5465,
+        "z": 324
        },
        {
-        "s": 6969,
-        "z": 375.4
+        "s": 7017,
+        "z": 377.3
        },
        {
-        "s": 8461,
-        "z": 430.3
+        "s": 7143,
+        "z": 381.4
        },
        {
-        "s": 8549,
-        "z": 433.2
+        "s": 7257,
+        "z": 383.6
        }
       ],
       "manualVpis": []
@@ -313,7 +290,7 @@
     },
     {
      "id": "b",
-     "name": "Jílové (on to 0302)",
+     "name": "J\u00edlov\u00e9 (on to 0302)",
      "position": {
       "x": 2825.3,
       "y": 3024.5,

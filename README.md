@@ -240,13 +240,18 @@ Before the rethink: [docs/screenshots/rethink-before](docs/screenshots/rethink-b
 ### Twists, news from the site and the reveal
 
 There is no separate game mode: the game stays the builder, and each mission offers **twists**, challenges on top of a
-valid design, picked on a short screen after Start ([the twist screen](docs/screenshots/640-twist-screen.png)) and
+valid design, picked on a short screen of picture cards after Start ([the twist screen](docs/screenshots/760-twist-screen-start-here.png),
+[the long line on hover](docs/screenshots/761-twist-screen-hands-off-hover.png), [by keyboard](docs/screenshots/762-twist-screen-keyboard.png),
+[eight on the I/35](docs/screenshots/764-twist-screen-jicin.png); [before](docs/screenshots/640-twist-screen.png)) and
 changed any time from the **Twists** card (the chip by the verdict, "✗ Twists 2/3"). *Earth balance*: what you dig fills
 your embankments, at most 10 % brought in or trucked away ([the starter brings in 18 %](docs/screenshots/641-starter-twists.png),
 [one height pinned](docs/screenshots/643-pin-lower.png)). *Hands off the castle*: keep out of the listed monuments' protection
 zones and the heritage reserves and zones of the state's register (NPÚ), and away from the listed castles, churches,
-chapels, crosses and technical monuments without one; offered only where the planned line breaks it
-([the Studeňany village protection zone on the I/35](docs/screenshots/722-i35-jicin-zone-broken.png), [named on hover](docs/screenshots/723-i35-jicin-zone-hover.png),
+chapels, crosses and technical monuments without one; where the planned line keeps clear of those, the monuments nearest
+it are named with a wider ring, their setting ([the chapel of St Roch on Start here](docs/screenshots/750-d35-st-roch-broken.png),
+[its ring's tip](docs/screenshots/751-d35-st-roch-tip.png), [a line kept off it](docs/screenshots/753-d35-st-roch-kept-clear.png),
+[the Jílové gold mine adit](docs/screenshots/757-d3-0302-adit.png), [Šternberk has none near](docs/screenshots/763-twist-screen-sternberk.png);
+[the Studeňany village protection zone on the I/35](docs/screenshots/722-i35-jicin-zone-broken.png), [named on hover](docs/screenshots/723-i35-jicin-zone-hover.png),
 [a line led round it](docs/screenshots/724-i35-jicin-zone-kept-clear.png), [the church at Turnov](docs/screenshots/725-i35-turnov-church-ring.png); research/102). *Curveballs*: news from the site,
 drawn from the real project's story, a place to keep out of or less money ([the villa](docs/screenshots/644-news-villa.png),
 [its garden on the map](docs/screenshots/645-villa-broken.png), [the butterflies later](docs/screenshots/647-news-butterflies.png)).
