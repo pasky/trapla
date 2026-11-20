@@ -5,7 +5,8 @@ Run: uv run python pipeline/heritage_zone_sizes.py [--fetch]
   --fetch: every protection zone in force (pchu/FeatureServer/0, typochranykod OP) from NPÚ's geoportal into
            pipeline/cache/heritage/raw-national-op.json (EPSG:5514, simplified by the service to 5 m), else the cached one.
 A zone's size is its equivalent radius √(area / π); its kind is the first kind word of its name (build_heritage.kind_of)
-after the legal opening ("Ochranné pásmo …"), else "other" (towns, villages, sets of monuments).
+after the legal opening ("Ochranné pásmo …"; the open data's name where the geoportal has none), else "other" (towns,
+villages, sets of monuments).
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from build_heritage import CACHE, kind_of
+from build_heritage import CACHE, area_names, kind_of
 
 URL = "https://geoportal.npu.cz/arcgis/rest/services/Hosted/pchu/FeatureServer/0/query"
 FILE = CACHE / "heritage" / "raw-national-op.json"
@@ -49,7 +50,9 @@ def area(rings: list) -> float:
 def main() -> None:
     if "--fetch" in sys.argv or not FILE.exists():
         fetch()
-    # (one zone in several features: its parts summed, by ÚSKP number)
+    # (one zone in several features: its parts summed, by ÚSKP number; a zone the geoportal leaves unnamed by the open
+    # data's name for it)
+    names = area_names()
     zones: dict[str, list] = {}
     for f in json.loads(FILE.read_text())["features"]:
         a = f["attributes"]
@@ -59,7 +62,8 @@ def main() -> None:
         z[0] = z[0] or a.get("nazev") or ""
         z[1] += area(f.get("geometry", {}).get("rings", []))
     by: dict[str, list[float]] = {}
-    for name, a in zones.values():
+    for code, (name, a) in zones.items():
+        name = name or names.get(code, ("", None))[0] or ""
         subject = re.sub(r"(?i)^.*?ochrann\w* (památkov\w* )?pásm\w*\s*", "", name)
         by.setdefault(kind_of(subject) or "other", []).append(math.sqrt(a / math.pi))
     print(f"{len(zones)} protection zones in force\nkind        zones  p25  median  p75   max   (equivalent radius, m)")

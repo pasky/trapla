@@ -114,34 +114,39 @@ I/35 Rovensko, Královec), part of the default difficulty.
 - **How far the planned lines keep off** (the starters' works, cut and fill to where their slopes meet the ground, a deck's
   edge; every listed monument of the pack's raw NPÚ data, of any kind): the nearest is 446 m off on D35 stage 1 (the chapel
   of St Roch above Staré Město), 546 m on D3 0301 (the chapel of St Wenceslas, Jílové), 517 m on 0302 (the St Joseph gold
-  mine adit, Jílové; the Žampach viaduct 678 m), 585 m on 0303 (the chapel of Our Lady, Chrášťany), 524 m on 0305 (the
+  mine entrance, Jílové; the Žampach viaduct 678 m), 585 m on 0303 (the chapel of Our Lady, Chrášťany), 524 m on 0305 (the
   Křenovice fort site, Vojkov), 476 m on Rovensko (a chapel at Radostná pod Kozákovem; a cross at Karlovice 259 m), 464 m
   on the Královec railway (the church of St John of Nepomuk, Libeč; the Bernartice viaduct 104 m, just outside its 100 m).
   Šternberk's bypass keeps 669 m from the town's heritage zone, 681 m from the castle's protection zone, 1,197 m from the
   castle itself; the nearest outside both, two crosses, 600 and 698 m (one by the fixed start). The planners kept clear;
   no ring of a monument's own plot reaches them.
 - **How large the zones NPÚ declares are** (`pipeline/heritage_zone_sizes.py`: every protection zone in force, 455, from the
-  geoportal's `pchu/FeatureServer/0`, by the kind of the monument its name opens with; the equivalent radius √(area/π)):
+  geoportal's `pchu/FeatureServer/0`, by the kind of the monument its name opens with, the open data's name where the
+  geoportal has none; the equivalent radius √(area/π)):
 
   | kind | zones | median | upper quartile | largest |
   |---|---|---|---|---|
-  | castle, chateau | 107 | 476 m | 968 m | 4,998 m |
-  | church | 50 | 236 m | 546 m | 2,251 m |
-  | fort, hillfort | 23 | 395 m | 695 m | 1,604 m |
+  | castle, chateau | 121 | 454 m | 937 m | 4,998 m |
+  | church | 62 | 203 m | 468 m | 2,251 m |
+  | fort, hillfort | 30 | 363 m | 663 m | 1,604 m |
   | memorial, cemetery | 17 | 234 m | 438 m | 1,682 m |
-  | technical monument | 10 | 325 m | 495 m | 944 m |
-  | chapel | 1 | 135 m | | |
-  | cross, statue | 2 | 143 m | | 191 m |
-  | other (towns, villages, sets) | 245 | 259 m | 549 m | 5,517 m |
+  | technical monument | 13 | 281 m | 369 m | 944 m |
+  | chapel | 2 | 156 m | | 177 m |
+  | cross, statue | 3 | 94 m | | 191 m |
+  | other (towns, villages, sets) | 207 | 293 m | 618 m | 5,517 m |
 - **The rule** (`src/core/data/twists.ts` SETTING_RING, `inPlay`): where the planned line keeps out of every own ring and
   every area, the mission names the listed monuments nearest it, each with a wider ring, its **setting**: 1,000 m round a
   castle, 600 m round a church, chapel, fort, memorial or technical monument, 200 m round a cross or statue. A game scale,
-  one size per kind for every mission, about the larger quarter of the zones NPÚ declares round that kind (chapels as
-  churches: one declared chapel zone; crosses within the two declared). Every other listed monument near the line keeps
+  one size per kind for every mission. **What the register measures and what the game picks are different things**: the
+  600 m was picked so that the monument nearest each planned line (450–600 m off, above) is in play; the register shows
+  that such a ring is within the sizes of zones NPÚ has declared round monuments of the kind (up to 2.3 km round a
+  church, 1.7 km round a memorial, 0.9 km round a technical monument), but above the usual one (the upper quartile 470,
+  440 and 370 m; round forts 660 m, castles 940 m: the 600 m and 1,000 m there are about it). Chapels count as churches
+  (two declared zones, the larger 180 m); crosses and statues keep 200 m (three zones, the largest 190 m). Every other listed monument near the line keeps
   its own ring as before. Where the own rings and zones already bite (D3 0304, the whole D3, the whole D35, D11, I/35
   Turnov, Jičín, the whole I/35) nothing changed; those missions name the place their starter breaks too.
 - **Named per mission** (the starter breaks the first): D35 stage 1 the chapel of St Roch, Staré Město; D3 0301 the chapel
-  of St Wenceslas, Jílové u Prahy; 0302 the St Joseph gold mine adit and the Žampach viaduct; 0303 the chapel of Our Lady,
+  of St Wenceslas, Jílové u Prahy; 0302 the St Joseph gold mine entrance and the Žampach viaduct; 0303 the chapel of Our Lady,
   Chrášťany; 0305 the Křenovice fort site, Vojkov; Rovensko the chapel at Radostná pod Kozákovem; Královec the church of
   St John of Nepomuk, Libeč (the Bernartice viaduct, 104 m off, keeps its own 100 m ring: its setting would push a
   mountain railway out of its valley).

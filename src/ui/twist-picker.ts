@@ -54,7 +54,7 @@ async function missionMap(scenario: ScenarioParams, m: MissionTwists): Promise<s
   // (north up: the pack's y grows north)
   const X = (x: number) => ((x - cx) * k + W / 2).toFixed(1), Y = (y: number) => (H / 2 - (y - cy) * k).toFixed(1);
   const zones = shapes.filter(s => s.rings).map(s => `<path d="${s.rings!.map(r => `M${r.map(([x, y]) => `${X(x)} ${Y(y)}`).join('L')}Z`).join('')}" fill="rgba(122,74,154,0.22)" fill-rule="evenodd" stroke="#7a4a9a" stroke-width="1.2" stroke-dasharray="4 3"/>`).join('');
-  const rings = shapes.flatMap(s => s.circle ? [s.circle] : []).map(([x, y, r]) => `<circle cx="${X(x)}" cy="${Y(y)}" r="${Math.max(4, r * k).toFixed(1)}" fill="rgba(122,74,154,0.14)" stroke="#7a4a9a" stroke-width="1.5" stroke-dasharray="4 3"/><circle cx="${X(x)}" cy="${Y(y)}" r="2" fill="#7a4a9a"/>`).join('');
+  const rings = shapes.flatMap(s => s.circle ? [s.circle] : []).map(([x, y, r]) => `<circle class="tw-map-ring" cx="${X(x)}" cy="${Y(y)}" r="${Math.max(4, r * k).toFixed(1)}" fill="rgba(122,74,154,0.14)" stroke="#7a4a9a" stroke-width="1.5" stroke-dasharray="4 3"/><circle cx="${X(x)}" cy="${Y(y)}" r="2" fill="#7a4a9a"/>`).join('');
   // (the bends rounded: from the middle of one leg to the next's, through the bend)
   const mid = (a: [number, number], b: [number, number]) => `${X((a[0] + b[0]) / 2)} ${Y((a[1] + b[1]) / 2)}`;
   const road = `M${X(line[0][0])} ${Y(line[0][1])}` + line.slice(1, -1).map((p, i) => `L${mid(line[i], p)}Q${X(p[0])} ${Y(p[1])} ${mid(p, line[i + 2])}`).join('')
@@ -72,12 +72,14 @@ const CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true
 export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ on: TwistId[]; started: boolean }> | null {
   const presetId = scenario.presetId ?? scenario.id, mission = missionTwists(presetId);
   if (!mission) return saved || scenario.retired ? null : noTwists(scenario);
-  const offer = TWIST_ORDER.filter(t => mission.offer.includes(t));
+  // (a pack built without its listed places: the game would drop Hands off, so the screen does not offer it)
+  const noHeritage = !!PACKS[scenario.id] && !PACKS[scenario.id].files['heritage.json'] && mission.offer.includes('landmarks');
+  const offer = TWIST_ORDER.filter(t => mission.offer.includes(t) && !(noHeritage && t === 'landmarks'));
   // (the cards: what is offered, and Hands off where the mission says why not)
-  const cards = TWIST_ORDER.filter(t => offer.includes(t) || (t === 'landmarks' && !!mission.noLandmarks));
+  const cards = TWIST_ORDER.filter(t => offer.includes(t) || (t === 'landmarks' && (!!mission.noLandmarks || noHeritage)));
   const defaults = missionDefaults(mission), state = loadTwistState(scenario.id, presetId, offer, defaults);
   const terms = { ...mission.terms, maxTravelMin: scenario.maxTravelMin, landmarks: [] };
-  const landmarks = landmarksWords(mission);
+  const landmarks = noHeritage ? { short: 'Not on this map yet', long: 'This mission’s map was built without its listed places.' } : landmarksWords(mission);
   const on = new Set(state.on);
   const root = document.createElement('main');
   root.className = 'scenario-picker twist-picker';
@@ -119,7 +121,11 @@ export function pickTwists(scenario: ScenarioParams, saved: boolean): Promise<{ 
     label.addEventListener('pointerenter', tell); box.addEventListener('focus', tell);
     li.append(label); list.append(li); boxes.set(t, box);
   }
-  list.addEventListener('pointerleave', () => { if (!list.contains(document.activeElement)) detail.textContent = ''; });
+  // (the pointer gone: the line of the card that has the focus, if one has)
+  list.addEventListener('pointerleave', () => {
+    const t = (document.activeElement as HTMLElement | null)?.dataset?.t as TwistId | undefined;
+    detail.textContent = t && list.contains(document.activeElement) ? `${TWIST_NAMES[t]}: ${longOf(t)}` : '';
+  });
   const sync = () => {
     for (const [t, box] of boxes) { box.checked = on.has(t); box.closest('label')!.classList.toggle('on', on.has(t)); }
     start.textContent = on.has('scratch') && saved ? 'Start from scratch' : saved ? 'Continue' : 'Start';

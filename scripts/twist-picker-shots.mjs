@@ -39,7 +39,7 @@ try {
     'the default three marked Default and on');
   const short = await page.locator('.tw-card small').allTextContents();
   ok(short.every(t => t.length <= 34), `each card has one short line (${short.join(' | ')})`);
-  ok(await page.locator('.twist-picker-map circle').count() >= 1, 'the small map shows the line from A to B and the chapel’s ring');
+  ok(await page.locator('.twist-picker-map circle.tw-map-ring').count() === 1, 'the small map shows the line from A to B and the chapel’s ring');
   await page.mouse.move(1270, 790);
   await shot('twist-screen-start-here');
   await page.locator('.tw-card[data-t="landmarks"]').hover(); await page.waitForTimeout(200);
@@ -59,7 +59,7 @@ try {
   const none = page.locator('.tw-card.unavailable');
   ok(await none.count() === 1 && /Hands off the castle\s*No listed place near enough/.test(await none.textContent()), 'Šternberk: Hands off is there and says no listed place is near enough');
   await none.hover(); await page.waitForTimeout(200);
-  ok(/670 m from the town’s historic centre and 1\.2 km from its castle/.test(await page.locator('.twist-picker-detail').textContent()), '…and on hover why: the bypass keeps clear of the town and its castle');
+  ok(/670 m from the town’s historic centre, 1\.2 km from its castle/.test(await page.locator('.twist-picker-detail').textContent()), '…and on hover why: the bypass keeps clear of the town and its castle');
   await shot('twist-screen-sternberk');
   // ---- I/35 Jičín: eight twists, a heritage area ----
   await home(); await pick('Turnov → Úlibice through Český ráj', 'Čímyšl → Úlibice');

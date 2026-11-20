@@ -17,11 +17,12 @@ export const EARTH_SHARE = 0.1;
 export const LANDMARK_RING: Record<MonumentKind, number> = { castle: 400, fort: 200, church: 200, chapel: 100, memorial: 100, technical: 100, cross: 50 };
 /** "Hands off the castle" where the planned line keeps out of every monument's own ring (LANDMARK_RING) and every heritage
  * area: the mission names the monuments nearest it (`MissionTwists.inPlay`, `setting`) with this wider ring, their
- * setting, m. A game scale, the same for every monument of a kind, about as large as the larger quarter of the
- * protection zones NPÚ has declared round monuments of that kind (research/102 "Round 5", pipeline/heritage_zone_sizes.py:
- * of 455 zones in force, the upper quartile of their equivalent radii is 970 m round castles, 550 m round churches, 700 m
- * round forts, 440 m round memorials, 500 m round technical monuments; the largest 5.0, 2.3, 1.6, 1.7, 0.9 km). Chapels
- * count as churches (one declared zone only); crosses and statues keep 200 m (two zones, the larger 190 m). */
+ * setting, m. A game scale, the same for every monument of a kind, picked so that the monument nearest each planned line
+ * (450–600 m off, research/102 "Round 5") is in play, and kept within the sizes of the protection zones NPÚ has declared
+ * round monuments of the kind (pipeline/heritage_zone_sizes.py, 455 zones in force; equivalent radius, upper quartile /
+ * largest): castles 940 m / 5.0 km, forts 660 m / 1.6 km, churches 470 m / 2.3 km, memorials 440 m / 1.7 km, technical
+ * monuments 370 m / 0.9 km; chapels (two zones, the larger 180 m) count as churches; crosses and statues keep 200 m (three
+ * zones, the largest 190 m). So 600 m is above the usual declared zone of a church, a memorial or a technical monument. */
 export const SETTING_RING: Record<MonumentKind, number> = { castle: 1000, fort: 600, church: 600, chapel: 600, memorial: 600, technical: 600, cross: 200 };
 /** A landmark a mission names on its twist screen (the pack's heritage.json by its ÚSKP number; scripts/twists-check.ts checks
  * each is there, of that kind, and that the starter breaks one of them and nothing else): its name in the player's words;
@@ -61,7 +62,7 @@ export interface MissionTwists {
 export const MISSION_TWISTS: Record<string, MissionTwists> = {
   'i46-sternberk-road': {
     offer: ['earth', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'],
-    noLandmarks: 'Not here: the bypass keeps 670 m from the town’s historic centre and 1.2 km from its castle, and no other listed place is near.',
+    noLandmarks: 'Not here: the bypass keeps 670 m from the town’s historic centre, 1.2 km from its castle and clear of every listed place’s ring.',
     startBill: 880e6,
     terms: { earthShare: EARTH_SHARE, bridgeM: 150, forestHa: 4.5 },
     curveballs: ['sternberk-villa', 'sternberk-butterflies', 'sternberk-ales', 'sternberk-quiet', 'sternberk-money'],
@@ -72,7 +73,7 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
   // scripts/twists-stitch.ts)
   'd3-0301-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'bridges', 'scratch', 'byHand'], inPlay: [{ code: '10874/2-4319', name: 'Chapel of St Wenceslas, Jílové u Prahy', kind: 'chapel', setting: true }], startBill: 4_855e6, terms: { earthShare: EARTH_SHARE, bridgeM: 500 }, curveballs: ['d3-0301-graves', 'd3-0301-gas', 'd3-0301-farm', 'd3-0301-nest', 'd3-0301-money'],
     real: { price: 12_900e6, priceText: 'ŘSD estimate, 09/2025, with the 1.7 km Kamenná Vrata tunnel', story: 'The first stretch has its planning decision; an exploratory gallery is probing the rock for its tunnel.', reviewBy: 2011 } },
-  'd3-0302-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'homes', 'forest', 'bridges', 'scratch', 'byHand'], inPlay: [{ code: '101806', name: 'St Joseph gold mine adit, Jílové u Prahy', kind: 'technical', setting: true }, { code: '22458/2-2261', name: 'Žampach railway viaduct', kind: 'technical', setting: true }], startBill: 6_761e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1300, forestHa: 5.0 }, curveballs: ['d3-0302-luka', 'd3-0302-slope', 'd3-0302-quiet', 'd3-0302-nest', 'd3-0302-money'],
+  'd3-0302-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'homes', 'forest', 'bridges', 'scratch', 'byHand'], inPlay: [{ code: '101806', name: 'St Joseph gold mine entrance, Jílové u Prahy', kind: 'technical', setting: true }, { code: '22458/2-2261', name: 'Žampach railway viaduct', kind: 'technical', setting: true }], startBill: 6_761e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1300, forestHa: 5.0 }, curveballs: ['d3-0302-luka', 'd3-0302-slope', 'd3-0302-quiet', 'd3-0302-nest', 'd3-0302-money'],
     real: { price: 8_100e6, priceText: 'ŘSD estimate, 09/2025, with a 787 m Sázava bridge and the Luka tunnel', story: 'A 787 m bridge is to clear the Sázava valley; permits are being prepared, works no sooner than 2028.', reviewBy: 2011 } },
   'd3-0303-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], inPlay: [{ code: '11034/2-4317', name: 'Chapel of Our Lady, Chrášťany', kind: 'chapel', setting: true }], startBill: 5_633e6, terms: { earthShare: EARTH_SHARE, bridgeM: 300, forestHa: 12.5 }, curveballs: ['d3-0303-valley', 'd3-0303-pots', 'd3-0303-quiet', 'd3-0303-gas', 'd3-0303-nest', 'd3-0303-money'],
     real: { price: 14_500e6, priceText: 'ŘSD estimate, 09/2025', story: 'Tunnels and bridges carry it on through the hills; its permit documents are being prepared.', reviewBy: 2011 } },
@@ -98,6 +99,10 @@ export const MISSION_TWISTS: Record<string, MissionTwists> = {
     real: { price: 17_694e6, priceText: 'ŘSD estimate, 09/2025, with the 4 km Dětřichov tunnel', story: 'Its 4 km tunnel passes under the protected Pod skálou slope; it is to be built by a private partner.', reviewBy: 2006 } },
   'd11-motorway': { offer: ['earth', 'landmarks', 'curveballs', 'bridges', 'scratch', 'byHand'], inPlay: [{ code: '33165/6-3675', name: 'Memorial to the Austrian gunners of 1866, Trutnov', kind: 'memorial' }], startBill: 14_029e6, terms: { earthShare: EARTH_SHARE, bridgeM: 1600, forestHa: 16 }, curveballs: ['d11-shaft', 'd11-porici-slope', 'd11-olesnice-slope', 'd11-graves', 'd11-nest', 'd11-contract'],
     real: { price: 11_710e6, priceText: 'the contract signed in 10/2024, 10 % under the estimate', story: 'Being built since October 2024 with two twin tunnels; the Polish S3 has waited at the border since 2024.', reviewBy: 2008 } },
+  // the class I road (round 5): its starter is the straight line and balances its earth (9 % brought in); no news written
+  // for it; Hands off: it passes four listed monuments by their own rings
+  'd11': { offer: ['landmarks', 'byHand'], inPlay: [{ code: '33165/6-3675', name: 'Memorial to the Austrian gunners of 1866, Trutnov', kind: 'memorial' }, { code: '15458/6-5062', name: 'Railway bridge, Trutnov', kind: 'technical' }, { code: '22111/6-5121', name: 'Common grave of the victims of fascism, Bernartice', kind: 'memorial' }, { code: '100739', name: 'Church of the Assumption, Bernartice', kind: 'church' }], startBill: 8_682e6, baseline: 'the starting line', terms: {}, curveballs: [],
+    real: { priceText: 'No class I road is planned here: the D11 motorway is', story: 'The D11 motorway is being built here since October 2024, with two twin tunnels.' } },
   'd11-rail-kralovec': { offer: ['earth', 'landmarks', 'curveballs', 'forest', 'bridges', 'scratch', 'byHand'], inPlay: [{ code: '101745', name: 'Church of St John of Nepomuk, Libeč', kind: 'church', setting: true }], startBill: 10_801e6, baseline: 'the starting line', terms: { earthShare: EARTH_SHARE, bridgeM: 1600, forestHa: 5.0 }, curveballs: ['kralovec-libec-slope', 'kralovec-krenov-slope', 'kralovec-graves', 'kralovec-nest', 'kralovec-money'],
     real: { priceText: 'No such railway is planned', story: 'Today a single unelectrified track winds via Libeč and Bernartice; trains take 26 minutes with four stops.' } },
 };

@@ -3,8 +3,8 @@
 // design that meets the twists and the goal, and the first news from the site (the villa) on top of it → the fix, by
 // dragging a bend on the map → the reveal → the next news at its pace → changing twists mid-game → From scratch.
 //
-// Then D3 Voračice → Nová Hospoda (a game event on a real register's place, the Mastník's banks, then one without), the class I road (no
-// twists) and the whole D3's twist screen.
+// Then D3 Voračice → Nová Hospoda (a game event on a real register's place, the Mastník's banks, then one without), the class I road (Hands
+// off and By hand only) and the whole D3's twist screen.
 //
 //   node scripts/twists-play.mjs [--docs]      --docs: docs/screenshots/640–654 (look at them)
 // Untimed: flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/twists-play.mjs (AGENTS.md).
@@ -148,7 +148,8 @@ try {
   await game.park(); await shot('news-game-event');
   // ---- a mission without twists says so; a whole route offers its own ----
   await pick('Class I road');
-  ok(/No twists on this mission yet/.test(await page.locator('.twist-picker').textContent()), 'the class I road: the twist screen says it has none');
+  const road = await page.locator('.twist-picker-list b').allTextContents();
+  ok(road.join() === 'Hands off the castle,By hand', `the class I road offers Hands off (four listed places by its straight line) and By hand (${road.join(', ')})`);
   await shot('no-twists');
   await pick('Whole route');
   const whole = await page.locator('.twist-picker-list b').allTextContents();

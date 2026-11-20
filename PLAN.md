@@ -2626,8 +2626,8 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     the mission's). Round 5 (research/102 "Round 5"): **on every mission where a listed place is near enough.** Where the
     planned line keeps out of every monument's own ring and every area, the mission names the monuments nearest it with a
     wider ring, their **setting** (castle 1,000 m; church, chapel, fort, memorial, technical monument 600 m; cross or
-    statue 200 m: a game scale about the larger quarter of the 455 protection zones NPÚ has declared round each kind,
-    `pipeline/heritage_zone_sizes.py`); the others keep their own rings. Each mission names (data/twists.ts `inPlay`, in
+    statue 200 m: a game scale picked so the monument nearest each planned line, 450–600 m off, is in play, within the
+    sizes of the 455 protection zones NPÚ has declared round each kind but above the usual one, `pipeline/heritage_zone_sizes.py`); the others keep their own rings. Each mission names (data/twists.ts `inPlay`, in
     English) what its starter breaks; `twists-check.ts` checks each name is the pack's, of that kind, and that the starter
     breaks one and nothing unnamed. Šternberk has none (`noLandmarks`, said on the twist screen). Zones are drawn filled in the twist's plum (red where broken), named on hover ("Trosky castle protection
     zone"); monuments as rings, named close up (`src/render/twist-marks.ts`). Until round 3: rings round 479 named OSM
@@ -2701,7 +2701,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     place). Landmarks for the I/35 added (`pipeline/build_landmarks.py` region i35: 479 in all).
 - **Where** (round 5, owner: "Hands off … rarely does anything"; the twist screen as picture cards): Hands off is offered on
   every mission but Šternberk. Named with their setting: D35 stage 1, Start here (the chapel of St Roch, Staré Město:
-  the reference keeps north of it, 12.78 bn, every news, earth 2 %), D3 0302 (the St Joseph gold mine adit and the Žampach
+  the reference keeps north of it, 12.78 bn, every news, earth 2 %), D3 0302 (the St Joseph gold mine entrance and the Žampach
   viaduct: its bends 2–3 moved 30–80 m west with the Sázava bridge painted, then searched: 5.48 bn), 0303 (the chapel of Our
   Lady, Chrášťany: 4.84 bn), I/35 Rovensko (the chapel at Radostná pod Kozákovem: 3.92 bn, 23 M under the goal), the
   Královec railway (the church of St John of Nepomuk, Libeč: 9.01 bn), D3 0301 (the chapel of St Wenceslas by Jílové, by the

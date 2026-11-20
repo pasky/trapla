@@ -5,7 +5,7 @@ import './twists.css';
 import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import type { ScenarioParams } from '../core/data/scenario';
 import { CATEGORIES } from '../core/data/categories';
-import { checkTwists, landmarkName, landmarkShape, landmarkWords, shapeRings, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type Shape, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
+import { checkTwists, landmarkName, landmarkShape, landmarkWords, OFF_AT_FIRST, shapeRings, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type Shape, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
 import { baselineWords, GOAL_SHARE, missionDefaults } from '../core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup, type PackFrame } from '../core/mission-twists';
 import type { HeritageData } from '../core/heritage';
@@ -139,7 +139,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
       ${c.issues.filter(i => Number.isFinite(i.x) || i.fix).slice(0, 6).map((i, k) => `<div class="tw-issue">${esc(i.text)} ${Number.isFinite(i.x) ? `<button type="button" class="link" data-show="${c.id}:${k}">Show</button>` : ''}${i.fix ? ` <button type="button" class="link" data-fix="${c.id}:${k}">${i.fix.style === 'long' ? 'Long spans over it' : i.fix.kind === 'bridge' ? 'Bridge it' : 'Tunnel it'}</button>` : ''}</div>`).join('')}
       ${c.issues.filter(i => !Number.isFinite(i.x) && !i.fix).slice(0, 2).map(i => `<div class="tw-issue">${esc(i.text)}</div>`).join('')}
       ${!c.met && c.id === 'scratch' ? '<button type="button" class="tw-act" data-act="scratch">Start from the straight line</button>' : ''}</div></li>`).join('');
-    const choose = changing ? `<ul class="tw-choose">${TWIST_ORDER.filter(t => offer.includes(t)).map(t => `<li><label><input type="checkbox" data-t="${t}"${state.on.includes(t) ? ' checked' : ''}> <b>${esc(TWIST_NAMES[t])}</b><small>${esc(twistLine(t, setup!.terms))}</small></label></li>`).join('')}</ul>` : '';
+    const choose = changing ? `<ul class="tw-choose">${TWIST_ORDER.filter(t => offer.includes(t)).map(t => `<li><label><input type="checkbox" data-t="${t}"${state.on.includes(t) ? ' checked' : ''}> <b>${esc(TWIST_NAMES[t])}</b><small>${esc(twistLine(t, setup!.terms))}${setup!.mission.notDefault?.includes(t) ? ` ${esc(OFF_AT_FIRST)}` : ''}</small></label></li>`).join('')}</ul>` : '';
     app.card.innerHTML = `${goalLine}${on.length || changing ? '' : '<p class="tw-none">No twists: just the cheapest valid design.</p>'}<ul class="tw-list">${rows}</ul>${choose}
       <div class="btns"><button type="button" data-act="change">${changing ? 'Done' : 'Change twists'}</button>${state.revealed ? ' <button type="button" data-act="reveal">The real project</button>' : ''}</div>`;
   }

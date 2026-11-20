@@ -52,7 +52,7 @@ const MISSIONS = [
   ['d3-0303', 'd3-0303-motorway', 'Chapel of Our Lady, Chrášťany', 'chapel', 600, 'd3-0303-chapel', '11034/2-4317'],
   ['i35-rovensko', 'i35-rovensko-road', 'Chapel at Radostná pod Kozákovem', 'chapel', 600, 'i35-rovensko-chapel', '22814/6-2750'],
   ['d11', 'd11-rail-kralovec', 'Church of St John of Nepomuk, Libeč', 'church', 600, 'kralovec-church', '101745'],
-  ['d3-0302', 'd3-0302-motorway', 'St Joseph gold mine adit, Jílové u Prahy', 'technical monument', 600, 'd3-0302-adit', '101806'],
+  ['d3-0302', 'd3-0302-motorway', 'St Joseph gold mine entrance, Jílové u Prahy', 'technical monument', 600, 'd3-0302-adit', '101806'],
   ['d3-0301', 'd3-0301-motorway', 'Chapel of St Wenceslas, Jílové u Prahy', 'chapel', 600, 'd3-0301-chapel', '10874/2-4319'],
   ['d3-0305', 'd3-0305-motorway', 'Křenovice fort site, Vojkov', 'fort', 600, 'd3-0305-fort', '16850/2-281'],
 ];

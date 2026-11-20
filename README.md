@@ -250,7 +250,7 @@ zones and the heritage reserves and zones of the state's register (NPÚ), and aw
 chapels, crosses and technical monuments without one; where the planned line keeps clear of those, the monuments nearest
 it are named with a wider ring, their setting ([the chapel of St Roch on Start here](docs/screenshots/750-d35-st-roch-broken.png),
 [its ring's tip](docs/screenshots/751-d35-st-roch-tip.png), [a line kept off it](docs/screenshots/753-d35-st-roch-kept-clear.png),
-[the Jílové gold mine adit](docs/screenshots/757-d3-0302-adit.png), [Šternberk has none near](docs/screenshots/763-twist-screen-sternberk.png);
+[the Jílové gold mine entrance](docs/screenshots/757-d3-0302-adit.png), [Šternberk has none near](docs/screenshots/763-twist-screen-sternberk.png);
 [the Studeňany village protection zone on the I/35](docs/screenshots/722-i35-jicin-zone-broken.png), [named on hover](docs/screenshots/723-i35-jicin-zone-hover.png),
 [a line led round it](docs/screenshots/724-i35-jicin-zone-kept-clear.png), [the church at Turnov](docs/screenshots/725-i35-turnov-church-ring.png); research/102). *Curveballs*: news from the site,
 drawn from the real project's story, a place to keep out of or less money ([the villa](docs/screenshots/644-news-villa.png),
