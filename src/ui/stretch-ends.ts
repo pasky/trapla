@@ -28,7 +28,7 @@ export const STRETCH_END_TEXT = {
       case 'claimed': return 'Another rebuilt stretch starts here';
       case 'map': return 'The map ends here';
       case 'railway': return 'A railway crosses it here';
-      case 'bridge': return 'Another road’s bridge joins it here';
+      case 'bridge': return 'Another road’s bridge or tunnel joins it here';
       case 'tunnel': return 'A tunnel starts here: it cannot be rebuilt yet';
       case 'joined': return 'A road you built joins it here';
       case 'covered': return `${s.by.charAt(0).toUpperCase()}${s.by.slice(1)} covers it here`;
@@ -115,6 +115,11 @@ export class StretchEnds {
         const at = (q: ChainPart, entry: boolean) => line.t(q.interval.sourceId, entry === !q.reversed ? q.interval.s0 : q.interval.s1)!;
         const tA = at(parts[0], true), tB = at(parts[parts.length - 1], false), start = end ? tB : tA;
         const span = end ? { lo: tA + MIN_STRETCH, hi: line.t1 } : { lo: line.t0, hi: tB - MIN_STRETCH };
+        // (a stretch left on one way runs with that way: never shrunk onto a way the road runs against alone)
+        if (!line.single) {
+          const fixed = line.spans().find(q => end ? q.t0 <= tA + 1e-6 && q.t1 > tA + 1e-6 : q.t0 < tB - 1e-6 && q.t1 >= tB - 1e-6);
+          if (fixed?.part.reversed) { if (end) span.lo = Math.max(span.lo, fixed.t1 + SNAP); else span.hi = Math.min(span.hi, fixed.t0 - SNAP); }
+        }
         // the line as one polyline with its chainage (what the handle follows), its bridges, where its ways meet
         let path: { x: number; y: number; z: number; s: number }[];
         try { path = line.path(line.t0, line.t1); } catch { this.view.controls.enabled = enabled; return; }
@@ -122,12 +127,13 @@ export class StretchEnds {
         const spans = line.spans(), decks = spans.filter(q => structureOf(this.base.source(q.part.interval.sourceId)) !== 'ground');
         const joints = spans.slice(1).map(q => q.t0);
         /** where the end may stand: never on a bridge nor within CHAIN_KEEP_CLEAR of one, at a joint when that close */
+        const ok = (u: number) => u >= span.lo && u <= span.hi;
         const place = (t: number) => {
+          for (const j of joints) if (Math.abs(t - j) < SNAP && ok(j)) t = j;
           for (const d of decks) if (t > d.t0 - CHAIN_KEEP_CLEAR && t < d.t1 + CHAIN_KEEP_CLEAR) {
-            const before = d.t0 - CHAIN_KEEP_CLEAR, after = d.t1 + CHAIN_KEEP_CLEAR, ok = (u: number) => u >= span.lo && u <= span.hi;
+            const before = d.t0 - CHAIN_KEEP_CLEAR, after = d.t1 + CHAIN_KEEP_CLEAR;
             t = ok(before) && (!ok(after) || t - before <= after - t) ? before : ok(after) ? after : start;
           }
-          for (const j of joints) if (Math.abs(t - j) < SNAP) t = j;
           return t;
         };
         this.moving = { end, line, t: start };
@@ -138,7 +144,8 @@ export class StretchEnds {
           this.moving.t = t;
           const lo = end ? tA : t, hi = end ? t : tB;
           try {
-            this.view.setSourceSelection(line.path(lo, hi), end ? line.path(t, line.t1) : line.path(line.t0, t));
+            const ahead = end ? (line.t1 - t > 0.5 ? line.path(t, line.t1) : null) : (t - line.t0 > 0.5 ? line.path(line.t0, t) : null);
+            this.view.setSourceSelection(line.path(lo, hi), ahead);
           } catch { /* off the map: keep the last */ }
           // held at the far end with the pointer well past it: why it goes no further
           const why = stop && Math.abs(t - far) < 1 && farPoint ? STRETCH_END_TEXT.stop(stop) : null;

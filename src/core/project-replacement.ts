@@ -10,6 +10,7 @@ import type { Result } from './evaluate';
 import type { ConnectionDesign, RouteDesign } from './project';
 import type { RoadNet } from './roadnet';
 import type { OldPiece } from './stretch-chain';
+import { KEPT_TOLERANCE } from './project-kept';
 
 const km = (s: number) => (s / 1000).toFixed(2), cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -89,8 +90,16 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, p
     // an old bridge in the stretch: kept as it is where the new line stays on it (as the old road is), else taken down
     // whole (a tunnel is never in a stretch: stretch-chain.ts)
     if (piece.structure === 'bridge') {
-      const middle = old[Math.floor(old.length / 2)];
-      if (kept?.[nearest(r, middle.x, middle.y).i]) continue;
+      // (kept: the line runs on it at its middle, as the old road there)
+      let half = 0, middle = old[0];
+      for (let k = 1; k < old.length; k++) half += Math.hypot(old[k].x - old[k - 1].x, old[k].y - old[k - 1].y) / 2;
+      for (let k = 1, d = 0; k < old.length; k++) {
+        const len = Math.hypot(old[k].x - old[k - 1].x, old[k].y - old[k - 1].y);
+        if (d + len >= half) { const t = (half - d) / (len || 1); middle = { ...old[k], x: old[k - 1].x + t * (old[k].x - old[k - 1].x), y: old[k - 1].y + t * (old[k].y - old[k - 1].y) }; break; }
+        d += len;
+      }
+      const on = nearest(r, middle.x, middle.y);
+      if (kept?.[on.i] && on.d <= KEPT_TOLERANCE) continue;
       let length = 0;
       for (let k = 1; k < old.length; k++) {
         length += Math.hypot(old[k].x - old[k - 1].x, old[k].y - old[k - 1].y);

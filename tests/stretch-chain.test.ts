@@ -48,6 +48,15 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a rebuilt stretch over
     expect(on.parts.slice(0, 4).map(p => p.interval.sourceId)).toEqual([III, NEXT, BRIDGE, AFTER]);
     expect(back.parts.slice(0, 2).map(p => [p.interval.sourceId, p.reversed])).toEqual([[III, true], [BEFORE, true]]);
     expect(on.stop.reason).toBe('reach');
+    // (review repros) a road of yours joining where the next way starts holds the walk short of it; something covering the
+    // way right after the bridge holds it short of the bridge, never on or at it
+    const joined = walkOn(index, III, one.s1, 1, { ...limits, joins: [{ sourceId: NEXT, s: 0 }] });
+    expect(joined.stop.reason).toBe('joined');
+    expect(joined.parts.map(p => p.interval.sourceId)).toEqual([III]);
+    const covered = walkOn(index, III, one.s1, 1, { ...limits, covered: (sid: string) => sid === AFTER ? [{ transportData: index.transportData, sourceId: AFTER, s0: 0, s1: 50, by: 'our road' }] : [] });
+    expect(covered.stop).toEqual({ reason: 'covered', by: 'our road' });
+    expect(covered.parts.map(p => p.interval.sourceId)).toEqual([III, NEXT]);
+    expect(covered.parts[1].interval.s1).toBeCloseTo(index.source(NEXT)!.stations.at(-1)! - 5, 6);
     const line = new ChainLine(index, [...towardsA(back.parts), ...chainParts(index, [one]), ...on.parts]);
     const ta = line.t(III, one.s0)!, tb = line.t(III, one.s1)!;
     const next = line.intervals(ta - 300, tb + 300);
@@ -64,6 +73,10 @@ describe.skipIf(!existsSync(`${D11}/transport.json.gz`))('a rebuilt stretch over
     expect(d2.connections.some(c => c.id.startsWith('connection:route:r1:branch:') && c.ports.some(p => p.kind === 'source' && p.location.sourceId === 'osm:way:353585091'))).toBe(true);
     const pieces = oldPieces(pack.roads!, r2, d2.connections, ctx.sourceWays)!;
     expect(pieces.map(p => p.structure ?? 'ground')).toEqual(['ground', 'ground', 'ground', 'bridge', 'ground']);
+    // (where two ways meet is an end of each, exactly: what is left of the first and last ways keeps its number)
+    const total = (way: number) => pack.roads!.wayPath(way, 0, Infinity).at(-1)!.d;
+    expect(pieces.map((p, k) => [k > 0 ? (p.reversed ? p.d1 === total(p.way) : p.d0 === 0) : true, k < pieces.length - 1 ? (p.reversed ? p.d0 === 0 : p.d1 === total(p.way)) : true]))
+      .toEqual(pieces.map(() => [true, true]));
     // engineered as one road: every old way gone from the map, kept as it is where the line stays on it, the bridge too
     const kept = evaluateProject(ctx, { epoch: 'e', revision: 2, design: d2 });
     expect(next.every(i => kept.acceptedReplacements.some(a => a.sourceId === i.sourceId && a.s0 === i.s0 && a.s1 === i.s1))).toBe(true);

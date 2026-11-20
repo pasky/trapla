@@ -21,7 +21,7 @@ import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvalu
 import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign, RoadOperations } from './project';
 import * as dm from './detmath';
-import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, takenUpTrims, type MovedWays, type OldLineOf, type ResolvedEnds } from './project-roadnet';
+import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, wayHeads, type MovedWays, type OldLineOf, type ResolvedEnds } from './project-roadnet';
 import { oldPaths, oldPieces } from './stretch-chain';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
@@ -320,7 +320,7 @@ function crossingChangeList(host: Result, roads: RoadNet, heads: ReadonlyMap<num
 }
 /** How much of each pack way's start the player took up (taken-up.ts): a way's stations on an edited network start there. */
 function takenUpHeads(roads: RoadNet, design: ProjectDesign, sourceWays?: ReadonlyMap<string, number>): Map<number, number> {
-  return new Map(takenUpTrims(roads, design, sourceWays).filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
+  return wayHeads(roads, design, sourceWays);
 }
 /** A paired road in the player's words for a slip road that meets none: the project's own kind where it has one kind. */
 function pairedWord(design: ProjectDesign) {
@@ -702,7 +702,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
   // A dead end Auto ends at our works (road-realignment.ts takenUp) gives up its piece beyond its turning area: gone
   // from the map, as one the player cuts back (on a way the player cut back from its start, measured from its new start)
   if (roads && ctx.sourceWays) {
-    const sources = new Map([...ctx.sourceWays].map(([id, way]) => [way, id])), heads = new Map(takenUpTrims(roads, design, ctx.sourceWays).filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
+    const sources = new Map([...ctx.sourceWays].map(([id, way]) => [way, id])), heads = wayHeads(roads, design, ctx.sourceWays);
     for (const legacy of new Set(legacyOf.values())) for (const f of legacy.footprintConflicts) {
       // (its pieces one interval per way)
       const byWay = new Map<number, [number, number]>();

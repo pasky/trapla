@@ -529,6 +529,8 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
   // The old stretch and the new one on one line with a chainage of its own (one way: that way's stations, as always):
   // o0–o1 the old stretch, s0–s1 the new.
   const line = new ChainLine(base, unionParts(chainParts(base, olds), chainParts(base, next)));
+  // (one way's stretch runs with its way: core/stretch-chain.ts)
+  if (next.length === 1 && line.parts.find(p => p.interval.sourceId === next[0].sourceId)?.reversed) throw new Error('A stretch on one way runs with it');
   const endOf = (list: readonly SourceInterval[], end: 'a' | 'b') => {
     const parts = chainParts(base, list), p = end === 'a' ? parts[0] : parts[parts.length - 1];
     const t = line.t(p.interval.sourceId, (end === 'a') === !p.reversed ? p.interval.s0 : p.interval.s1);
@@ -555,7 +557,7 @@ function unionParts(o: readonly ChainPart[], n: readonly ChainPart[]): ChainPart
 }
 /** The traffic census stretch of a stretch: its interval, or a chain's longest part on the ground. */
 export const trafficInterval = (base: ProjectTransportIndex, list: readonly SourceInterval[]) => list.length === 1 ? list[0]
-  : list.filter(i => base.source(i.sourceId)?.elevation === 'terrain').reduce((m, i) => i.s1 - i.s0 > m.s1 - m.s0 ? i : m);
+  : list.filter(i => base.source(i.sourceId)?.elevation === 'terrain').reduce((m, i) => i.s1 - i.s0 > m.s1 - m.s0 ? i : m, list[0]);
 function moveOnLine(base: ProjectTransportIndex, project: ProjectDesign, route: RouteDesign & { alignment: { kind: 'pi' } }, fresh: RouteDesign,
   command: Extract<ProjectCommand, { type: 'promote' }>, line: ChainLine, old: { s0: number; s1: number }, s0: number, s1: number,
   olds: readonly SourceInterval[], next: SourceInterval[]): ProjectDesign {

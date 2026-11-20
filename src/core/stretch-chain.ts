@@ -83,8 +83,9 @@ export function chainPath(base: ProjectTransportIndex, intervals: readonly Sourc
     const stations = [interval.s0, ...inner, interval.s1];
     if (reversed) stations.reverse();
     for (const [j, at] of stations.entries()) {
-      if (k > 0 && j === 0) continue; // the joint, already the previous part's last point
       const q = xyAt(source, at), p = base.position(source.id, at);
+      // (the joint, already the previous part's last point: its height from this way where that one's is unknown)
+      if (k > 0 && j === 0) { const last = out[out.length - 1]; if (last && !Number.isFinite(last.z) && p) last.z = p.z; continue; }
       if (!p && source.elevation !== 'unknown') throw new Error('Source elevation is unresolved');
       out.push({ x: q.x, y: q.y, z: p ? p.z : NaN, s: offset + Math.abs(at - (reversed ? interval.s1 : interval.s0)), part: k, at });
     }
@@ -169,7 +170,13 @@ export function oldPieces(roads: RoadNet, route: Pick<RouteDesign, 'id' | 'sourc
   for (const [k, i] of intervals.entries()) {
     const way = legacyWayOf(roads, sourceWays, i.sourceId);
     if (way === undefined) return undefined;
-    const p = points[k], q = points[k + 1], dp = roads.wayStation(way, p.x, p.y), dq = roads.wayStation(way, q.x, q.y);
+    // (a joint is where two ways meet: an end of each, exactly)
+    const total = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0, end = (d: number) => d < total / 2 ? 0 : total;
+    const p = points[k], q = points[k + 1];
+    let dp = roads.wayStation(way, p.x, p.y), dq = roads.wayStation(way, q.x, q.y);
+    if (k > 0 && k < intervals.length - 1) { const forward = dp <= dq; dp = forward ? 0 : total; dq = forward ? total : 0; }
+    else if (k > 0) dp = end(dp);
+    else dq = end(dq);
     const structure = roads.structure(way)?.kind;
     out.push({ way, d0: Math.min(dp, dq), d1: Math.max(dp, dq), reversed: dp > dq, ...(structure ? { structure } : {}) });
   }
@@ -268,9 +275,16 @@ export function walkOn(base: ProjectTransportIndex, sourceId: string, s: number,
     parts.push({ interval: { transportData: base.transportData, sourceId: source!.id, s0: Math.min(from, to), s1: Math.max(from, to) }, reversed: to < from });
     walked += Math.abs(to - from);
   };
-  /** the walk ends on a bridge: back to its start (an end never stands on one) */
+  /** the walk ends on a bridge, or right after one: back to short of its start (an end never stands on one, nor at it) */
   const offBridge = () => {
-    while (parts.length && base.source(parts[parts.length - 1].interval.sourceId)?.bridge) { const p = parts.pop()!; walked -= p.interval.s1 - p.interval.s0; }
+    let popped = false;
+    while (parts.length && base.source(parts[parts.length - 1].interval.sourceId)?.bridge) { const p = parts.pop()!; walked -= p.interval.s1 - p.interval.s0; popped = true; }
+    const last = parts[parts.length - 1];
+    if (popped && last) {
+      const cut = Math.min(CHAIN_KEEP_CLEAR, last.interval.s1 - last.interval.s0);
+      last.interval = last.reversed ? { ...last.interval, s0: last.interval.s0 + cut } : { ...last.interval, s1: last.interval.s1 - cut };
+      if (!(last.interval.s1 - last.interval.s0 > 1e-6)) parts.pop();
+    }
   };
   for (let guard = 0; source && guard < 200; guard++) {
     seen.add(source.id);
@@ -281,7 +295,7 @@ export function walkOn(base: ProjectTransportIndex, sourceId: string, s: number,
     for (const c of limits.claimed) if (c.sourceId === source.id && c.transportData === base.transportData)
       consider(dir > 0 ? c.s0 : c.s1, { reason: c.taken ? 'taken' : 'claimed' });
     for (const c of limits.covered(source.id)) consider(dir > 0 ? c.s0 : c.s1, { reason: 'covered', by: c.by });
-    for (const j of limits.joins) if (j.sourceId === source.id && (dir > 0 ? j.s > at : j.s < at)) consider(dir > 0 ? Math.max(at, j.s - CHAIN_KEEP_CLEAR) : Math.min(at, j.s + CHAIN_KEEP_CLEAR), { reason: 'joined' });
+    for (const j of limits.joins) if (j.sourceId === source.id && (dir > 0 ? j.s >= at - 1e-6 : j.s <= at + 1e-6)) consider(dir > 0 ? Math.max(at, j.s - CHAIN_KEEP_CLEAR) : Math.min(at, j.s + CHAIN_KEEP_CLEAR), { reason: 'joined' });
     // (a railway, or a side road's bridge or tunnel, meeting it: short of it)
     if (!source.bridge) for (const b of base.branches({ transportData: base.transportData, sourceId: source.id, s0: 0, s1: length })) {
       if (Math.abs(b.s - end) < 1e-6) continue; // its end node: the way it goes on as is looked at below
@@ -298,9 +312,16 @@ export function walkOn(base: ProjectTransportIndex, sourceId: string, s: number,
     if (walked + Math.abs(end - at) > limits.reach) consider(at + dir * Math.max(0, limits.reach - walked), { reason: 'reach' });
     if (stop) {
       const { t, why } = stop as { t: number; why: ChainStop };
-      // (a stop inside a bridge: before it)
-      if (source.bridge) { offBridge(); return { parts, stop: why }; }
-      part(at, t); return { parts, stop: why };
+      // (a stop inside a bridge, or right after one: before it)
+      const moved = Math.abs(t - at) > 1e-6;
+      part(at, t);
+      const before = parts[parts.length - (moved ? 2 : 1)];
+      if (source.bridge) offBridge();
+      else if (Math.abs(t - at) < CHAIN_KEEP_CLEAR && before && base.source(before.interval.sourceId)?.bridge) {
+        if (moved) { const p = parts.pop()!; walked -= p.interval.s1 - p.interval.s0; }
+        offBridge();
+      }
+      return { parts, stop: why };
     }
     part(at, end);
     // at its end node: the way it goes on as; a railway there, or another way's bridge, stops it short
