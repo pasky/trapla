@@ -2682,3 +2682,54 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   Transferring the full result's typed arrays is not done either: the worker keeps the result (change lists, noise
   bands, preview bases), and its typed arrays are the cheap part of the message (objects are most of its decode).
 
+
+## A selected crossing's parts drag; a dead end cut back (owner report, no model version, 2026-11-20)
+
+- **Bug (owner, I/35 Turnov → Valdštejnsko, Photo view):** Nudvojovická (class III) carried over us at km 1.67, its card
+  open: "anywhere I click on the segment (the big circle, elsewhere), it just drags the landscape". Confirmed: a press on
+  the crossing's ring (it lets the pointer through to the map) or on its lit works selected or kept the crossing, which
+  had no drag, so the press was the camera's (a reroute's new road alone had one, `link-edit.ts`).
+- **Fix (select first, then drag; no modifiers; `ui/crossing-drag.ts`, `ui/map-gestures.ts`):** once a crossing is
+  selected, a drag of
+  - **its ring** slides where the crossed road crosses ours along our road: a mapped road is rebuilt (the any-road
+    editing: its stretch between junctions becomes a project road) and its piece around the crossing is moved across
+    its own direction, so that it keeps its angle to ours and crosses under the pointer (the bends whose curve comes
+    within 60 m of the crossing move together, or two new bends 20–60 m either side on a straight; corrected three
+    times where its curves make the first guess miss: UI choices, the norm then checks what was built). A road of the
+    project (the slid road the second time, a new railway) has its own bends moved alike. Undo "moving where
+    Nudvojovická crosses" (undo steps may now carry a label, `ProjectStore.commit(label)`);
+  - **its works** (ramps, deck, box, rebuilt piece) bends the crossed road as a drag on it selected does; the road's
+    card then shows (its bend card);
+  - **a reroute's new road** keeps its shaping and end handles.
+  The hover says what a drag does ("class III road · drag to move where it crosses", "drag to bend Nudvojovická") or
+  why not: a cut way's ring ("Cut here: pick how it crosses in the card"), a mapped bridge or tunnel ("Bridges and
+  tunnels of existing roads cannot be changed yet": a structure is a source of its own, and a rebuilt stretch is one
+  source between junctions, so the engine cannot rebuild the bridge with the road either side yet), a stretch a road
+  of the project ends on ("A road you built joins it here: …"; slip roads join outside the stretch between junctions:
+  D3 0303's II/105 slides between them, its slip roads stay). Mapped railways are raster obstacles with no crossing
+  card (nothing to drag).
+- **Live:** the first drag of a mapped road converted its line (≈ 70 ms of `fitRoad`) in the first move: the conversion
+  is now prepared at an idle moment after the selection (a crossing's ring stretch, a mapped road's card), used once.
+  A drag preview no longer runs the fix texts' radius searches (≈ 150 ms on a rebuilt road with a curve problem, every
+  move; the full result after release has them; bills unchanged). `drag-perf --mode crossing` (D11, I/35 whole route)
+  in the full gates: preview p50 10–12 ms.
+- **A dead end cut back (owner, same session):** a local road ending at our embankment near I/35 km 3.0 could not be
+  shortened. A selected mapped road's open dead end (no other way meets it, on the map, not a motorway, bridge or
+  tunnel, not rebuilt) now has an **End** handle (`ui/dead-end.ts`; hover "drag to shorten"); dragged back along the
+  road (no further than 5 m short of its last junction, so no other way loses its road; forward past where it ended:
+  nothing) the piece beyond is **taken up** (`ProjectDesign.takenUp`, `core/taken-up.ts`): gone from every road's network
+  (a trim of its way: what is left keeps the way's number, so crossing choices keep their ways) and from the map,
+  billed with our road at a rebuilt stretch's removal rates (OTSKP 113131 / 11333 / 18231 / 18242, layers PROVISIONAL,
+  research/30), nothing regraded. A house (no shed or garage) within 30 m of the piece and not within 30 m of any road
+  left is a problem ("A home loses its road · Leave more of the local road, or buy it out"; the rule of a track cut at
+  our road, STUB_HOUSE); bought out, it is settled. Undo "shortening Local road"; dragged out to where it ended, the road
+  is whole again.
+- **Finding (not fixed here):** that local road's last 3 m under our embankment hold the Auto grade up: with them taken
+  up the starter is 961 M cheaper (5.63 → 4.67 bn; with 120 m taken up, as in the check, the 480 m bridge at km
+  2.42–2.90 and a 70 m one at km 2.97–3.04 become 100 m and 180 m ones), with nothing about that way in the crossings or
+  footprint conflicts. Auto should end
+  such a dead end at our works itself (as it removes a dead end wholly under our earthworks) rather than build over it.
+- **Checked:** `scripts/crossing-drag-scene.mjs [--docs]` (gate `crossing-drag`; screenshots 700–709): both owner cases
+  and D11 road III/3012 with the real mouse (no camera move, the crossing where it was dragged, undo labels), a second
+  slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
+  (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.
