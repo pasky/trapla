@@ -3221,3 +3221,56 @@ earth-landmarks are this branch's searches, without Hands off (not offered there
   end in the quantities and close up, D11 km 14.13's railway over our cutting and its card, our bridge chosen instead,
   the profile, the pin's two ways), `tests/dead-ends.test.ts`, `tests/road-realignment.test.ts`, `tests/retaining.test.ts`,
   `tests/railway-mode.test.ts` (a motorway passes under a railway on a 6 m embankment).
+
+## One screen for every earthwork (owner report, cost model 64, 2026-11-20)
+
+The owner, again: "We fixed this several times, why is this bug coming back? We have embankment interfering with another
+road if we drag the crossing road." A crossed road slid along our motorway (D11 motorway, way 4828 at km 8.39, ring slid
+40 m) and rebuilt over it on a bridge drew its ramps as fans at both of its end junctions, over the roads meeting there.
+It came back because every kind of earthwork body had a screen of its own (a crossing's ramps, a reroute's new piece,
+a junction's mouth, our own body), each blind to what the others build.
+
+- **One screen** (`src/core/works-clash.ts` `worksClashes`): every earthwork the project builds — a crossing's raised or
+  lowered stretch, its links, the side roads it regrades (ties), turning areas, a raised junction's ties, an end's cone of
+  fill, our road's own body — against houses, railways, our piers and deck, our own body and every other mapped road, at
+  the engine's own depth (1:1.5 from the paved edge, buried above the drape tolerance). After a full evaluation only
+  (never in a drag preview), what is left is a problem (project-evaluate.ts `clashIssues`, code `works-clash`, invalid,
+  basis engine): on the player's roads "Move this road away from it here", on a crossing the player set "Set this
+  crossing back to Auto" (words in terms.ts `worksClashText`). Auto's own mission clashes are not shown to the player:
+  they are the gate's (`scripts/works-clash-audit.ts --edits --gate`, a full gate: every starter, every saved project,
+  and player edits — crossings slid and pulled, dead ends cut back — on D11 road and motorway, I/35 Turnov, D3 0303 and
+  Šternberk; an unknown clash fails). Screening every mission route whole costs ≈ 0.7 s per route on the whole D3.
+- **The engine fixes behind it**: a reroute's new piece is screened like a crossing's own stretch (crossing-works.ts
+  `crossingWorks`: a way meeting it regraded down to it, a way beside it walled off, else Auto takes another treatment),
+  the way it is led to that way's own line (a link joining it mid-way lies on it: D11 demo's km 10.25 track keeps its
+  149 m link; that way alone, not ways continuing it); a crossed road counts as itself only where a segment lies on its
+  line all along (`alongSource`); an arm buried beyond a junction's mouth is a road covered; our own body is one reading
+  for the engine and the screen (`src/core/our-body.ts`: between earth stations their daylight, where earth meets a
+  structure the earth station's section out to its cell's end, round a station on a bend's outside, the abutment cones
+  as drawn; a gap that is a lower bound): the links over our body Auto built before (d11-railway 3542, D35 whole 3363 /
+  3431, D3 road 1752, Nova Paka 2419) are walled or led elsewhere; a footprint junction owns the earth over a way only as
+  far as it regrades it (footprint.ts `junctionRegrade` = 0.3 + 6 % × max(zone − d, min(d, zone + 30 − d)), which also
+  covers a slip road joining at a shallow angle); a continuation ending at a real junction is checked for its grade
+  (tie-in.ts).
+- **Junctions taper, not fan** (`src/core/junction-raise.ts`, project-road.ts): a rebuilt stretch ending at a real
+  junction meets it at ≤ 6 % within 30 m (`EvalOptions.endGrades`, skipped in preview windows). Where its deck would
+  then miss our road's clearance, its raisable ends (not those kept as the old road) are raised, by as much as the holds
+  need at the zone grade, then at the line's steepest (up to two more solves); each other road at the node is tied down
+  to it (crossing-works.ts `nodeTies`, billed on the junction, drawn by render/crossing-surface.ts), with a cone of fill
+  round the node (abutment-cone.ts, `end: true`, fill billed, unpaved). A raise is refused where a tie would meet a
+  motorway, cannot reach the ground in 250 m, or puts a house under its slopes, the cone or the working strip, and kept
+  only if the holds are met within 0.5 m; else the plain problem stays with its fix. The owner's case
+  (tests/works-clash.test.ts "a slid crossing between two junctions"): valid, no clashes, both junctions tied, two cones,
+  ≤ 6 % at both ends; the I/35 full way 5053 slid the same way blocks a primary road: invalid, said.
+- **Bills** (prices.ts model 64): frozen D11 straight +17.9 M, best family 0 … +0.3, demo unchanged, direct-80 −13.8,
+  direct-90 +32.3, town-centre / town-controls +20.3 / +20.4 (links that buried other tracks: overbridges or other
+  links; walls off our cones). Starters: Šternberk 880 → 902 M, D3 whole 36 081 → 36 256 M, I/35 Turnov 4 481 → 4 547 M
+  (way 1295 at km 3.58: an underpass, its reconnection's slopes buried another road), Rovensko 4 386 → 4 479 M, Jičín
+  5 237 → 5 242 M, whole I/35 14 087 → 14 248 M; four twist references searched again. Evaluate time on the saved D11
+  designs ≈ +3–5 % (links screened against other roads; more remedies weighed where a link is refused).
+- **Open**: Auto's own clashes still in `scripts/works-clash/known.json` — D3 0304 overbridge 2212 over track 2214,
+  D3 0305 diversion 879 over track 894, Šternberk diversion 1201 over track 1216 (the engine's 1:1.5 depth there reads
+  0.2 m below the drawn surface's: the link's sections as refined differ from those drawn). Rovensko km 8.69 / 9.02:
+  two tracks either side of a crest were one underpass (1096) with the other (958) led to it (27 M); now the second is
+  led to the first's 150 m overbridge (98 M): the remedy search no longer tries the pair the other way round
+  (found after the bump; not yet traced).
