@@ -142,6 +142,7 @@ short form of each.
 | roads, railways, buildings, land cover, streams, places, the planned lines | OpenStreetMap | ODbL 1.0 | see below |
 | ground classes (25 m) | ČGS GEOČR50 and engineering-geological zoning 1:50 000, queried from ČGS map services and classified | **not settled** | see below |
 | protected nature areas | AOPK ČR open data | CC BY 4.0 | credit "© AOPK ČR": done |
+| listed monuments, heritage protection zones, reserves and zones (`heritage.json`) | NPÚ, Central List of Cultural Monuments (ÚSKP): geoportal.npu.cz and its open data (research/97) | CC BY 4.0 | credit "© NPÚ": done (About, map credits) |
 | traffic of rebuilt roads | ŘSD national traffic census 2025 | **not stated** | see below |
 
 **OpenStreetMap (ODbL 1.0).** The packs are a Derivative Database of OSM (OSMF

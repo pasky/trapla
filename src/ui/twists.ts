@@ -5,9 +5,10 @@ import './twists.css';
 import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import type { ScenarioParams } from '../core/data/scenario';
 import { CATEGORIES } from '../core/data/categories';
-import { checkTwists, landmarkName, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
+import { checkTwists, landmarkName, landmarkShape, shapeRings, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type Shape, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
 import { baselineWords, GOAL_SHARE } from '../core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup, type PackFrame } from '../core/mission-twists';
+import type { HeritageData } from '../core/heritage';
 import { corridorOfRoute } from '../core/project-motorway';
 import { legacyDesignForRoute } from '../core/project-legacy';
 import { TwistMarks, type TwistMark } from '../render/twist-marks';
@@ -26,7 +27,8 @@ const IDLE_MS = 120_000;
 export interface TwistsContext {
   scenario: ScenarioParams;
   presetId: string;
-  pack: { meta: { origin?: unknown; nx: number; ny: number; cell: number }; overlays: { buildings: [number, number, number][]; binfo?: (readonly number[] | null)[] }; terrain: { heightAt(x: number, y: number): number } };
+  pack: { meta: { origin?: unknown; nx: number; ny: number; cell: number }; overlays: { buildings: [number, number, number][]; binfo?: (readonly number[] | null)[] }; terrain: { heightAt(x: number, y: number): number };
+    heritage: HeritageData | null };
   ends: { a: { x: number; y: number }; b: { x: number; y: number } };
   view: View; overlay: HTMLElement;
   /** the HUD's chip and card body */
@@ -53,7 +55,7 @@ const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 export function createTwists(app: TwistsContext, choice: { on: TwistId[]; started: boolean } | null) {
   const meta = app.pack.meta, origin = (Array.isArray(meta.origin) ? meta.origin : [0, 0]) as [number, number];
   const frame: PackFrame = { origin, width: meta.nx * meta.cell, height: meta.ny * meta.cell, a: app.ends.a, b: app.ends.b };
-  const setup: MissionTwistSetup | undefined = missionTwistSetup(app.presetId, app.scenario, frame);
+  const setup: MissionTwistSetup | undefined = missionTwistSetup(app.presetId, app.scenario, frame, app.pack.heritage);
   if (!setup) { app.chip.hidden = true; app.section.hidden = true; return null; }
   const offer = setup.mission.offer;
   app.section.hidden = false;
@@ -112,7 +114,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const broken = new Set((last?.checks ?? []).flatMap(c => c.issues.flatMap(i => i.ref ? [i.ref] : [])));
     const out: TwistMark[] = [];
     if (state.on.includes('landmarks')) for (const [k, l] of setup!.terms.landmarks.entries())
-      out.push({ id: `landmark:${k}`, kind: 'landmark', shape: { kind: 'circle', x: l.x, y: l.y, r: l.ring }, label: landmarkName(l), state: broken.has(`landmark:${k}`) ? 'broken' : 'ok', at: l });
+      out.push({ id: `landmark:${k}`, kind: l.rings ? 'heritage' : 'landmark', shape: landmarkShape(l), label: landmarkName(l), state: broken.has(`landmark:${k}`) ? 'broken' : 'ok', at: l });
     if (state.on.includes('curveballs')) for (const c of fired()) if (c.zone)
       out.push({ id: `curveball:${c.id}`, kind: 'zone', shape: c.zone.shape, label: c.zone.label, state: broken.has(`curveball:${c.id}`) ? 'broken' : 'ok', fresh: freshId === c.id, at: middle(c.zone.shape) });
     marks.set(out);
@@ -274,8 +276,8 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   return api;
 }
 
-function middle(shape: { kind: 'circle'; x: number; y: number } | { kind: 'polygon'; pts: readonly (readonly [number, number])[] }) {
+function middle(shape: Shape) {
   if (shape.kind === 'circle') return { x: shape.x, y: shape.y };
-  const n = shape.pts.length;
-  return { x: shape.pts.reduce((a, p) => a + p[0], 0) / n, y: shape.pts.reduce((a, p) => a + p[1], 0) / n };
+  const pts = shapeRings(shape).flat(), n = pts.length;
+  return { x: pts.reduce((a, p) => a + p[0], 0) / n, y: pts.reduce((a, p) => a + p[1], 0) / n };
 }

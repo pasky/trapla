@@ -1,5 +1,5 @@
 // The twists' names and one-line descriptions (core/twists.ts checks them): light, for the start screen's twist screen too.
-import type { LandmarkKind } from './data/landmarks';
+import type { MonumentKind } from './heritage';
 
 export type TwistId = 'earth' | 'landmarks' | 'curveballs' | 'homes' | 'forest' | 'bridges' | 'tunnels' | 'faster' | 'budget' | 'scratch' | 'byHand';
 /** in the order the twist screen lists them */
@@ -7,8 +7,11 @@ export const TWIST_ORDER: readonly TwistId[] = ['earth', 'landmarks', 'curveball
 /** the owner's default difficulty, where a mission offers them */
 export const DEFAULT_TWISTS: readonly TwistId[] = ['earth', 'landmarks', 'curveballs'];
 
-/** A landmark the "Hands off" twist keeps clear (data/landmarks.ts). */
-export interface Landmark { name: string; kind: LandmarkKind; x: number; y: number }
+/** What the "Hands off" twist keeps clear (a pack's heritage.json, core/heritage.ts): a listed monument with a ring
+ * round it, or a heritage area (a protection zone, a heritage reserve or zone) itself. */
+export type LandmarkKind = MonumentKind | 'zone';
+/** `x`, `y`: the monument, or where a zone's name stands (inside it); `rings`: a zone's polygons (pack metres) */
+export interface Landmark { name: string; kind: LandmarkKind; x: number; y: number; rings?: readonly (readonly (readonly [number, number])[])[] }
 
 /** What a mission's twists are measured with (data/twists.ts). */
 export interface TwistTerms {
@@ -32,7 +35,7 @@ const money = (v: number) => v >= 1e9 ? `${num(v / 1e9, 2)} bn` : `${num(v / 1e6
 export function twistLine(id: TwistId, t: TwistTerms): string {
   switch (id) {
     case 'earth': return `What you dig fills your embankments: at most ${Math.round((t.earthShare ?? 0.1) * 100)} % of the fill brought in, or of the dug earth trucked away.`;
-    case 'landmarks': return 'Keep clear of the castles, churches, chapels and viewpoints near the line (their rings on the map).';
+    case 'landmarks': return 'Keep clear of the listed monuments near the line and their protection zones (marked on the map).';
     case 'curveballs': return 'News from the site arrives as you play: a place to keep out of, a new demand, less money.';
     case 'homes': return 'Nobody loses their home: no house bought out.';
     case 'forest': return `At most ${num(t.forestHa ?? 0, 1)} ha of forest cleared for our road.`;

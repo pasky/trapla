@@ -49,7 +49,7 @@ try {
     ok(titles.length === 7, `seven cards, one per corridor or mission (${titles.join(' | ')})`);
     ok(!(await page.locator('.scenario-picker').textContent()).match(/earlier map|Your older saves/), 'no retired mission and no older saves on a fresh visit');
     const first = page.locator('[data-start-here]');
-    ok(await first.count() === 1 && /Jílové → Hostěradice/.test(await first.textContent()), 'one mission is marked Start here: Jílové → Hostěradice');
+    ok(await first.count() === 1 && /Opatovec → Staré Město/.test(await first.textContent()), 'one mission is marked Start here: Opatovec → Staré Město');
     const d3 = page.locator('.scenario-picker-card', { hasText: 'The D3 south of Prague' });
     const chips = await d3.locator('.scenario-picker-section').allTextContents();
     ok(chips.length === 6 && /^Praha → Jílové/.test(chips[0]) && /^Whole route/.test(chips[5]) && chips.every((c) => /km · [\d.]+ MB$/.test(c)),
@@ -111,10 +111,10 @@ try {
     await cdp.send('Network.enable');
     // a link straight to the mission (no start screen: nothing fetched ahead) on an 8 Mbit/s line
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 40, downloadThroughput: 8e6 / 8, uploadThroughput: 2e6 / 8 });
-    await page.goto(`${site.url}?scenario=d3-0302`);
+    await page.goto(`${site.url}?scenario=d35&preset=d35-stage1-motorway`);
     await page.waitForFunction(() => { const t = document.querySelector('#loading .loading-line')?.textContent ?? ''; const m = t.match(/^([\d.]+) of ([\d.]+) MB/); return m && +m[1] > 0.3 * +m[2]; }, null, { timeout: 60000, polling: 50 });
     const line = await page.locator('#loading').textContent();
-    ok(/Loading the map\s*Jílové → Hostěradice.*[\d.]+ of 3\.9 MB/.test(line), `the loading card says what and how much ("${line}")`);
+    ok(/Loading the map\s*Opatovec → Staré Město.*[\d.]+ of 5\.0 MB/.test(line), `the loading card says what and how much ("${line}")`);
     await shot(page, 555, 'loading-card');
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await page.waitForFunction(() => !document.getElementById('loading'), null, { timeout: 120000, polling: 20 });
@@ -123,17 +123,18 @@ try {
     await idle(page); await page.waitForTimeout(400);
     ok(true, `the map shows before its first price (status then: "${pricing || 'already priced'}")`);
     ok(await page.locator('#intro').isVisible() && /Drag the orange motorway/.test(await page.locator('#intro').textContent()), 'the first run shows the short intro');
-    ok(await page.title() === 'Jílové → Hostěradice — Trapla', `the page title names the mission (${await page.title()})`);
+    ok(await page.title() === 'Opatovec → Staré Město — Trapla', `the page title names the mission (${await page.title()})`);
     await shot(page, 557, 'first-run');
     // the first drag: on the road, sideways
     const view = await page.locator('#view').boundingBox();
+    const before = await page.evaluate(() => window.trapla.getDesign().pis.length);
     const p = await page.evaluate(() => window.trapla.roadScreen(window.trapla.result().length * 0.8));
     const x = view.x + p.sx, y = view.y + p.sy;
     await page.mouse.move(x, y); await page.mouse.down();
     for (let k = 1; k <= 10; k++) await page.mouse.move(x + 3 * k, y);
     await page.mouse.up(); await idle(page); await page.waitForTimeout(400);
     const after = await page.evaluate(() => window.trapla.getDesign().pis.length);
-    ok(after === 2 && !(await page.locator('#intro').isVisible()), `the first drag adds a bend and the intro goes (${after} bends)`);
+    ok(after === before + 1 && !(await page.locator('#intro').isVisible()), `the first drag adds a bend and the intro goes (${before} → ${after} bends)`);
     await page.mouse.move(view.x + view.width - 4, view.y + view.height - 4);
     await shot(page, 558, 'first-drag');
     const attrib = page.locator('#attrib a', { hasText: 'About the data' });
@@ -161,7 +162,7 @@ try {
   }
   if (old) { // the intro before, on the same mission
     const { context, page } = await fresh(browser);
-    await page.goto(`${old.url}?scenario=d3-0302&preset=d3-0302-motorway`); await idle(page); await page.waitForTimeout(400);
+    await page.goto(`${old.url}?scenario=d35&preset=d35-stage1-motorway`); await idle(page); await page.waitForTimeout(400);
     await shot(page, 560, 'first-run-before');
     await context.close();
   }
@@ -190,7 +191,7 @@ try {
   {
     const { context, page } = await fresh();
     await page.route(/height\.i16\.gz$/, (route) => route.fulfill({ status: 503, body: 'down' }));
-    await page.goto(`${site.url}?scenario=d3-0302&preset=d3-0302-motorway`);
+    await page.goto(`${site.url}?scenario=d35&preset=d35-stage1-motorway`);
     await page.waitForSelector('#loading.failed', { timeout: 60000 });
     ok(/could not be loaded/.test(await page.locator('#loading').textContent()) && await page.getByRole('button', { name: 'Try again' }).isVisible(),
       'a failed download: said on the card, with Try again');
@@ -203,7 +204,7 @@ try {
     await page.goto(`${site.url}about.html`);
     await page.waitForFunction(() => document.querySelectorAll('#pack-list li a').length > 10);
     const text = await page.locator('main').textContent();
-    for (const w of ['ČÚZK', 'OpenStreetMap', 'ODbL', 'ČGS', 'AOPK', 'ŘSD', 'CC BY 4.0']) ok(text.includes(w), `About names ${w}`);
+    for (const w of ['ČÚZK', 'OpenStreetMap', 'ODbL', 'ČGS', 'AOPK', 'NPÚ', 'ŘSD', 'CC BY 4.0']) ok(text.includes(w), `About names ${w}`);
     const href = await page.locator('#pack-list a').first().getAttribute('href');
     const r = await page.request.get(new URL(href, page.url()).href);
     ok(r.ok(), `its download links work (${href})`);

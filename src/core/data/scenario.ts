@@ -220,12 +220,10 @@ export const D3_0301 = d3Section('d3-0301', '0301', 'Praha → Jílové', 120,
   'Leave the Prague ring and get through the hills to Jílové.',
   { a: { kind: 'interchange', with: 'the D0 and road II/101' }, b: { kind: 'interchange', with: 'road II/104', section: 'section 0302' } });
 // Starter: mapped-line bends every ~1.5 km, valid as sampled.
-// The start screen offers it first ("Start here"): the smallest pack (≈ 4 MB to load), a 4.5 km line that
-// evaluates fast, and one plain story: the deep Sázava valley, bridged or not.
-export const D3_0302 = startHere(d3Section('d3-0302', '0302', 'Jílové → Hostěradice', 120, P([[2608.6, 6143.7]]), 2.5, // 4.97 km at 120 (reference 4.52 km)
+export const D3_0302 = d3Section('d3-0302', '0302', 'Jílové → Hostěradice', 120, P([[2608.6, 6143.7]]), 2.5, // 4.97 km at 120 (reference 4.52 km)
   { a: 'Jílové (from 0301)', b: 'Hostěradice (on to 0303)', official: 'planned D3', brief: '<b>Jílové</b> to <b>Hostěradice</b>, across the Sázava' },
   'Cross the deep Sázava valley.',
-  { a: { kind: 'interchange', with: 'road II/104', section: 'section 0301' }, b: { kind: 'interchange', with: 'road II/106', section: 'section 0303' } }));
+  { a: { kind: 'interchange', with: 'road II/104', section: 'section 0301' }, b: { kind: 'interchange', with: 'road II/106', section: 'section 0303' } });
 // Starter: mapped-line bends every ~1.5 km; bend 3 moved 45 m to the right (bounded search) so that the
 // body clears a track at km 6.95 (research/39).
 export const D3_0303 = d3Section('d3-0303', '0303', 'Hostěradice → Václavice', 120,
@@ -246,14 +244,17 @@ export const D3_0305 = d3Section('d3-0305', '0305/I', 'Voračice → Nová Hospo
   { a: 'Voračice (from 0304)', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Voračice</b> to <b>Nová Hospoda</b>, where the D3 already runs' },
   'Bridge the Mastník valley and join the D3 that is already open.',
   { a: { kind: 'interchange', with: 'road I/18', section: 'section 0304' }, b: { kind: 'joins', with: 'the open D3' } });
-export const D35_MOTORWAY: ScenarioParams = {
+// The start screen offers it first ("Start here", owner 2026-11-20: more varied than one bridge): a 5 MB pack and a
+// 16.6 km line with a bit of everything: the open D35 to join, villages and streams, a protected slope over a
+// tunnel, a ridge to climb.
+export const D35_MOTORWAY: ScenarioParams = startHere({
   ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Opatovec → Staré Město', retired: undefined,
   // The real section is D 26.0/130 (research/26), a category without an SPK 2026 row: built as D 27.5.
   initial: { ...D35_SCENARIO.initial!, category: 'D27.5', speed: 130 },
   picker: { kind: 'Motorway', goal: 'Carry the motorway over the ridge to Staré Město.', section: 'Opatovec → Staré Město' },
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
   ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'continues', with: 'the next section, to Mohelnice' } },
-};
+});
 // RETIRED (owner: a railway must start and end on the rail network, not at the motorway's ends). Kept so
 // its saves still load (?scenario=d11&preset=d11-railway); not on the start screen.
 export const D11_RAILWAY: ScenarioParams = {

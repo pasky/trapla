@@ -19,9 +19,9 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import type { ProjectDesign, ProjectResult } from '../src/core/project';
 import { corridorOfRoute } from '../src/core/project-motorway';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { checkTwists, earthShare, ourResults, twistFacts, useAt, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
+import { checkTwists, earthShare, shapeRings, ourResults, twistFacts, useAt, DEFAULT_TWISTS, TWIST_ORDER, type TwistCheck, type TwistId, type TwistFacts } from '../src/core/twists';
 import { GOAL_SHARE, MISSION_TWISTS } from '../src/core/data/twists';
-import { missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
+import { missionLandmarks, missionTwistSetup, type MissionTwistSetup } from '../src/core/mission-twists';
 import { CATEGORIES } from '../src/core/data/categories';
 import type { Design } from '../src/core/evaluate';
 import { paintOverride } from '../src/core/overrides';
@@ -40,8 +40,10 @@ export function mission(preset: string): Mission {
   const pack = loadPack(`public/scenarios/${scenario.id}`), { meta } = pack;
   const ends = scenario.ports ? { a: { x: scenario.ports.a.xy[0], y: scenario.ports.a.xy[1] }, b: { x: scenario.ports.b.xy[0], y: scenario.ports.b.xy[1] } }
     : { a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
-  const setup = missionTwistSetup(preset, scenario, { origin: meta.origin as [number, number], width: meta.nx * meta.cell, height: meta.ny * meta.cell, ...ends });
+  const setup = missionTwistSetup(preset, scenario, { origin: meta.origin as [number, number], width: meta.nx * meta.cell, height: meta.ny * meta.cell, ...ends }, pack.heritage);
   if (!setup) throw new Error(`${preset}: no twists`);
+  // (ALL=1: every twist, the landmarks near the line too where the mission does not offer them: what a survey asks)
+  if (process.env.ALL && !setup.terms.landmarks.length) setup.terms = { ...setup.terms, landmarks: missionLandmarks(scenario, { origin: meta.origin as [number, number], width: meta.nx * meta.cell, height: meta.ny * meta.cell, ...ends }, pack.heritage) };
   const starter = packContext(pack, scenarioParams(scenario.id, scenario.presetId)).initial();
   return { preset, scenario, pack, setup, starter, ctx: projectContext(starter).ctx };
 }
@@ -171,7 +173,7 @@ function placeOf(m: Mission, ref: string | undefined): { x: number; y: number } 
   const z = ref?.startsWith('curveball:') ? m.setup.curveballs.find(c => c.id === ref.slice(10))?.zone : undefined;
   if (!z) return undefined;
   if (z.shape.kind === 'circle') return z.shape;
-  const p = z.shape.pts;
+  const p = shapeRings(z.shape).flat();
   return { x: p.reduce((a, q) => a + q[0], 0) / p.length, y: p.reduce((a, q) => a + q[1], 0) / p.length };
 }
 export function nearestS(L: { n: number; x: Float64Array; y: Float64Array; s: Float64Array }, x: number, y: number) {
@@ -191,7 +193,8 @@ export function checkMission(preset: string, log: (line: string) => void = conso
   const r0 = evalDesign(m, m.starter), cost0 = r0.cost.total ?? NaN;
   console.log(`${preset}: starter ${(cost0 / 1e6).toFixed(1)} M (data ${(mt.startBill / 1e6).toFixed(0)} M), ${m.setup.terms.landmarks.length} landmarks, ${m.setup.curveballs.length} curveballs`);
   if (!(Math.abs(cost0 - mt.startBill) <= 0.01 * mt.startBill)) fail(`starting bill ${cost0} is not data/twists.ts startBill ${mt.startBill} (±1 %)`);
-  const constraints = mt.offer.filter(t => t !== 'scratch' && t !== 'byHand' && t !== 'curveballs' && t !== 'landmarks');
+  // (Hands off the castle too: offered only where the starter breaks it, PLAN.md "Twists")
+  const constraints = mt.offer.filter(t => t !== 'scratch' && t !== 'byHand' && t !== 'curveballs');
   for (const c of check(m, m.starter, r0, constraints)) {
     console.log(`  starter ${c.id}: ${c.met ? 'meets it' : 'breaks it'} (${c.status})`);
     if (c.met) fail(`${c.id}: the starter already meets it (not a challenge)`);
