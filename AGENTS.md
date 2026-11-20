@@ -156,6 +156,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - A rebuilt stretch may span several mapped ways of one road (`core/stretch-chain.ts`, PLAN.md "A rebuilt stretch over
   several ways"): its squares are dragged through junctions and over bridges; an old bridge in it is kept where the line
   stays on it, else taken down and billed (research/106). Open: a mapped bridge selected on its own, tunnels.
+  Cost model 63: nothing of the kernel's own is built on a kept part (`project-kept.ts`); a crossed road of the project
+  running on beside the road crossing it shares that crossing's works: no 10 m working strip between them (`besideRun`).
 - A pin the player set is honoured (model 59, PLAN.md "A pin the player set is honoured"): one out of the norm's reach or
   met only by missing a crossing is met by Auto's own line re-solved within 500 m–2 km of it (spliced: the far line
   exactly Auto's own), steeper than the norm there if it must be (at most 2.5 ×), the crossing missed if it must be; each

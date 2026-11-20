@@ -3048,16 +3048,34 @@ main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before;
   End pulled out past its junction and back): frames p50/p95 17 ms, no long task, nothing evaluated during the drag.
 - **Checked:** `scripts/crossing-drag-scene.mjs` section 5 (D11 road III/3012 slid, then its End pulled through the
   street's junction, a 18 m way and the 7 m bridge 150 m onto the next way, its Start back past its junction onto the way
-  before; one undo step each; no new unpriced reason), I/35 a Start held at a road you built; screenshots 780–785;
+  before; one undo step each; priced after the slide and each pull), I/35 a Start held at a road you built; screenshots 780–785;
   `tests/stretch-chain.test.ts` (the walk, promotion, joints, side roads, every old way gone from the map, the bridge
   kept where the line stays on it and billed when moved off).
-- **Known issues:** (1) pulling an end past the old road's next corner can reveal a norm problem the stretch's end hid
-  (D11 III/3012: the slid corner and the old corner beyond 702 m are "too close for an S-bend"; the same on main when
-  the one way's end is pulled to 780 m): the extension's refit keeps the least built anew. (2) Where the kernel builds a
-  structure on cells kept as the old road (here its bridge over the brook, the old 7 m bridge kept), the structure is
-  drawn but, being kept, not billed: kept cells are laid on the old road only where the kernel built earthworks
-  (`project-kept.ts layOnGround`), on main too. (3) A drag on a mapped bridge (its card, a crossing ring on it) does not
-  rebuild it with its approaches yet.
+- **Kept means nothing of the kernel's own (cost model 63):** where the line stays on the old road the kernel may still
+  have built a structure of its own (here a 188 m bridge over the brook the old 7 m bridge crosses, drawn and in the
+  quantities but, being kept, not billed: screenshot 782 before). A bridge or tunnel the kernel built wholly on kept
+  cells is now not built (its run, cones, portal faces and quantities dropped; the old road laid there on the ground, or
+  on its old bridge's deck); one reaching a part built anew is built whole and billed (`project-kept.ts`). On main's
+  single-way path no saved or generated rebuilt stretch had one (8 designs, every route array identical).
+- **Two roads beside a crossing between them (cost model 63):** D11 III/3012 slid along our bridge at km 2.32 crosses at
+  12° and runs on 17–30 m beside our road; since model 62 our road ends the track under it instead of bridging it, so
+  our slopes came within 0.6–4 m of its own: "Two roads' earthworks are closer than 10 m", the project unpriced. Where
+  a crossed road of the project runs on beside the road crossing it, from the crossing for as long as their works come
+  within the clearance (`project-ledger.ts besideRun`, ≤ 2 km), the works are that crossing's, as Auto's own crossing works
+  and our road are: they keep off each other's land but no working strip is asked between them; a side road's junction
+  ramps or a dead end taken up meeting the other's works there are the crossing's; where the crossed road's slopes still
+  cover ours, its walls keep them 1 m off our land (the screen's capsules round each piece's ends). The slide and every
+  pull of section 5 are priced (`crossing-drag-scene.mjs` asserts it; `tests/stretch-chain.test.ts` on the owner's design).
+- **Known issues:** (1) pulling an end past the old road's next corner shows a norm problem the stretch's end hid (D11
+  III/3012 past 702 m: Auto's R 205 m at the slid corner runs into the old road's R 64–89 m corner turning the same way,
+  "radii too different for one curve", which also leaves too little room for the S before it; the same on main when the
+  one way's end is pulled to 780 m): real, and hidden before only because nothing checks the new line against the old
+  road beyond its ends. Its fix names the old bend and says changing it rebuilds it. (2) With the End pulled 150 m past
+  the old bridge (and the Start back), Auto's grade line leaves the old road's height on the kept part around the brook
+  (≈ 6 m above it) and so misses the height our bridge holds the stretch to by 1.2 m (a problem with its fix; +30 m and
+  +300 m do not): the grade solve on kept cells, open. (3) A drag on a mapped bridge (its card, a crossing ring on it)
+  does not rebuild it with its approaches yet. (4) The old bridge kept is drawn as the road on its deck's heights, not as
+  a bridge.
 
 ## Start over keeps its Undo; the frames after Start over (playtest flake, no model version, 2026-11-20)
 
