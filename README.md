@@ -378,10 +378,11 @@ stays on it), off it onto open ground, or onto another road.
 ### A hand-built interchange: slip roads
 
 **Build → Slip road** builds one-way slip roads of an interchange on a motorway of the game (ours, or one built
-with Build → Motorway). Traffic runs from its start to its end: start it beside the motorway to leave it (an
+with Build → Motorway) or a four-lane road (S 21.5) at that road's own widths, speed and price. Traffic runs from its start to its end: start it beside the motorway to leave it (an
 exit), end it there to join it (an entry); the side clicked picks the carriageway, the other end joins a road
 (a junction or a roundabout, as Build → Road's). It leaves along the traffic through one bend and meets the
-road square through another; the motorway gets its exit or entry lane (234 / 295 m on the hard shoulder, drawn and
+road square through another; the motorway gets its exit or entry lane (234 / 295 m on the hard shoulder at 120–130
+km/h, shorter on slower roads: 198 / 295 m on the S 21.5 at 110, whose formation is 2.5 m wider along it; drawn and
 priced), the slip road keeps the motorway's level by its gore and a low slope's fall from it beside it, where
 their slopes overlap that earth is billed once, and a narrow ridge between their cuttings is dug out (billed).
 Put a slip road's end on another's and the two share one crossroads, billed once. Where the motorway moves a
@@ -391,7 +392,7 @@ motorway moves tracks aside: `d3-0303-diamond.json`). Its gore slides along the 
 goes with it). Slip roads already in the motorway's price (earth-built ones of one interchange every 7 km, SPK)
 are credited. Not yet: a slip road over or under its own motorway (a trumpet's or cloverleaf's loop),
 interchange spacing (research/90). Real-mouse check: `node scripts/interchange-scene.mjs [--docs]` (screenshots
-620–633).
+620–633; the I/35 diamond 710–719).
 
 | The diamond, valid and priced | Slip roads and motorway in one cutting by their gores |
 |---|---|
@@ -401,6 +402,15 @@ Also: [the diamond from the south-west](docs/screenshots/626-diamond-oblique.png
 crossroads on road II/114](docs/screenshots/628-slip-road-junction-on-road-ii-114.png), [the D3 0303
 diamond](docs/screenshots/632-d3-0303-diamond-overview.png), [its slip road past the tracks the motorway
 moves aside](docs/screenshots/633-d3-0303-slip-road-over-moved-track.png).
+
+| A diamond on the four-lane I/35 (road II/610) | Its gores: the lanes take the paved shoulder's place |
+|---|---|
+| ![I/35 diamond](docs/screenshots/712-i35-diamond-valid-overview.png) | ![I/35 gore](docs/screenshots/714-i35-exit-lane-and-gore.png) |
+
+Also: [its first slip road's card](docs/screenshots/711-first-slip-road-card-four-lane-road.png), [the lanes over a
+bridge, its decks wider](docs/screenshots/715-i35-lanes-over-a-bridge.png), [the gores from
+above](docs/screenshots/719-i35-gores-from-above.png), [the north-east slip roads along
+Přepeřská](docs/screenshots/718-i35-north-east-slip-roads.png).
 
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|

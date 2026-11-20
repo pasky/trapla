@@ -265,12 +265,14 @@ try {
   await game.idle(); await game.still(); await shot('712-i35-diamond-valid-overview');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 650, 200, 40), [four.x, four.y]);
   await game.idle(); await game.still(); await shot('713-i35-diamond-oblique');
-  const g4 = await gore4(four.s - 420, 1);
-  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 160, 230, 38), [g4.x, g4.y]);
+  // (the exit lane and the entry lane of the other carriageway end at one pair of gores; the formation wider along them)
+  const g4 = await gore4(four.s - 343, 1);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 45, 200, 30), [g4.x, g4.y]);
   await game.idle(); await game.still(); await shot('714-i35-exit-lane-and-gore');
-  const e4 = await gore4(four.s + 560, 1);
-  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 160, 30, 38), [e4.x, e4.y]);
-  await game.idle(); await game.still(); await shot('715-i35-entry-lane-taper');
+  // (the lanes run over a bridge 150 m before the gores: its twin decks that much wider)
+  const b4 = await gore4(four.s - 493, 1);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 80, 300, 25), [b4.x, b4.y]);
+  await game.idle(); await game.still(); await shot('715-i35-lanes-over-a-bridge');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 240, 160, 45), [sw.x, sw.y]);
   await game.idle(); await game.still(); await shot('716-i35-junction-on-road-ii-610');
   // a gore dragged along the four-lane road: it stays on it, the diamond valid
@@ -286,8 +288,8 @@ try {
   const ne4 = await gore4(four.s + 300, -1);
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 420, 300, 40), [ne4.x, ne4.y]);
   await game.idle(); await game.still(); await shot('718-i35-north-east-slip-roads');
-  const along4 = await gore4(four.s - 620, 1);
-  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 120, 140, 16), [along4.x, along4.y]);
-  await game.idle(); await game.still(); await shot('719-i35-along-the-exit-lane');
+  const top4 = await gore4(four.s - 343, 0);
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 90, 0, 89), [top4.x, top4.y]);
+  await game.idle(); await game.still(); await shot('719-i35-gores-from-above');
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }
