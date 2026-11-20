@@ -22,6 +22,7 @@ import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, type Corr
 import type { ProjectDesign, RoadOperations } from './project';
 import * as dm from './detmath';
 import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, takenUpTrims, type MovedWays, type OldLineOf, type ResolvedEnds } from './project-roadnet';
+import { oldPaths, oldPieces } from './stretch-chain';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
@@ -112,19 +113,17 @@ type KindEvaluation = CorridorEvaluation | RailwayEvaluation | ReturnType<typeof
 /** A rebuilt stretch's old line, for its plan line in other roads' networks (project-roadnet.ts planLine): an old
  * road's own curve it no longer lies on yields to Auto's (PI.mapped), and where it stays on the old line it is that
  * line, kept as it is and drawn there, as its kernel does. */
-const oldLineOf = (ctx: ProjectEvalContext): OldLineOf => r => {
+const oldLineOf = (ctx: ProjectEvalContext, design: ProjectDesign): OldLineOf => r => {
   if (!r.source || r.alignment.kind !== 'pi') return undefined;
   if (r.kind === 'railway') {
     const lines = ctx.railPaths ? r.source.intervals.map(i => railInterval(ctx.railPaths!, i.sourceId, i.s0, i.s1)) : [];
     return lines.length && lines.every(l => l) ? lines as { x: number; y: number }[][] : undefined;
   }
-  const way = r.source.intervals.length === 1 ? ctx.sourceWays?.get(r.source.intervals[0].sourceId) : undefined, roads = ctx.legacy.roads;
-  if (way === undefined || !roads) return undefined;
-  const a = r.endpoints.a.position, b = r.endpoints.b.position, da = roads.wayStation(way, a.x, a.y), db = roads.wayStation(way, b.x, b.y);
-  return [roads.wayPath(way, Math.min(da, db), Math.max(da, db))];
+  const roads = ctx.legacy.roads, pieces = roads ? oldPieces(roads, r, design.connections, ctx.sourceWays) : undefined;
+  return roads && pieces ? oldPaths(roads, pieces) : undefined;
 };
 const evaluateAsRoad = ({ ctx, snapshot, route, preview, prices, ends, holds, endsOf, moved }: KindInput): KindEvaluation =>
-  evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays, oldOf: oldLineOf(ctx),
+  evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays, oldOf: oldLineOf(ctx, snapshot.design),
     ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}), ...(moved ? { moved } : {}) });
 /** A row's function of a route of its own kind (a row is only asked about routes of its kind). */
 function own<K extends RouteDesign['kind'], T>(_kind: K, f: (route: Extract<RouteDesign, { kind: K }>) => T): (route: RouteDesign) => T {
@@ -188,7 +187,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
   if (keepClear?.length) prices = { ...prices, keepClear };
   // motorways and railways are checked against the network as the player edited it too
   const edited = (owners: RouteDesign[]) => {
-    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays, endsOf, oldLineOf(ctx)) : null;
+    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays, endsOf, oldLineOf(ctx, snapshot.design)) : null;
     return net ? { ...ctx.legacy, roads: net.roads } : ctx.legacy;
   };
   const evaluated = ROUTE_KINDS[route.kind].evaluate({ ctx, snapshot, route, corridor, preview, prices, corridors, ends, holds, endsOf, edited, ...(moved ? { moved } : {}) });
@@ -230,7 +229,7 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
   // corridor kernel takes no holds)
   if (!last || last.epoch !== snapshot.epoch || route.kind === 'motorway') return routeProposal(ctx, snapshot, route, true, prices).route;
   const legacyOf = (id: string) => design.routes.some(r => r.id === id) ? last.routes[id]?.legacy : undefined;
-  const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(design, route, legacyOf) : undefined, line = planLine(route, ends, undefined, design, oldLineOf(ctx)(route));
+  const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(design, route, legacyOf) : undefined, line = planLine(route, ends, undefined, design, oldLineOf(ctx, design)(route));
   const holds: Hold[] = [];
   for (const owner of design.routes) {
     const own = owner === route ? undefined : legacyOf(owner.id);
@@ -603,7 +602,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
   for (const route of [...order, ...cyclic]) {
     // its ends follow the roads it joins; the heights its crossings hold are placed on the line it is built on
     const ends = ROUTE_KINDS[route.kind].endsFollow ? followEnds(design, route, evaluated) : undefined;
-    const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design, oldLineOf(ctx)(route)) : [];
+    const line = holdsOf.has(route.id) ? planLine(route, ends, undefined, design, oldLineOf(ctx, design)(route)) : [];
     let holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
     const merge = slipBands(design, route, ends, evaluated);
     const moved = movedByMotorway(design, route, evaluated, ctx.legacy.roads, ctx.sourceWays);
@@ -646,7 +645,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
       seenOwners.add(own);
       const corridorKids = corridorOfRoute(design, route.id), owners = corridorKids
         ? design.routes.filter(r => r.id === corridorKids.children.forward || r.id === corridorKids.children.reverse) : [route];
-      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays, endsOf, oldLineOf(ctx));
+      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays, endsOf, oldLineOf(ctx, design));
       for (const c of own.crossings) {
         const crossedId = c.roadId !== undefined ? net?.designed.get(c.roadId) : undefined, crossed = design.routes.find(r => r.id === crossedId);
         if (!crossed) continue;
@@ -1163,7 +1162,9 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
   // A rebuilt stretch continues its old road where another road changes the rest of it (cuts, reroutes,
   // relocates it): the two roads' works meet at that end, as at a junction between them.
-  const ownWayOf = (r: RouteDesign) => r.source ? ctx.sourceWays?.get(r.source.intervals[0]?.sourceId ?? '') : undefined;
+  // (a stretch over several ways: all of them)
+  const ownWaysOf = (r: RouteDesign) => r.source && ctx.legacy.roads ? oldPieces(ctx.legacy.roads, r, design.connections, ctx.sourceWays)?.map(p => p.way) ?? [] : [];
+  const ownWayOf = (r: RouteDesign) => ownWaysOf(r)[0];
   // what is left of its old road beyond a rebuilt stretch: a way of its own in every edited network
   // (project-roadnet.ts rebuiltSlots), which other roads cross and change under that number
   const remnantOf = (r: RouteDesign) => { const q = rebuiltSlots(design).indexOf(r);
@@ -1184,7 +1185,7 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
       for (const p of past) beyond.push(...roads.connections(p, 0.5).map(c => c.way));
     }
     const remnant = remnantOf(route);
-    return { ways: [...own !== undefined ? [own] : [], ...remnant !== undefined ? [remnant] : [], ...anchored !== undefined ? [anchored] : [], ...beyond,
+    return { ways: [...own !== undefined ? ownWaysOf(route) : [], ...remnant !== undefined ? [remnant] : [], ...anchored !== undefined ? [anchored] : [], ...beyond,
       ...ctx.legacy.roads?.connections({ x: legacy.x[i], y: legacy.y[i] }, 0.5).map(c => c.way) ?? [],
       ...legacy.crossings.filter(c => c.type === 'junction' && c.roadId !== undefined && Math.abs(c.s - s) <= ENDPOINT_JUNCTIONS.continuation.zone).map(c => c.roadId!)],
       past };
@@ -1213,7 +1214,7 @@ function projectScreen(ctx: ProjectEvalContext, start: ReturnType<typeof project
     // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
     // another road, which a road crossing it changes on its own)
     const ownWay = ownWayOf(route);
-    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(route.kind === 'railway' ? { railway: true } : {}), ...(ownWay !== undefined ? { ownWays: [ownWay, ...remnantOf(route) !== undefined ? [remnantOf(route)!] : []] } : {}),
+    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(route.kind === 'railway' ? { railway: true } : {}), ...(ownWay !== undefined ? { ownWays: [...ownWaysOf(route), ...remnantOf(route) !== undefined ? [remnantOf(route)!] : []] } : {}),
       ...(corridor && CATEGORIES[motorwayCategory(route as Extract<RouteDesign, { kind: 'motorway' }>)].motorwayByLaw ? { profile: 'motorway' as const } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
       ...(start.sharedWays.has(route.id) ? { sharedWays: start.sharedWays.get(route.id) } : {}),

@@ -503,16 +503,16 @@ describe('pricing a rebuilt stretch (C1 b)', () => {
     const landLength = works.find(w => w.id.includes(':land:'))?.geometry.measurements[0].quantity ?? 0;
     const { replacementWorks } = await import('../src/core/project-replacement');
     const bought = { ...own, parts: { ...own.parts, land: Float64Array.from(own.cell.width, w => w * own.ds * 100) } };
-    const land = replacementWorks(route, bought, new RoadNet(net), 0, [], () => undefined).works.find(w => w.kind === 'land')!;
+    const land = replacementWorks(route, bought, new RoadNet(net), [{ way: 0, d0: 0, d1: 0, reversed: false }], [], () => undefined).works.find(w => w.kind === 'land')!;
     expect(land.cost).toBeLessThan(0);
     expect(-land.cost).toBeLessThan(bought.parts.land.reduce((t, v) => t + v, 0));
     // the removed old road is this road's work on the ground too: its pieces go into the land screen, so no
     // other road is priced as if that ground were free
-    const gone = replacementWorks(route, own, new RoadNet(net), 0, [], () => undefined, own.keptCells);
+    const gone = replacementWorks(route, own, new RoadNet(net), [{ way: 0, d0: 0, d1: 0, reversed: false }], [], () => undefined, own.keptCells);
     expect(gone.removed.reduce((t, l) => t + Math.hypot(l.bx - l.ax, l.by - l.ay), 0)).toBeCloseTo(removed, 3);
     expect(gone.removedWidth).toBe(ROAD_CLASSES.tertiary.width);
     // (and without anything kept, the side road at the stretch's end would get a junction with the new road)
-    expect(replacementWorks(route, own, new RoadNet(net), 0, p.connections, id => ctx.sourceWays.get(id)).works.filter(w => w.kind === 'reconnection').map(w => w.label)).toEqual([expect.stringMatching(/^Junction with the track at km \d\.\d\d$/)]);
+    expect(replacementWorks(route, own, new RoadNet(net), [{ way: 0, d0: 0, d1: 0, reversed: false }], p.connections, id => ctx.sourceWays.get(id)).works.filter(w => w.kind === 'reconnection').map(w => w.label)).toEqual([expect.stringMatching(/^Junction with the track at km \d\.\d\d$/)]);
     // near its ends the new line is still on the old road: kept as it is there, and the road's own bill
     // charges nothing for those metres (what is billed is what is built)
     const kept = works.find(w => w.id.includes(':kept:'))!, keptLength = kept.geometry.measurements[0].quantity;

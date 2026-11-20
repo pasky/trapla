@@ -66,7 +66,7 @@ export const RAIL_LINE: MappedLineKind = {
     return { ok: true, becomes: 'single-track electric railway (120 km/h)' };
   },
   rebuild: (base, interval, ids) => promoteGroundRailway(base, { ...ids, interval: clearOfLevelCrossings(base, interval), name: railName(base, interval.sourceId) }, railBends),
-  moveEnds: (base, project, routeId, s0, s1) => moveStretchEnds(base, project, routeId, s0, s1, (interval, route) =>
+  moveEnds: (base, project, routeId, next) => moveStretchEnds(base, project, routeId, next, undefined, (interval, route) =>
     promoteGroundRailway(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, interval, name: route.name }, railBends,
       route.kind === 'railway' ? route as RailwayRoute : undefined)),
 };
