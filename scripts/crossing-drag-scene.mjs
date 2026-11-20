@@ -113,6 +113,49 @@ try {
   ok(await undo() === 'moving where road III/3012 crosses', `undo: "${await undo()}"`);
   await shot('705-d11-iii-3012-slid');
 
+  // ---- 5. its rebuilt stretch's ends pulled past junctions on both sides (owner: the squares could not pass them) ----
+  // III/3012 is mapped as ways split at its junctions and at a 7 m bridge over a brook: its stretch [228 m, 802 m] of
+  // one way is pulled on through the junction with a street, over the bridge and 150 m along the next way; then back
+  // past the junction at its start onto the way before it. Each pull is one undo step; the bill stays priced and valid.
+  const III = 'osm:way:236292102', NEXT = 'osm:way:141372692', BRIDGE = 'osm:way:141372695', BEFORE = 'osm:way:28729805';
+  const rebuiltId = await T(() => window.trapla.getProject().routes.find(r => r.source)?.id);
+  const stretch = () => T((id) => window.trapla.getProject().routes.find(r => r.id === id).source.intervals.map(i => ({ id: i.sourceId, s0: i.s0, s1: i.s1 })), rebuiltId);
+  const iv0 = await stretch();
+  // (what keeps the slid crossing's project from a price already, the shared-land screen: no new reason may come of a pull)
+  const reasons = () => T(() => [...new Set(window.trapla.projectResult().cost.unpriced.map(u => u.reason))].sort().join());
+  const reasons0 = await reasons();
+  ok(iv0.length === 1 && iv0[0].id === III, `the slid road is rebuilt on one way (${JSON.stringify(iv0.map(i => [i.id, Math.round(i.s0), Math.round(i.s1)]))})`);
+  const endHandle = async (k) => { const hb = await page.locator(`.stretch-end[data-end="${k}"]`).boundingBox(); return { x: hb.x + hb.width / 2, y: hb.y + hb.height - 4 }; };
+  const sp = (id, s) => T(([id, s]) => window.trapla.sourcePoint(id, s), [id, s]);
+  const pull = async (k, id, s, during = async () => {}) => {
+    const h = await endHandle(k), to = await ground(...Object.values(await sp(id, s)).slice(0, 2));
+    await drag(h, to.x - h.x, to.y - h.y, 16, during);
+  };
+  const lookAtSource = async (id, s, dist = 900) => { const q = await sp(id, s); await T(([x, y, d]) => window.trapla.lookAt(x, y, d, 0, 55), [q.x, q.y, dist]); await game.idle(); await game.still(); };
+  await T((id) => window.trapla.setActiveRoute(id), rebuiltId);
+  await lookAtSource(III, 802);
+  ok(await page.locator('.stretch-end').count() === 2, 'its stretch shows its two ends');
+  const hv = await hover(await endHandle(1));
+  ok(hv.text === 'drag along the old road', `its End: "${hv.text}"`);
+  await shot('780-stretch-ends', false);
+  await pull(1, NEXT, 150, () => shot('781-stretch-end-past-junction', false));
+  const iv1 = await stretch(), bill1 = await T(() => { const r = window.trapla.projectResult(); return { total: r.cost.total, valid: r.valid, unpriced: r.cost.unpriced.length,
+    works: r.works.items.map(w => w.label ?? '').filter(l => /Old (road|bridge)|Junction|kept as it is/.test(l)), why: r.cost.unpriced.map(u => u.reason), issues: r.issues.map(i => i.violation.title) }; });
+  ok(iv1.map(i => i.id).join() === [III, 'osm:way:236292104', BRIDGE, NEXT].join() && Math.abs(iv1[3].s1 - 150) < 25,
+    `pulled on through its junction and over the bridge: ${iv1.map(i => `${i.id.slice(8)} ${Math.round(i.s0)}–${Math.round(i.s1)}`).join(', ')}`);
+  ok(await undo() === 'rebuilding more of Road III/3012' || /^rebuilding more of /.test(await undo()), `undo: "${await undo()}"`);
+  ok(await reasons() === reasons0 && !/Branch|cannot end/.test(await T(() => document.querySelector('.toast')?.textContent ?? '')),
+    `engineered and billed as before the pull (${bill1.works.join(' | ')}; unpriced: ${reasons0 || 'none'}; ${bill1.issues.join(' | ')})`);
+  await shot('782-stretch-over-the-bridge');
+  await lookAtSource(III, 228);
+  await pull(0, BEFORE, 120, () => shot('783-stretch-start-past-junction', false));
+  const iv2 = await stretch();
+  ok(iv2[0].id === BEFORE && iv2.at(-1).id === NEXT && iv2.length === 5, `its start pulled back past its junction onto the way before: ${iv2.map(i => `${i.id.slice(8)} ${Math.round(i.s0)}–${Math.round(i.s1)}`).join(', ')}`);
+  ok(await reasons() === reasons0, `engineered and billed as before (unpriced: ${reasons0 || 'none'})`);
+  await shot('784-stretch-both-ends-pulled');
+  await page.keyboard.press('Control+z'); await game.idle(600);
+  ok((await stretch()).length === 4, 'undo: its start where it was');
+
   // ---- 3. what no drag changes says why ----
   // a cut way: its ring (its new road keeps its own drag)
   await game.open('scenario=i35-turnov');
@@ -139,6 +182,17 @@ try {
   const rebuilt = await T(() => window.trapla.getProject().routes.find(r => r.source)?.source.intervals[0]);
   ok(rebuilt && rebuilt.s0 > 61 && await T(() => JSON.stringify(window.trapla.getProject().routes.find(r => r.name === 'New road').endpoints.a)) === start0,
     `…rebuilding it from km ${(rebuilt?.s0 / 1000).toFixed(2)} of it, clear of where your road joins it (km 0.06), which stays`);
+  // its Start pulled back towards your road's junction: held short of it (of its earthworks there), the hover says why
+  const nudId = await T(() => window.trapla.getProject().routes.find(r => r.source)?.id);
+  await T((id) => window.trapla.setActiveRoute(id), nudId);
+  const n0 = await T(() => window.trapla.sourcePoint('osm:way:35336916', 0));
+  await T(([x, y]) => window.trapla.lookAt(x, y, 600, 0, 55), [n0.x, n0.y]); await game.idle(); await game.still();
+  const sh = await page.locator('.stretch-end[data-end="0"]').boundingBox(), shp = { x: sh.x + sh.width / 2, y: sh.y + sh.height - 4 };
+  const beyond = await ground(n0.x - 0.3 * (j0.x - n0.x), n0.y - 0.3 * (j0.y - n0.y));
+  let held = '';
+  await drag(shp, beyond.x - shp.x, beyond.y - shp.y, 16, async () => { held = await hoverText(); await shot('785-stretch-end-held-at-your-road', false); });
+  const after3 = await T((id) => window.trapla.getProject().routes.find(r => r.id === id).source.intervals[0], nudId);
+  ok(/^(A road you built joins it here|New road covers it here)$/.test(held) && after3.s0 >= 60 && after3.s0 <= rebuilt.s0 + 0.5, `held short of your road's junction (from ${Math.round(after3.s0)} m), the hover: "${held}"`);
   // the slip roads of a diamond join road II/105 either side of the stretch its ring moves (D3 0303, saved from the game)
   await game.open('scenario=d3-0303');
   await T(() => window.trapla.whenTransport());

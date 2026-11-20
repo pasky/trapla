@@ -833,7 +833,7 @@ export class View {
       this.sourceSelectionLine.name = 'source-selection'; this.world.add(this.sourceSelectionLine);
     }
     if (next.length >= 6) {
-      this.sourceAheadLine = this.makeLine(next, null, 4, { color: 0xffd28a, opacity: 0.55, depthTest: false, order: 3 });
+      this.sourceAheadLine = this.makeLine(next, null, 5, { color: 0xfff1c9, opacity: 0.85, depthTest: false, order: 3 });
       this.sourceAheadLine.name = 'source-ahead'; this.world.add(this.sourceAheadLine);
     }
     this.dirty = true;

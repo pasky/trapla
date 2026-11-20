@@ -281,7 +281,7 @@ export function walkOn(base: ProjectTransportIndex, sourceId: string, s: number,
     for (const c of limits.claimed) if (c.sourceId === source.id && c.transportData === base.transportData)
       consider(dir > 0 ? c.s0 : c.s1, { reason: c.taken ? 'taken' : 'claimed' });
     for (const c of limits.covered(source.id)) consider(dir > 0 ? c.s0 : c.s1, { reason: 'covered', by: c.by });
-    for (const j of limits.joins) if (j.sourceId === source.id) consider(j.s, { reason: 'joined' });
+    for (const j of limits.joins) if (j.sourceId === source.id && (dir > 0 ? j.s > at : j.s < at)) consider(dir > 0 ? Math.max(at, j.s - CHAIN_KEEP_CLEAR) : Math.min(at, j.s + CHAIN_KEEP_CLEAR), { reason: 'joined' });
     // (a railway, or a side road's bridge or tunnel, meeting it: short of it)
     if (!source.bridge) for (const b of base.branches({ transportData: base.transportData, sourceId: source.id, s0: 0, s1: length })) {
       if (Math.abs(b.s - end) < 1e-6) continue; // its end node: the way it goes on as is looked at below
