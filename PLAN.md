@@ -3264,7 +3264,9 @@ a junction's mouth, our own body), each blind to what the others build.
   ≤ 6 % at both ends; the I/35 full way 5053 slid the same way blocks a primary road: invalid, said (a road it would
   bury is no change of that road: no "Two roads change the same old road" with our road's reconnection of it,
   project-ledger.ts `touchedRoads`). Real-mouse scene `scripts/works-clash-scene.mjs` (screenshots 770–776; `--base`
-  shoots the slide from another checkout: 770 is main's fans).
+  shoots the slide from another checkout: 770 is main's fans). The footprint annotations' shader programs (a removed old
+  road's dashed line, a blocked marker) are compiled with the view and kept (`View.warm`): the first one a drag's result
+  brought into view compiled mid-drag (drag-perf d11-motorway road, 3 of 5 runs).
 - **Bills** (prices.ts model 64): frozen D11 straight +17.9 M, best family 0 … +0.3, demo unchanged, direct-80 −13.8,
   direct-90 +32.3, town-centre / town-controls +20.3 / +20.4 (links that buried other tracks: overbridges or other
   links; walls off our cones). Starters: Šternberk 880 → 902 M, D3 whole 36 081 → 36 256 M, I/35 Turnov 4 481 → 4 547 M
