@@ -39,7 +39,7 @@ export function* starterClashes(): Generator<{ name: string; preset: string; res
 export const clashKey = (preset: string, c: WorksClash) => `${preset} ${c.cls}:${c.roadId ?? ''} ${c.type} ${c.what}:${c.way ?? ''}`;
 /** Auto's own clashes on the starters, known and open (PLAN.md "One screen for every earthwork"): the screen does not
  * fail on these; anything else, on a starter or after a player's edit, fails the gate. */
-export const KNOWN_FILE = 'scripts/works-clash-known.json';
+export const KNOWN_FILE = 'scripts/works-clash/known.json';
 export const known = (): Record<string, number> => existsSync(KNOWN_FILE) ? JSON.parse(readFileSync(KNOWN_FILE, 'utf8')).clashes : {};
 /** What of these clashes (one project's routes) the known list does not cover. */
 export function unknownClashes(preset: string, clashes: WorksClash[], list = known()): WorksClash[] {

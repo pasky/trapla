@@ -25,12 +25,19 @@ export interface OurBody {
  * and the cones of fill in front of the abutments from the last earth station into the bridge (abutment-cone.ts), where
  * their surface stands over the ground.
  */
-export function ourBody(r: BodyRoute, crownWidth: number, cones: readonly AbutmentCone[] | undefined,
-  heightAt: (x: number, y: number) => number): OurBody {
-  // (each station's segment in the grid cells its body can reach and PAD beyond: a point in a cell without it lies more
-  // than PAD off it, a gap's lower bound)
-  const CELL = 50, PAD = 30, grid = new Map<number, number[]>(), cellOf = (cx: number, cy: number) => cx * 1_000_003 + cy;
-  for (let i = 0; i + 1 < r.n; i++) {
+// (each station's segment in the grid cells its body can reach and PAD beyond: a point in a cell without it lies more
+// than PAD off it, a gap's lower bound)
+const CELL = 50, PAD = 30, cellOf = (cx: number, cy: number) => cx * 1_000_003 + cy;
+/** The grid of a route's stations, kept while its line and daylight stay the same (the crossing engine reads the body
+ * once per build, and builds a route's crossings many times over: a copy of what it was built from is checked). */
+const grids = new WeakMap<object, { from: Float64Array; crown: number; grid: Map<number, number[]> }>();
+function gridOf(r: BodyRoute, crownWidth: number) {
+  const n = r.n, from = new Float64Array(4 * n);
+  for (let i = 0; i < n; i++) { from[4 * i] = r.x[i]; from[4 * i + 1] = r.y[i]; from[4 * i + 2] = r.dayL[i]; from[4 * i + 3] = r.dayR[i]; }
+  const kept = grids.get(r.dayL);
+  if (kept && kept.crown === crownWidth && kept.from.length === from.length && kept.from.every((v, i) => Object.is(v, from[i]))) return kept.grid;
+  const grid = new Map<number, number[]>();
+  for (let i = 0; i + 1 < n; i++) {
     const reach = Math.max(r.dayL[i], r.dayR[i], r.dayL[i + 1], r.dayR[i + 1], crownWidth) + PAD;
     for (let cx = Math.floor((Math.min(r.x[i], r.x[i + 1]) - reach) / CELL); cx <= Math.floor((Math.max(r.x[i], r.x[i + 1]) + reach) / CELL); cx++)
       for (let cy = Math.floor((Math.min(r.y[i], r.y[i + 1]) - reach) / CELL); cy <= Math.floor((Math.max(r.y[i], r.y[i + 1]) + reach) / CELL); cy++) {
@@ -38,6 +45,13 @@ export function ourBody(r: BodyRoute, crownWidth: number, cones: readonly Abutme
         if (list) list.push(i); else grid.set(key, [i]);
       }
   }
+  if (typeof r.dayL === 'object') grids.set(r.dayL, { from, crown: crownWidth, grid });
+  return grid;
+}
+
+export function ourBody(r: BodyRoute, crownWidth: number, cones: readonly AbutmentCone[] | undefined,
+  heightAt: (x: number, y: number) => number): OurBody {
+  const grid = gridOf(r, crownWidth);
   // (each cone in the frame of its abutment: u into the bridge from where its fill starts, the last earth station)
   const frames = (cones ?? []).filter(c => !c.end).map(c => ({ c, u0: -Math.abs(r.s[c.earthCell] - c.s) }));
   const inCone = (x: number, y: number, inset: number) => {

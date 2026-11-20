@@ -3,7 +3,7 @@
 // browser evaluates them (scripts/works-clash-audit.ts): what is drawn of another way's works stands on no house
 // left standing, no mapped railway, none of our piers and not in our own body; a cut way is closed only as the
 // game's rule allows, and says so. Since the one screen (src/core/works-clash.ts) also screens other mapped roads and our
-// road's own body, Auto's clashes still open are a reviewed list (scripts/works-clash-known.json).
+// road's own body, Auto's clashes still open are a reviewed list (scripts/works-clash/known.json).
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { known, starterClashes, unknownClashes } from '../scripts/works-clash-audit';
@@ -13,7 +13,7 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('other ways\' wor
   it('stand on no house, railway, pier, other road or our own body beyond the known open ones, and close only what may be closed', () => {
     const failures: string[] = [], list = known();
     for (const { name, preset, result, clashes } of starterClashes()) {
-      // (Auto's own clashes still open are listed, scripts/works-clash-known.json; any other fails)
+      // (Auto's own clashes still open are listed, scripts/works-clash/known.json; any other fails)
       for (const c of unknownClashes(preset, clashes, list)) failures.push(`${name} km ${Math.round(c.s)}: ${c.type} ${c.roadId} over ${c.what} ${c.way ?? ''}`);
       for (const c of result.crossings) if (c.type === 'reconnection' || c.type === 'diversion') {
         // a public road is closed only where its traffic goes round at most CLOSURE_ROUND further
