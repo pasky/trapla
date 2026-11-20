@@ -1,0 +1,399 @@
+{
+ "preset": "d3-0305-motorway",
+ "purpose": "Hands off the castle (600 m round the K\u0159enovice fort site, Vojkov) with Earth balance and every curveball, over the goal (the line moved \u2248 200 m east over the Mastn\u00edk valley costs \u2248 0.7 bn more): the search's best (seed 2, earth.json's line) with bends 3\u20136 moved east by hand (--edit), then searched without the goal (seed 4, STEP=0.15 WEIGHT=landmarks:4)",
+ "meets": [
+  "earth",
+  "landmarks",
+  "curveballs"
+ ],
+ "goal": false,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0305",
+  "presetId": "d3-0305-motorway",
+  "packId": "d3-0305",
+  "objectData": "881923:2382273695:1768429543",
+  "transportData": "d000381c3e4b2aa7e21ba7949fe06f3df97d94c39ec8f99222dfa1b6958e27e3",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards Nov\u00e1 Hospoda",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 3074.4,
+       "y": 16722.2,
+       "z": 517.3200000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9940.5,
+       "y": 2665.9,
+       "z": 581.3288
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards Vora\u010dice (from 0304)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 9940.5,
+       "y": 2665.9,
+       "z": 581.3288
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 3074.4,
+       "y": 16722.2,
+       "z": 517.3200000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 130,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 130,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 3074.4,
+       "y": 16722.2,
+       "z": 517.3200000000002
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 9940.5,
+       "y": 2665.9,
+       "z": 581.3288
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 3000.1969946609893,
+       "y": 16504.553672800994,
+       "r": null
+      },
+      {
+       "x": 2968.247012207561,
+       "y": 16423.050218190856,
+       "r": null
+      },
+      {
+       "x": 2872.155673752507,
+       "y": 16035.965461979642,
+       "r": null
+      },
+      {
+       "x": 2732.6904955647988,
+       "y": 15404.040622810891,
+       "r": null
+      },
+      {
+       "x": 2800,
+       "y": 14789,
+       "r": null
+      },
+      {
+       "x": 2823.1043480861376,
+       "y": 14609.866351302071,
+       "r": null
+      },
+      {
+       "x": 2840,
+       "y": 13700,
+       "r": null
+      },
+      {
+       "x": 2810,
+       "y": 13300,
+       "r": null
+      },
+      {
+       "x": 2873.9759608753275,
+       "y": 11658.801908207888,
+       "r": null
+      },
+      {
+       "x": 3639.1370754120185,
+       "y": 10490.884396160354,
+       "r": null
+      },
+      {
+       "x": 3869.2322055849877,
+       "y": 9681.193767443778,
+       "r": null
+      },
+      {
+       "x": 3923.317752304248,
+       "y": 9605.592951822551,
+       "r": null
+      },
+      {
+       "x": 4426.005491945305,
+       "y": 8835.603482359918,
+       "r": null
+      },
+      {
+       "x": 4771.555694199794,
+       "y": 7778.94703627591,
+       "r": null
+      },
+      {
+       "x": 5062.996699019417,
+       "y": 7145.496599098871,
+       "r": null
+      },
+      {
+       "x": 6820.172004874233,
+       "y": 5959.20547814252,
+       "r": null
+      },
+      {
+       "x": 7364.957543838815,
+       "y": 5515.400374608852,
+       "r": null
+      },
+      {
+       "x": 9498.509867484012,
+       "y": 3674.8628077572735,
+       "r": null
+      },
+      {
+       "x": 9701.077808893146,
+       "y": 3309.4070969555887,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 12809.222418096424,
+        "s1": 13379.187818433267,
+        "kind": 0
+       },
+       {
+        "s0": 15823.87153357562,
+        "s1": 16006.455615055242,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 1210,
+        "z": 503.3
+       },
+       {
+        "s": 2840,
+        "z": 466.7
+       },
+       {
+        "s": 4690,
+        "z": 495
+       },
+       {
+        "s": 5148,
+        "z": 505.2
+       },
+       {
+        "s": 6300,
+        "z": 499.3
+       },
+       {
+        "s": 7040,
+        "z": 517.6
+       },
+       {
+        "s": 7810,
+        "z": 542.8
+       },
+       {
+        "s": 9349,
+        "z": 535.1
+       },
+       {
+        "s": 9810,
+        "z": 531
+       },
+       {
+        "s": 10149,
+        "z": 541.1
+       },
+       {
+        "s": 10237,
+        "z": 544.5
+       },
+       {
+        "s": 10569,
+        "z": 556.8
+       },
+       {
+        "s": 10909,
+        "z": 565.4
+       },
+       {
+        "s": 12239,
+        "z": 547.3
+       },
+       {
+        "s": 13899,
+        "z": 607.8
+       },
+       {
+        "s": 14129,
+        "z": 610.9
+       },
+       {
+        "s": 14569,
+        "z": 615.6
+       },
+       {
+        "s": 15869,
+        "z": 606
+       },
+       {
+        "s": 16399,
+        "z": 587.2
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0305:d3-0305-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "Vora\u010dice (from 0304)",
+     "position": {
+      "x": 3074.4,
+      "y": 16722.2,
+      "z": 517.3200000000002
+     }
+    },
+    {
+     "id": "b",
+     "name": "Nov\u00e1 Hospoda",
+     "position": {
+      "x": 9940.5,
+      "y": 2665.9,
+      "z": 581.3288
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 8.7,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

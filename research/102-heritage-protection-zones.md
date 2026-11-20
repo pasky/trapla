@@ -105,3 +105,46 @@ nothing of it: it is not offered.
   700 m (690), Rovensko 5 ha (4.9) and 350 m (320), Jičín 0.8 ha (0.74) and 250 m (220), the whole route 8 ha (7.7) and
   1,600 m (1,580); the starters take 1.4 / 6.6 / 1.5 / 9.5 ha and 1,420 / 530 / 980 / 2,760 m. The whole route's are its own
   searches' (the stages' stitched lose their caps at the seams; ≈ 10 s a design on the whole route, so fewer were tried).
+
+## Round 5: the setting, so the twist asks something on every mission (2026-11-21)
+The owner: "Hands off the castle rarely does anything at all" — round 4 fixed the data but then hid the twist wherever the
+planned line keeps clear of every listed monument's own ring and zone (Start here, Šternberk, D3 0301–0303 and 0305,
+I/35 Rovensko, Královec), part of the default difficulty.
+
+- **How far the planned lines keep off** (the starters' works, cut and fill to where their slopes meet the ground, a deck's
+  edge; every listed monument of the pack's raw NPÚ data, of any kind): the nearest is 446 m off on D35 stage 1 (the chapel
+  of St Roch above Staré Město), 546 m on D3 0301 (the chapel of St Wenceslas, Jílové), 517 m on 0302 (the St Joseph gold
+  mine adit, Jílové; the Žampach viaduct 678 m), 585 m on 0303 (the chapel of Our Lady, Chrášťany), 524 m on 0305 (the
+  Křenovice fort site, Vojkov), 476 m on Rovensko (a chapel at Radostná pod Kozákovem; a cross at Karlovice 259 m), 464 m
+  on the Královec railway (the church of St John of Nepomuk, Trutnov; the Bernartice viaduct 104 m, just outside its 100 m).
+  Šternberk's bypass keeps 669 m from the town's heritage zone, 681 m from the castle's protection zone, 1,197 m from the
+  castle itself; the nearest outside both, two crosses, 600 and 698 m (one by the fixed start). The planners kept clear;
+  no ring of a monument's own plot reaches them.
+- **How large the zones NPÚ declares are** (`pipeline/heritage_zone_sizes.py`: every protection zone in force, 455, from the
+  geoportal's `pchu/FeatureServer/0`, by the kind of the monument its name opens with; the equivalent radius √(area/π)):
+
+  | kind | zones | median | upper quartile | largest |
+  |---|---|---|---|---|
+  | castle, chateau | 107 | 476 m | 968 m | 4,998 m |
+  | church | 50 | 236 m | 546 m | 2,251 m |
+  | fort, hillfort | 23 | 395 m | 695 m | 1,604 m |
+  | memorial, cemetery | 17 | 234 m | 438 m | 1,682 m |
+  | technical monument | 10 | 325 m | 495 m | 944 m |
+  | chapel | 1 | 135 m | | |
+  | cross, statue | 2 | 143 m | | 191 m |
+  | other (towns, villages, sets) | 245 | 259 m | 549 m | 5,517 m |
+- **The rule** (`src/core/data/twists.ts` SETTING_RING, `inPlay`): where the planned line keeps out of every own ring and
+  every area, the mission names the listed monuments nearest it, each with a wider ring, its **setting**: 1,000 m round a
+  castle, 600 m round a church, chapel, fort, memorial or technical monument, 200 m round a cross or statue. A game scale,
+  one size per kind for every mission, about the larger quarter of the zones NPÚ declares round that kind (chapels as
+  churches: one declared chapel zone; crosses within the two declared). Every other listed monument near the line keeps
+  its own ring as before. Where the own rings and zones already bite (D3 0304, the whole D3, the whole D35, D11, I/35
+  Turnov, Jičín, the whole I/35) nothing changed; those missions name the place their starter breaks too.
+- **Named per mission** (the starter breaks the first): D35 stage 1 the chapel of St Roch, Staré Město; D3 0301 the chapel
+  of St Wenceslas, Jílové u Prahy; 0302 the St Joseph gold mine adit and the Žampach viaduct; 0303 the chapel of Our Lady,
+  Chrášťany; 0305 the Křenovice fort site, Vojkov; Rovensko the chapel at Radostná pod Kozákovem; Královec the church of
+  St John of Nepomuk, Trutnov (the Bernartice viaduct, 104 m off, keeps its own 100 m ring: its setting would push a
+  mountain railway out of its valley).
+- **Šternberk: not here.** No listed place outside the town's zones comes within any ring of a bypass east of the town
+  (the castle 1.2 km off, its 1 km setting would still not reach); the villa garden stays a curveball. The twist screen says
+  so on Hands off's card ("No listed place near enough", and why on hover).

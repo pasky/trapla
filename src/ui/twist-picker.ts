@@ -30,7 +30,7 @@ async function missionMap(scenario: ScenarioParams, m: MissionTwists): Promise<s
   if (!pack || !ends[0] || !ends[1]) return null;
   const line: [number, number][] = [ends[0], ...(scenario.initial?.pis ?? []).map(p => [p.x, p.y] as [number, number]), ends[1]];
   const shapes: { circle?: [number, number, number]; rings?: [number, number][][] }[] = [];
-  if (m.offer.includes('landmarks') && pack.files['heritage.json']) {
+  if (pack.files['heritage.json']) {
     const data: unknown = JSON.parse(new TextDecoder().decode(await peekPackFile(`${packBase(scenario.id)}/heritage.json`, pack.files['heritage.json'])));
     if (!validHeritageData(data)) return null;
     for (const p of m.inPlay ?? []) {
@@ -38,12 +38,16 @@ async function missionMap(scenario: ScenarioParams, m: MissionTwists): Promise<s
       if (mon) shapes.push({ circle: [mon.x, mon.y, ringOf(p)] });
       else if (zone) shapes.push({ rings: zoneRings(zone) });
     }
+    // (where Hands off asks nothing: the heritage areas, to show how far off they are)
+    if (!m.offer.includes('landmarks')) for (const z of data.zones) shapes.push({ rings: zoneRings(z) });
   }
   // the view: the line and the rings (a zone by its part nearest the line: a protection zone may run off far)
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   const grow = (x: number, y: number) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
   for (const [x, y] of line) grow(x, y);
   for (const s of shapes) if (s.circle) { grow(s.circle[0] - s.circle[2], s.circle[1] - s.circle[2]); grow(s.circle[0] + s.circle[2], s.circle[1] + s.circle[2]); }
+  // (an area that comes within 1.5 km of the line's bends: all of it, to see how far off it is)
+  for (const s of shapes) if (s.rings?.some(r => r.some(([x, y]) => line.some(([lx, ly]) => Math.hypot(lx - x, ly - y) < 1500)))) for (const r of s.rings) for (const [x, y] of r) grow(x, y);
   // (a wide route fills 240 × 120, a tall one keeps its shape down to a square)
   const H = 120, W = Math.round(Math.max(H, Math.min(2 * H, H * (x1 - x0) / Math.max(1, y1 - y0))));
   const span = Math.max((x1 - x0) / W, (y1 - y0) / H) * 1.16, k = 1 / span, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
@@ -51,10 +55,14 @@ async function missionMap(scenario: ScenarioParams, m: MissionTwists): Promise<s
   const X = (x: number) => ((x - cx) * k + W / 2).toFixed(1), Y = (y: number) => (H / 2 - (y - cy) * k).toFixed(1);
   const zones = shapes.filter(s => s.rings).map(s => `<path d="${s.rings!.map(r => `M${r.map(([x, y]) => `${X(x)} ${Y(y)}`).join('L')}Z`).join('')}" fill="rgba(122,74,154,0.22)" fill-rule="evenodd" stroke="#7a4a9a" stroke-width="1.2" stroke-dasharray="4 3"/>`).join('');
   const rings = shapes.flatMap(s => s.circle ? [s.circle] : []).map(([x, y, r]) => `<circle cx="${X(x)}" cy="${Y(y)}" r="${Math.max(4, r * k).toFixed(1)}" fill="rgba(122,74,154,0.14)" stroke="#7a4a9a" stroke-width="1.5" stroke-dasharray="4 3"/><circle cx="${X(x)}" cy="${Y(y)}" r="2" fill="#7a4a9a"/>`).join('');
+  // (the bends rounded: from the middle of one leg to the next's, through the bend)
+  const mid = (a: [number, number], b: [number, number]) => `${X((a[0] + b[0]) / 2)} ${Y((a[1] + b[1]) / 2)}`;
+  const road = `M${X(line[0][0])} ${Y(line[0][1])}` + line.slice(1, -1).map((p, i) => `L${mid(line[i], p)}Q${X(p[0])} ${Y(p[1])} ${mid(p, line[i + 2])}`).join('')
+    + `L${X(line[line.length - 1][0])} ${Y(line[line.length - 1][1])}`;
   const end = (p: [number, number], t: string) => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="7" fill="#fffefa" stroke="#3e4a45" stroke-width="1.5"/><text x="${X(p[0])}" y="${(Number(Y(p[1])) + 3.5).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="#3e4a45" font-family="system-ui, sans-serif">${t}</text>`;
-  return `<svg class="tw-map" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="The planned line from A to B${shapes.length ? ' and the listed places Hands off names' : ''}">
+  return `<svg class="tw-map" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="The planned line from A to B${shapes.length ? m.offer.includes('landmarks') ? ' and the listed places Hands off names' : ' and the heritage areas near it' : ''}">
     <defs><clipPath id="tw-map-clip"><rect width="${W}" height="${H}" rx="8"/></clipPath></defs><rect width="${W}" height="${H}" rx="8" fill="#edf0e9"/><g clip-path="url(#tw-map-clip)">${zones}${rings}
-    <path d="M${line.map(([x, y]) => `${X(x)} ${Y(y)}`).join('L')}" fill="none" stroke="#3e4a45" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></g>
+    <path d="${road}" fill="none" stroke="#3e4a45" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></g>
     ${end(line[0], 'A')}${end(line[line.length - 1], 'B')}</svg>`;
 }
 const CHECK = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M3 8.5 L6.5 12 L13 4.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';

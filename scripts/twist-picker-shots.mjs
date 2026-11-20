@@ -50,7 +50,7 @@ try {
   await page.locator('h1').focus();
   for (let k = 0; k < 3; k++) await page.keyboard.press('Tab');
   ok(await page.evaluate(() => document.activeElement.dataset.t) === 'curveballs', 'Tab goes card by card');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('Space'); await page.waitForTimeout(300);
   ok(!(await page.locator('.tw-card[data-t="curveballs"]').getAttribute('class')).includes('on') && /^Curveballs: News from the site/.test(await page.locator('.twist-picker-detail').textContent()),
     'Space turns it off; its long line shows while it has focus');
   await shot('twist-screen-keyboard');

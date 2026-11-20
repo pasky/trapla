@@ -1,0 +1,323 @@
+{
+ "preset": "d3-0301-motorway",
+ "purpose": "Hands off the castle (600 m round the chapel of St Wenceslas, J\u00edlov\u00e9 u Prahy) with Earth balance, under the goal but over the last news' money (4.28 bn, the cap 4.13): round 4's all-news.json with a bend added north of B by hand (--edit), then searched (seeds 8 \u2192 14 \u2192 18, WEIGHT=landmarks:6)",
+ "meets": [
+  "earth",
+  "landmarks"
+ ],
+ "goal": true,
+ "design": {
+  "schemaVersion": 1,
+  "scenarioId": "d3-0301",
+  "presetId": "d3-0301-motorway",
+  "packId": "d3-0301",
+  "objectData": "1217490:4077152105:134072107",
+  "transportData": "8319268c9d85624279a6729a99ac26b32ca19c03c560f2db7ecd14d0d552bafa",
+  "routes": [
+   {
+    "id": "route:motorway-forward",
+    "name": "Motorway towards J\u00edlov\u00e9 (on to 0302)",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-forward",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 5659.1,
+       "y": 10488.1,
+       "z": 352.92
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2825.3,
+       "y": 3024.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "forward"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   },
+   {
+    "id": "route:motorway-reverse",
+    "name": "Motorway towards D0 Praha",
+    "role": "mission",
+    "revision": 0,
+    "kind": "motorway",
+    "acousticSourceId": "acoustic:route:motorway-reverse",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 2825.3,
+       "y": 3024.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 5659.1,
+       "y": 10488.1,
+       "z": 352.92
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     }
+    },
+    "alignment": {
+     "kind": "corridor",
+     "corridorId": "corridor:motorway",
+     "direction": "reverse"
+    },
+    "specification": {
+     "kind": "motorway",
+     "policy": "paired-d27.5",
+     "crossSection": "D27.5",
+     "designSpeed": 120,
+     "operations": {
+      "aadt": 15350,
+      "heavyShare": 0.2256,
+      "speed": 120,
+      "speedPolicy": "design"
+     }
+    }
+   }
+  ],
+  "corridors": [
+   {
+    "id": "corridor:motorway",
+    "revision": 0,
+    "kind": "motorway",
+    "mode": "paired",
+    "endpoints": {
+     "a": {
+      "position": {
+       "x": 5659.1,
+       "y": 10488.1,
+       "z": 352.92
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "a"
+      },
+      "binding": "resolved"
+     },
+     "b": {
+      "position": {
+       "x": 2825.3,
+       "y": 3024.5,
+       "z": 431.784
+      },
+      "anchor": {
+       "kind": "mission",
+       "portId": "b"
+      },
+      "binding": "resolved"
+     }
+    },
+    "children": {
+     "forward": "route:motorway-forward",
+     "reverse": "route:motorway-reverse"
+    },
+    "formationPolicy": "paired-d27.5",
+    "correspondence": [],
+    "spine": {
+     "kind": "pi",
+     "pis": [
+      {
+       "x": 5208.051301593026,
+       "y": 9224.052095233692,
+       "r": null
+      },
+      {
+       "x": 4562.056751982693,
+       "y": 8122.7979973454185,
+       "r": null
+      },
+      {
+       "x": 4293.79520077335,
+       "y": 7669.533250420364,
+       "r": null
+      },
+      {
+       "x": 4216.675606856231,
+       "y": 7539.251853509522,
+       "r": null
+      },
+      {
+       "x": 3289.558987717247,
+       "y": 6841.41758354166,
+       "r": null
+      },
+      {
+       "x": 2753.3121848083633,
+       "y": 6340.455670325986,
+       "r": null
+      },
+      {
+       "x": 2638.1394151425006,
+       "y": 6234.678269602507,
+       "r": null
+      },
+      {
+       "x": 3518.6907074912037,
+       "y": 5216.981126592671,
+       "r": null
+      },
+      {
+       "x": 2772.3853741745093,
+       "y": 3597.6854574590398,
+       "r": null
+      }
+     ],
+     "controls": {
+      "structureOverrides": [
+       {
+        "s0": 2874.7450733525143,
+        "s1": 2943.842404634777,
+        "kind": 0
+       }
+      ]
+     },
+     "vertical": {
+      "kind": "auto",
+      "pins": [
+       {
+        "s": 400,
+        "z": 356.6
+       },
+       {
+        "s": 700,
+        "z": 360.7
+       },
+       {
+        "s": 939,
+        "z": 364.2
+       },
+       {
+        "s": 1669,
+        "z": 376.4
+       },
+       {
+        "s": 2469,
+        "z": 364.9
+       },
+       {
+        "s": 2719,
+        "z": 364.9
+       },
+       {
+        "s": 3140,
+        "z": 361.6
+       },
+       {
+        "s": 3989,
+        "z": 369.9
+       },
+       {
+        "s": 4497,
+        "z": 355.2
+       },
+       {
+        "s": 4705,
+        "z": 353
+       },
+       {
+        "s": 5347,
+        "z": 330.8
+       },
+       {
+        "s": 6273,
+        "z": 347.6
+       },
+       {
+        "s": 7017,
+        "z": 377.3
+       },
+       {
+        "s": 7257,
+        "z": 383.6
+       }
+      ],
+      "manualVpis": []
+     }
+    }
+   }
+  ],
+  "connections": [],
+  "buildingOverrides": [],
+  "mission": {
+   "id": "d3-0301:d3-0301-motorway",
+   "revision": 0,
+   "ports": [
+    {
+     "id": "a",
+     "name": "D0 Praha",
+     "position": {
+      "x": 5659.1,
+      "y": 10488.1,
+      "z": 352.92
+     }
+    },
+    {
+     "id": "b",
+     "name": "J\u00edlov\u00e9 (on to 0302)",
+     "position": {
+      "x": 2825.3,
+      "y": 3024.5,
+      "z": 431.784
+     }
+    }
+   ],
+   "connections": [
+    {
+     "from": "a",
+     "to": "b",
+     "direction": "both",
+     "kinds": [
+      "motorway"
+     ],
+     "maxTravelMin": 4.8,
+     "demand": {
+      "kind": "road",
+      "aadt": 30700
+     }
+    }
+   ]
+  }
+ }
+}

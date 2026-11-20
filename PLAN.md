@@ -2590,13 +2590,24 @@ The game stays the builder; what is new is **twists** a player picks per mission
 changes the bill or validity: VALID stays the norm check. Twists are checked on the main thread after each full
 evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), never in a drag preview.
 
-- **Twist screen** (`src/ui/twist-picker.ts`): after Start / Continue on the start screen (a direct link skips it), the
-  mission's twists as toggles with one line each, the goal above them, *All on* / *None*; the defaults are the owner's
-  difficulty (Earth balance, Hands off the castle, Curveballs, where offered); the choice is remembered per mission
+- **Twist screen** (`src/ui/twist-picker.ts`, round 5: picture cards): after Start / Continue on the start screen (a direct
+  link skips it), the mission's twists as toggle cards in a grid (four across; eight fit 1280 × 800 without scrolling),
+  each with a small drawing of our own in the map's colours (`src/ui/twist-art.ts`, inline SVG: a cut and an embankment
+  with an arrow, a castle in a dashed ring, a site notice, a house, trees, a measured span, a crossed-out portal, a
+  stopwatch, coins, the straight A–B, the profile with a pin), its name and one short line ("≤ 10 % earth trucked in or
+  away", "Chapel of St Roch · 600 m"); the longer line on hover or focus, in one line under the grid (and as each
+  checkbox's description for a screen reader); each card is a checkbox (Tab, Space); an "on" card filled with a check, the
+  defaults marked *Default*; *All on* / *None*; a small map of the planned line A–B with the places Hands off names (the
+  pack's heritage.json as the start screen fetches it, `peekPackFile`). A twist a mission cannot ask for is a dashed card
+  that says why (Šternberk's Hands off: "No listed place near enough", why on hover); one offered but off at first
+  (`notDefault`) says so on hover. The defaults are the owner's difficulty (Earth balance, Hands off the castle,
+  Curveballs, where offered); the choice is remembered per mission
   (`trapla.twists.v1.<scenario>.<preset>`, `src/ui/twist-state.ts`). The map downloads meanwhile. In the game: a chip by
   the verdict ("✓ Twists 3/3" / "✗ Twists 2/3") opens the **Twists** card: each twist with where it stands, what breaks
   it and where (Show), fixes as buttons where one can be computed (*Bridge it* over a place that takes a bridge,
-  *Tunnel it* through a hill that may not be cut open, *Long spans over it* where piers are kept out), *Change twists*
+  *Tunnel it* through a hill that may not be cut open, *Long spans over it* where piers are kept out), the places Hands
+  off names with their kind and ring (a row under the pointer draws its ring stronger; the map's tip names a ring the
+  same way), *Change twists*
   (any time; the reveal says which were on), the news so far, *The real project* once revealed.
 - **The twists offered** (each only where `scripts/twists-check.ts` finds a VALID reference design meeting it in
   `scripts/twists/<preset>/`, and where it asks for something: the starter breaks it):
@@ -2612,8 +2623,13 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     each pack's `heritage.json` (`src/core/heritage.ts`; castles, forts, churches, chapels, crosses and statues, memorials,
     technical monuments; houses, farmsteads and the like left out, so is a monument inside a zone). A mission counts those
     within 1.5 km of the starter or of the straight line A–B, but none at a fixed end (within 50 m of A or B: the ends are
-    the mission's). **Offered only where the planned line breaks it** (and a reference meets it with the other defaults
-    under the goal). Zones are drawn filled in the twist's plum (red where broken), named on hover ("Trosky castle protection
+    the mission's). Round 5 (research/102 "Round 5"): **on every mission where a listed place is near enough.** Where the
+    planned line keeps out of every monument's own ring and every area, the mission names the monuments nearest it with a
+    wider ring, their **setting** (castle 1,000 m; church, chapel, fort, memorial, technical monument 600 m; cross or
+    statue 200 m: a game scale about the larger quarter of the 455 protection zones NPÚ has declared round each kind,
+    `pipeline/heritage_zone_sizes.py`); the others keep their own rings. Each mission names (data/twists.ts `inPlay`, in
+    English) what its starter breaks; `twists-check.ts` checks each name is the pack's, of that kind, and that the starter
+    breaks one and nothing unnamed. Šternberk has none (`noLandmarks`, said on the twist screen). Zones are drawn filled in the twist's plum (red where broken), named on hover ("Trosky castle protection
     zone"); monuments as rings, named close up (`src/render/twist-marks.ts`). Until round 3: rings round 479 named OSM
     castles, churches, chapels, monuments and viewpoints (`build_landmarks.py`, removed), mostly far from any line.
   - *From scratch*: the design begins on the straight line A–B (a Start over while it is on goes there too; turned on
@@ -2731,7 +2747,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
 - **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
   mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
   counts the shared body once per direction in Earth balance; the "From scratch" mark survives an Undo of the restart and a
-  loaded best; (fixed in round 4: Hands off is offered only where the starter breaks it); places are tested at the stations (every ≈ 10 m), so a place smaller than that could
+  loaded best; places are tested at the stations (every ≈ 10 m), so a place smaller than that could
   slip between two. Round 3: LOW counts a road at the ground's level (an embankment of 0.2 m) as an embankment, so a village's cutting
   must be a cutting all the way along its stretch; the game events' places are the game's (research/95 says how each was
   placed), their circles' sizes game scales; the money caps were set at what the reference with every news reaches (85–89 %);
