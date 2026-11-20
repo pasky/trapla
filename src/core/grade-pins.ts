@@ -170,7 +170,14 @@ export function reachableSuggestions(violations: readonly GradePinViolation[], p
 /** A pin the player set, honoured at a price (`kind` 'steep': the line steeper than the norm over s0–s1 next to it;
  * 'clearance': it misses what it crosses at s0 = s1): `z` is the height Auto reaches there within the norm (null: none
  * found), the fix of the problems there. */
-export interface PinFix { index: number; pin: GradePin; kind: 'steep' | 'clearance'; s0: number; s1: number; z: number | null }
+export interface PinFix { index: number; pin: GradePin; kind: 'steep' | 'clearance'; s0: number; s1: number; z: number | null;
+  /** 'clearance': the ways past the crossing the pin can take within the norm, each a height and what it builds there
+   * (evaluate.ts pinWays; absent: `z` alone) */
+  ways?: { z: number; label: string }[];
+  /** 'clearance': what it misses (a railway, a river, a stream, a motorway …), our line's height over it and the
+   * height it needs there, m */
+  crossing?: { what: string; above: number; need: number };
+}
 
 /**
  * The pins a result honours at a price, each with the height its fix suggests (`reachableSuggestions` with the other
@@ -215,25 +222,51 @@ export const PIN_FIX_NEAR = 60;
  * protected area) */
 const CROSSING_KINDS: ReadonlySet<string> = new Set(['crossing', 'structure', 'footprint']);
 
+/** Of the problems at one crossing a pin's line misses, the one kept (its clearance before our works on it and the
+ * structure there: one problem per crossing, the owner) */
+const CROSSING_RANK: Record<string, number> = { crossing: 0, footprint: 1, structure: 2 };
+const m1 = (x: number) => x.toFixed(1);
+
 /**
- * The problems a player's pin causes where Auto honours it (`fixes`, honouredPinFixes): the fix is the pin's, its
- * height Auto reaches within the norm there or unpin (a button: `target.pin`), and the detail says the pin holds the
- * line. 'steep': the too-steep stretches next to the pin; 'clearance': the problems at the crossing it misses.
+ * The problems a player's pin causes where Auto honours it (`fixes`, honouredPinFixes): the fix is the pin's (each way
+ * past a crossing it can take within the norm, a button each: `target.pin`; or the height Auto reaches; or unpin), and
+ * the detail says the pin holds the line. 'steep': the too-steep stretches next to the pin; 'clearance': the crossing
+ * it misses, one problem for it (its clearance, said as what our road does there: "Our road meets the railway at its
+ * level (2.2 m under its rails)"), the others there (our works on it, our bridge's span) dropped.
  */
 export function applyPinFixes(vs: readonly Violation[], fixes: readonly PinFix[]): Violation[] {
   if (!fixes.length) return [...vs];
-  return vs.map((v) => {
-    if ('pin' in v || v.goal) return v;
-    const f = fixes.find((f) => f.kind === 'steep' ? v.kind === 'gradient' && v.s1 > f.s0 - 1 && v.s0 < f.s1 + 1
-      : CROSSING_KINDS.has(v.kind) && v.s0 - PIN_FIX_NEAR <= f.s0 && f.s0 <= v.s1 + PIN_FIX_NEAR);
-    if (!f) return v;
-    const km = (f.pin.s / 1000).toFixed(2), at = `${f.pin.z.toFixed(1)} m at km ${km}`;
-    const fix = f.z !== null ? `Set the pin at km ${km} to ${f.z.toFixed(1)} m, or unpin` : `Unpin the height at km ${km}`;
+  const fixOf = vs.map((v) => 'pin' in v || v.goal ? undefined : fixes.find((f) => f.kind === 'steep' ? v.kind === 'gradient' && v.s1 > f.s0 - 1 && v.s0 < f.s1 + 1
+    : CROSSING_KINDS.has(v.kind) && v.s0 - PIN_FIX_NEAR <= f.s0 && f.s0 <= v.s1 + PIN_FIX_NEAR));
+  // (one problem per crossing: the best ranked of those it has)
+  const kept = new Map<PinFix, number>();
+  vs.forEach((v, i) => {
+    const f = fixOf[i];
+    if (!f || f.kind !== 'clearance') return;
+    const k = kept.get(f);
+    if (k === undefined || CROSSING_RANK[v.kind] < CROSSING_RANK[vs[k].kind]) kept.set(f, i);
+  });
+  return vs.flatMap((v, i) => {
+    const f = fixOf[i];
+    if (!f) return [v];
+    if (f.kind === 'clearance' && kept.get(f) !== i) return [];
+    const km = (f.pin.s / 1000).toFixed(2), at = `${m1(f.pin.z)} m at km ${km}`;
+    const ways = f.ways ?? (f.z !== null ? [{ z: f.z, label: '' }] : []);
+    const verb = (z: number) => (z > f.pin.z ? 'raise' : 'lower');
+    const fix = !ways.length ? `Unpin the height at km ${km}`
+      : !f.ways ? `Set the pin at km ${km} to ${m1(ways[0].z)} m, or unpin`
+        : `${ways.map((w, q) => `${q ? verb(w.z) : `${verb(w.z).replace(/^./, (c) => c.toUpperCase())} the pin at km ${km}`} ${q ? 'it ' : ''}to ${m1(w.z)} m (${w.label})`).join(', ')}, or unpin`;
     const why = f.kind === 'steep'
       ? `Your height pin (${at}) is out of reach within the limit: Auto builds our road through it as steep as it must be.`
-      : `Your height pin (${at}) holds our road here.${f.z !== null ? ` At ${f.z.toFixed(1)} m it clears this.` : ''}`;
+      : `Your height pin (${at}) holds our road here.${ways.length ? ` At ${m1(ways[0].z)} m it clears this.` : ''}`;
     // (Auto's own line's words, "Auto keeps … within the limit when it can …": the pin is why)
     const detail = (v.detail ?? '').replace(/ Auto keeps the \w+ within the limit when it can;.*$/, '');
-    return { ...v, fix, detail: `${detail ? `${detail} ` : ''}${why}`, target: { ...v.target, pin: { s: f.pin.s, z: f.z } } };
+    // (a railway or a river only bridged: what our road does there)
+    const c = f.crossing, over = v.kind === 'crossing' && v.clearance === 'above' && c && (c.what === 'railway' || c.what === 'river');
+    const title = !over ? v.title : c.above < 0
+      ? `Our road meets the ${c.what} at its level (${m1(-c.above)} m under its ${c.what === 'railway' ? 'rails' : 'water'})`
+      : `Our bridge over the ${c.what} is too low (${m1(c.above)} m over it, it needs ${m1(c.need)} m)`;
+    return [{ ...v, title, fix, detail: `${detail ? `${detail} ` : ''}${why}`,
+      target: { ...v.target, pin: { s: f.pin.s, z: ways[0]?.z ?? null, ...(f.ways ? { ways: f.ways.map((w) => ({ ...w })) } : {}) } } }];
   });
 }

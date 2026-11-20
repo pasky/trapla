@@ -86,7 +86,9 @@ export interface ViolationTarget {
   smallest?: number;
   /** Auto: the player's height pin (its chainage) that causes it; set to `z` (a height Auto reaches within the norm,
    * null: none found) or unpinned, it goes */
-  pin?: { s: number; z: number | null };
+  pin?: { s: number; z: number | null;
+    /** past a crossing: each way the pin can take (a height, what it builds there), a button each */
+    ways?: { z: number; label: string }[] };
 }
 
 /** one-line form for logs and scripts */

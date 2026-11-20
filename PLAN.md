@@ -2728,15 +2728,30 @@ and no lift raises the structure there (a lift against the pin cannot succeed, a
 it: I/35, a stream bridge at km 1.19 "too low" 0.7 km away). No remedy is invented to meet the pin: the crossing stays as
 the line leaves it (a railway in our cut, a stream in our cut), billed as built.
 
+**One problem per crossing, each way past it** (the owner's polish): of the problems at a crossing a pin's line misses,
+one is kept (its clearance before our works on it and our bridge's span there), said as what our road does there: "Our
+road meets the railway at its level (2.2 m under its rails)", "Our bridge over the railway is too low (3.1 m over it, it
+needs 7.5 m)"; a stream's or a road's keeps its own title. Its fix lists each way past the crossing the pin can take
+within the norm (`evaluate.ts` `pinWays`), a button each: over it ("Raise to 260.7 m: our bridge over it", a culvert
+under us for a stream) and, where something can carry it over us, under it (a motorway passed under: "its bridge over
+us"; a stream: "a tunnel under the stream", our line 9 m under its bed). A railway or a river is never carried over our
+road by the engine, so it offers only the raise and says nothing of lowering. A way's height is the fix's own suggestion
+where that lies that way, else the pin moved by what the line misses that way's clearance by (× 1, 1.5, 2.5), checked by
+the strict solve with the other pins as they are; a way none reaches is not offered (the Královec stream at km 2.087:
+only "Lower to 438.3 m: a tunnel under the stream", a culvert 8 m up is out of the norm's reach). Screenshots 690–692
+retaken.
+
 **Played** (`node scripts/pin-honour-shots.mjs`, screenshots 690–696): I/35 starter 5.63 bn VALID; the road line dragged
 in the profile at km 0.29 and 256.0 typed on the pin's card: 5.36 bn NOT VALID, our road 2.2 m under the railway at km
-0.47 in a cut: "Our earthworks cover a railway" and "Road too low over the railway", each "Set the pin at km 0.29 to
-260.7 m, or unpin"; the grade as the starter's beyond km 0.9; the button: 6.07 bn VALID (690–693). The Královec railway
+0.47 in a cut: "Our road meets the railway at its level (2.2 m under its rails) · Raise the pin at km 0.29 to 260.7 m
+(our bridge over it), or unpin" (before the polish: two problems there, "Our earthworks cover a railway" and "Road too
+low over the railway"); the grade as the starter's beyond km 0.9; the button: 6.07 bn VALID (690–693). The Královec railway
 pin 441.9 m at km 2.03 (4 m over the climb at its 12.5 ‰ limit): 10.54 bn NOT VALID, "Too steep: 19.7 ‰ climb" km
 1.53–1.78 and 13.8 ‰ km 1.78–2.03 (the crest at the pin takes height, so the climb is not one grade), the stream at km
-2.087 through the cut (two problems), all "Set the pin at km 2.03 to 438.3 m"; the grade as Auto's own outside km
+2.087 through the cut ("Lower the pin … to 438.3 m (a tunnel under the stream)"), the steep ones "Set the pin at km 2.03
+to 438.3 m"; the grade as Auto's own outside km
 1.5–2.6 (694, 695); 100 m higher: left out, 10.76 bn, one problem at the pin (696). The pin 439.5 m there: 10.62 bn,
-the stream's two problems only. Edit-locality (new QA cases: the owner's I/35 pin, the Královec stream pin): the
+the stream's problem only. Edit-locality (new QA cases: the owner's I/35 pin, the Královec stream pin): the
 Královec pin +5 m at km 4.2 10.69 → 10.77 bn (its plain line left the stream at km 2.08 in the cut 2 km away: honoured
 locally, too steep 21.9 / 19.5 ‰ at km 3.7–4.2), D11 −8 m at km 7.2 3.66 → 3.68 bn (honoured: two bridge spans too
 low); nothing beyond 10 km changes in any suite. Frozen bills and the twists' references unchanged.
@@ -2755,7 +2770,7 @@ nearer. A span's ends keep the line's own heights (on the solve's other grid the
 are the player's (checked, reported); the span's ends are not pins. A suggestion's check (`pinStrict`) keeps the old rule.
 
 **Known issues:** an honoured pin's line may cost less than Auto's own where it gives up a structure (I/35 −331 M: no
-bridge over the railway): not valid, the bill as built. A crossing in a cut can carry two problems with the same fix. A
+bridge over the railway): not valid, the bill as built. A
 pinned evaluation with such a pin solves more (Auto's line without it, the spans, up to six suggestion solves per pin, in
 every pass of the evaluation): the Královec project with the pin 441.9 m or 439.5 m ≈ 3.0–3.4 s, without a pin ≈ 0.5 s,
 main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before; drag-perf pin mode within its budgets.

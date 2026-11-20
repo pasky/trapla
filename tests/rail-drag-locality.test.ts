@@ -57,9 +57,12 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const z = out.violations[0].target!.pin!.z!;
     expect(z).toBeLessThan(440.44);
     for (const v of out.violations) {
-      expect(v.target?.pin).toEqual({ s: 2030, z });
-      expect(v.fix).toBe(`Set the pin at km 2.03 to ${z.toFixed(1)} m, or unpin`);
+      expect(v.target?.pin?.z).toBe(z);
+      // (the stream: one problem, its way past it a tunnel under it; a culvert over it is out of the norm's reach)
+      expect(v.fix).toBe(v.kind === 'gradient' ? `Set the pin at km 2.03 to ${z.toFixed(1)} m, or unpin`
+        : `Lower the pin at km 2.03 to ${z.toFixed(1)} m (a tunnel under the stream), or unpin`);
     }
+    expect(out.violations.filter(v => v.kind !== 'gradient').map(v => v.title)).toEqual(['Our cutting runs through a stream']);
     expect(run(pinned(z)).routes['route:railway'].legacy!.violations).toEqual([]);
   }, 120_000);
 
@@ -69,9 +72,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const r0 = run(fixture('rail-kralovec')).routes['route:railway'].legacy!, out = run(pinned(439.5)).routes['route:railway'].legacy!;
     expect(Math.abs(atS(out, 2030) - 439.5)).toBeLessThanOrEqual(0.5);
     local(r0, out);
-    expect(out.violations.map(v => v.title).sort()).toEqual(['Our cutting runs through a stream', 'Our earthworks block a stream']);
-    const z = out.violations[0].target!.pin!.z!;
-    for (const v of out.violations) { expect(v.s0).toBeGreaterThan(2000); expect(v.s1).toBeLessThan(2150); expect(v.target?.pin).toEqual({ s: 2030, z }); }
+    // one problem for the stream (not our earthworks on it as well), its way past it a tunnel under it
+    expect(out.violations.map(v => v.title)).toEqual(['Our cutting runs through a stream']);
+    const [v] = out.violations, z = v.target!.pin!.z!;
+    expect(v.s0).toBeGreaterThan(2000); expect(v.s1).toBeLessThan(2150);
+    expect(v.target?.pin).toEqual({ s: 2030, z, ways: [{ z, label: 'a tunnel under the stream' }] });
     expect(run(pinned(z)).routes['route:railway'].legacy!.violations).toEqual([]);
   }, 120_000);
 });

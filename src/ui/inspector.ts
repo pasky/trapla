@@ -486,7 +486,9 @@ export class Inspector {
     // a problem a pin of the player's causes where Auto honours it: the height Auto reaches there within the norm, or unpin
     const held = t?.pin;
     if (held && d.profileMode === 'auto' && (d.gradePins ?? []).some((p) => Math.abs(p.s - held.s) < 0.1)) {
-      if (held.z !== null) btn(`data-fix-pin="${held.s},${held.z}"`, `Set the pin to ${held.z.toFixed(1)} m`);
+      const pinZ = d.gradePins!.find((p) => Math.abs(p.s - held.s) < 0.1)!.z;
+      if (held.ways) for (const w of held.ways) btn(`data-fix-pin="${held.s},${w.z}"`, `${w.z > pinZ ? 'Raise' : 'Lower'} to ${w.z.toFixed(1)} m: ${esc(w.label)}`);
+      else if (held.z !== null) btn(`data-fix-pin="${held.s},${held.z}"`, `Set the pin to ${held.z.toFixed(1)} m`);
       btn(`data-fix-unpin="${held.s},${held.s}"`, 'Unpin');
     }
     // By hand: the player's height pins it is about (the points of this result: the design's own)

@@ -50,9 +50,10 @@ try {
   await game.idle(400);
   const list = await problems();
   console.log('problems:', list);
-  assert(list.some((t) => /Road too low over the railway/.test(t) && /Set the pin at km 0\.29 to/.test(t)), 'the railway problem, its fix the pin');
+  assert(list.length === 1 && /Our road meets the railway at its level/.test(list[0]) && /Raise the pin at km 0\.29 to [\d.]+ m \(our bridge over it\), or unpin/.test(list[0]), 'one problem at the railway, its fix the pin');
+  await T(() => window.trapla.select(null));
   await shot('690-i35-pin-honoured-railway-too-low');
-  await openProblem(/Road too low over the railway/);
+  await openProblem(/Our road meets the railway/);
   const c = await card();
   console.log('problem card:', c);
   await shot('691-i35-pin-railway-problem-card');
@@ -62,9 +63,10 @@ try {
   console.log('pin card:', await card());
   await shot('692-i35-pin-card-at-a-cost');
   // the fix's button
-  await openProblem(/Road too low over the railway/);
-  const set = page.locator('#inspector button.fix', { hasText: /Set the pin to/ });
-  assert(await set.count() >= 1, 'a "Set the pin to …" button');
+  await openProblem(/Our road meets the railway/);
+  const set = page.locator('#inspector button.fix', { hasText: /Raise to [\d.]+ m: our bridge over it/ });
+  assert.equal(await set.count(), 1, 'a "Raise to …: our bridge over it" button, no lowering (no railway is carried over us)');
+  assert.equal(await page.locator('#inspector button.fix', { hasText: /^Lower/ }).count(), 0, 'no lowering');
   await set.first().click();
   await game.idle(2000);
   const after = await T(() => window.trapla.summary());
