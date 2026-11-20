@@ -1,6 +1,6 @@
 // Absolute-chainage constraints on the finished (parabolic), not tangent-polygon, grade line.
 import type { Violation } from './checks';
-import { elevations, type Profile } from './vertical';
+import { elevations, type Profile, type VPI } from './vertical';
 
 export interface GradePin { s: number; z: number }
 
@@ -17,6 +17,12 @@ export function normalizeGradePins(raw: unknown): GradePin[] {
   }
   return [...byStation.values()].sort((a, b) => a.s - b.s);
 }
+
+/** Game rule (PROVISIONAL, no norm says how steep a road may be built against it): a player's pin out of the norm's
+ * reach is honoured only by a line at most this many times as steep as the norm allows there (motorway 4.5 % → 11 %, a
+ * railway 12.5 ‰ → 31 ‰, still within what vehicles and trains climb), the factor the grade search's own last resort
+ * uses (autoprofile.ts `relaxed`). Steeper: out of reach, left out. */
+export const STEEP_MAX = 2.5;
 
 /** Metres, inclusive. Applies to the actual smoothed road elevation, including endpoint pins. */
 export const GRADE_PIN_TOLERANCE = 0.5;
@@ -79,7 +85,8 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
     if (finite && !bound) continue; // saved absolute station is inactive on this route
     const actualZ = bound ? actual[index] : null;
     const outside = bound && (p.z + tol < bound.min - 1e-9 || p.z - tol > bound.max + 1e-9 || bound.min > bound.max + 1e-9);
-    if (finite && bound && !outside && Math.abs(actualZ! - p.z) <= tol + 1e-9) continue;
+    // (a pin met is met: out of the slopes' reach, only by a line steeper than the norm, said where it is)
+    if (finite && bound && Math.abs(actualZ! - p.z) <= tol + 1e-9) continue;
     const reason = !finite ? 'invalid' : outside ? 'gradient-envelope' : 'search';
     const suggestedS = finite ? Math.max(a.s, Math.min(b.s, p.s)) : null;
     const suggestedZ = bound && bound.min <= bound.max
@@ -93,7 +100,7 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
         : outside ? 'Pinned height out of reach: too steep' : 'Pinned height: no legal road found',
       fix: suggested ? `Set it to ${suggested.z.toFixed(2)} m, or unpin`
         : 'Unpin it',
-      detail: bound ? `You asked for ${p.z.toFixed(2)} m; the road is at ${actualZ!.toFixed(2)} m. Slopes alone allow ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m here (counting your other pins, but not the room a change of slope needs). ${outside ? 'Pins that conflict may need changing together.' : 'Automatic tries a limited set of heights; a legal one may still exist. The suggested height is where the road is now.'}` : 'A pin stays at its km position when you move the route; it is never moved for you.',
+      detail: bound ? `You asked for ${p.z.toFixed(2)} m; the road is at ${actualZ!.toFixed(2)} m. ${outside ? `Auto finds no road to it even ${STEEP_MAX} times as steep as allowed, so it leaves it out. Within the limit, slopes alone allow ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m here (counting your other pins, but not the room a change of slope needs); pins that conflict may need changing together.` : 'Auto found no road through it, not even a steeper one, so it leaves it out; it tries a limited set of heights, a legal one may still exist. The suggested height is where the road is now.'}` : 'A pin stays at its km position when you move the route; it is never moved for you.',
       rule: `The finished road must pass within ±${tol} m of each pinned height; the heights at A and B are fixed.`,
       size: actualZ !== null ? Math.abs(actualZ - p.z) : undefined,
       pin: { index, requested: { ...p }, actualZ, tolerance: tol, reason, reachable: bound, suggested },
@@ -157,5 +164,109 @@ export function reachableSuggestions(violations: readonly GradePinViolation[], p
     return { ...v, fix: `Set it to ${best.toFixed(1)} m, or unpin`,
       detail: reason === 'clearance' ? v.detail : `You asked for ${requested.z.toFixed(2)} m; the road is at ${actualZ.toFixed(2)} m. Auto can reach at ${requested.z > actualZ ? 'most' : 'least'} ${best.toFixed(1)} m here.`,
       pin: { ...v.pin, suggested: { s: suggested.s, z: best } } };
+  });
+}
+
+/** A pin the player set, honoured at a price (`kind` 'steep': the line steeper than the norm over s0–s1 next to it;
+ * 'clearance': it misses what it crosses at s0 = s1): `z` is the height Auto reaches there within the norm (null: none
+ * found), the fix of the problems there. */
+export interface PinFix { index: number; pin: GradePin; kind: 'steep' | 'clearance'; s0: number; s1: number; z: number | null;
+  /** 'clearance': the ways past the crossing the pin can take within the norm, each a height and what it builds there
+   * (evaluate.ts pinWays; absent: `z` alone) */
+  ways?: { z: number; label: string }[];
+  /** 'clearance': what it misses (a railway, a river, a stream, a motorway …), our line's height over it and the
+   * height it needs there, m */
+  crossing?: { what: string; above: number; need: number };
+}
+
+/**
+ * The pins a result honours at a price, each with the height its fix suggests (`reachableSuggestions` with the other
+ * pins as they are, `strict` the route's first solve within the norm; none where that is the height it has). `steep`:
+ * the stretches the line ran steep to meet a pin (autoprofile.ts honour); `blame(own)`: the crossings the line misses
+ * that Auto's own line `own()` (no pins) keeps, by the pin in the way (autoprofile.ts pinClearanceBlame). Each pin's
+ * problem without it (against `own()`) is what its suggestion is found from.
+ */
+export function honouredPinFixes(pins: readonly GradePin[], result: { steep?: readonly { s0: number; s1: number; pin: GradePin }[] },
+  strict: (pins: GradePin[]) => { pinViolations?: readonly GradePinViolation[] }, own: () => VPI[],
+  blame: (own: () => VPI[]) => Map<number, number[]>, profile: (vpis: VPI[]) => Profile, maxGradient: number): PinFix[] {
+  const out: PinFix[] = [];
+  let ownLine: VPI[] | undefined, lefts: GradePinViolation[] | undefined;
+  const ownOnce = () => (ownLine ??= own());
+  const leftOf = (k: number) => (lefts ??= gradePinViolations(pins, profile(ownOnce()), maxGradient)).find(v => v.pin.index === k);
+  const heights = new Map<number, number | null>();
+  const suggest = (k: number, at?: number) => {
+    if (heights.has(k)) return heights.get(k)!;
+    const v = leftOf(k), z = v ? reachableSuggestions([at !== undefined && v.pin.reason === 'search' ? clearancePinViolation(v, at) : v], pins, strict)[0].pin.suggested?.z ?? null : null;
+    // (no edit that leaves the pin as it is)
+    const h = z !== null && Math.abs(z - pins[k].z) > 0.05 ? z : null;
+    heights.set(k, h);
+    return h;
+  };
+  const steep = new Map<number, { s0: number; s1: number }>();
+  for (const w of result.steep ?? []) {
+    const k = pins.findIndex(p => p.s === w.pin.s && p.z === w.pin.z);
+    if (k < 0) continue;
+    const e = steep.get(k);
+    if (e) { e.s0 = Math.min(e.s0, w.s0); e.s1 = Math.max(e.s1, w.s1); } else steep.set(k, { s0: w.s0, s1: w.s1 });
+  }
+  const blamed = blame(ownOnce);
+  for (const [k, e] of steep) out.push({ index: k, pin: { ...pins[k] }, kind: 'steep', s0: e.s0, s1: e.s1, z: suggest(k) });
+  for (const [k, ats] of blamed) for (const at of ats) out.push({ index: k, pin: { ...pins[k] }, kind: 'clearance', s0: at, s1: at, z: suggest(k, ats[0]) });
+  return out;
+}
+
+/** A problem within this of where a pin's line misses a crossing is that crossing's, m (a bridge's span problem, a
+ * stream's earthworks, at the crossing's own chainage or the bridge's ends). */
+export const PIN_FIX_NEAR = 60;
+/** what a crossing missed shows as: its clearance, our structure there, our works on it (a stream, a railway, a
+ * protected area) */
+const CROSSING_KINDS: ReadonlySet<string> = new Set(['crossing', 'structure', 'footprint']);
+
+/** Of the problems at one crossing a pin's line misses, the one kept (its clearance before our works on it and the
+ * structure there: one problem per crossing, the owner) */
+const CROSSING_RANK: Record<string, number> = { crossing: 0, footprint: 1, structure: 2 };
+const m1 = (x: number) => x.toFixed(1);
+
+/**
+ * The problems a player's pin causes where Auto honours it (`fixes`, honouredPinFixes): the fix is the pin's (each way
+ * past a crossing it can take within the norm, a button each: `target.pin`; or the height Auto reaches; or unpin), and
+ * the detail says the pin holds the line. 'steep': the too-steep stretches next to the pin; 'clearance': the crossing
+ * it misses, one problem for it (its clearance, said as what our road does there: "Our road meets the railway at its
+ * level (2.2 m under its rails)"), the others there (our works on it, our bridge's span) dropped.
+ */
+export function applyPinFixes(vs: readonly Violation[], fixes: readonly PinFix[]): Violation[] {
+  if (!fixes.length) return [...vs];
+  const fixOf = vs.map((v) => 'pin' in v || v.goal ? undefined : fixes.find((f) => f.kind === 'steep' ? v.kind === 'gradient' && v.s1 > f.s0 - 1 && v.s0 < f.s1 + 1
+    : CROSSING_KINDS.has(v.kind) && v.s0 - PIN_FIX_NEAR <= f.s0 && f.s0 <= v.s1 + PIN_FIX_NEAR));
+  // (one problem per crossing: the best ranked of those it has)
+  const kept = new Map<PinFix, number>();
+  vs.forEach((v, i) => {
+    const f = fixOf[i];
+    if (!f || f.kind !== 'clearance') return;
+    const k = kept.get(f);
+    if (k === undefined || CROSSING_RANK[v.kind] < CROSSING_RANK[vs[k].kind]) kept.set(f, i);
+  });
+  return vs.flatMap((v, i) => {
+    const f = fixOf[i];
+    if (!f) return [v];
+    if (f.kind === 'clearance' && kept.get(f) !== i) return [];
+    const km = (f.pin.s / 1000).toFixed(2), at = `${m1(f.pin.z)} m at km ${km}`;
+    const ways = f.ways ?? (f.z !== null ? [{ z: f.z, label: '' }] : []);
+    const verb = (z: number) => (z > f.pin.z ? 'raise' : 'lower');
+    const fix = !ways.length ? `Unpin the height at km ${km}`
+      : !f.ways ? `Set the pin at km ${km} to ${m1(ways[0].z)} m, or unpin`
+        : `${ways.map((w, q) => `${q ? verb(w.z) : `${verb(w.z).replace(/^./, (c) => c.toUpperCase())} the pin at km ${km}`} ${q ? 'it ' : ''}to ${m1(w.z)} m (${w.label})`).join(', ')}, or unpin`;
+    const why = f.kind === 'steep'
+      ? `Your height pin (${at}) is out of reach within the limit: Auto builds our road through it as steep as it must be.`
+      : `Your height pin (${at}) holds our road here.${ways.length ? ` At ${m1(ways[0].z)} m it clears this.` : ''}`;
+    // (Auto's own line's words, "Auto keeps … within the limit when it can …": the pin is why)
+    const detail = (v.detail ?? '').replace(/ Auto keeps the \w+ within the limit when it can;.*$/, '');
+    // (a railway or a river only bridged: what our road does there)
+    const c = f.crossing, over = v.kind === 'crossing' && v.clearance === 'above' && c && (c.what === 'railway' || c.what === 'river');
+    const title = !over ? v.title : c.above < 0
+      ? `Our road meets the ${c.what} at its level (${m1(-c.above)} m under its ${c.what === 'railway' ? 'rails' : 'water'})`
+      : `Our bridge over the ${c.what} is too low (${m1(c.above)} m over it, it needs ${m1(c.need)} m)`;
+    return [{ ...v, title, fix, detail: `${detail ? `${detail} ` : ''}${why}`,
+      target: { ...v.target, pin: { s: f.pin.s, z: ways[0]?.z ?? null, ...(f.ways ? { ways: f.ways.map((w) => ({ ...w })) } : {}) } } }];
   });
 }

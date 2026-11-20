@@ -483,6 +483,14 @@ export class Inspector {
     const pinAt = (v as Violation & { pin?: { requested: { s: number }; suggested: { z: number } | null } }).pin;
     if (pinAt?.suggested && d.profileMode === 'auto') btn(`data-fix-pin="${pinAt.requested.s},${pinAt.suggested.z}"`, `Set it to ${pinAt.suggested.z.toFixed(1)} m`);
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
+    // a problem a pin of the player's causes where Auto honours it: the height Auto reaches there within the norm, or unpin
+    const held = t?.pin;
+    if (held && d.profileMode === 'auto' && (d.gradePins ?? []).some((p) => Math.abs(p.s - held.s) < 0.1)) {
+      const pinZ = d.gradePins!.find((p) => Math.abs(p.s - held.s) < 0.1)!.z;
+      if (held.ways) for (const w of held.ways) btn(`data-fix-pin="${held.s},${w.z}"`, `${w.z > pinZ ? 'Raise' : 'Lower'} to ${w.z.toFixed(1)} m: ${esc(w.label)}`);
+      else if (held.z !== null) btn(`data-fix-pin="${held.s},${held.z}"`, `Set the pin to ${held.z.toFixed(1)} m`);
+      btn(`data-fix-unpin="${held.s},${held.s}"`, 'Unpin');
+    }
     // By hand: the player's height pins it is about (the points of this result: the design's own)
     if (d.profileMode === 'manual' && this.r) {
       const pin = (k: number) => this.r!.vpis[k] && k > 0 && k < this.r!.vpis.length - 1;
@@ -558,12 +566,15 @@ export class Inspector {
     if (!p) return '';
     const i = stationIndex(r, s);
     // (its fixes as buttons; Unpin is the card's own)
-    const vio = r.violations.filter((v) => v.kind === 'profile' && v.s0 <= s + 1 && v.s1 >= s - 1)
+    // (and what honouring it costs elsewhere: the problems whose fix is this pin)
+    const vio = r.violations.filter((v) => (v.kind === 'profile' && v.s0 <= s + 1 && v.s1 >= s - 1) || (v.target?.pin && Math.abs(v.target.pin.s - s) < 0.1))
       .map((v) => ({ v, fixes: this.fixes(v, d).replace(/<button[^>]*data-fix-unpin[^>]*>Unpin<\/button>/, '') }));
     // (a pin Auto cannot reach is left out: its line stays as it was, core/autoprofile.ts)
     const missed = vio.some(({ v }) => 'pin' in v), track = CATEGORIES[d.category].mode === 'railway' ? 'track' : 'road';
+    const priced = vio.some(({ v }) => v.target?.pin);
     const why = d.profileMode !== 'auto' ? 'Not used while the height is set by hand.'
-      : missed ? `Auto cannot reach it, so the ${track} stays where it was. Drag it in the profile.` : 'Auto passes within 0.5 m of it. Drag it in the profile.';
+      : missed ? `Auto cannot reach it, so the ${track} stays where it was. Drag it in the profile.`
+        : priced ? 'Auto passes within 0.5 m of it, at a cost:' : 'Auto passes within 0.5 m of it. Drag it in the profile.';
     return `${this.head('Pinned height', `km ${km(s)}`)}
       <div class="ctx-state"><b>${p.z.toFixed(1)} m</b> · ${track} now ${r.grade[i].toFixed(1)} m<div class="why">${why}</div></div>
       ${this.issues(vio)}
