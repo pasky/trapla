@@ -111,13 +111,15 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   // ---- the map ----
   /** the landmarks the mission names (data/twists.ts inPlay): named on the map from afar, listed on the card */
   const named = new Set((setup.mission.inPlay ?? []).map(p => p.code));
+  // (what the pointer's tip says over each: the same all game, worded once)
+  const tips = setup.terms.landmarks.map(landmarkWords);
   let freshId: string | null = null;
   function drawMarks() {
     const broken = new Set((last?.checks ?? []).flatMap(c => c.issues.flatMap(i => i.ref ? [i.ref] : [])));
     const out: TwistMark[] = [];
     if (state.on.includes('landmarks')) for (const [k, l] of setup!.terms.landmarks.entries())
       out.push({ id: `landmark:${k}`, kind: l.rings ? 'heritage' : 'landmark', shape: landmarkShape(l), label: landmarkName(l), state: broken.has(`landmark:${k}`) ? 'broken' : 'ok', at: l,
-        tip: landmarkWords(l), named: named.has(l.code ?? '') });
+        tip: tips[k], named: named.has(l.code ?? '') });
     if (state.on.includes('curveballs')) for (const c of fired()) if (c.zone)
       out.push({ id: `curveball:${c.id}`, kind: 'zone', shape: c.zone.shape, label: c.zone.label, state: broken.has(`curveball:${c.id}`) ? 'broken' : 'ok', fresh: freshId === c.id, at: middle(c.zone.shape) });
     marks.set(out);
@@ -146,7 +148,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   /** Hands off: the places the mission names, each with its kind and ring (pointing at one draws it stronger on the map) */
   function inPlayList() {
     const rows = [...setup!.terms.landmarks.entries()].filter(([, l]) => named.has(l.code ?? ''));
-    return rows.length ? `<ul class="tw-places">${rows.map(([k, l]) => `<li data-mark="landmark:${k}" tabindex="0">${esc(landmarkWords(l))} <button type="button" class="link" data-place="${k}">Show</button></li>`).join('')}</ul>` : '';
+    return rows.length ? `<ul class="tw-places">${rows.map(([k]) => `<li data-mark="landmark:${k}" tabindex="0">${esc(tips[k])} <button type="button" class="link" data-place="${k}">Show</button></li>`).join('')}</ul>` : '';
   }
   function newsList() {
     const f = fired();
