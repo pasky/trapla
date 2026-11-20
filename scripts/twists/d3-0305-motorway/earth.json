@@ -1,11 +1,11 @@
 {
  "preset": "d3-0305-motorway",
- "purpose": "Earth balance, under the goal: a search from the starter (scripts/twists-check.ts --find, seed 9); also at most 900 m of bridges (Few bridges)",
+ "purpose": "Earth balance: a search from the starter (scripts/twists-check.ts --find, seed 9); also at most 900 m of bridges (Few bridges) (no longer under the goal at cost model 60: the starter is cheaper)",
  "meets": [
   "earth",
   "bridges"
  ],
- "goal": true,
+ "goal": false,
  "design": {
   "schemaVersion": 1,
   "scenarioId": "d3-0305",
@@ -16,7 +16,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Nov\u00e1 Hospoda",
+    "name": "Motorway towards Nová Hospoda",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -67,7 +67,7 @@
    },
    {
     "id": "route:motorway-reverse",
-    "name": "Motorway towards Vora\u010dice (from 0304)",
+    "name": "Motorway towards Voračice (from 0304)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -267,7 +267,7 @@
    "ports": [
     {
      "id": "a",
-     "name": "Vora\u010dice (from 0304)",
+     "name": "Voračice (from 0304)",
      "position": {
       "x": 3074.4,
       "y": 16722.2,
@@ -276,7 +276,7 @@
     },
     {
      "id": "b",
-     "name": "Nov\u00e1 Hospoda",
+     "name": "Nová Hospoda",
      "position": {
       "x": 9940.5,
       "y": 2665.9,

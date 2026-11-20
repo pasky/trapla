@@ -2923,17 +2923,20 @@ within 30 m; double track where its band is wider than 12 m across it, PROVISION
 (as ever: 7.5 m) or under a new bridge of the railway: our road at least the clear height under a bridge (ČSN 73 6201 as
 VŠB VMK 02 and ŘSD R 111 give it: 4.80 m motorways and class I–II, 4.50 class III and collector local roads, 4.20 access
 roads; + 0.15 m to the bridge) and the bridge's depth (PROVISIONAL 1.8 m: the deepest of four Czech short-span ballasted
-bridges found, 0.99–1.77 m) under the rails: 6.75 m for our roads. The bridge: as long along the railway as our crown is
+bridges found, 0.99–1.77 m) under the rails: 6.75 m for our roads. The bridge: as long along the railway as our cutting is
 wide across it, 9.72 / 11.29 m wide (single / double track: two built examples, PROVISIONAL), SPOŽES 2026 H01 (≤ 40 m,
 86,800 CZK/m²; H02 over) × 1.13 (P1 bridges mark-up) and a provisional bridge of its area the trains use meanwhile (H07,
 39,800 CZK/m²; the I/27 Přeštice bypass's staging: provisional structures in a first possession, the bridge in a second;
-the possessions' replacement buses not priced). E.g. D11 km 14.13: 15 m, single track, 20.6 M.
+the possessions' replacement buses not priced). The bridge spans our cutting between its walls as built (the search
+weighs it with its walls nearest our crown, RETAINING_RULES.minimumOffset). E.g. D11 km 14.13: 20 m, single track, 26.9 M.
 - Auto: the grade search's either-or clearance (as for a stream's culvert or our bridge) with that bridge's price added
   where the line passes under (`autoprofile.ts eitherH.belowCost`, spread over the stations carrying the crossing); our
   bridge where it passes over. Not at a sharper angle than 30° to our road or over a band of tracks longer than 60 m
   along it (engine bounds, PROVISIONAL): there our bridge as before. The retaining and footprint screens take its cells
   under our crown as on its bridge; beside them our slopes are walled (its wing walls, billed as retaining walls; the
-  search does not foresee them). Not modelled: ground water in the cutting under a railway in a valley floor.
+  search does not foresee them). Not modelled: ground water in the cutting under a railway in a valley floor. Open
+  (drawing): at D11 km 14.13 a sky-coloured wedge shows beside the deck where our cutting's walls beside the oblique
+  railway end (the slope's mesh between a walled and an open station; shot 742).
 - The player: the railway's card (click its deck on the map, its mark in the profile, or "Railway" on our bridge's or
   cutting's card): how it is crossed and why, the price, Auto / Our bridge over it / The railway over us
   (`Design.railCrossings`: where it crossed then; a choice holds for the crossing nearest it within 150 m; validated in the
@@ -2945,22 +2948,26 @@ the possessions' replacement buses not priced). E.g. D11 km 14.13: 15 m, single 
   (`render/crossings.ts`); in the profile a rail mark at the rails' level and the deck over our road. Billed in our
   crossings (SPOŽES rows with their own mark-up: no construction surcharge).
 
-**Bills (model 60; scripts/exact.ts against main 68f6d5b: 227 of 243 results changed).** Frozen D11 fixtures: straight
-8,761.2 → 8,675.4 M (−85.8: the railway at km 14.13 carried over our cutting, −100 M; a track's and a service road's dead
-ends taken up at km 4.32 and 5.52; the bridge at km 4.87–5.79 no longer held over a dead end under its crown, a fill in its
-middle with walls, +14 M as the structure choice does not see the borrow its fill needs); direct-80 4,384.1 → 4,382.6
-(−1.5: a track's dead end at km 9.65 taken up instead of a 6.6 m wall); town-centre and town-controls −2.7 (a track's dead
-end at km 14.05 taken up; the bridge beside it 10 m shorter); best, best-drag, best-pin, best-structures, best-manual,
-demo and direct-90 unchanged. Starters: I/35 Turnov 5,629.2 → 4,480.6 M (−967 the dead end at km 3.0, −181 the railway
-at km 0.47 carried over our cutting, 30.9 M), I/35 whole route 15,157.9 → 14,086.7, Jičín 5,371.2 → 5,236.6, D35 stage 1 motorway
-19,459.1 → 18,876.2 (the railway at km 9.61 carried over our cutting on a 27.5 m double-track bridge, 42.8 M,
-instead of our 70 m bridge over it: the line 10–17 m lower over km 9.1–9.9), D35 whole 33,238.9 → 32,613.9, D35 road 6,673.9 → 6,537.3, D3
-0301 5,082.1 → 4,855.0 and 0305 9,439.4 → 9,343.8 (dead ends), D3 full 36,080.7 → 35,972.2, D11 motorway 14,029.2 →
-14,026.2; dearer: the D3 road 4,004.8 → 4,015.9 (a home at km 0.45 whose only road our embankment buries is bought out,
-before it was cut off unsaid), the D3 motorway 14,638.5 → 14,647.1, the Královec railway 10,760.2 → 10,800.6 (the 370 m
-bridge at km 10.09 was held over a dead end under it; with that end taken up the structure choice fills 90 m of it,
-houses and borrow it does not weigh fully). Not valid designs: the D11 random designs and straight starts move both ways
-(up to +87 M, d11 random-1-1, where the search's railway bridge price does not foresee the walls beside it).
+**Bills (model 60; scripts/exact.ts against main 68f6d5b: 232 of 243 results changed).** Frozen D11 fixtures: straight
+8,761.2 → 8,681.8 M (−79.4: the railway at km 14.13 carried over our cutting on a new 20 m bridge, 26.9 M, instead of
+our bridge over it; a track's and a service road's dead ends at km 4.32 and 5.52 taken up; the bridge at km 4.87–5.79 no
+longer held over a dead end under its crown, a fill with walls in its middle, +14 M as the structure choice does not see
+the borrow that fill needs); direct-80 4,384.1 → 4,382.6 (−1.5: a track's dead end at km 9.65 taken up instead of a
+6.6 m wall); town-centre 9,275.4 → 9,272.7 and town-controls 9,284.1 → 9,281.4 (−2.7: a track's dead end at km 14.05
+taken up, the bridge beside it 10 m shorter); best, best-drag, best-pin, best-structures, best-manual, demo and direct-90
+unchanged. Starters: I/35 Turnov 5,629.2 → 4,489.1 M (−967 the dead end at km 3.0; the railway at km 0.47, the main line
+070, carried over our cutting on a 30 m bridge, 39.5 M), I/35 whole route 15,157.9 → 14,095.3, Jičín 5,371.2 → 5,242.0,
+D35 stage 1 motorway 19,459.1 → 18,882.9 (the branch line at km 9.61 carried over our cutting on a 37 m bridge, 49.5 M,
+instead of our 70 m bridge over it: the line 10–17 m lower over km 9.1–9.9), D35 whole 33,238.9 → 32,620.5, D35 road
+6,673.9 → 6,545.2, D3 0301 5,082.1 → 4,855.0 and 0305 9,439.4 → 9,343.8 (dead ends), D3 full 36,080.7 → 35,972.2, D11
+14,029.2 → 14,026.2 (motorway) and 8,761.2 → 8,681.8 (road); dearer: the D3 road 4,004.8 → 4,015.9 (a home at km 0.45
+whose only road our embankment buries is bought out, before it was cut off unsaid), the D3 motorway 14,638.5 → 14,647.1,
+the Královec railway 10,760.2 → 10,800.6 (the 370 m bridge at km 10.09 was held over a dead end under it; with that end
+taken up the structure choice fills 90 m of it, houses and borrow it does not weigh fully). Not valid designs (the D11
+random designs, straight starts) move both ways, where the search's railway bridge price does not foresee the walls
+beside it. Twists: the start bills; I/35 Turnov offers no earth balance (its starter balances its earth now); references
+searched again where the planned line's lower bill moved a curveball's limit (D11 motorway, D3 0301, 0305, I/35 Turnov,
+whole I/35).
 - Checked: `scripts/dead-end-audit.ts`, `scripts/rail-dead-end-shots.mjs [--docs]` (screenshots 740–745: the I/35 dead
   end in the quantities and close up, D11 km 14.13's railway over our cutting and its card, our bridge chosen instead,
   the profile, the pin's two ways), `tests/dead-ends.test.ts`, `tests/road-realignment.test.ts`, `tests/retaining.test.ts`,
