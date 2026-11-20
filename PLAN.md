@@ -2506,7 +2506,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   light speck can remain at a dug ridge's nose; slip-road traffic starts as the average class II road (labelled);
   the A.4.N proxy for what the motorway's norm includes.
 
-## Slip roads on any divided road: the four-lane S 21.5 (owner request, no model version, 2026-11-20)
+## Slip roads on any divided road: the four-lane S 21.5 (owner request, cost model 59, 2026-11-20)
 
 - **Bug (owner):** on the I/35 Turnov mission a slip road said "Slip roads not yet on a four-lane road · Engine limit: slip
   roads are built to the D 27.5 motorway's widths and price only". The limit is gone: a slip road meets any paired road the
@@ -2514,9 +2514,10 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   (`core/slip-roads.ts SLIP_SECTIONS`, `laneLengths`, `SlipHost`; research/90 §4c).
 - **Lanes:** the speed-change lane takes the paved shoulder's place there too (VL 3 400.11–12 "na dálnicích a rychlostních
   silnicích"; S 21.5 is the old R 21.5): 3.50 m + 0.25 m guide strip + 0.25 m shoulder, the S 21.5's carriageway paved
-  **2.5 m wider** along it (D 27.5: 0.5 m), its gore 10.75 m off the line (D 27.5: 13.5). Lengths by the paired road's design
-  speed (ČSN 73 6102 as the ČVUT K612 course reproduces it): at 110 km/h exit 198 m (Lv 100 + Ld 98), entry 295 m; at 100:
-  151 / 255 m; at 90: 117 / 230 m; from 120 up the D35 design's 234 / 295 m as before (every D 27.5 result unchanged).
+  **2.5 m wider** along it (D 27.5: 0.5 m), its gore 10.75 m off the line (D 27.5: 11.75). Lengths by the paired road's design
+  speed at the gore (a slowed bend's there; ČSN 73 6102 as the ČVUT K612 course reproduces it): at 110 km/h exit 198 m (Lv
+  100 + Ld 98), entry 295 m; at 100: 151 / 255 m; at 90: 117 / 230 m; from 120 up the D35 design's 234 / 295 m as before (a
+  D 27.5 at 110 now gets the 110 row).
 - **Slip road:** the same V 7.25 at 50 / 40 km/h (no class-I rule found; VL 3's slip-road shoulder covers both).
 - **Price:** the lane per m² of the road's own SPK row (S 21.5: D 21.5 rows); the credit for earth-built slip roads already in the
   price holds, SPK putting them in every divided road "od kategorie S 20,75 výše" (a 5.7 km stage: 5.7 / 7 of one interchange).
@@ -2524,13 +2525,17 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   wider on a bridge, its noise wall moved out with it: `Result.widenL / widenR`, display only, `render/slip-merge.ts`), the
   paving beyond the old shoulder drawn (`View.setLaneMarks` paving strips), merge holds, dug ridges, gore credits, clashes
   and the cards in the road's own widths and words ("the four-lane road", "our road").
-- **Found on the way (fixed):** (1) a slip road's crossroads on the road its motorway crosses was one interchange with that
-  crossing only where the two were one OSM way; a road mapped as several ways (road II/610 / Přepeřská) flagged "earthworks
-  closer than 10 m" and missed "joins the road on the ramp to its bridge" (now: the ways continuing it, `roadWays`). (2) At a
-  gore where the slip road starts on a fill the motorway's slope was ended under it and the slip road's own end section stood
-  open: a hole to the sky (the motorway's slope now closes it).
+- **Found on the way (fixed, the model's change):** (0) a slip road was credited for the motorway's formation, and held at
+  its level, out to the lane's widening past the gore too, where the lane has ended: an entry running 2.5 m off the S 21.5's
+  crown was credited for 158 m "on its formation" (−20.5 M); now the formation is the road's own past the gore (D3 0303 5.7349
+  → 5.7382 bn, D3 0304 10.2330 → 10.2377 bn). (1) A slip road's crossroads on the road its motorway crosses was one
+  interchange with that crossing only where the two were one OSM way; a road mapped as several ways (road II/610 /
+  Přepeřská) flagged "earthworks closer than 10 m" and missed "joins the road on the ramp to its bridge" (now: the ways it
+  runs on along its straightest continuation, out to 750 m from the junction, `roadWays`). (2) At a gore where the slip
+  road starts on a fill the motorway's slope was ended under it and the slip road's own end section stood open: a hole to
+  the sky (the motorway's slope now closes it).
 - **Result:** the I/35 Turnov diamond at km 0.98 (road II/610 over the four-lane road; gores 350 m either side, crossroads on
-  road II/610 230 m south-west and on Přepeřská 150 m north-east): 6.1903 bn valid (+561 M; the north-east slip roads buy out
+  road II/610 230 m south-west and on Přepeřská 150 m north-east): 6.2055 bn valid (+576 M; the north-east slip roads buy out
   houses along Přepeřská), `tests/fixtures/interchange/i35-turnov-diamond.json`, `tests/slip-roads.test.ts`,
   `scripts/interchange-scene.mjs` section 4 (screenshots 710–719).
 - **Known gaps:** as for the motorway's (above); the noise model's barrier still stands at the crown edge where a lane widens

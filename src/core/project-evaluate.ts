@@ -12,7 +12,7 @@ import type { KeepClear } from './keep-clear';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
 import type { RoadNet } from './roadnet';
-import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, SLIP_SECTIONS, slipRoadAtMotorway, type SlipHost } from './slip-roads';
+import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, SLIP_SECTIONS, slipHost, slipRoadAtMotorway } from './slip-roads';
 import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
 import { evaluateProjectRailway, railInterval, type RailPaths, type RailwayEvaluation } from './project-railway';
@@ -268,11 +268,6 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
     for (const way of new Set(intervals.map(i => i.way))) out.zones.push({ way, x: f.x, y: f.y, r });
   }
   return out.cuts.length ? out : undefined;
-}
-/** The paired road (a motorway or a four-lane road of the project) a slip road's end meets: its category and design speed. */
-function slipHost(design: ProjectDesign, routeId: string): SlipHost | null {
-  const r = design.routes.find(q => q.id === routeId);
-  return r?.kind === 'motorway' ? { category: motorwayCategory(r), speed: r.specification.designSpeed } : null;
 }
 /** A paired road in the player's words for a slip road that meets none: the project's own kind where it has one kind. */
 function pairedWord(design: ProjectDesign) {
@@ -727,7 +722,7 @@ function slipRoadEnd(ctx: ProjectEvalContext, start: ReturnType<typeof projectSt
   const carriageway = carriagewayOf(design, hostRoute.id), i = end === 'a' ? 0 : legacy.n - 1;
   let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
   // (a slip road meets a paired road: its speed-change lane, gore and credit are that cross-section's, core/slip-roads.ts)
-  const paired = slipHost(design, hostRoute.id)!, sec = SLIP_SECTIONS[paired.category], the = `the ${sec.word}`;
+  const paired = slipHost(design, hostRoute.id, host)!, sec = SLIP_SECTIONS[paired.category], the = `the ${sec.word}`;
   if (!carriageway?.paired) {
     legacy.violations.push({ kind: 'crossing', s0: legacy.s[i], s1: legacy.s[i], basis: 'engine', title: `Joins a ${sec.word} whose directions run apart`,
       fix: `Join the two directions again (every stretch where they run apart), or build it on a ${sec.word} that runs as one`,
@@ -776,7 +771,7 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
       const way = anchor.kind === 'source' ? legacy.footprintConflicts.find(f => f.action === 'junction' && f.i === i)?.roadId : undefined;
       if (way === undefined) continue;
       // (the road it joins: that way and the ways continuing it, a road mapped as several ways where its name or class changes)
-      const road = roads ? roadWays(roads, way, SLIP_ROAD.interchangeReach / 2) : new Set([way]);
+      const road = roads ? roadWays(roads, way, legacy.x[i], legacy.y[i], SLIP_ROAD.interchangeReach / 2) : new Set([way]);
       for (const c of line.crossings) {
         if (c.roadId === undefined || !road.has(c.roadId) || c.shared) continue;
         const reach = Math.max((c.span ?? 0) / 2 + (c.approachLength ?? 0) + (c.realignLength ?? 0),
@@ -806,17 +801,14 @@ function interchangeTerminals(start: ReturnType<typeof projectStart>, gores: Sli
     }
   }
 }
-/** A mapped road as the ways it is made of: `way` and the ways continuing it end to end (the same class), out to about
- * `reach` m along them. */
-function roadWays(roads: RoadNet, way: number, reach: number): Set<number> {
-  const out = new Set([way]), queue: { way: number; along: number }[] = [{ way, along: 0 }];
-  while (queue.length) {
-    const q = queue.shift()!, path = roads.wayPath(q.way, 0, Infinity);
-    if (path.length < 2) continue;
-    const cls = roads.connections(path[0]).find(c => c.way === q.way)?.cls, length = path[path.length - 1].d - path[0].d;
-    if (q.along + length > reach && q.way !== way) continue;
-    for (const end of [path[0], path[path.length - 1]]) for (const c of roads.connections(end, 0.5))
-      if (!out.has(c.way) && c.cls === cls) { out.add(c.way); queue.push({ way: c.way, along: q.along + length }); }
+/** A mapped road as the ways it is made of along it: from the point x, y on `way` out to `reach` m either way, on over
+ * its straightest continuation where a way ends (RoadNet.connectedCrossingPath: the same class preferred). */
+function roadWays(roads: RoadNet, way: number, x: number, y: number, reach: number): Set<number> {
+  const out = new Set([way]), path = roads.connectedCrossingPath(way, x, y, reach);
+  // (each piece's way: at its middle, off the nodes where ways meet)
+  for (let k = 1; k < path.length; k++) {
+    const w = roads.nearestWay((path[k - 1].x + path[k].x) / 2, (path[k - 1].y + path[k].y) / 2, 1);
+    if (w !== undefined) out.add(w);
   }
   return out;
 }

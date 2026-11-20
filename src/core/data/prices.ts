@@ -247,8 +247,14 @@
  * Model 58: slip roads (Build → Slip road, core/slip-roads.ts): a new cross-section and its lanes, credits and checks on
  * the motorway; the independence screen takes a new road's junction with a road to change that road only within its own
  * works (it changed the whole road, so a junction near another road's change of the same road left the project unpriced:
- * such player projects are priced now). Every frozen bill unchanged (eval-regression). PLAN.md "Hand-built interchanges". */
-export const COST_MODEL_VERSION = 58;
+ * such player projects are priced now). Every frozen bill unchanged (eval-regression). PLAN.md "Hand-built interchanges".
+ * Model 59: slip roads on any divided road (the four-lane S 21.5: its own lanes, speeds, price); a speed-change lane's
+ * length by the paired road's design speed at its gore (below 120 km/h shorter: ČSN 73 6102); a slip road credited
+ * for the paired road's formation only where it is (wider by the lane up to the gore only: past it a slip road beside
+ * the carriageway was credited as on it) and held at its level from its crown's edge there. Hand-built diamonds:
+ * D3 0303 5.7349 → 5.7382 bn, D3 0304 10.2330 → 10.2377 bn; every frozen bill, starter and saved design unchanged
+ * (scripts/exact.ts: 243 of 243 identical). PLAN.md "Slip roads on any divided road". */
+export const COST_MODEL_VERSION = 59;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

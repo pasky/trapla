@@ -15,6 +15,8 @@ import { KIND } from './structures';
 import { landPerM2 } from './cost';
 import { GRADE_PIN_TOLERANCE } from './grade-pins';
 import { LAND, PRICES } from './data/prices';
+import { speedStretches } from './design-speed';
+import { motorwayCategory } from './route-section';
 
 /** A slip road's speed-change lane beside the carriageway of a paired road (D 27.5, S 21.5): 3.50 m with 0.25 m guide
  * strips, the paved shoulder beside it narrowed to 0.25 m (D35 design p. 9; VL 3 sheets 400.11–12 "zpevněná krajnice
@@ -95,8 +97,21 @@ export function sideAt(line: Pick<Result, 'n' | 'ds' | 'x' | 'y' | 'tx' | 'ty'>,
 }
 /** Unit vector to the right of travel on carriageway `direction` at station index k. */
 const rightOf = (line: Pick<Result, 'tx' | 'ty'>, k: number, direction: 1 | -1) => ({ x: direction * line.ty[k], y: -direction * line.tx[k] });
-/** The paired road a slip road meets: its category (its cross-section, price and word) and design speed (its lanes' lengths). */
-export interface SlipHost { category: PairedCategoryId; speed: number }
+/** The paired road a slip road meets: its category (its cross-section, price and word) and design speed (its lanes'
+ * lengths): the road's own, and where its bends are slower, theirs (`stretches`, design-speed.ts speedStretches). */
+export interface SlipHost { category: PairedCategoryId; speed: number; stretches?: readonly { s0: number; s1: number; speed: number }[] }
+/** The design speed of the paired road at its station s. */
+export const hostSpeedAt = (host: SlipHost, s: number) => host.stretches?.find(x => s >= x.s0 && s <= x.s1)?.speed ?? host.speed;
+/** The paired road (a motorway or a four-lane road of the project) `routeId` is a direction of, as a slip road meets it;
+ * `line`: its evaluated body (its bends' speeds). Null: not a paired road of the project. */
+export function slipHost(design: ProjectDesign, routeId: string, line?: Pick<Result, 'curves' | 'length'>): SlipHost | null {
+  const r = design.routes.find(q => q.id === routeId);
+  if (r?.kind !== 'motorway') return null;
+  const category = motorwayCategory(r), speed = r.specification.designSpeed;
+  const c = design.corridors.find(q => q.children.forward === routeId || q.children.reverse === routeId);
+  const pis = c?.mode === 'paired' && c.spine.kind === 'pi' ? c.spine.pis : undefined;
+  return { category, speed, ...(line && pis ? { stretches: speedStretches(line, pis, speed, category) } : {}) };
+}
 /** The gore: where the slip road's line meets the carriageway of a paired road of category `c`, at its height there.
  * `travel`: the carriageway's direction of travel there (a slip road leaves and joins along it). */
 export function gore(line: Pick<Result, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'grade'>, s: number, direction: 1 | -1, c: PairedCategoryId): XYZ & { s: number; travel: { x: number; y: number } } {
@@ -135,7 +150,7 @@ const issue = (s0: number, s1: number, title: string, fix: string, rule: string,
  * (stations [s0, s1] of the slip road's own line: where it meets the paired road). */
 export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, kind: 'exit' | 'entry', speed: number,
   terrain: TerrainClass, at: { s0: number; s1: number }, host: SlipHost): SpeedChangeLane {
-  const sec = SLIP_SECTIONS[host.category], spec = laneLengths(host.speed)[kind], length = spec.length[speed] ?? spec.length[50];
+  const vn = hostSpeedAt(host, sGore), sec = SLIP_SECTIONS[host.category], spec = laneLengths(vn)[kind], length = spec.length[speed] ?? spec.length[50];
   const word = `the ${sec.word}`;
   // u: along the travel from the lane's upstream end (an exit: its taper's start; an entry: the gore) to its downstream end
   const upstream = kind === 'exit' ? sGore - direction * length : sGore;
@@ -144,7 +159,7 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
   const what = kind === 'exit' ? 'exit lane' : 'entry lane', name = kind === 'exit' ? 'An exit lane' : 'An entry lane';
   const short = s0 < 0 ? -s0 : s1 > line.length ? s1 - line.length : 0;
   if (short > 0.5) violations.push(issue(at.s0, at.s1, `Its ${what} runs off the end of ${word}`,
-    `Move this end at least ${Math.ceil(short / 10) * 10} m further along ${word}`, `${name} is ${length} m long for a ${speed} km/h slip road on a ${host.speed} km/h ${sec.word} (ČSN 73 6102)`, 'norm')); // research/90 §4, §4c
+    `Move this end at least ${Math.ceil(short / 10) * 10} m further along ${word}`, `${name} is ${length} m long for a ${speed} km/h slip road on a ${vn} km/h ${sec.word} (after ČSN 73 6102)`, 'norm')); // research/90 §4, §4c
   // its share of full width: an exit opens over its first `taper` m, an entry closes over its last
   const width = (u: number) => Math.min(1, Math.max(0, (kind === 'exit' ? u : length - u) / spec.taper));
   const area = { ground: 0, bridge: 0 }, lines: SpeedChangeLane['lines'] = [[], [], []], widen: SpeedChangeLane['widen'] = [];
@@ -295,7 +310,7 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
   if (line.kind[k] !== KIND.earth) violations.push({ kind: 'crossing', ...at, basis: 'game',
     title: end === 'a' ? `It leaves ${the} on a bridge or in a tunnel` : `It joins ${the} on a bridge or in a tunnel`,
     fix: `Move this end along ${the} to where it runs on the ground`,
-    rule: `Game rule: a slip road leaves and joins a ${sec.word} where it runs on the ground (a wider bridge or tunnel is not built by the game)` });
+    rule: `Game rule: a slip road leaves and joins a ${sec.word} where it runs on the ground (its start on a bridge or in a tunnel is not built by the game)` });
   // it leaves (joins) along the traffic: its first straight heads the carriageway's way, not against it
   const g = gore(line, line.s[k], direction, host.category), sign = end === 'a' ? 1 : -1;
   const q1 = end === 'a' ? Math.min(ramp.n - 1, i + 2) : Math.max(0, i - 2);
@@ -305,7 +320,8 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     fix: end === 'a' ? `Turn it to leave the way the traffic goes, or start it on the other side of ${the}`
       : `Turn it to join the way the traffic goes, or end it on the other side of ${the}`,
     rule: 'Game rule: a slip road leaves and joins a carriageway along its traffic, on its right' });
-  const wm = sec.half, wr = CATEGORIES['V7.25'].crownWidth / 2, formation = wm + sec.widening;
+  // (its formation: the paired road's half, wider along the speed-change lane, which ends at the gore)
+  const wm = sec.half, wr = CATEGORIES['V7.25'].crownWidth / 2, wide = new Map(lane.widen.map(w => [w.k, w.extra]));
   // (each m³ at what the slip road pays for its own earth; one with no cut of its own at the motorway's rate)
   const cutOf = (r: Result) => r.quantities.cut > 0 ? (r.cost.earthDetail.excavation + r.cost.earthDetail.surplusHaul + r.cost.earthDetail.unsuitable) / r.quantities.cut : 0;
   const rate = {
@@ -329,7 +345,7 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
     if (dd - mine - theirs > clearance) continue;
     const zone = { x: ramp.x[q], y: ramp.y[q], r: Math.max(mine, dd) + theirs + clearance };
     zones.push(zone);
-    if (inside === step && dd <= formation) { inside = step + 1; credit += shared(q); goreZones.push(zone); continue; }
+    if (inside === step && dd <= wm + (wide.get(kk) ?? 0)) { inside = step + 1; credit += shared(q); goreZones.push(zone); continue; }
     if (ramp.kind[q] !== KIND.earth || line.kind[kk] !== KIND.earth || !(dd > 1e-6)) continue;
     // Across the motorway's line towards the slip road (x from its line, the slip road's line at d): each body's
     // top, its crown then its slope facing the other (as the two directions of a split motorway, splitLedger).
@@ -395,7 +411,8 @@ export const MERGE_TOLERANCE = GRADE_PIN_TOLERANCE;
 export function mergeBands(xy: readonly number[], end: 'a' | 'b', line: Pick<Result, 'n' | 'x' | 'y' | 'grade'>, c: PairedCategoryId): { s: number; min: number; max: number }[] {
   const n = xy.length / 2, out: { s: number; min: number; max: number }[] = [];
   if (n < 2) return out;
-  const edges = SLIP_SECTIONS[c].half + SLIP_SECTIONS[c].widening + CATEGORIES['V7.25'].crownWidth / 2, reach = edges + MERGE_REACH;
+  // (beside its gore the paired road's own crown: its speed-change lane ends there)
+  const edges = SLIP_SECTIONS[c].half + CATEGORIES['V7.25'].crownWidth / 2, reach = edges + MERGE_REACH;
   // (the samples' own stations: the line is sampled at length / ⌈length / step⌉, not at `step`)
   const along = [0]; for (let p = 1; p < n; p++) along.push(along[p - 1] + Math.hypot(xy[2 * p] - xy[2 * p - 2], xy[2 * p + 1] - xy[2 * p - 1]));
   let k = -1;

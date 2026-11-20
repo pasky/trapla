@@ -68,6 +68,9 @@ describe('a slip road on a four-lane road (S 21.5) meets it at its own cross-sec
     expect([at(90, 'entry'), at(100, 'entry'), at(110, 'entry')]).toEqual([230, 255, 295]);
     expect([at(130, 'exit'), at(120, 'exit'), at(130, 'entry')]).toEqual([234, 234, 295]);
     expect(exit.length).toBe(at(110, 'exit'));
+    // at a bend slowed to 90 km/h, its row there
+    const slowed = { category: 'S21.5' as const, speed: 110, stretches: [{ s0: 0, s1: 900, speed: 110 }, { s0: 900, s1: 2000, speed: 90 }] };
+    expect(speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, slowed).length).toBe(at(90, 'exit'));
   });
 });
 
@@ -76,7 +79,7 @@ describe('a slip road meets the motorway level and the road square', () => {
     // a slip road leaving a level motorway along +x (its line 13.5 m off) and diverging 1 m in 10
     const l = line(), xy: number[] = [];
     for (let k = 0; k <= 40; k++) xy.push(1000 + 10 * k, -(D.goreOffset + k));
-    const bands = mergeBands(xy, 'a', l, 'D27.5'), edges = CATEGORIES['D27.5'].crownWidth / 2 + D.widening + CATEGORIES['V7.25'].crownWidth / 2;
+    const bands = mergeBands(xy, 'a', l, 'D27.5'), edges = CATEGORIES['D27.5'].crownWidth / 2 + CATEGORIES['V7.25'].crownWidth / 2;
     expect(bands[0]).toMatchObject({ s: 0, min: 300 - MERGE_TOLERANCE, max: 300 + MERGE_TOLERANCE });
     for (const b of bands) {
       const gap = D.goreOffset + b.s / Math.hypot(10, 1) - edges;

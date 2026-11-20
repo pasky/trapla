@@ -6,7 +6,7 @@
 import { CATEGORIES, lineOf, pairedName } from '../core/data/categories';
 import type { ScenarioParams } from '../core/data/scenario';
 import type { Design, Result } from '../core/evaluate';
-import type { ProjectResult, RouteId, RouteResult } from '../core/project';
+import type { ProjectResult, RouteDesign, RouteId, RouteResult } from '../core/project';
 import { carriagewayCategory, corridorOfRoute } from '../core/project-motorway';
 import type { ProjectWorkerOut } from '../core/project-protocol';
 import { motorwayCategory, routeCrownWidth } from '../core/route-section';
@@ -19,7 +19,7 @@ import type { NoiseLayer } from '../render/noise';
 import type { RouteScene } from '../render/route-scene';
 import { runSliced, type SlicedJob, type Staged } from '../render/slices';
 import type { RenderEndpoints, View } from '../render/view';
-import { isSlipRoad, laneOf, SLIP_ROAD } from '../core/slip-roads';
+import { isSlipRoad, laneOf, SLIP_ROAD, slipHost } from '../core/slip-roads';
 import { mergeSlipRoads } from '../render/slip-merge';
 import type { Pack } from '../scenario';
 import type { Session } from '../session';
@@ -306,29 +306,34 @@ export function createResultDisplay(app: ResultDisplayContext) {
 
   /** Slip roads beside their motorway drawn as one body of earthworks (render/slip-merge.ts): the drawn copies, kept
    * while the results are the same (an unchanged body keeps its meshes). */
-  let merged: { key: Result[]; out: Result[] } | null = null;
+  const merged = new Map<string, { key: Result[]; out: Result[] }>();
   /** a motorway's result as its body is drawn beside its slip roads (its walls stand where that body's edge is) */
-  function drawnAs(r: Result | undefined) { return r && merged && merged.key[0] === r ? merged.out[0] : r; }
+  function drawnAs(r: Result | undefined) { for (const m of merged.values()) if (r && m.key[0] === r) return m.out[0]; return r; }
   const mergeSlips = (inputs: { id: string; result: Result }[]) => {
     const design = app.projectStore.snapshot.design;
+    for (const id of merged.keys()) if (!design.corridors.some(c => c.id === id)) merged.delete(id);
     for (const c of design.corridors) {
       const host = inputs.find(i => i.id === c.children.forward), hostRoute = design.routes.find(q => q.id === c.children.forward);
       const slips = inputs.filter(i => { const r = design.routes.find(q => q.id === i.id);
         return !!r && isSlipRoad(r) && [r.endpoints.a.anchor, r.endpoints.b.anchor].some(a => a.kind === 'route' && (a.routeId === c.children.forward || a.routeId === c.children.reverse)); });
-      if (!host || !slips.length || c.mode !== 'paired' || hostRoute?.kind !== 'motorway') continue;
-      const key = [host.result, ...slips.map(s => s.result)];
-      if (!merged || merged.key.length !== key.length || merged.key.some((r, k) => r !== key[k])) {
-        // (each slip road's speed-change lane, as the evaluator builds it: its formation drawn wider on its side)
-        const paired = { category: motorwayCategory(hostRoute), speed: hostRoute.specification.designSpeed };
+      if (!host || !slips.length || c.mode !== 'paired' || hostRoute?.kind !== 'motorway') { merged.delete(c.id); continue; }
+      const key = [host.result, ...slips.map(s => s.result)], was = merged.get(c.id);
+      let now = was;
+      if (!now || now.key.length !== key.length || now.key.some((r, k) => r !== key[k])) {
+        // (each slip road's speed-change lane, as the evaluator builds it, core/project-evaluate.ts slipRoadEnd: on a
+        // slip road with one end on a paired road; its formation drawn wider on its side)
+        const paired = slipHost(design, hostRoute.id, host.result)!, onPaired = (a: RouteDesign['endpoints']['a']['anchor']) =>
+          a.kind === 'route' && design.routes.find(q => q.id === a.routeId)?.kind === 'motorway';
         const lanes = slips.flatMap(sl => { const r = design.routes.find(q => q.id === sl.id)!;
+          if ([r.endpoints.a.anchor, r.endpoints.b.anchor].filter(onPaired).length !== 1) return [];
           return (['a', 'b'] as const).flatMap(end => { const a = r.endpoints[end].anchor;
             if (a.kind !== 'route' || (a.routeId !== c.children.forward && a.routeId !== c.children.reverse)) return [];
             const speed = r.specification.kind === 'road' ? r.specification.designSpeed : 50;
             return [laneOf(sl.result, end, host.result, a.routeId === c.children.forward ? 1 : -1, speed, 'hilly', paired).lane]; }); });
         const m = mergeSlipRoads(host.result, slips.map(s => s.result), (x, y) => app.pack.terrain.heightAt(x, y), paired.category, lanes);
-        merged = { key, out: [m.motorway, ...m.slips] };
+        merged.set(c.id, now = { key, out: [m.motorway, ...m.slips] });
       }
-      host.result = merged.out[0]; slips.forEach((s, k) => { s.result = merged!.out[k + 1]; });
+      host.result = now.out[0]; slips.forEach((s, k) => { s.result = now!.out[k + 1]; });
     }
   };
   return {

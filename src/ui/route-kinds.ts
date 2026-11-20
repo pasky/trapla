@@ -138,7 +138,7 @@ export const SLIP_BUILD: BuildKind = {
   hint: 'Traffic runs from its start to its end: start it beside a motorway or four-lane road to leave it, end it there to join it. Its other end joins a road.',
   onSource(base, sourceId, s, where) {
     const source = base.source(sourceId);
-    if (source && ROAD_CLASSES[source.tags.highway ?? '']?.noAtGrade) return { ok: false, why: 'A slip road joins a motorway built in this game only.' };
+    if (source && ROAD_CLASSES[source.tags.highway ?? '']?.noAtGrade) return { ok: false, why: 'A slip road joins a motorway or four-lane road built in this game only.' };
     // (near another slip road's end on that road: onto its junction, one crossroads)
     const other = where?.design.routes.filter(r => r.id !== where.exclude && isSlipRoad(r)).flatMap(r => [r.endpoints.a, r.endpoints.b])
       .flatMap(e => e.anchor.kind === 'source' && e.anchor.location.sourceId === sourceId && Math.abs(e.anchor.location.s - s) <= SLIP_ROAD.shareJunction ? [e.anchor.location.s] : [])

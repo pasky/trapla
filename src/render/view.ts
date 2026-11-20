@@ -1232,7 +1232,7 @@ export class View {
         for (let j = 1; j < spans.length; j++) if (Math.abs(spans[j-1].depth-spans[j].depth) > 1e-6) {
           const p = at(spans[j].s0), c = shade(concrete,.65);
           for (const [lo, hi] of strips) {
-            const [hx, hy] = across(p, hi), [lx, ly] = across(p, lo);
+            const [hx, hy] = across(p, edgeOut(spans[j].s0, hi)), [lx, ly] = across(p, edgeOut(spans[j].s0, lo));
             quad(push(hx,hy,p.z-spans[j-1].depth,c), push(lx,ly,p.z-spans[j-1].depth,c), push(hx,hy,p.z-spans[j].depth,c), push(lx,ly,p.z-spans[j].depth,c));
           }
         }
@@ -1241,7 +1241,7 @@ export class View {
           [r.s[Math.min(n-1,run.i1+1)],spans[spans.length-1].depth]]) {
           const p = at(s), c = shade(concrete,.75);
           for (const [lo, hi] of strips) {
-            const [hx, hy] = across(p, hi), [lx, ly] = across(p, lo);
+            const [hx, hy] = across(p, edgeOut(s, hi)), [lx, ly] = across(p, edgeOut(s, lo));
             quad(push(hx,hy,p.z+lift,c), push(lx,ly,p.z+lift,c), push(hx,hy,p.z-depth,c), push(lx,ly,p.z-depth,c));
           }
         }
