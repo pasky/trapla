@@ -147,9 +147,9 @@ No 2–4 real Czech awarded contracts were verified in this pass to isolate one 
 | Design speeds | 50 (default), 40 km/h | §2 examples; PROVISIONAL choice |
 | Radius, crest, sag | ČSN 73 6110 rows of the same speed (85 / 45 m …), plain circular curves | PROVISIONAL stand-in (§3 not found) |
 | Steepest grade | 6 % (the class I S 9.5 hilly value) | PROVISIONAL (§3 not found) |
-| Exit lane | 234 m incl. 100 m taper (D130, 50 km/h row), also at 120 km/h and for 40 km/h | §4, medium; PROVISIONAL reuse |
-| Entry lane | 295 m incl. 90 m taper | §4, medium; PROVISIONAL reuse |
-| Lane | on the hard shoulder, carriageway paved 0.5 m wider, priced per m² of the D 27.5 SPK row (bridge row on bridges) | §4b |
+| Exit lane | 234 m incl. 100 m taper (D130, 50 km/h row), also at 120 km/h and for 40 km/h; below 120 by the main road's speed (§4c) | §4, §4c, medium; PROVISIONAL reuse |
+| Entry lane | 295 m incl. 90 m taper; 255 / 230 m at 100 / 90 km/h (§4c) | §4, §4c, medium |
+| Lane | on the hard shoulder, carriageway paved 0.5 m wider (S 21.5: 2.5 m), priced per m² of the road's own SPK row (bridge row on bridges) | §4b, §4c |
 | Price per km | the S 7.5 class II SPK rows (no slip-road row) | PROVISIONAL |
 | Already in the motorway's price | ≤ L / 7 km interchanges, each ≤ A.4.N and ≤ its slip roads' earth-built cost | §7b, PROVISIONAL proxy |
 | Interchange spacing (4 km) | not checked | §5, medium-low |
@@ -157,3 +157,43 @@ No 2–4 real Czech awarded contracts were verified in this pass to isolate one 
 | Height beside the motorway | within 0.5 m (a grade pin's tolerance) while the crowns are within 4 m, then within a 1 : 2.5 slope's fall across the gap, out to 30 m | MODELLING ASSUMPTION (VL 1 32-01 low-fill slope, research/48 §1) |
 | Terminals of an exit and an entry on one side | one crossroads on the crossing road, priced as one junction | a diamond's usual layout (a D35 design joins its slip roads at two roundabouts on the crossing road, §6); price PROVISIONAL (no crossroads row) |
 | Ridge between the motorway's cutting and a slip road's | dug out where its top is under 10 m wide, to one slope crown edge to crown edge, its end at 1 : 1.75; billed at the slip road's cut rate | game rule (the screen's 10 m clearance); slopes research/48 §1 |
+
+### 4c. On the four-lane class I road S 21.5, and lengths by the main road's speed (2026-11-20)
+
+- **The lane takes the paved shoulder's place there too.** VL 3 (2010) sheets 400.11–12 state the 0.25 m paved shoulder beside
+  speed-change lanes and on slip roads "na dálnicích a rychlostních silnicích" (§4b). The S 21.5 of ČSN 73 6101:2018 is the
+  old rychlostní silnice R 21.5 renamed: "Původní návrhová kategorie úseku 1109 R 21,5/100 byla nahrazena návrhovou kategorií
+  D 21,5/110" (https://forum.ceskedalnice.cz/viewtopic.php?t=6642&start=3050, secondary); "R 21,5/80 (návrhová kategorie podle
+  starší normy)" (Skočdopole, ČVUT FD thesis 2020, https://projects.fd.cvut.cz/k612x1ps/soubory/Skocdopole%20J..pdf). Medium:
+  no S-road-specific sheet was found (a research pass found none either). So on S 21.5 (per direction 0.50 + 3.25 + 3.50 +
+  1.50 m paved, research/89 §6) a carriageway with the lane is paved 0.50 + 6.75 + 0.25 + 3.50 + 0.25 = 11.25 m instead of
+  8.75 m: **2.5 m wider** (D 27.5: 0.5 m), its formation as much.
+- **Lane width 3.50 m**: ČSN 73 6102's length tables have a row for a 3.5 (3.25) m speed-change lane (below); the S 21.5's
+  outer through lane is 3.50 m, as the D 27.5's lanes; VL 3: the slip road's lane as wide as the speed-change lane "(min 3,00 m)".
+- **Lengths by the main road's design speed** — ČVUT FD K612, course 12SDK, exercise 7 slides "Úrovňová křižovatka"
+  (https://k612.fd.cvut.cz/predmety/12SDK/cviceni/vyklad/12sdk-c-07.pdf, pp. 8–13), the ČSN 73 6102 figures reproduced
+  (medium: lecture slides; the D35 design uses the same tables for its interchange, its 295 m entry is the 120 column "podle
+  tab. 9b"):
+  - obr. 0620, Lv (taper) for a 3.5 (3.25) m lane: 50 → 40, 60 → 45, 70 → 55, 80 → 60, 90 → 70, **100 → 80, 120 → 100 m**
+    ("Zvýrazněné hodnoty v tabulce platí zejména pro navrhování mimoúrovňových křižovatek": the 100 and 120 columns are marked);
+  - Ld (braking) = ((0.75 · vn)² − vc²) / (26 · (d + s/10)), d = 1.7 m/s² average deceleration, s the grade in %, vc the speed
+    at its end (the slip road's design speed for a lane leaving to the right);
+  - obr. 0694, entry lane for vn > 80: Lod 30 / 30 / 30, Lm 130 / 145 / 175, Lz 70 / 80 / 90, **230 / 255 / 295 m at
+    90 / 100 / 120 km/h**. Cross-check: a VUT design at 90 km/h, "Délka připojovacích úseků pro rychlost 90km/h dle tab. 9b:
+    … 30+130+70=230m" (https://theses.cz/id/std5fr/A_Pruvodni_zprava_Archive.pdf, as indexed).
+  - No 110 or 130 column (the 2004-era speed series): the game takes the faster column, the longer lane (as the D35 design
+    takes 120's 295 m for its 130).
+  - The D35 design's Ld 134 m at 130 / 50 is the formula with d + s/10 ≈ 2.0 (its own grade: 159 m on the level); the game
+    keeps its 234 / 295 m from 120 km/h up (the D 27.5 results as they were), and uses the formula on the level below.
+- **The slip road itself**: no class-I-specific rule was found; VL 3's 0.25 m shoulder covers slip roads of both, so the same
+  V 7.25 at 50 / 40 km/h (§1, §2, PROVISIONAL as there).
+- **Price**: the lane per m² of the road's own SPK row (S 21.5: the D 21.5 rows, research/89 §6); the credit for earth-built
+  slip roads stands, as the SPK report puts them in the price of every divided road "od kategorie S 20,75 výše" (§7b; the
+  D 21.5 rows are above S 20.75; high: the report read directly, again 2026-11-20), the same L / 7 km proxy.
+
+| Main road | Exit lane, 50 (40) km/h slip road | Entry lane | Status |
+|---|---|---|---|
+| 120, 130 km/h (D 27.5) | 100 + 134 = 234 (234) m | 30 + 175 + 90 = 295 m | the D35 design (§4), unchanged |
+| 110 (S 21.5, D 27.5) | 100 + 98 = 198 (100 + 118 = 218) m | 295 m | Lv and entry: the 120 column; Ld: formula, level |
+| 100 | 80 + 71 = 151 (80 + 92 = 172) m | 30 + 145 + 80 = 255 m | tables + formula, level |
+| 90 | 70 + 47 = 117 (70 + 67 = 137) m | 30 + 130 + 70 = 230 m | tables + formula, level |
