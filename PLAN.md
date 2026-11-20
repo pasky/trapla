@@ -3261,7 +3261,10 @@ a junction's mouth, our own body), each blind to what the others build.
   motorway, cannot reach the ground in 250 m, or puts a house under its slopes, the cone or the working strip, and kept
   only if the holds are met within 0.5 m; else the plain problem stays with its fix. The owner's case
   (tests/works-clash.test.ts "a slid crossing between two junctions"): valid, no clashes, both junctions tied, two cones,
-  ≤ 6 % at both ends; the I/35 full way 5053 slid the same way blocks a primary road: invalid, said.
+  ≤ 6 % at both ends; the I/35 full way 5053 slid the same way blocks a primary road: invalid, said (a road it would
+  bury is no change of that road: no "Two roads change the same old road" with our road's reconnection of it,
+  project-ledger.ts `touchedRoads`). Real-mouse scene `scripts/works-clash-scene.mjs` (screenshots 770–776; `--base`
+  shoots the slide from another checkout: 770 is main's fans).
 - **Bills** (prices.ts model 64): frozen D11 straight +17.9 M, best family 0 … +0.3, demo unchanged, direct-80 −13.8,
   direct-90 +32.3, town-centre / town-controls +20.3 / +20.4 (links that buried other tracks: overbridges or other
   links; walls off our cones). Starters: Šternberk 880 → 902 M, D3 whole 36 081 → 36 256 M, I/35 Turnov 4 481 → 4 547 M

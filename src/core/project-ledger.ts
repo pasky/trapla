@@ -257,8 +257,9 @@ function touchedRoads(result: Result): { roads: Map<number, { x: number; y: numb
   const closes: { x: number; y: number; reach: number }[] = [];
   for (const f of result.footprintConflicts) {
     // (a rebuilt stretch going on into its own old road changes nothing there; a new road's junction with a
-    // road changes it only where the junction rebuilds its edge, within its zone)
-    if (!f.continuation) add(f.roadId, f.x, f.y, f.action === 'junction' ? Math.max(f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) : Infinity);
+    // road changes it only where the junction rebuilds its edge, within its zone; a road our works would bury, which
+    // nothing there moves aside, is a problem of its own and not changed)
+    if (!f.continuation && f.action !== 'blocked') add(f.roadId, f.x, f.y, f.action === 'junction' ? Math.max(f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) : Infinity);
     for (const interval of f.sourceIntervals ?? []) add(interval.way, f.x, f.y); // every removed old way
     // (a dead end taken up serves nothing beyond: no traffic relies on a detour round it)
     if (f.closed && !f.takenUp) closes.push({ x: f.x, y: f.y, reach: f.closed.length + f.closed.detour });

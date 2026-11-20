@@ -81,5 +81,7 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('a slid crossing 
     // (deeper than the junction regrades it: an ordinary road hit, not the junction's mouth)
     expect(r.footprintConflicts.some(f => f.feature === 'road' && f.action === 'blocked' && f.cls === 'primary')).toBe(true);
     expect(r.valid).toBe(false);
+    // (the road it would bury it does not change: no clash with our road's reconnection of it)
+    expect(result.issues.map(i => i.code)).not.toContain('shared-road');
   }, 300_000);
 });
