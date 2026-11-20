@@ -52,3 +52,7 @@ ul.reveal-twists { list-style: none; margin: 0 0 12px; padding: 0; display: flex
 ul.reveal-twists li { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 11px; background: #e6f4ea; color: #17663a; }
 .reveal-btns { text-align: right; }
 .reveal-btns .primary { font-size: 14px; padding: 6px 16px; background: #17663a; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+/* Hands off: the places the mission names (pointing at one draws it stronger on the map) */
+#twists ul.tw-places { list-style: none; margin: 3px 0 0; padding: 0; }
+#twists ul.tw-places li { margin-top: 2px; color: #4a2a63; }
+#twists ul.tw-places li:hover, #twists ul.tw-places li:focus-visible { background: #f3ecf7; outline: none; }

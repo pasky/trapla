@@ -23,3 +23,8 @@
 .twist-label.fresh { animation: twist-label-pulse 1.2s ease-in-out 4; }
 @keyframes twist-label-pulse { 50% { transform-origin: 0 0; font-size: 14px; } }
 .twist-tip { font-weight: 600; color: #4a2a63; }
+/* a card's row under the pointer or in focus (ui/twists.ts): its place drawn stronger */
+.twist-marks path.hi { stroke-width: 4; stroke-opacity: 1; }
+.twist-marks path.fill.hi { fill: rgba(122, 74, 154, 0.28); }
+.twist-marks path.fill.broken.hi { fill: rgba(214, 42, 26, 0.3); }
+.twist-label.hi { font-size: 13px; }

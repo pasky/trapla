@@ -77,6 +77,10 @@ export function packFile(url: string, size?: PackFileSize): Promise<ArrayBuffer>
   return url.endsWith('.gz') ? p.then(gunzipped) : p;
 }
 
+/** The file at `url` without taking it: the same download `packFile` hands over later (a peek at a small file the start
+ * screen reads too: the twist screen's map of a mission's listed places). */
+export function peekPackFile(url: string, size?: PackFileSize): Promise<ArrayBuffer> { return start(url, size); }
+
 /** the file is not there (404, or a host's page in its place) */
 export const isMissing = (error: unknown) => !!(error as { missing?: boolean } | null)?.missing;
 

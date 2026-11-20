@@ -57,6 +57,23 @@ export function twistLine(id: TwistId, t: TwistTerms): string {
     case 'byHand': return 'Set our road’s heights yourself; Auto still builds the crossings, culverts and walls.';
   }
 }
+/** A twist in a few words, under its name on the twist screen's card (the line above on hover or focus). `landmarks`: what
+ * Hands off keeps clear of here, in a few words. */
+export function twistShort(id: TwistId, t: TwistTerms, landmarks = 'Rings round listed places'): string {
+  switch (id) {
+    case 'earth': return `≤ ${Math.round((t.earthShare ?? 0.1) * 100)} % earth trucked in or away`;
+    case 'landmarks': return landmarks;
+    case 'curveballs': return 'News from the site as you play';
+    case 'homes': return 'No home bought out';
+    case 'forest': return `≤ ${num(t.forestHa ?? 0, 1)} ha of forest cleared`;
+    case 'bridges': return `≤ ${num(t.bridgeM ?? 0)} m of bridges`;
+    case 'tunnels': return 'No tunnels';
+    case 'faster': return `≤ ${num(t.maxTravelMin * 0.9, 2)} min end to end`;
+    case 'budget': return `≤ ${money(t.budget ?? 0)} CZK`;
+    case 'scratch': return 'Begin on the straight line';
+    case 'byHand': return 'You set the heights';
+  }
+}
 export const TWIST_NAMES: Record<TwistId, string> = {
   earth: 'Earth balance', landmarks: 'Hands off the castle', curveballs: 'Curveballs', homes: 'Nobody moves', forest: 'Spare the forest',
   bridges: 'Few bridges', tunnels: 'No tunnels', faster: 'Faster', budget: 'Real price', scratch: 'From scratch', byHand: 'By hand',

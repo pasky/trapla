@@ -1,8 +1,9 @@
 {
  "preset": "d3-0303-motorway",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 2 → 22 → 27) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the chapel of Our Lady, Chr\u00e1\u0161\u0165any) and every curveball, under the goal: a search from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seed 2)",
  "meets": [
   "earth",
+  "landmarks",
   "curveballs"
  ],
  "goal": true,
@@ -16,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Václavice (on to 0304)",
+    "name": "Motorway towards V\u00e1clavice (on to 0304)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -67,7 +68,7 @@
    },
    {
     "id": "route:motorway-reverse",
-    "name": "Motorway towards Hostěradice (from 0302)",
+    "name": "Motorway towards Host\u011bradice (from 0302)",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -179,8 +180,8 @@
        "r": null
       },
       {
-       "x": 3353.784183942329,
-       "y": 7217.616065728867,
+       "x": 3337.8611297065654,
+       "y": 7256.944867848454,
        "r": null
       },
       {
@@ -194,31 +195,41 @@
        "r": null
       },
       {
+       "x": 5416.830816406508,
+       "y": 6301.885977232656,
+       "r": null
+      },
+      {
        "x": 6407.736700723849,
        "y": 5028.894454239242,
        "r": null
       },
       {
-       "x": 8265.374221195148,
-       "y": 3566.681035448338,
+       "x": 7869.998705331441,
+       "y": 3842.365051446422,
        "r": null
       },
       {
-       "x": 8938.205419022368,
-       "y": 3306.7683150555667,
+       "x": 9081.929062399273,
+       "y": 3422.4503628305624,
        "r": null
       },
       {
-       "x": 9261.485480729465,
-       "y": 3120.9874472586093,
+       "x": 9302.033292763988,
+       "y": 3066.2817961908345,
+       "r": null
+      },
+      {
+       "x": 9363.95585222164,
+       "y": 2963.492255503779,
        "r": null
       }
      ],
      "controls": {
       "structureOverrides": [
        {
-        "s0": 8987.407234566332,
-        "s1": 9268.235463066458,
+        "s0": 6342.328333654713,
+        "s1": 6490.613811620916,
         "kind": 0
        }
       ]
@@ -227,48 +238,76 @@
       "kind": "auto",
       "pins": [
        {
+        "s": 820,
+        "z": 333.4
+       },
+       {
         "s": 1130,
         "z": 326.5
+       },
+       {
+        "s": 1819,
+        "z": 345.5
+       },
+       {
+        "s": 2309,
+        "z": 358.8
        },
        {
         "s": 2720,
         "z": 358.6
        },
        {
+        "s": 3069,
+        "z": 358.1
+       },
+       {
         "s": 3409,
         "z": 356.9
+       },
+       {
+        "s": 4089,
+        "z": 375.8
+       },
+       {
+        "s": 4967,
+        "z": 364.5
        },
        {
         "s": 5198,
         "z": 354.6
        },
        {
-        "s": 5388,
-        "z": 347.4
+        "s": 6167,
+        "z": 346.1
        },
        {
-        "s": 5765,
-        "z": 339.5
-       },
-       {
-        "s": 6245,
-        "z": 344.2
+        "s": 6608,
+        "z": 338.4
        },
        {
         "s": 6706,
         "z": 336.3
        },
        {
-        "s": 8483,
-        "z": 337
+        "s": 8896,
+        "z": 331.5
+       },
+       {
+        "s": 9392,
+        "z": 319.5
        },
        {
         "s": 9732,
         "z": 318.3
        },
        {
-        "s": 10058,
-        "z": 313.9
+        "s": 10777,
+        "z": 297.8
+       },
+       {
+        "s": 10844,
+        "z": 300.7
        }
       ],
       "manualVpis": []
@@ -284,7 +323,7 @@
    "ports": [
     {
      "id": "a",
-     "name": "Hostěradice (from 0302)",
+     "name": "Host\u011bradice (from 0302)",
      "position": {
       "x": 2602,
       "y": 10703.8,
@@ -293,7 +332,7 @@
     },
     {
      "id": "b",
-     "name": "Václavice (on to 0304)",
+     "name": "V\u00e1clavice (on to 0304)",
      "position": {
       "x": 9438.8,
       "y": 2713.8,

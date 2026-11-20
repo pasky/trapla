@@ -17,6 +17,10 @@ export interface TwistMark {
   fresh?: boolean;
   /** where the label and the dot stand (a landmark itself; a place's middle) */
   at: { x: number; y: number };
+  /** what the pointer's tip says over it (default: the label): a monument's name, kind and ring */
+  tip?: string;
+  /** a place the mission names (its name shown from afar too) */
+  named?: boolean;
 }
 
 /** an outline is cut this far in front of the camera, as a share of its distance to what it looks at, at least NEAR_MIN m
@@ -82,11 +86,16 @@ export class TwistMarks {
     // (the smallest place under the pointer: a ring inside a zone names the ring)
     const under = g ? this.items.filter(it => inside(it.mark.shape, g.x, g.y)).sort((a, b) => size(a.mark.shape) - size(b.mark.shape))[0] : undefined;
     if (!under) { this.hideTip(); return; }
-    this.tip.textContent = under.mark.label;
+    this.tip.textContent = under.mark.tip ?? under.mark.label;
     this.tip.style.display = '';
     this.tip.style.left = `${Math.min(window.innerWidth - this.tip.offsetWidth - 8, p.x + 14)}px`;
     this.tip.style.top = `${Math.min(window.innerHeight - this.tip.offsetHeight - 8, p.y + 16)}px`;
     this.tipView = this.placedFor;
+  }
+
+  /** one mark drawn stronger (a card's row under the pointer or in focus); null: none */
+  highlight(id: string | null) {
+    for (const it of this.items) for (const el of [it.fill, it.path, it.dot, it.label]) el.classList.toggle('hi', it.mark.id === id);
   }
 
   /** the camera the marks were last placed for: a frame with the same one (a drag's preview redrawing the road) skips them */
@@ -147,7 +156,7 @@ export class TwistMarks {
       // a monument's name only close up (its ring and dot from afar), a heritage area's on hover (and while broken), a
       // curveball's place always; never over another name
       const w = 6.2 * it.mark.label.length + 10, box = [c.sx, c.sy, c.sx + w, c.sy + 18];
-      const show = c.vis && (rank(it.mark) > 0 || it.mark.kind === 'zone' || (it.mark.kind === 'landmark' && mpp < 6))
+      const show = c.vis && (rank(it.mark) > 0 || it.mark.kind === 'zone' || it.mark.named || (it.mark.kind === 'landmark' && mpp < 6))
         && !taken.some(t => box[0] < t[2] && t[0] < box[2] && box[1] < t[3] && t[1] < box[3]);
       if (show) taken.push(box);
       it.dot.setAttribute('r', c.vis && it.mark.kind === 'landmark' ? '4' : '0');

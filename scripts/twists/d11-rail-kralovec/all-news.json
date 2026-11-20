@@ -1,8 +1,9 @@
 {
  "preset": "d11-rail-kralovec",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seeds 1 → 12) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the church of St John of Nepomuk, Trutnov) and every curveball, under the goal: a search from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seed 2)",
  "meets": [
   "earth",
+  "landmarks",
   "curveballs"
  ],
  "goal": true,
@@ -51,8 +52,8 @@
      "kind": "pi",
      "pis": [
       {
-       "x": 6009.002868455424,
-       "y": 8381.396223323958,
+       "x": 6003.038402176555,
+       "y": 8417.83486520721,
        "r": null
       },
       {
@@ -61,13 +62,13 @@
        "r": null
       },
       {
-       "x": 6964.370885472021,
-       "y": 9734.486790771432,
+       "x": 6985.6913813207875,
+       "y": 9704.425955540231,
        "r": null
       },
       {
-       "x": 7076.7870007268175,
-       "y": 10439.48359125442,
+       "x": 7224.708050436164,
+       "y": 10693.210966744015,
        "r": null
       },
       {
@@ -76,28 +77,28 @@
        "r": null
       },
       {
-       "x": 8431.604691273862,
-       "y": 12617.127061816833,
+       "x": 8433.198981349484,
+       "y": 12611.762146765062,
        "r": null
       },
       {
-       "x": 10615.029485408266,
-       "y": 15551.16499003456,
+       "x": 10411.039037184517,
+       "y": 15332.111421357391,
        "r": null
       },
       {
-       "x": 11178.06137865366,
-       "y": 16299.502181666898,
+       "x": 11155.106335567853,
+       "y": 16120.956765431378,
        "r": null
       },
       {
-       "x": 11687.54623128645,
-       "y": 17484.09149719582,
+       "x": 11737.230104895172,
+       "y": 17670.374381733465,
        "r": null
       },
       {
-       "x": 11799.336585596457,
-       "y": 18709.441739194095,
+       "x": 11798.961820297365,
+       "y": 18739.42645717389,
        "r": null
       }
      ],
@@ -109,13 +110,18 @@
         "kind": 0
        },
        {
+        "s0": 4458.370739211288,
+        "s1": 4541.140954727625,
+        "kind": 0
+       },
+       {
         "s0": 4587.710074397736,
         "s1": 4719.199807326725,
         "kind": 1
        },
        {
-        "s0": 10742.872109382197,
-        "s1": 11030.263959225698,
+        "s0": 12000.784320328628,
+        "s1": 12114.478883423944,
         "kind": 0
        }
       ]
@@ -124,12 +130,24 @@
       "kind": "auto",
       "pins": [
        {
-        "s": 6019,
-        "z": 468.4
+        "s": 5010,
+        "z": 476
        },
        {
-        "s": 12654,
-        "z": 528
+        "s": 7269,
+        "z": 472.9
+       },
+       {
+        "s": 8108,
+        "z": 482.9
+       },
+       {
+        "s": 9418,
+        "z": 495
+       },
+       {
+        "s": 10249,
+        "z": 502.2
        }
       ],
       "manualVpis": []
@@ -171,7 +189,7 @@
     },
     {
      "id": "b",
-     "name": "Královec",
+     "name": "Kr\u00e1lovec",
      "position": {
       "x": 12204.8,
       "y": 19202.5,

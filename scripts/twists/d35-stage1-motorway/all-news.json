@@ -1,8 +1,9 @@
 {
  "preset": "d35-stage1-motorway",
- "purpose": "Earth balance, Hands off the castle and every curveball, under the goal: a search from earth-landmarks.json (scripts/twists-check.ts --find, seed 2) (round 3: Hands off the castle on the OSM landmarks too; since round 4 the twist is not offered here: research/102)",
+ "purpose": "Earth balance, Hands off the castle (600 m round the chapel of St Roch, Star\u00e9 M\u011bsto) and every curveball, under the goal: a search from round 4's all-news.json (--find --twists earth,landmarks,curveballs --goal, seed 2)",
  "meets": [
   "earth",
+  "landmarks",
   "curveballs"
  ],
  "goal": true,
@@ -16,7 +17,7 @@
   "routes": [
    {
     "id": "route:motorway-forward",
-    "name": "Motorway towards Staré Město",
+    "name": "Motorway towards Star\u00e9 M\u011bsto",
     "role": "mission",
     "revision": 0,
     "kind": "motorway",
@@ -159,8 +160,8 @@
      "kind": "pi",
      "pis": [
       {
-       "x": 3179.013812331645,
-       "y": 3438.043921173804,
+       "x": 3246.5555363066214,
+       "y": 3465.542265284012,
        "r": null
       },
       {
@@ -169,18 +170,13 @@
        "r": null
       },
       {
-       "x": 6189.520021818041,
-       "y": 4153.244815070542,
+       "x": 6219.651440671427,
+       "y": 4146.551346231371,
        "r": null
       },
       {
-       "x": 6827.875333853346,
-       "y": 4184.3148525735205,
-       "r": null
-      },
-      {
-       "x": 7277.468166643018,
-       "y": 4247.578910954811,
+       "x": 6942.284490203096,
+       "y": 4202.572103938626,
        "r": null
       },
       {
@@ -199,51 +195,46 @@
        "r": null
       },
       {
-       "x": 13004.939256243717,
-       "y": 3393.995073542074,
+       "x": 11493.261482581609,
+       "y": 3808.548052512875,
        "r": null
       },
       {
-       "x": 14348.015235675584,
-       "y": 3904.817711836022,
+       "x": 13178.303840540346,
+       "y": 3390.0363002775625,
        "r": null
       },
       {
-       "x": 14425.233333333486,
-       "y": 3937.7761420706056,
+       "x": 14326.451931599866,
+       "y": 3941.7223018892746,
        "r": null
       },
       {
-       "x": 14910.527162720766,
-       "y": 4134.5605067462275,
+       "x": 14756.970165172579,
+       "y": 4054.024755892272,
        "r": null
       },
       {
-       "x": 17849.57593617211,
-       "y": 2517.8544536323425,
+       "x": 15199.986381445,
+       "y": 4070.6265525996077,
+       "r": null
+      },
+      {
+       "x": 16855.378750414922,
+       "y": 3122.4993505598063,
        "r": null
       }
      ],
      "controls": {
       "structureOverrides": [
        {
-        "s0": 2184.2969865910973,
-        "s1": 2414.3999631377683,
-        "kind": 0
-       },
-       {
-        "s0": 4352.448358309516,
-        "s1": 4543.7375719498,
-        "kind": 0
-       },
-       {
         "s0": 4812.770028277262,
         "s1": 5035.550469127046,
         "kind": 0
        },
        {
-        "s0": 7005.43851974855,
-        "s1": 7292.871320236833,
+        "s0": 13606.40837179819,
+        "s1": 13760.027822647493,
         "kind": 0
        }
       ]
@@ -252,32 +243,28 @@
       "kind": "auto",
       "pins": [
        {
-        "s": 2759,
-        "z": 521.4
+        "s": 1389,
+        "z": 470.6
        },
        {
-        "s": 3708,
-        "z": 548.4
+        "s": 6547,
+        "z": 473
+       },
+       {
+        "s": 7559,
+        "z": 435
        },
        {
         "s": 7750,
         "z": 428.1
        },
        {
-        "s": 13776,
-        "z": 391.1
+        "s": 13569,
+        "z": 397.4
        },
        {
-        "s": 14200,
-        "z": 389.3
-       },
-       {
-        "s": 15343,
-        "z": 388.9
-       },
-       {
-        "s": 15650,
-        "z": 396.4
+        "s": 13823,
+        "z": 394.5
        }
       ],
       "manualVpis": []
@@ -302,7 +289,7 @@
     },
     {
      "id": "b",
-     "name": "Staré Město",
+     "name": "Star\u00e9 M\u011bsto",
      "position": {
       "x": 18222.3,
       "y": 2459.4,

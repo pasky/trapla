@@ -324,7 +324,18 @@ else if (args[0] === '--show') {
     else if (k === 'unpaint') { const [s0, s1] = n(a); d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, null); }
     else throw new Error(`unknown edit ${op}`);
   }
-  const next = replaceRouteFromLegacy(fx.design, id, d), r = evalDesign(m, next);
+  // (bends moved: the height pins and painted structures stay where they were on the ground, at the new line's stations
+  // nearest their old places, so a stretch moved does not shift every pin beyond it)
+  const at = (s: number) => { const i = Math.max(0, Math.min(L0.n - 1, Math.round(s / L0.ds))); return { x: L0.x[i], y: L0.y[i] }; };
+  const old = JSON.stringify(legacyDesignForRoute(fx.design, id).pis) !== JSON.stringify(d.pis)
+    ? { pins: (d.gradePins ?? []).map(p => ({ ...p, ...at(p.s) })), so: (d.structureOverrides ?? []).map(o => ({ o, a: at(o.s0), b: at(o.s1) })) } : null;
+  let next = replaceRouteFromLegacy(fx.design, id, d), r = evalDesign(m, next);
+  if (old && !process.env.NO_REMAP) {
+    const L1 = r.routes[id]!.legacy!;
+    if (d.gradePins) d.gradePins = old.pins.map(({ x, y, ...p }) => ({ ...p, s: Math.round(nearestS(L1, x, y)) })).sort((p, q) => p.s - q.s);
+    if (d.structureOverrides) d.structureOverrides = old.so.map(({ o, a, b }) => ({ ...o, s0: nearestS(L1, a.x, a.y), s1: nearestS(L1, b.x, b.y) })).filter(o => o.s1 > o.s0);
+    next = replaceRouteFromLegacy(fx.design, id, d); r = evalDesign(m, next);
+  }
   console.log(`${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} M (goal ${((1 - GOAL_SHARE) * m.setup.mission.startBill / 1e6).toFixed(0)} M)`, r.issues.map(i => i.violation?.title ?? i.code).slice(0, 5).join('; '));
   for (const c of check(m, next, r, (process.env.TW?.split(',') ?? m.setup.mission.offer) as TwistId[]))
     console.log(`  ${c.met ? '✓' : '✗'} ${c.id}: ${c.status}${c.issues.slice(0, 5).map(i => `\n      ${i.text}${i.s0 !== undefined ? ` (km ${(i.s0 / 1000).toFixed(2)}–${((i.s1 ?? i.s0) / 1000).toFixed(2)})` : ''}`).join('')}`);

@@ -5,7 +5,7 @@ import './twists.css';
 import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import type { ScenarioParams } from '../core/data/scenario';
 import { CATEGORIES } from '../core/data/categories';
-import { checkTwists, landmarkName, landmarkShape, shapeRings, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type Shape, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
+import { checkTwists, landmarkName, landmarkShape, landmarkWords, shapeRings, twistFacts, twistLine, TWIST_NAMES, TWIST_ORDER, type Shape, type TwistCheck, type TwistId, type TwistIssue } from '../core/twists';
 import { baselineWords, GOAL_SHARE } from '../core/data/twists';
 import { missionTwistSetup, type MissionTwistSetup, type PackFrame } from '../core/mission-twists';
 import type { HeritageData } from '../core/heritage';
@@ -109,12 +109,15 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   }
 
   // ---- the map ----
+  /** the landmarks the mission names (data/twists.ts inPlay): named on the map from afar, listed on the card */
+  const named = new Set((setup.mission.inPlay ?? []).map(p => p.code));
   let freshId: string | null = null;
   function drawMarks() {
     const broken = new Set((last?.checks ?? []).flatMap(c => c.issues.flatMap(i => i.ref ? [i.ref] : [])));
     const out: TwistMark[] = [];
     if (state.on.includes('landmarks')) for (const [k, l] of setup!.terms.landmarks.entries())
-      out.push({ id: `landmark:${k}`, kind: l.rings ? 'heritage' : 'landmark', shape: landmarkShape(l), label: landmarkName(l), state: broken.has(`landmark:${k}`) ? 'broken' : 'ok', at: l });
+      out.push({ id: `landmark:${k}`, kind: l.rings ? 'heritage' : 'landmark', shape: landmarkShape(l), label: landmarkName(l), state: broken.has(`landmark:${k}`) ? 'broken' : 'ok', at: l,
+        tip: landmarkWords(l), named: named.has(l.code ?? '') });
     if (state.on.includes('curveballs')) for (const c of fired()) if (c.zone)
       out.push({ id: `curveball:${c.id}`, kind: 'zone', shape: c.zone.shape, label: c.zone.label, state: broken.has(`curveball:${c.id}`) ? 'broken' : 'ok', fresh: freshId === c.id, at: middle(c.zone.shape) });
     marks.set(out);
@@ -132,13 +135,18 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const total = last?.result.cost.total ?? null;
     const goalLine = `<p class="tw-goal">Goal: a valid design under <b>${money(goal)}</b> <small>(${baselineWords(setup!.mission)} less ${Math.round(GOAL_SHARE * 100)} %)</small>${total !== null && last?.result.valid ? ` · yours ${money(total)}` : ''}</p>`;
     const rows = changing ? '' : checks.map(c => `<li class="${c.met ? 'ok' : 'bad'}" data-id="${c.id}"><span class="tw-mark">${c.met ? '✓' : '✗'}</span><div><b>${esc(c.name)}</b> <span class="tw-status">${esc(c.status)}</span>
-      ${c.id === 'curveballs' ? newsList() : ''}
+      ${c.id === 'curveballs' ? newsList() : ''}${c.id === 'landmarks' ? inPlayList() : ''}
       ${c.issues.filter(i => Number.isFinite(i.x) || i.fix).slice(0, 6).map((i, k) => `<div class="tw-issue">${esc(i.text)} ${Number.isFinite(i.x) ? `<button type="button" class="link" data-show="${c.id}:${k}">Show</button>` : ''}${i.fix ? ` <button type="button" class="link" data-fix="${c.id}:${k}">${i.fix.style === 'long' ? 'Long spans over it' : i.fix.kind === 'bridge' ? 'Bridge it' : 'Tunnel it'}</button>` : ''}</div>`).join('')}
       ${c.issues.filter(i => !Number.isFinite(i.x) && !i.fix).slice(0, 2).map(i => `<div class="tw-issue">${esc(i.text)}</div>`).join('')}
       ${!c.met && c.id === 'scratch' ? '<button type="button" class="tw-act" data-act="scratch">Start from the straight line</button>' : ''}</div></li>`).join('');
     const choose = changing ? `<ul class="tw-choose">${TWIST_ORDER.filter(t => offer.includes(t)).map(t => `<li><label><input type="checkbox" data-t="${t}"${state.on.includes(t) ? ' checked' : ''}> <b>${esc(TWIST_NAMES[t])}</b><small>${esc(twistLine(t, setup!.terms))}</small></label></li>`).join('')}</ul>` : '';
     app.card.innerHTML = `${goalLine}${on.length || changing ? '' : '<p class="tw-none">No twists: just the cheapest valid design.</p>'}<ul class="tw-list">${rows}</ul>${choose}
       <div class="btns"><button type="button" data-act="change">${changing ? 'Done' : 'Change twists'}</button>${state.revealed ? ' <button type="button" data-act="reveal">The real project</button>' : ''}</div>`;
+  }
+  /** Hands off: the places the mission names, each with its kind and ring (pointing at one draws it stronger on the map) */
+  function inPlayList() {
+    const rows = [...setup!.terms.landmarks.entries()].filter(([, l]) => named.has(l.code ?? ''));
+    return rows.length ? `<ul class="tw-places">${rows.map(([k, l]) => `<li data-mark="landmark:${k}" tabindex="0">${esc(landmarkWords(l))} <button type="button" class="link" data-place="${k}">Show</button></li>`).join('')}</ul>` : '';
   }
   function newsList() {
     const f = fired();
@@ -149,6 +157,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const t = e.target as HTMLElement, b = t.closest('button') as HTMLButtonElement | null;
     if (!b) return;
     if (b.dataset.show) { const i = issueAt(b.dataset.show); if (i) show(i); }
+    else if (b.dataset.place) { const l = setup!.terms.landmarks[Number(b.dataset.place)]; if (l) app.showPlace(l.x, l.y); }
     else if (b.dataset.fix) { const i = issueAt(b.dataset.fix); if (i?.fix) app.build(i.fix.kind, i.fix.routeId, i.fix.s0, i.fix.s1, i.fix.style); }
     else if (b.dataset.news) { const c = setup!.curveballs.find(x => x.id === b.dataset.news); if (c) newsCard(c, false); }
     else if (b.dataset.act === 'change') { changing = !changing; render(); }
@@ -166,6 +175,12 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     // (what is met now may already be news-worthy or a win)
     if (last) api.afterFull(last.result); else { drawMarks(); render(); }
   });
+  // (a place's row under the pointer or in focus: its ring drawn stronger)
+  const hiOf = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>('[data-mark]')?.dataset.mark ?? null;
+  app.card.addEventListener('pointerover', (e) => marks.highlight(hiOf(e)));
+  app.card.addEventListener('pointerleave', () => marks.highlight(null));
+  app.card.addEventListener('focusin', (e) => marks.highlight(hiOf(e)));
+  app.card.addEventListener('focusout', () => marks.highlight(null));
   app.chip.addEventListener('click', () => app.revealHud());
   const show = (i: TwistIssue) => { if (i.routeId !== undefined && i.s0 !== undefined) app.showStretch(i.routeId, i.s0, i.s1 ?? i.s0); else app.showPlace(i.x, i.y); };
   function highlight(id: string) {
