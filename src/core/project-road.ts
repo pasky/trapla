@@ -12,6 +12,7 @@ import { applyKept, heldOnOldLine, lineAsDrawn, plannedKept, releaseHeld } from 
 import { ROAD_CLASSES } from './data/urban';
 import { CATEGORIES } from './data/categories';
 import { holdMiss, RAISE_MEETS, RAISE_PASSES, raisableEnds, raiseEnds, type RaisedEnd } from './junction-raise';
+import { deckHeights, oldLine, oldPieces, type OldPiece } from './stretch-chain';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
@@ -58,10 +59,11 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (route.endpoints.a.tangent || route.endpoints.b.tangent) return { status: 'incomplete', reason: 'unimplemented-tangent' };
   // Every road is checked against the network as the player edited it: rebuilt stretches gone, the
   // designed roads it crosses present (project-roadnet.ts). A rebuilt stretch needs the sidecar's link.
-  let roads = ctx.roads, sourceWay: number | undefined;
+  let roads = ctx.roads, pieces: OldPiece[] | undefined;
   if (route.source) {
-    sourceWay = options.sourceWays?.get(route.source.intervals[0]?.sourceId ?? '');
-    if (route.role !== 'auxiliary' || !ctx.roads || sourceWay === undefined) return { status: 'incomplete', reason: 'source-needs-network' };
+    // (its old road: one way, or several in a row, core/stretch-chain.ts)
+    pieces = ctx.roads ? oldPieces(ctx.roads, route, project.connections, options.sourceWays) : undefined;
+    if (route.role !== 'auxiliary' || !ctx.roads || !pieces) return { status: 'incomplete', reason: 'source-needs-network' };
   }
   if (ctx.roads) {
     const edited = editedNetwork(ctx.roads, project, [route], options.sourceWays, options.endsOf, options.oldOf, options.moved);
@@ -101,19 +103,24 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const ties = route.role === 'auxiliary' && roads ? tieIns(roads, route.endpoints, !!route.source, forms) : [];
   // Where a rebuilt stretch's line stays on its old road, the old road is kept as it is (project-kept.ts).
   // Known before the kernel runs (it depends on the line only), so the kernel builds nothing there.
-  let kept: Uint8Array | undefined, held: EvalOptions['line'], oldPath: { x: number; y: number }[] = [];
-  if (route.source && sourceWay !== undefined && ctx.roads) {
-    const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
-    oldPath = ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db));
-    const plan = plannedKept(a, b, design, [oldPath]), st = plan.st;
+  let kept: Uint8Array | undefined, held: EvalOptions['line'], oldPaths: { x: number; y: number }[][] = [];
+  // (the old road's heights: the ground, an old bridge's deck straight between its ends)
+  let oldHeight = (x: number, y: number) => ctx.terrain.heightAt(x, y);
+  if (route.source && pieces && ctx.roads) {
+    // (on the ground only: an old bridge in it is taken down, never kept)
+    if (pieces.length === 1) {
+      const way = pieces[0].way, da = ctx.roads.wayStation(way, a.x, a.y), db = ctx.roads.wayStation(way, b.x, b.y);
+      oldPaths = [ctx.roads.wayPath(way, Math.min(da, db), Math.max(da, db))];
+    } else { oldPaths = [oldLine(ctx.roads, pieces)]; oldHeight = deckHeights(ctx.roads, pieces, oldHeight); }
+    const plan = plannedKept(a, b, design, oldPaths), st = plan.st;
     kept = plan.kept; design.pis = plan.pis;
     // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
     // (and that piece is built on the old road's line, which that road crossed)
     // (its old height read where it is drawn)
     if (options.holds?.length) {
-      const planned = kept.slice(), drawn = lineAsDrawn(st, planned, st.ds, [oldPath]) ?? st;
-      releaseHeld(kept, st.s, i => ctx.terrain.heightAt(drawn.x[i], drawn.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
-      held = heldOnOldLine(planned, kept, st.ds, [oldPath]);
+      const planned = kept.slice(), drawn = lineAsDrawn(st, planned, st.ds, oldPaths) ?? st;
+      releaseHeld(kept, st.s, i => oldHeight(drawn.x[i], drawn.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
+      held = heldOnOldLine(planned, kept, st.ds, oldPaths);
     }
   }
   // A rebuilt stretch's side roads (its branch connections): where the new line crosses one, it joins the new road
@@ -140,7 +147,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (raisable.length && options.holds?.length && roads) {
     let raised: { a?: RaisedEnd; b?: RaisedEnd } = {}, best = result;
     for (let pass = 0; pass < RAISE_PASSES; pass++) {
-      const next = raiseEnds(best, options.holds, raisable, raised, endGrades, [Array.from({ length: best.n }, (_, i) => ({ x: best.x[i], y: best.y[i] })), oldPath],
+      const next = raiseEnds(best, options.holds, raisable, raised, endGrades, [Array.from({ length: best.n }, (_, i) => ({ x: best.x[i], y: best.y[i] })), ...oldPaths],
         roads, ctx.terrain, CATEGORIES[design.category].crownWidth, ctx.buildings);
       if (!next) break;
       const again = solve(next);
@@ -157,13 +164,13 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   let keptWork: ReplacementWork | null = null;
   if (kept) {
     if (kept.length !== result.n) throw new Error('Kept cells do not match the road’s stations');
-    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: [oldPath], heightAt: (x, y) => ctx.terrain.heightAt(x, y) }, 'road', !!held);
+    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: oldPaths, heightAt: oldHeight }, 'road', !!held);
     // (its line as drawn: the network it was built against, for the works-clash screen)
     if (!options.preview) noteNetwork(result, roads, CATEGORIES[design.category].crownWidth);
   }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
-  const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview
-    ? replacementWorks(route, result, ctx.roads, sourceWay, project.connections, id => options.sourceWays?.get(id), kept) : undefined;
+  const replacement = route.source && pieces && ctx.roads && !options.preview
+    ? replacementWorks(route, result, ctx.roads, pieces, project.connections, id => options.sourceWays?.get(id), kept) : undefined;
   if (replacement?.violations.length) { result.violations.push(...replacement.violations); result.valid = false; }
   const unpriced = route.source && !replacement && !options.preview ? ['source-needs-network' as const] : [];
   const junctionEnds = ties.filter(t => t.junction.kind !== 'continuation').map(t => t.end);

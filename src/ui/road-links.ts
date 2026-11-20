@@ -95,12 +95,17 @@ export function createRoadLinks(app: RoadLinksContext) {
       const piece = (app.projectStore.snapshot.design.takenUp ?? []).find(t => t.interval.sourceId === hit.sourceId && hit.s >= t.interval.s0 && hit.s <= t.interval.s1);
       editor.show(piece ? { ...hit, s: piece.end === 'a' ? piece.interval.s1 + 1 : piece.interval.s0 - 1 } : hit);
     });
-    const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, app.view, transportIndex,
-      () => [...app.projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))),
-        ...(app.projectStore.snapshot.design.takenUp ?? []).map(t => ({ routeId: '', interval: t.interval }))]);
-    ends.onMove = (id, s0, s1) => {
+    const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, app.view, transportIndex, {
+      claimed: () => [...app.projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))),
+        ...(app.projectStore.snapshot.design.takenUp ?? []).map(t => ({ routeId: '', interval: t.interval }))],
+      covered,
+      joins: () => app.projectStore.snapshot.design.routes.flatMap(r => [r.endpoints.a.anchor, r.endpoints.b.anchor]
+        .flatMap(a => a.kind === 'source' ? [{ routeId: r.id, sourceId: a.location.sourceId, s: a.location.s }] : [])),
+      chains: route => !!mappedLineKindOf(route)?.chains,
+    });
+    ends.onMove = (id, next, label) => {
       const kind = mappedLineKindOf(app.store.route!);
-      try { if (!kind) throw new Error('No kind moves these ends'); app.store.editProject(d => { const next = kind.moveEnds(transportIndex!, d, id, s0, s1); Object.assign(d, next); }); }
+      try { if (!kind) throw new Error('No kind moves these ends'); app.store.editProject(d => { Object.assign(d, kind.moveEnds(transportIndex!, d, id, next)); }, label); }
       catch (error) { console.warn('Stretch ends not moved', error); toast('The rebuilt stretch cannot end there.'); ends.sync(app.store.route); }
     };
     ends.sync(app.store.route);

@@ -991,3 +991,11 @@ A selected crossing's ring rebuilds its crossed mapped road around the crossing 
 bend it as a drag on the road selected does (`ui/crossing-drag.ts`). A selected mapped road's open dead end has an End
 handle that takes its last piece up (`ProjectDesign.takenUp`, `core/taken-up.ts`). PLAN.md "A selected crossing's parts
 drag; a dead end cut back".
+
+## 20. A rebuilt stretch over several ways (2026-11-20)
+
+A rebuilt stretch is no longer one way between junctions: its intervals (`RouteDesign.source.intervals`, route order)
+may run over several mapped ways of the same road, through junctions and over mapped bridges (`core/stretch-chain.ts`:
+the walk, `ChainLine`, `oldPieces`; promotion `promoteGroundChain`, joints `connection:<route>:joint:<k>`). Its End and
+Start squares follow the old road there (`ui/stretch-ends.ts`); an old bridge in it is kept where the line stays on it,
+else taken down and billed (research/106). See PLAN.md "A rebuilt stretch over several ways".

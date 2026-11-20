@@ -3,6 +3,7 @@ import type { ConnectionDesign, ProjectDesign, RoadSpec, RouteDesign, SourceInte
 import type { ProjectCommand } from '../project-store-contract';
 import { ProjectSurfaceIndex, ProjectTransportIndex } from './project-network';
 import { mappedRoadName } from './terms';
+import { chainable, chainOffset, chainParts, chainPath, isChain, jointId } from './stretch-chain';
 
 const distance = (a: XYZ, b: XYZ) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const locationKey = (l: SourceLocation) => JSON.stringify([l.transportData, l.sourceId, l.s]);
@@ -55,6 +56,67 @@ export function promoteGroundRoad(base: ProjectTransportIndex, input: {
     if (otherSource.kind !== 'road' || !p || otherSource.elevation !== 'terrain') throw new Error('Branch connection needs resolved ground-road data');
     connect(`connection:${route.id}:branch:${branch.nodeId}:${branch.s}:${other.sourceId}:${other.s}`, branch.s - start, other, p);
   }
+  return { type: 'promote', routes: [route], connections };
+}
+
+/** The ground road of a stretch over several mapped ways (core/stretch-chain.ts): the first part on the ground. */
+export const chainGroundSource = (base: ProjectTransportIndex, intervals: readonly SourceInterval[]) =>
+  intervals.find(i => base.source(i.sourceId)?.elevation === 'terrain')?.sourceId ?? intervals[0]?.sourceId ?? '';
+/** Promotion of a stretch over several mapped ways in route order (one interval: promoteGroundRoad, exactly): each
+ * part a road of the stretch's legal class on the ground or a bridge, each meeting the next at a node. Its connections:
+ * its two ends, each joint (`jointId`: where the old ways met, both of them its own), and every other way meeting it. */
+export function promoteGroundChain(base: ProjectTransportIndex, input: {
+  routeId: string; acousticSourceId: string; intervals: SourceInterval[]; specification: RoadSpec; name: string;
+}): Extract<ProjectCommand, { type: 'promote' }> {
+  const { intervals } = input;
+  if (intervals.length === 1) return promoteGroundRoad(base, { ...input, interval: intervals[0] });
+  if (!intervals.length || !isChain(base, intervals)) throw new Error('Not a stretch of one road');
+  const first = base.source(chainGroundSource(base, intervals));
+  for (const i of intervals) {
+    base.checkInterval(i);
+    if (!chainable(base.source(i.sourceId), first?.tags.highway)) throw new Error('Promotion needs a supported ground road');
+  }
+  const { legalClass } = groundRoadSourceInfo(base, first!.id);
+  if (input.specification.policy !== 'existing-ground' || input.specification.crossSection !== 'existing'
+    || input.specification.legalClass !== legalClass || !(input.specification.existingWidth! > 0)) throw new Error('Promotion needs explicit existing-road specification');
+  const parts = chainParts(base, intervals), path = chainPath(base, intervals), own = new Set(intervals.map(i => i.sourceId));
+  const location = (sourceId: string, s: number): SourceLocation => ({ transportData: base.transportData, sourceId, s });
+  const entry = (k: number) => parts[k].reversed ? parts[k].interval.s1 : parts[k].interval.s0, exit = (k: number) => parts[k].reversed ? parts[k].interval.s0 : parts[k].interval.s1;
+  const last = parts.length - 1, a = path[0], b = path[path.length - 1];
+  const route: RouteDesign = { id: input.routeId, acousticSourceId: input.acousticSourceId, revision: 0,
+    name: input.name, kind: 'road', role: 'auxiliary', specification: structuredClone(input.specification),
+    source: { binding: 'resolved', intervals: intervals.map(i => ({ ...i })), transferredWorkIds: [] },
+    endpoints: { a: { position: { x: a.x, y: a.y, z: a.z }, anchor: { kind: 'source', location: location(intervals[0].sourceId, entry(0)) }, binding: 'resolved' },
+      b: { position: { x: b.x, y: b.y, z: b.z }, anchor: { kind: 'source', location: location(intervals[last].sourceId, exit(last)) }, binding: 'resolved' } },
+    alignment: { kind: 'reference', provenance: 'imported', vertical: { kind: 'reference' }, controls: {},
+      path: path.map(p => ({ x: p.x, y: p.y, s: p.s, elevation: base.source(intervals[p.part].sourceId)?.elevation === 'terrain' ? { kind: 'ground' } : { kind: 'unresolved' } })) },
+  };
+  const connections: ConnectionDesign[] = [];
+  const connect = (id: string, s: number, ports: SourceLocation[], position: XYZ) => {
+    connections.push({ id, revision: 0, kind: 'continuation', position: { ...position },
+      ports: [{ kind: 'route', routeId: route.id, s }, ...ports.map(l => ({ kind: 'source' as const, location: { ...l } }))] });
+  };
+  const length = path[path.length - 1].s;
+  connect(`connection:${route.id}:start`, 0, [location(intervals[0].sourceId, entry(0))], route.endpoints.a.position);
+  connect(`connection:${route.id}:end`, length, [location(intervals[last].sourceId, exit(last))], route.endpoints.b.position);
+  for (let k = 0; k < last; k++) {
+    const s = chainOffset(parts, k + 1, entry(k + 1)), p = path.find(q => Math.abs(q.s - s) < 1e-6) ?? path[0];
+    connect(jointId(route.id, k), s, [location(intervals[k].sourceId, exit(k)), location(intervals[k + 1].sourceId, entry(k + 1))], p);
+  }
+  const seen = new Set<string>();
+  parts.forEach(({ interval }, k) => {
+    for (const branch of base.branches(interval)) for (const other of branch.other) {
+      if (own.has(other.sourceId)) continue; // (the stretch's own ways meet at its joints)
+      const key = `${branch.nodeId}:${other.sourceId}:${other.s}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const otherSource = base.source(other.sourceId)!, p = base.position(other.sourceId, other.s);
+      if (otherSource.kind === 'railway') throw new Error('Level crossing with a railway is not supported yet');
+      if (otherSource.kind !== 'road' || !p || otherSource.elevation !== 'terrain') throw new Error('Branch connection needs resolved ground-road data');
+      const s = chainOffset(parts, k, branch.s);
+      connect(`connection:${route.id}:branch:${branch.nodeId}:${s}:${other.sourceId}:${other.s}`, s, [other], p);
+    }
+  });
   return { type: 'promote', routes: [route], connections };
 }
 

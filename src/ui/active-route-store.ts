@@ -104,11 +104,12 @@ export class ActiveRouteStore {
     after.vpis = carryVpis(buildAlignment(a, b, before.pis, horizontalRules(before.speed, before.category), bendRules(before.pis, before.speed, before.category)),
       buildAlignment(a, b, after.pis, horizontalRules(after.speed, after.category), bendRules(after.pis, after.speed, after.category)), before.vpis);
   }
-  editProject(edit: (project: ProjectDesign) => void) {
+  /** `label`: the undo step's name where the designs alone would not say it (core/history-label.ts) */
+  editProject(edit: (project: ProjectDesign) => void, label?: string) {
     if (this.cancelled) return;
     const own = !this.project.inTransaction;
     if (own) this.project.begin(); this.atomic = true;
-    try { this.project.update(edit); if (own) this.project.commit(); }
+    try { this.project.update(edit); if (own) this.project.commit(label); }
     catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }
   }

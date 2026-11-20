@@ -9,7 +9,8 @@ import { KEPT_TOLERANCE } from '../core/project-kept';
 import type { Anchor, EndpointConstraint, ProjectDesign, RoadSpec, RouteDesign, SourceInterval, XYZ } from '../core/project';
 import type { ProjectCommand } from '../project-store-contract';
 import type { ProjectTransportIndex } from '../core/project-network';
-import { groundRoadSourceInfo, promoteGroundRoad } from '../core/project-promotion';
+import { chainGroundSource, groundRoadSourceInfo, promoteGroundChain, promoteGroundRoad } from '../core/project-promotion';
+import { ChainLine, chainLength, chainParts, type ChainPart } from '../core/stretch-chain';
 import { ROAD_CLASSES } from '../core/data/urban';
 import { classTraffic, type TrafficDefault } from '../core/traffic-census';
 import { freeSpan } from './source-editor';
@@ -55,7 +56,9 @@ export function rebuildable(base: ProjectTransportIndex, sourceId: string): Rebu
   const highway = source.tags.highway ?? '', row = ROAD_CLASSES[highway];
   if (row?.noAtGrade || highway === 'motorway_link' || highway === 'trunk_link') return { ok: false, why: 'Motorways and expressways cannot be changed yet.' };
   if (!row) return { ok: false, why: highway.endsWith('_link') ? 'Slip roads cannot be changed yet.' : 'This kind of way cannot be changed.' };
-  if (source.bridge || source.tunnel || source.elevation !== 'terrain') return { ok: false, why: 'Bridges and tunnels of existing roads cannot be changed yet.' };
+  // (a bridge goes with the road either side of it: a rebuilt stretch's end is pulled over it, core/stretch-chain.ts)
+  if (source.bridge && !source.tunnel) return { ok: false, why: 'A bridge is changed with its road: change the road beside it, then drag that stretch’s end over the bridge.' };
+  if (source.bridge || source.tunnel || source.elevation !== 'terrain') return { ok: false, why: source.tunnel ? 'Tunnels of existing roads cannot be changed yet.' : 'Roads off the ground cannot be changed yet.' };
   let info: ReturnType<typeof groundRoadSourceInfo>;
   try { info = groundRoadSourceInfo(base, sourceId); } catch { return { ok: false, why: 'This road’s map data is incomplete.' }; }
   return { ok: true, info, spec: { legalClass: info.legalClass, crossSection: REBUILT_AS[info.legalClass] } };
@@ -497,38 +500,81 @@ const nearestStation = nearestOn;
  * a fresh exact claim, end anchors and branch connections (core promotion), its bends kept where
  * they still lie inside, bends of a newly included old stretch added, and its station-based choices
  * (height pins, structures, walls, hand heights) shifted with the start. */
-export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, s0: number, s1: number,
+export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string,
+  /** the stretch's new intervals in route order (a stretch over several ways, core/stretch-chain.ts), or its one way's new
+   * ends [s0, s1] */
+  to: number | readonly SourceInterval[], s1?: number,
   /** the exact claim, end anchors and branch connections for the new interval (another kind's own promotion,
    * e.g. a railway's); default: the ground-road promotion. Only its endpoints and connections are used. */
   promote?: (interval: SourceInterval, route: RouteDesign) => Extract<ProjectCommand, { type: 'promote' }>): ProjectDesign {
   const route = project.routes.find(r => r.id === routeId);
-  const old = route?.source?.intervals[0];
-  if (!route || !old || route.alignment.kind !== 'pi' || route.source!.intervals.length !== 1) throw new Error('Not a rebuilt stretch');
-  if (!(s1 - s0 >= MIN_STRETCH)) throw new Error('Stretch too short');
-  const interval = { ...old, s0, s1 };
+  const olds = route?.source?.intervals ?? [];
+  if (!route || !olds.length || route.alignment.kind !== 'pi') throw new Error('Not a rebuilt stretch');
+  if (typeof to === 'number' && olds.length !== 1) throw new Error('Not a stretch of one way');
+  const next = typeof to === 'number' ? [{ ...olds[0], s0: to, s1: s1! }] : to.map(i => ({ ...i }));
+  if (!(chainLength(next) >= MIN_STRETCH)) throw new Error('Stretch too short');
   // Promotion re-derives the exact claim, end anchors and branch connections; the rebuilt road keeps its own specification.
-  const command = promote ? promote(interval, route) : (() => {
+  const command = promote ? (() => {
+    if (next.length !== 1) throw new Error('This line is rebuilt one way at a time');
+    return promote(next[0], route);
+  })() : (() => {
     if (route.kind !== 'road') throw new Error('A non-road stretch needs its own promotion');
-    const info = groundRoadSourceInfo(base, old.sourceId);
-    return promoteGroundRoad(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, interval, name: route.name,
+    const info = groundRoadSourceInfo(base, chainGroundSource(base, olds));
+    return promoteGroundChain(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, intervals: next, name: route.name,
       specification: { kind: 'road', policy: 'existing-ground', legalClass: info.legalClass, crossSection: 'existing', existingWidth: info.width,
         designSpeed: route.specification.designSpeed, operations: route.specification.operations } });
   })();
   const fresh = command.routes[0];
   if (fresh.id !== route.id) throw new Error('Promotion must keep the route');
-  const wide = base.path({ ...old, s0: Math.min(s0, old.s0), s1: Math.max(s1, old.s1) });
+  // The old stretch and the new one on one line with a chainage of its own (one way: that way's stations, as always):
+  // o0–o1 the old stretch, s0–s1 the new.
+  const line = new ChainLine(base, unionParts(chainParts(base, olds), chainParts(base, next)));
+  // (one way's stretch runs with its way: core/stretch-chain.ts)
+  if (next.length === 1 && line.parts.find(p => p.interval.sourceId === next[0].sourceId)?.reversed) throw new Error('A stretch on one way runs with it');
+  const endOf = (list: readonly SourceInterval[], end: 'a' | 'b') => {
+    const parts = chainParts(base, list), p = end === 'a' ? parts[0] : parts[parts.length - 1];
+    const t = line.t(p.interval.sourceId, (end === 'a') === !p.reversed ? p.interval.s0 : p.interval.s1);
+    if (t === undefined) throw new Error('Not on one road');
+    return t;
+  };
+  const o0 = endOf(olds, 'a'), o1 = endOf(olds, 'b'), s0 = endOf(next, 'a'), s1n = endOf(next, 'b');
+  const old = { s0: o0, s1: o1 };
+  return moveOnLine(base, project, route as RouteDesign & { alignment: { kind: 'pi' } }, fresh, command, line, old, s0, s1n, olds, next);
+}
+/** Where two stretches of one road lie on it: the parts of both in route order (the old one's where the new one does
+ * not reach, the wider of the two on a way both take). */
+function unionParts(o: readonly ChainPart[], n: readonly ChainPart[]): ChainPart[] {
+  const io = o.map(p => p.interval.sourceId), inn = n.map(p => p.interval.sourceId);
+  const first = inn.findIndex(id => io.includes(id)), last = inn.length - 1 - [...inn].reverse().findIndex(id => io.includes(id));
+  if (first < 0) throw new Error('Not on one road');
+  const fo = io.indexOf(inn[first]), lo = io.indexOf(inn[last]);
+  if (lo < fo) throw new Error('Not on one road');
+  const middle = o.slice(fo, lo + 1).map(p => {
+    const q = n.find(q => q.interval.sourceId === p.interval.sourceId);
+    return q ? { reversed: p.reversed, interval: { ...p.interval, s0: Math.min(p.interval.s0, q.interval.s0), s1: Math.max(p.interval.s1, q.interval.s1) } } : p;
+  });
+  return [...(first > 0 ? n.slice(0, first) : o.slice(0, fo)), ...middle, ...(last < n.length - 1 ? n.slice(last + 1) : o.slice(lo + 1))];
+}
+/** The traffic census stretch of a stretch: its interval, or a chain's longest part on the ground. */
+export const trafficInterval = (base: ProjectTransportIndex, list: readonly SourceInterval[]) => list.length === 1 ? list[0]
+  : list.filter(i => base.source(i.sourceId)?.elevation === 'terrain').reduce((m, i) => i.s1 - i.s0 > m.s1 - m.s0 ? i : m, list[0]);
+function moveOnLine(base: ProjectTransportIndex, project: ProjectDesign, route: RouteDesign & { alignment: { kind: 'pi' } }, fresh: RouteDesign,
+  command: Extract<ProjectCommand, { type: 'promote' }>, line: ChainLine, old: { s0: number; s1: number }, s0: number, s1: number,
+  olds: readonly SourceInterval[], next: SourceInterval[]): ProjectDesign {
+  const routeId = route.id;
+  const wide = line.path(Math.min(s0, old.s0), Math.max(s1, old.s1));
   const category = route.kind === 'road' && route.specification.crossSection !== 'existing' ? route.specification.crossSection as CategoryId : null;
   const a = fresh.endpoints.a.position, z = fresh.endpoints.b.position;
   /** the old road from station `from` to `to` as bends, between line points `p` and `q` (on or beside it) */
   const added = (from: number, to: number, p: Vec2, q: Vec2): PI[] => {
     if (!(to - from > 1)) return [];
-    const path = base.path({ ...old, s0: from, s1: to }).map(v => ({ x: v.x, y: v.y, s: v.s }));
+    const path = line.path(from, to).map(v => ({ x: v.x, y: v.y, s: v.s }));
     path[0] = { ...path[0], x: p.x, y: p.y }; path[path.length - 1] = { ...path[path.length - 1], x: q.x, y: q.y };
     return category ? fitRoad(p, q, path, route.specification.designSpeed, category) : fitBends(path);
   };
   const turns = (prev: { x: number; y: number }, p: { x: number; y: number }, next: { x: number; y: number }) =>
     Math.abs(Math.atan2((p.x - prev.x) * (next.y - p.y) - (p.y - prev.y) * (next.x - p.x), (p.x - prev.x) * (next.x - p.x) + (p.y - prev.y) * (next.y - p.y))) > Math.PI / 180;
-  const all = route.alignment.pis, oldA = base.position(old.sourceId, old.s0)!, oldZ = base.position(old.sourceId, old.s1)!;
+  const all = route.alignment.pis, oldA = line.point(old.s0)!, oldZ = line.point(old.s1)!;
   const inside = (p: PI) => { const s = nearestStation(wide, p); return s > s0 + 1 && s < s1 - 1; };
   // A newly included piece of old road is converted as the first drag converts the stretch, joined where the
   // line stays on the old road: at the old end (a bend where the line turns there), or at a bend outside the
@@ -539,7 +585,7 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
   type Side = { pis: PI[]; from: number; to: number; join?: boolean };
   const sides: Side[][] = [[{ pis: [], from: 0, to: all.length - 1 }], [{ pis: [], from: 0, to: all.length - 1 }]];
   const rules = category ? horizontalRules(route.specification.designSpeed, category) : null;
-  const own = rules && (s0 < old.s0 || s1 > old.s1) ? playerPart(route.endpoints.a.position, route.endpoints.b.position, all, rules, base.path(old)) : null;
+  const own = rules && (s0 < old.s0 || s1 > old.s1) ? playerPart(route.endpoints.a.position, route.endpoints.b.position, all, rules, line.path(old.s0, old.s1)) : null;
   if (s0 < old.s0) {
     const head = added(s0, old.s0, a, oldA);
     const join = turns(head.at(-1) ?? a, oldA, all[0] ?? oldZ);
@@ -557,7 +603,7 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
   let pis: PI[] = [];
   if (!rules || !(s0 < old.s0 || s1 > old.s1)) pis = [...sides[0][0].pis, ...all.filter(inside), ...sides[1][0].pis];
   else {
-    const fit = onOldRoad(a, z, base.path(interval), route.specification.designSpeed, category!), far = fit.far;
+    const fit = onOldRoad(a, z, line.path(s0, s1), route.specification.designSpeed, category!), far = fit.far;
     let best: { pis: PI[]; anew: number; problems: number } | null = null;
     const options: PI[][] = [];
     const mine = new Set(own ? all.slice((own.before ?? -1) + 1, own.after ?? all.length) : []);
@@ -594,16 +640,16 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
   if (v.kind === 'auto') { v.pins = movePins(v.pins)!; delete v.manualVpis; }
   // Hand heights cannot follow a moved end exactly: the profile returns to Auto with the pins kept.
   const vertical = v.kind === 'manual' ? { kind: 'auto' as const, pins: movePins(v.autoPins) ?? [] } : v;
-  const next = structuredClone(project);
-  next.routes = next.routes.map(r => r.id !== routeId ? r : { ...r, endpoints: fresh.endpoints, source: { ...route.source!, intervals: [interval] },
+  const design = structuredClone(project);
+  design.routes = design.routes.map(r => r.id !== routeId ? r : { ...r, endpoints: fresh.endpoints, source: { ...route.source!, intervals: next },
     alignment: { kind: 'pi', pis, vertical, controls } } as RouteDesign);
   // Traffic the game filled in follows the stretch (its middle may now lie in another census section);
   // the player's own number stays.
-  const moved = next.routes.find(r => r.id === routeId)!;
-  if (moved.kind === 'road' && isTraffic(moved.specification.operations, base.traffic(old, moved.specification.legalClass))) {
-    const t = base.traffic(interval, moved.specification.legalClass);
+  const moved = design.routes.find(r => r.id === routeId)!;
+  if (moved.kind === 'road' && isTraffic(moved.specification.operations, base.traffic(trafficInterval(base, olds), moved.specification.legalClass))) {
+    const t = base.traffic(trafficInterval(base, next), moved.specification.legalClass);
     moved.specification.operations = { ...moved.specification.operations, aadt: t.aadt, heavyShare: t.heavyShare };
   }
-  next.connections = [...next.connections.filter(c => !c.ports.some(p => p.kind === 'route' && p.routeId === routeId)), ...command.connections];
-  return next;
+  design.connections = [...design.connections.filter(c => !c.ports.some(p => p.kind === 'route' && p.routeId === routeId)), ...command.connections];
+  return design;
 }

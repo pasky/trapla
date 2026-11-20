@@ -814,17 +814,27 @@ export class View {
   }
 
   private sourceSelectionLine: Line2 | null = null;
-  /** the base-road stretch chosen with the Change road handles (display only) */
-  setSourceSelection(points: readonly { x: number; y: number }[] | null) {
-    if (this.sourceSelectionLine) {
-      this.world.remove(this.sourceSelectionLine); this.sourceSelectionLine.geometry.dispose(); this.retire(this.sourceSelectionLine.material);
-      this.sourceSelectionLine = null;
+  private sourceAheadLine: Line2 | null = null;
+  /** the base-road stretch chosen with the Change road handles (display only); `ahead`: the old road a dragged end can
+   * still go along, lit fainter */
+  setSourceSelection(points: readonly { x: number; y: number }[] | null, ahead?: readonly { x: number; y: number }[] | null) {
+    for (const line of [this.sourceSelectionLine, this.sourceAheadLine]) if (line) {
+      this.world.remove(line); line.geometry.dispose(); this.retire(line.material);
     }
-    const arr: number[] = [];
-    for (const q of points ?? []) { const v = this.local(q.x, q.y, this.drapeHeight(q.x, q.y) + 2.5); arr.push(v.x, v.y, v.z); }
+    this.sourceSelectionLine = this.sourceAheadLine = null;
+    const draped = (list: readonly { x: number; y: number }[] | null | undefined) => {
+      const arr: number[] = [];
+      for (const q of list ?? []) { const v = this.local(q.x, q.y, this.drapeHeight(q.x, q.y) + 2.5); arr.push(v.x, v.y, v.z); }
+      return arr;
+    };
+    const arr = draped(points), next = draped(ahead);
     if (arr.length >= 6) {
       this.sourceSelectionLine = this.makeLine(arr, null, 6, { color: 0xff9f1c, opacity: 0.8, depthTest: false, order: 3 });
       this.sourceSelectionLine.name = 'source-selection'; this.world.add(this.sourceSelectionLine);
+    }
+    if (next.length >= 6) {
+      this.sourceAheadLine = this.makeLine(next, null, 5, { color: 0xfff1c9, opacity: 0.85, depthTest: false, order: 3 });
+      this.sourceAheadLine.name = 'source-ahead'; this.world.add(this.sourceAheadLine);
     }
     this.dirty = true;
   }

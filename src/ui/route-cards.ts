@@ -10,12 +10,13 @@ import { UNCOUNTED_TRAFFIC } from '../core/data/traffic';
 import type { Result } from '../core/evaluate';
 import type { Anchor, ProjectDesign, ProjectResult, RouteDesign, RouteId } from '../core/project';
 import type { ProjectTransportIndex } from '../core/project-network';
-import { groundRoadSourceInfo } from '../core/project-promotion';
+import { chainGroundSource, groundRoadSourceInfo } from '../core/project-promotion';
+import { chainPath } from '../core/stretch-chain';
 import { DIRECTIONS_TEXT, mappedRoadName } from '../core/terms';
 import { ROUNDABOUT_HOSTS } from '../core/tie-in';
 import { classTraffic } from '../core/traffic-census';
 import { fillDirections, type DirectionsState } from './hud';
-import { DEFAULT_SPEED, isTraffic, SLIP_ROAD_TRAFFIC, startSpeed, strayDistance } from './road-edit';
+import { DEFAULT_SPEED, isTraffic, SLIP_ROAD_TRAFFIC, startSpeed, strayDistance, trafficInterval } from './road-edit';
 import { isSlipRoad, SLIP_SECTIONS } from '../core/slip-roads';
 import { motorwayCategory, routeWord } from '../core/route-section';
 import { pieceDepth, topPieces } from './pieces';
@@ -80,17 +81,17 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
     if (key !== strayKey) {
       strayKey = key;
       try {
-        const old = transportIndex.path(interval), line = Array.from({ length: Math.ceil(r.n / 2) }, (_, k) => ({ x: r.x[2 * k], y: r.y[2 * k] }));
+        const old = chainPath(transportIndex, route.source!.intervals), line = Array.from({ length: Math.ceil(r.n / 2) }, (_, k) => ({ x: r.x[2 * k], y: r.y[2 * k] }));
         stray = strayDistance(line, old);
       } catch { stray = NaN; }
     }
     const accepted = rail ? !!projectFull?.routes[route.id]?.legacy
-      : projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
+      : route.source!.intervals.every(v => projectFull?.acceptedReplacements.some(i => i.sourceId === v.sourceId && i.s0 === v.s0 && i.s1 === v.s1));
     if (route.kind === 'railway') what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old track` : ''}. ${accepted
       ? `On the old track it is kept as it is. Off it, a new track is built for ${route.specification.designSpeed} km/h.` : 'Checking the change…'}`;
     else {
     // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
-    const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
+    const signed = (() => { try { return groundRoadSourceInfo(transportIndex, chainGroundSource(transportIndex, route.source!.intervals)).taggedSpeed; } catch { return null; } })();
     const lowest = route.specification.crossSection === 'existing' ? DEFAULT_SPEED : startSpeed(route.specification.crossSection);
     const speed = route.specification.designSpeed === lowest
       ? ` for ${lowest} km/h (the lowest the norm allows${signed && signed !== lowest ? `; signed ${signed}` : ''})` : '';
@@ -135,7 +136,7 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
   // (a slip road starts as the average class II road, as a new road does)
   const cls = route.specification.legalClass === 'ramp' ? SLIP_ROAD_TRAFFIC : route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
   const uncounted = UNCOUNTED_TRAFFIC[cls as keyof typeof UNCOUNTED_TRAFFIC];
-  const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
+  const filled = interval ? transportIndex?.traffic(trafficInterval(transportIndex, route.source!.intervals), cls) : route.source ? undefined : classTraffic(cls);
   const basis = document.createElement('small'); basis.className = 'traffic-basis';
   if (filled && isTraffic(op, filled)) {
     basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`

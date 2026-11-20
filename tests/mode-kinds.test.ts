@@ -83,7 +83,7 @@ describe('rebuilding a mapped railway (drag-to-rebuild with the railway kind)', 
     expect(r.violations.filter(v => /railway/i.test(v.title))).toEqual([]);
     expect(result.cost.unpriced.map(u => u.reason)).toEqual(['track-removal-unpriced']);
     // its ends move along the old line in one edit
-    const moved = RAIL_LINE.moveEnds(base, design, 'route:rail', 300, stations[2]);
+    const moved = RAIL_LINE.moveEnds(base, design, 'route:rail', [{ ...design.routes[0].source!.intervals[0], s0: 300, s1: stations[2] }]);
     assertProjectDesign(moved);
     expect(moved.routes[0].source!.intervals[0].s0).toBe(300);
   });

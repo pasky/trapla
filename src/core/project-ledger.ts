@@ -18,6 +18,9 @@ import type { KeepClear } from './keep-clear';
 export const INDEPENDENCE_SCREEN = {
   /** Plan gap kept between two roads' land take and works (working strip, drainage), m. */
   clearance: 10,
+  /** Beside a crossing (no working strip between the two roads' works), how much further a road's walls keep its
+   * slopes off the other's land than the screen asks: its capsules round each piece's ends, a station's slope does not, m. */
+  stripMargin: 1,
   /** Outside its own noise list, a road this far below the limit at a house (controlling period) is
    * not counted as a road of that house. The screen uses noiseMargin + 10·log10(N − 1) dB for N roads,
    * so all neglected roads together add ≤ 1 % of one limit (≤ +0.043 dB) at a house exactly at the
@@ -37,7 +40,9 @@ export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; s
   extraLines?: { ax: number; ay: number; bx: number; by: number; r: number }[];
   /** Junctions with another designed road: within r of (x, y) the two roads' works ARE the junction
    * (owned by this road), not shared land. */
-  junctions?: { routeId: RouteId; x: number; y: number; r: number }[];
+  junctions?: { routeId: RouteId; x: number; y: number; r: number;
+    /** within r the two roads' works only keep off each other's land (one crossing's works): no clearance between */
+    strip?: true }[];
   /** A rebuilt stretch: its own old road (legacy way), whose remains are its own continuation; another
    * road changing them is that road's change alone (the stretch stops short of what it covers). */
   ownWays?: number[];
@@ -67,7 +72,12 @@ interface Capsule { ax: number; ay: number; bx: number; by: number; r: number;
   /** the highest its works reach (a cutting's: the ground at its edge), m; absent: unknown */
   top?: number;
   /** a road's own deck: its lowest grade there, m (what passes under it keeps its clearance below) */
-  deck?: number }
+  deck?: number;
+  /** within a crossing's run beside the other road: no clearance pad (only keeps off its land) */
+  strip?: true;
+  /** works where a side road meets the road (its junction's ramps) or a dead end is taken up at its works: within a
+   * crossing's run beside another road, they meet that road's works as part of the crossing */
+  meets?: true }
 /** One road on its bridge high above the other's works there (by the clearance a bridge over a road keeps,
  * CROSSING_RULES.overHeight, grade to grade): two storeys, not land they share. */
 const storeyed = (s: Capsule, t: Capsule) => s.deck !== undefined && t.top !== undefined && s.deck - t.top >= CROSSING_RULES.overHeight
@@ -115,6 +125,8 @@ function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?
   for (const p of a) for (const q of b) if (boxGap(p, q) <= 0) for (const s of p.items) for (const t of q.items) {
     const r = s.r + t.r, d = segmentSegment(s, t);
     if (d >= r || storeyed(s, t)) continue; // NaN/Infinity fail closed
+    // (beside a crossing: a side road's ramps or a dead end taken up meeting the other road's works are the crossing's)
+    if (s.strip && t.strip && (s.meets || t.meets)) continue;
     found = true;
     touched[0].add(s); touched[1].add(t);
     if (!s.reroute) reroutes[0] = false;
@@ -172,19 +184,19 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
       else out.push({ ax: x, ay: y, bx: x, by: y, r: Math.max(1.2, halfWidth * 0.55) + pad, top });
     }
   }
-  const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0, reroute = false) => {
+  const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0, reroute = false, meets = false) => {
     if (!points?.length) return;
     // Earthwork toe bound: half width plus a 1:2 side slope over the largest height difference.
     let dz = 0, top = -Infinity; for (const p of points) { dz = Math.max(dz, Math.abs(p.z - p.ground)); top = Math.max(top, p.z, p.ground); }
     const r = width / 2 + 2 * dz + extra + pad;
-    const tag = { ...reroute ? { reroute: true as const } : {}, ...Number.isFinite(top) ? { top } : {} };
+    const tag = { ...reroute ? { reroute: true as const } : {}, ...meets ? { meets: true as const } : {}, ...Number.isFinite(top) ? { top } : {} };
     if (points.length === 1) out.push({ ax: points[0].x, ay: points[0].y, bx: points[0].x, by: points[0].y, r, ...tag });
     for (let k = 1; k < points.length; k++) out.push({ ax: points[k - 1].x, ay: points[k - 1].y, bx: points[k].x, by: points[k].y, r, ...tag });
   };
-  const geometry = (g: CrossingGeometry | undefined, reroute = false) => {
+  const geometry = (g: CrossingGeometry | undefined, reroute = false, meets = false) => {
     if (!g) return;
-    line(g.road, g.width); line(g.links?.[0], g.width, 0, reroute); line(g.links?.[1], g.width, 0, reroute);
-    line(g.turnarounds, g.width, g.turnaroundRadius ?? 0);
+    line(g.road, g.width, 0, false, meets); line(g.links?.[0], g.width, 0, reroute, meets); line(g.links?.[1], g.width, 0, reroute, meets);
+    line(g.turnarounds, g.width, g.turnaroundRadius ?? 0, false, meets);
   };
   // a designed road under/over our crossing is its own road (its own envelope), not ours. Where a crossed
   // road is raised or lowered to meet us (a junction, its bridge over us), its drawn terrain tails beyond the
@@ -198,14 +210,14 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
       while (i + 1 < road.length && road[i].surface === 'terrain' && road[i + 1].surface === 'terrain') i++;
       while (j > i && road[j].surface === 'terrain' && road[j - 1].surface === 'terrain') j--;
       // (met at its own level: nothing of it is rebuilt)
-      geometry({ ...g, road: road.some(q => q.surface !== 'terrain') ? road.slice(i, j + 1) : [] });
+      geometry({ ...g, road: road.some(q => q.surface !== 'terrain') ? road.slice(i, j + 1) : [] }, false, c.type === 'junction');
     // (Auto's own reroute, not one the player chose or shaped; under our bridge or over our tunnel the way is left
     // as it is: no works of ours)
     } else if (!unchanged(c)) geometry(g, (c.type === 'reconnection' || c.type === 'diversion') && !c.requestedType && !c.via);
   }
   for (const f of result.footprintConflicts) {
-    geometry(f.geometry);
-    for (const old of [f.original, ...(f.originals ?? [])]) line(old, f.geometry?.width ?? 0);
+    geometry(f.geometry, false, !!f.takenUp);
+    for (const old of [f.original, ...(f.originals ?? [])]) line(old, f.geometry?.width ?? 0, 0, false, !!f.takenUp);
   }
   return out;
 }
@@ -300,6 +312,38 @@ function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
   return r;
 }
 
+/** Where a road crossed by another road of the project (`b`, a crossing of `a`'s at another level) runs on beside
+ * `a` from the crossing (an oblique crossing, a bend after it): from the crossing each way along `b`, as far as
+ * the two roads' works come within the clearance of each other, at most BESIDE_RUN m. Its works and `a`'s there are
+ * that crossing's: they keep off each other's land, but no working strip is asked between them (as between Auto's
+ * own crossing works and our road). A zone round each station of `a` beside it, reaching `b`'s works there. */
+function besideRun(a: ScreenRoute, b: ScreenRoute): { x: number; y: number; r: number; strip: true }[] {
+  const A = a.result, B = b.result, out: { x: number; y: number; r: number; strip: true }[] = [];
+  if (A.n < 2 || B.n < 2) return out;
+  const reach = (r: Result, half: number, i: number) => r.kind[i] !== KIND.earth ? Math.max(half, r.cell.width[i])
+    : Math.max(half, Math.abs(r.dayL[i]), Math.abs(r.dayR[i]));
+  const d = (i: number, k: number) => Math.hypot(A.x[i] - B.x[k], A.y[i] - B.y[k]);
+  for (const c of A.crossings) if (c.crossedRoute?.id === b.routeId) {
+    let k0 = 0;
+    for (let k = 1; k < B.n; k++) if (Math.hypot(B.x[k] - c.x, B.y[k] - c.y) < Math.hypot(B.x[k0] - c.x, B.y[k0] - c.y)) k0 = k;
+    for (const step of [1, -1]) {
+      let q = Math.max(0, Math.min(A.n - 1, c.i)), along = 0;
+      for (let k = k0; k >= 0 && k < B.n && along <= BESIDE_RUN; k += step) {
+        // (our nearest station, followed along from the last)
+        while (q + 1 < A.n && d(q + 1, k) < d(q, k)) q++;
+        while (q > 0 && d(q - 1, k) < d(q, k)) q--;
+        const rb = reach(B, b.halfWidth, k), r = reach(A, a.halfWidth, q) + rb + INDEPENDENCE_SCREEN.clearance;
+        if (!(d(q, k) <= r)) break;
+        out.push({ x: A.x[q], y: A.y[q], r: r + rb, strip: true });
+        if (k + step >= 0 && k + step < B.n) along += Math.abs(B.s[k + step] - B.s[k]);
+      }
+    }
+  }
+  return out;
+}
+/** PROVISIONAL engine bound on the run beside our road a crossing's works follow, m. */
+const BESIDE_RUN = 2000;
+
 export function screenIndependence(routes: readonly ScreenRoute[], buildings: BuildingIndex | undefined): IndependenceScreen {
   const interactions: RouteInteraction[] = [];
   const S = INDEPENDENCE_SCREEN;
@@ -316,19 +360,21 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
   const envelopes = raw.map(chunks);
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++) {
     // a junction between the two: both roads' works around it are that one junction
-    const at = [...(routes[a].junctions ?? []).filter(j => j.routeId === routes[b].routeId), ...(routes[b].junctions ?? []).filter(j => j.routeId === routes[a].routeId)];
-    const away = (list: Capsule[]) => chunks(list.filter(c => !at.some(j => pointSegment(j.x, j.y, c.ax, c.ay, c.bx, c.by) < j.r)));
+    const at = [...(routes[a].junctions ?? []).filter(j => j.routeId === routes[b].routeId), ...(routes[b].junctions ?? []).filter(j => j.routeId === routes[a].routeId),
+      ...besideRun(routes[a], routes[b]), ...besideRun(routes[b], routes[a])];
+    const within = (c: Capsule, strip: boolean) => at.some(j => !!j.strip === strip && pointSegment(j.x, j.y, c.ax, c.ay, c.bx, c.by) < j.r);
+    const away = (list: Capsule[]) => chunks(list.filter(c => !within(c, false)).map(c => within(c, true) ? { ...c, r: c.r - S.clearance / 2, strip: true as const } : c));
     const [ea, eb] = at.length ? [away(raw[a]), away(raw[b])] : [envelopes[a], envelopes[b]];
     const touch = touches(ea, eb);
     if (!touch) continue;
     const { reroutes, touched, ...where } = touch;
     // only automatic reroutes of one road among the works too close: that road may plan them again clear of the other's
-    const keepClear = (k: number) => (at.length ? (k === a ? away(raw[b]) : away(raw[a])).flatMap(c => c.items) : raw[k === a ? b : a])
-      .map(({ ax, ay, bx, by, r }) => ({ ax, ay, bx, by, r: r + S.clearance / 2 })); // (the reroute's own half of the clearance)
+    const keepClear = (k: number) => (at.length ? (k === a ? away(raw[b]) : away(raw[a])).flatMap(c => c.items) : raw[k === a ? b : a] as Capsule[])
+      .map(({ ax, ay, bx, by, r, strip }) => ({ ax, ay, bx, by, r: r + (strip ? S.stripMargin : S.clearance / 2) })); // (the reroute's own half of the clearance)
     const yields = ([[a, reroutes[0]], [b, reroutes[1]]] as const).filter(([, y]) => y).map(([k]) => ({ routeId: routes[k].routeId, keepClear: keepClear(k) }));
     // (else the later road of the two keeps its earthworks clear of the other's works it came too close to, behind
     // a wall where its slope would reach them: once more, kept where it settles more)
-    if (!yields.length) yields.push({ routeId: routes[b].routeId, keepClear: touched[0].map(({ ax, ay, bx, by, r }) => ({ ax, ay, bx, by, r: r + S.clearance / 2,
+    if (!yields.length) yields.push({ routeId: routes[b].routeId, keepClear: touched[0].map(({ ax, ay, bx, by, r, strip }) => ({ ax, ay, bx, by, r: r + (strip ? S.stripMargin : S.clearance / 2),
       wall: true as const, ...routes[a].railway ? { railway: true as const } : {} })) });
     interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land', ...where, ...(yields.length ? { yields } : {}) });
   }

@@ -14,6 +14,7 @@ import { CATEGORIES, pairedCategoryOf, type CategoryId } from './data/categories
 import type { CrossingOverride, LinkEnd } from './crossings';
 import type { RoadNet } from './roadnet';
 import { lineAsDrawn, plannedKept, type OldPaths } from './project-kept';
+import { oldPieces } from './stretch-chain';
 
 export type SourceWays = ReadonlyMap<string, number>;
 /** Map class of a designed road of each legal class (ROAD_CLASSES key). */
@@ -205,6 +206,30 @@ export interface EditedNetwork {
   /** the plan line each designed road is drawn with (by route id) */
   lines: Map<string, number[]>;
 }
+/** The rebuilt stretches' old roads as cuts of the legacy network, one per piece, at the stretch's slot. Interval ends
+ * are the route's end anchors (promotion invariant), measured on the legacy way itself. A stretch over several ways
+ * (core/stretch-chain.ts): what is left beyond its ends keeps its way's number, or the stretch's slot (one); a second
+ * one, from its way's start, is a trim (`trims`: the rest keeps the way's number, measured from its new start, as a
+ * piece taken up from a way's start is: project-evaluate.ts wayHeads). */
+export function rebuiltCuts(roads: RoadNet, design: ProjectDesign, sourceWays: SourceWays | undefined) {
+  const cuts: { way: number; d0: number; d1: number; slot: number }[] = [], trims: { way: number; d0: number; d1: number; trim: true }[] = [];
+  rebuiltSlots(design).forEach((r, slot) => {
+    const pieces = oldPieces(roads, r, design.connections, sourceWays);
+    let used = false;
+    for (const { way, d0, d1 } of pieces ?? []) {
+      // (a chain's joints are its ways' ends exactly: oldPieces)
+      const rest = pieces!.length > 1 && d1 < (roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0);
+      if (rest && used && d0 === 0) trims.push({ way, d0: 0, d1, trim: true });
+      else { cuts.push({ way, d0, d1, slot }); used ||= rest; }
+    }
+  });
+  return { cuts, trims };
+}
+/** Pack ways whose start is gone from every edited network (a dead end taken up from its start, a rebuilt stretch's
+ * trim): how far, m (what is left is measured from its new start). */
+export function wayHeads(roads: RoadNet, design: ProjectDesign, sourceWays: SourceWays | undefined): Map<number, number> {
+  return new Map([...takenUpTrims(roads, design, sourceWays), ...rebuiltCuts(roads, design, sourceWays).trims].filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
+}
 /** An old line in a cache key: its points' count and sums (it follows from the stretch's source and ends, both in the key). */
 const oldKey = (old: OldPaths | undefined) => old ? old.map(p => { let x = 0, y = 0; for (const q of p) { x += q.x; y += q.y; } return [p.length, x, y]; }) : null;
 /** Recently built networks (a full evaluation asks for one per road; building one costs only its edits). */
@@ -218,16 +243,7 @@ const cache: { key: string; base: RoadNet; net: EditedNetwork }[] = [], CACHE = 
 export interface MovedWays { cuts: { way: number; d0: number; d1: number }[]; ways: { cls: string; xy: number[] }[] }
 export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: readonly RouteDesign[], sourceWays: SourceWays | undefined,
   endsOf: (route: RouteDesign) => ResolvedEnds = () => undefined, oldOf?: OldLineOf, moved?: MovedWays): EditedNetwork | null {
-  const cuts: { way: number; d0: number; d1: number; slot: number }[] = [];
-  rebuiltSlots(design).forEach((r, slot) => {
-    const intervals = r.source!.intervals;
-    const way = intervals.length === 1 ? sourceWays?.get(intervals[0].sourceId) : undefined;
-    if (way === undefined) return;
-    // Interval ends are the route's end anchors (promotion invariant); measured on the legacy way itself.
-    const da = roads.wayStation(way, r.endpoints.a.position.x, r.endpoints.a.position.y);
-    const db = roads.wayStation(way, r.endpoints.b.position.x, r.endpoints.b.position.y);
-    cuts.push({ way, d0: Math.min(da, db), d1: Math.max(da, db), slot });
-  });
+  const { cuts, trims: chainTrims } = rebuiltCuts(roads, design, sourceWays);
   // a rebuilt road must leave its old road out of its own network (a rebuilt railway's old track is taken up
   // by the railway kernel itself: EvalOptions.railRetired)
   if (owners.some(r => r.kind === 'road' && r.source?.intervals.length && !cuts.some(c => c.slot === rebuiltSlots(design).indexOf(r)))) return null;
@@ -235,7 +251,7 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   const rebuilt = rebuiltSlots(design).length;
   // dead ends the player cut back (core/taken-up.ts): gone, what is left keeps its way's number (a way cut back from its
   // start is measured from its new start: what was measured on it, as another road's relocations, is shifted back)
-  const trims = takenUpTrims(roads, design, sourceWays), head = new Map(trims.filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
+  const trims = [...takenUpTrims(roads, design, sourceWays), ...chainTrims], head = new Map(trims.filter(t => t.d0 === 0).map(t => [t.way, t.d1]));
   moved?.cuts.forEach((c, k) => { const by = head.get(c.way) ?? 0; cuts.push({ ...c, d0: c.d0 + by, d1: c.d1 + by, slot: rebuilt + k }); });
   const all: Parameters<RoadNet['edited']>[0] = [...cuts, ...trims];
   const slots = designedSlots(design);

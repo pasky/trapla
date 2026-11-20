@@ -33,8 +33,11 @@ export interface MappedLineKind {
   rebuildable(base: ProjectTransportIndex, sourceId: string): Verdict<{ becomes: string }> | null;
   /** The atomic, undoable promote command for this stretch (its line converted explicitly once). */
   rebuild(base: ProjectTransportIndex, interval: SourceInterval, ids: RouteIds): Extract<ProjectCommand, { type: 'promote' }>;
-  /** The project with this rebuilt route's ends moved along its old line to [s0, s1] (one edit). */
-  moveEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, s0: number, s1: number): ProjectDesign;
+  /** The project with this rebuilt route's stretch moved along its old line to `next` (its intervals in route order; one
+   * edit). */
+  moveEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, next: readonly SourceInterval[]): ProjectDesign;
+  /** its stretch may run on past a junction onto the next way of the same line (core/stretch-chain.ts) */
+  chains?: boolean;
 }
 /** where an end on a mapped road goes: the project, and the line whose end it is (when one is dragged) */
 export interface SourceContext { design: ProjectDesign; exclude?: string }
@@ -106,7 +109,8 @@ export const ROAD_LINE: MappedLineKind = {
     return { ok: true, becomes: CATEGORIES[crossSection].minor ? `${kind} (${code})` : `class ${legalClass} road (${code})` };
   },
   rebuild: (base, interval, ids) => rebuildCommand(base, interval, ids),
-  moveEnds: (base, project, routeId, s0, s1) => moveStretchEnds(base, project, routeId, s0, s1),
+  moveEnds: (base, project, routeId, next) => moveStretchEnds(base, project, routeId, next),
+  chains: true,
 };
 export const ROAD_BUILD: BuildKind = {
   kind: 'road', label: 'Road',

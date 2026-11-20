@@ -279,8 +279,17 @@
  * the railway's card, offered by a pin's fix; a speed-change lane under it makes its bridge that much longer, billed with the
  * lane; a dead end taken up relies on no detour (project-ledger.ts). Frozen D11: straight −79.4 M, direct-80 −1.5, town-centre and town-controls
  * −2.7, the others unchanged; starters: I/35 Turnov 5.63 → 4.49 bn, D35 stage 1 19.46 → 18.88 bn (PLAN.md "Dead ends at
- * our works; the railway carried over our road"). */
-export const COST_MODEL_VERSION = 62;
+ * our works; the railway carried over our road").
+ * Model 63: two roads of a project crossing at different levels, where the crossed one runs on beside the other from the
+ * crossing (an oblique crossing, a bend after it): their works there are that crossing's, keeping off each other's land
+ * but with no 10 m working strip between them; a side road's junction ramps or a dead end taken up meeting the other's
+ * works there are the crossing's; the crossed road's walls keep its slopes 1 m off the other's land (project-ledger.ts
+ * besideRun; D11 III/3012 slid along our bridge at km 2.32, unpriced since model 62, now priced). On a rebuilt stretch's
+ * part kept as the old road, a bridge or tunnel the kernel built wholly there is not built (drawn as the old road, as it
+ * was billed), and one reaching a part built anew is built whole and billed (project-kept.ts). Every frozen bill,
+ * starter and saved design unchanged (eval-regression, a rebuilt-stretch audit of 8 designs). PLAN.md "A rebuilt stretch
+ * over several ways". */
+export const COST_MODEL_VERSION = 63;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
