@@ -2876,3 +2876,92 @@ main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before;
   and D11 road III/3012 with the real mouse (no camera move, the crossing where it was dragged, undo labels), a second
   slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
   (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.
+
+## Dead ends at our works; the railway carried over our road (cost model 60, 2026-11-20)
+
+Two engine gaps (owner, after the dead-end cut-back): a mapped dead end under our works held Auto's line up, and the
+crossing engine could not carry an existing railway over our road.
+
+**1. A dead end Auto ends at our works itself.** I/35 Turnov km 3.0: the local road (OSM 37738160) climbs 15 % away from
+our road and ends 13 m from its centre line. Why it held the line: in the first pass our cutting there daylights over its
+last 17 m (no wall: its end lies under our crown); the footprint screen planned it as a dead end cut back to a turning
+area, but rebuilt the untouched old road beyond that area at the 6 % ramp gradient, which a 15 % road never meets
+("6 % grade needs support exceeding 10 m"); the way was left *blocked*, and the strict retry that follows a blocked road
+put our road on a 480 m and a 70 m bridge over it. Taking up 3 m (the owner's check) only moved its end out of the
+crown's reach so that a wall stood there. Nothing of it showed in the crossings (it never crosses our centre line).
+- `core/dead-ends.ts`: the mapped dead ends within 100 m of our crown and the piece of each that serves nothing our works
+  leave standing: from the dead end to its first junction with another way (5 m short of it, as the End handle), the first
+  house it comes within STUB_HOUSE of (a shed or garage does not count; one our slopes and working strip reach does), at
+  most STUB_LENGTH (the crossing engine's own stub rules). Asked by the retaining screen of a full evaluation only.
+- Retaining screen: such a piece is never bridged or tunnelled for where it lies under our crown (it is taken up), and
+  walled off beside us as any road (a cap at twice its relocation rate, tried first, left 8–9 m walls off and made the
+  embankment there dearer than a longer bridge: D11 direct-80 +21 M; the walls also narrow our earthworks, which the engine
+  only builds for protection). Its station memo is keyed by the pieces a station reads (`tests/retaining.test.ts`).
+- Footprint (`road-realignment.ts`): a dead end cut back keeps its untouched old road beyond the turning area at its own
+  grade; a track or service road just ends (no turning area: none at a crossing's closed track either); a dead end whose
+  end lies beyond our works is taken up from where they cover it, as far as it serves nothing (no further: else it is moved
+  aside as any road); a dead end whose pavement our earthworks cover at its end (its centre line beside a bridge end) is
+  one too. The piece taken up is billed beyond our earthworks at the taken-up rates (OTSKP 113131 / 11333 / 18231 / 18242,
+  `project-replacement.ts REMOVAL`; under them it goes with our earthworks, as before), drawn as removed (dashed) and gone
+  from the map (project `acceptedReplacements`). The card: "Local road: its last 32 m taken up, a turning area where it
+  now ends"; a track: "its last 24 m taken up (a dead end under our earthworks)".
+- Access rules: a building (no shed or garage) that the piece taken up was the only road to (none within STUB_HOUSE once it
+  is gone, the taken-up check) is no longer cut off silently: the track ends at the foot of our slopes instead of the
+  setback where that keeps it served, else, its road buried by our earthworks, it is bought out (the last resort of the
+  access rules, research/86: no detour exists; billed with our buildings, `in: 'access'`, the card says so). D3 default
+  km 0.45: a home (+11 M).
+- `crossing-works.ts`: a ramp leaving the ground is screened at its segment's middle too, as it is drawn (D11 straight
+  km 5.90: the box's ramp over a shed it left standing, `tests/works-clash.test.ts`, after our grade there moved 0.2 m).
+- `scripts/dead-end-audit.ts` (a gate): every pack's straight start, saved designs and starters; each such dead end and
+  what became of it; exit 1 if one is still in the way within what serves nothing, or a piece taken up was the only road
+  to a building left standing. After: 131 dead ends taken up to a turning area, 11 ending at our earthworks (tracks); the
+  only ones in the way are under bridge piers (I/35 straight, not valid anyway: piers keep off every road, open).
+
+**2. The railway carried over our road on a new bridge** (`core/rail-over.ts`, research/105). A mapped railway's crossing
+(its raster samples on our line, grouped; the rail level their highest ground; its direction the raster's principal axis
+within 30 m; double track where its band is wider than 12 m across it, PROVISIONAL) is crossed by our bridge over it
+(as ever: 7.5 m) or under a new bridge of the railway: our road at least the clear height under a bridge (ČSN 73 6201 as
+VŠB VMK 02 and ŘSD R 111 give it: 4.80 m motorways and class I–II, 4.50 class III and collector local roads, 4.20 access
+roads; + 0.15 m to the bridge) and the bridge's depth (PROVISIONAL 1.8 m: the deepest of four Czech short-span ballasted
+bridges found, 0.99–1.77 m) under the rails: 6.75 m for our roads. The bridge: as long along the railway as our crown is
+wide across it, 9.72 / 11.29 m wide (single / double track: two built examples, PROVISIONAL), SPOŽES 2026 H01 (≤ 40 m,
+86,800 CZK/m²; H02 over) × 1.13 (P1 bridges mark-up) and a provisional bridge of its area the trains use meanwhile (H07,
+39,800 CZK/m²; the I/27 Přeštice bypass's staging: provisional structures in a first possession, the bridge in a second;
+the possessions' replacement buses not priced). E.g. D11 km 14.13: 15 m, single track, 20.6 M.
+- Auto: the grade search's either-or clearance (as for a stream's culvert or our bridge) with that bridge's price added
+  where the line passes under (`autoprofile.ts eitherH.belowCost`, spread over the stations carrying the crossing); our
+  bridge where it passes over. Not at a sharper angle than 30° to our road or over a band of tracks longer than 60 m
+  along it (engine bounds, PROVISIONAL): there our bridge as before. The retaining and footprint screens take its cells
+  under our crown as on its bridge; beside them our slopes are walled (its wing walls, billed as retaining walls; the
+  search does not foresee them). Not modelled: ground water in the cutting under a railway in a valley floor.
+- The player: the railway's card (click its deck on the map, its mark in the profile, or "Railway" on our bridge's or
+  cutting's card): how it is crossed and why, the price, Auto / Our bridge over it / The railway over us
+  (`Design.railCrossings`: where it crossed then; a choice holds for the crossing nearest it within 150 m; validated in the
+  project's controls; undo "a railway crossing"). Chosen where our road cannot get low enough: "Too high for the railway
+  to pass over · Lower the road here by X m, or choose "Our bridge over it"".
+- A pin that holds our road at a railway's level offers both ways past it: "Raise to 507.7 m: our bridge over it",
+  "Lower to 492.1 m: the railway on a bridge over us" (D11 km 14.13).
+- Drawn: the deck slab at the rails' level (its depth below them), parapets, ballast, the rails of its tracks
+  (`render/crossings.ts`); in the profile a rail mark at the rails' level and the deck over our road. Billed in our
+  crossings (SPOŽES rows with their own mark-up: no construction surcharge).
+
+**Bills (model 60; scripts/exact.ts against main 68f6d5b: 227 of 243 results changed).** Frozen D11 fixtures: straight
+8,761.2 → 8,675.4 M (−85.8: the railway at km 14.13 carried over our cutting, −100 M; a track's and a service road's dead
+ends taken up at km 4.32 and 5.52; the bridge at km 4.87–5.79 no longer held over a dead end under its crown, a fill in its
+middle with walls, +14 M as the structure choice does not see the borrow its fill needs); direct-80 4,384.1 → 4,382.6
+(−1.5: a track's dead end at km 9.65 taken up instead of a 6.6 m wall); town-centre and town-controls −2.7 (a track's dead
+end at km 14.05 taken up; the bridge beside it 10 m shorter); best, best-drag, best-pin, best-structures, best-manual,
+demo and direct-90 unchanged. Starters: I/35 Turnov 5,629.2 → 4,480.6 M (−967 the dead end at km 3.0, −181 the railway
+at km 0.47 carried over our cutting, 30.9 M), I/35 whole route 15,157.9 → 14,086.7, Jičín 5,371.2 → 5,236.6, D35 stage 1 motorway
+19,459.1 → 18,876.2 (the railway at km 9.61 carried over our cutting on a 27.5 m double-track bridge, 42.8 M,
+instead of our 70 m bridge over it: the line 10–17 m lower over km 9.1–9.9), D35 whole 33,238.9 → 32,613.9, D35 road 6,673.9 → 6,537.3, D3
+0301 5,082.1 → 4,855.0 and 0305 9,439.4 → 9,343.8 (dead ends), D3 full 36,080.7 → 35,972.2, D11 motorway 14,029.2 →
+14,026.2; dearer: the D3 road 4,004.8 → 4,015.9 (a home at km 0.45 whose only road our embankment buries is bought out,
+before it was cut off unsaid), the D3 motorway 14,638.5 → 14,647.1, the Královec railway 10,760.2 → 10,800.6 (the 370 m
+bridge at km 10.09 was held over a dead end under it; with that end taken up the structure choice fills 90 m of it,
+houses and borrow it does not weigh fully). Not valid designs: the D11 random designs and straight starts move both ways
+(up to +87 M, d11 random-1-1, where the search's railway bridge price does not foresee the walls beside it).
+- Checked: `scripts/dead-end-audit.ts`, `scripts/rail-dead-end-shots.mjs [--docs]` (screenshots 740–745: the I/35 dead
+  end in the quantities and close up, D11 km 14.13's railway over our cutting and its card, our bridge chosen instead,
+  the profile, the pin's two ways), `tests/dead-ends.test.ts`, `tests/road-realignment.test.ts`, `tests/retaining.test.ts`,
+  `tests/railway-mode.test.ts` (a motorway passes under a railway on a 6 m embankment).

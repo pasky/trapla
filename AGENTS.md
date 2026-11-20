@@ -178,6 +178,11 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   packs; without them those lines are absent.
 - A selected crossing's ring slides where the crossed road crosses ours, its works bend that road (`ui/crossing-drag.ts`);
   a selected mapped road's open dead end is cut back by its End handle, the piece taken up (`ProjectDesign.takenUp`,
-  `core/taken-up.ts`; PLAN.md "A selected crossing's parts drag; a dead end cut back"). Open: a dead end of a mapped road
-  under our embankment holds Auto's grade up (I/35 Turnov km 3.0: −961 M once its last 3 m are taken up).
+  `core/taken-up.ts`; PLAN.md "A selected crossing's parts drag; a dead end cut back").
+- A mapped dead end serving nothing beyond our works is ended there by Auto (cost model 60, `core/dead-ends.ts`,
+  `road-realignment.ts`): never bridged for, taken up to a turning area (a track just ends), billed and drawn as taken up;
+  a building it was the only road to is bought out where our earthworks bury its way in; `scripts/dead-end-audit.ts` is a
+  gate. An existing railway may be carried over our road on a new bridge (`core/rail-over.ts`, research/105): Auto weighs
+  it in the grade search, the player picks it on the railway's card, a pin's fix offers it. Open: piers still keep off
+  dead ends; the search does not foresee the walls beside a railway bridge; no ground water under a railway in a valley.
 - See PLAN.md "Next steps" and each section's "Known issues".

@@ -440,6 +440,18 @@ Also: [the slide's live preview](docs/screenshots/701-crossing-ring-sliding.png)
 [D11 road III/3012](docs/screenshots/704-d11-iii-3012-ring.png) [slid](docs/screenshots/705-d11-iii-3012-slid.png),
 [a cut way's ring says why](docs/screenshots/706-cut-way-ring-says-why.png), [the dead end dragged back](docs/screenshots/708-dead-end-dragged-back.png).
 
+A mapped dead end that serves nothing beyond our works is ended beside them by Auto (its last metres taken up, billed
+and drawn so, a turning area on a public road); an existing railway may be carried over our road on a new bridge (Auto
+weighs it, the player picks it on the railway's card, a pin's fix offers it). `node scripts/rail-dead-end-shots.mjs
+[--docs]` (screenshots 740–745), `npx tsx scripts/dead-end-audit.ts`.
+
+| I/35 km 3.0: the local road's dead end taken up | The railway over our cutting at D11 km 14.13 |
+|---|---|
+| ![Dead end](docs/screenshots/741-i35-dead-end-close.png) | ![Railway over us](docs/screenshots/742-d11-railway-over-us.png) |
+
+Also: [the dead end in the quantities](docs/screenshots/740-i35-dead-end-taken-up.png), [our bridge chosen instead](docs/screenshots/743-d11-railway-our-bridge-chosen.png),
+[the profile](docs/screenshots/744-d11-railway-profile.png), [a pin's two ways past the railway](docs/screenshots/745-d11-pin-railway-over-us.png).
+
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
 | ![Mapped road selected](docs/screenshots/100-mapped-road-selected.png) | ![Mapped road rebuilt](docs/screenshots/101-mapped-road-rebuilt.png) |

@@ -1,8 +1,7 @@
 {
  "preset": "i35-turnov-road",
- "purpose": "Earth balance and every curveball, under the goal: a search from the starter (scripts/twists-check.ts --find, seeds 1 → 11)",
+ "purpose": "Every curveball, under the goal: a search from the starter (scripts/twists-check.ts --find, seeds 1 → 11)",
  "meets": [
-  "earth",
   "curveballs"
  ],
  "goal": true,

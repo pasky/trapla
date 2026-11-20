@@ -48,6 +48,7 @@ outcome-audit|node|full|npx tsx scripts/outcome-audit.ts --quiet --straight scri
 local-retry|node|full|npx tsx scripts/local-retry-report.ts
 vc-overlap|node|full|npx tsx scripts/vc-overlap-audit.ts
 bridge-ends|node|full|npx tsx scripts/bridge-ends-audit.ts
+dead-ends|node|full|npx tsx scripts/dead-end-audit.ts --quiet
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 scenario-d11-motorway|node|full|env SCENARIO=d11 PRESET=d11-motorway node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts
 $(for p in i35-turnov i35-rovensko i35-jicin i35-full; do echo "scenario-$p-road|node|full|env SCENARIO=$p PRESET=$p-road node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
@@ -57,6 +58,7 @@ playtest|browser|full|PORT=\$((PORT + 20)) OUT=$log/playtest-shots node scripts/
 toolbar|browser|full|PORT=\$((PORT + 30)) node scripts/toolbar-layout.mjs --out $log/toolbar-shots
 interchange|browser|full|PORT=\$((PORT + 80)) node scripts/interchange-scene.mjs
 crossing-drag|browser|full|PORT=\$((PORT + 90)) node scripts/crossing-drag-scene.mjs
+rail-dead-end|browser|full|PORT=\$((PORT + 100)) node scripts/rail-dead-end-shots.mjs
 smoke-dist|browser|full|DIST=dist PORT=\$((PORT + 40)) node scripts/smoke.mjs
 playtest-dist|browser|full|DIST=dist PORT=\$((PORT + 50)) OUT=$log/playtest-dist-shots node scripts/playtest.mjs
 toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-layout.mjs --out $log/toolbar-dist-shots

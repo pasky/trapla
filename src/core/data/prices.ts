@@ -257,8 +257,16 @@
  * (scripts/edit-locality.ts): Královec pin 441.9 m at km 2.03 10.76 → 10.54 bn (too steep next to it, the stream at km
  * 2.087 in the cut), 439.5 m there 10.76 → 10.62 bn, +5 m at km 4.2 10.69 → 10.77 bn, D11 −8 m at km 7.2 3.66 → 3.68 bn,
  * the owner's I/35 pin 256.0 m at km 0.29 5.63 → 5.36 bn, all not valid; nothing beyond 10 km of a pin changes (PLAN.md
- * "A pin the player set is honoured"). */
-export const COST_MODEL_VERSION = 59;
+ * "A pin the player set is honoured").
+ * Model 60: a mapped dead end serving nothing beyond our works is ended there by Auto (core/dead-ends.ts): never bridged
+ * for under our crown, cut back to a turning area whose old road beyond keeps its own grade (a track just ends), its piece
+ * taken up billed beyond our earthworks at the taken-up rates and gone from the map, a building it was the only road to
+ * bought out where our earthworks bury its way in; an existing railway may be carried over our road on a new bridge
+ * (core/rail-over.ts, research/105: ČSN 73 6201 clearance, SPOŽES H01/H02 + H07), weighed by the grade search, chosen on
+ * the railway's card, offered by a pin's fix. Frozen D11: straight −85.8 M, direct-80 −1.5, town-centre and town-controls
+ * −2.7, the others unchanged; starters: I/35 Turnov 5.63 → 4.48 bn, D35 stage 1 19.46 → 18.88 bn (PLAN.md "Dead ends at
+ * our works; the railway carried over our road"). */
+export const COST_MODEL_VERSION = 60;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
