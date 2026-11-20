@@ -41,6 +41,8 @@ export interface SelectionContext {
   routeCard(): void;
   /** our road starts selected (a first-time player: the intro is up) */
   readonly startSelected: boolean;
+  /** the road itself was just selected (ui/slip-sweep.ts) */
+  onRoadSelected?: () => void;
 }
 
 /** Selecting these selects the road itself (a drag on it then bends it); anything else (a crossed road, a culvert,
@@ -187,6 +189,7 @@ export function createSelection(app: SelectionContext) {
     const sel = app.session.sel;
     setRoadSelected(true);
     select(sel && ROAD_KINDS.has(sel.kind) ? sel : null);
+    app.onRoadSelected?.();
   };
   if (app.startSelected) setRoadSelected(true);
   showRoadSelected();

@@ -195,5 +195,22 @@ try {
     await page.waitForTimeout(900); await shot(679, 'reveal-took');
     await page.locator('.reveal').getByRole('button', { name: 'Keep improving' }).click();
   }
+  // 9. a finished slip road, first selected: one stroke in its driving direction, then gone; not again
+  if (want('slip')) {
+    await game.open('scenario=d3-0303&preset=d3-0303-motorway');
+    const d = JSON.parse(readFileSync('tests/fixtures/interchange/d3-0303-diamond.json', 'utf8'));
+    await T((d) => window.trapla.setProject(d), d); await idle();
+    await T(() => window.trapla.lookAt(3510, 7790, 700, 0, 60)); await idle(); await still();
+    const slips = await T(() => window.trapla.getProject().routes.filter(r => r.name === 'Slip road').map(r => r.id));
+    assert.ok(slips.length >= 1, `slip roads: ${slips}`);
+    await T((id) => window.trapla.setActiveRoute(id), slips[0]);
+    assert.equal(await T(() => window.trapla.sweeping()), true, 'the first selection draws its stroke');
+    await page.waitForTimeout(700); await game.frames(1);
+    await shot(680, 'slip-road-stroke');
+    await page.waitForFunction(() => !window.trapla.sweeping(), null, { timeout: 20000 });
+    await T(() => window.trapla.select(null)); await T(() => window.trapla.setActiveRoute('route:motorway-forward')); await idle();
+    await T((id) => window.trapla.setActiveRoute(id), slips[0]);
+    assert.equal(await T(() => window.trapla.sweeping()), false, 'once only');
+  }
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

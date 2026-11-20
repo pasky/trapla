@@ -173,6 +173,8 @@ export function installAutomation(c: AutomationContext): void {
     /** the fly-along held `run` metres from end `from` (Esc lets go), or flying on (no `run`) */
     flyAlong: (from: 'a' | 'b', run?: number) => { if (c.last) c.flyAlong.start(c.last, from, run); },
     flying: () => c.flyAlong.flying,
+    /** a slip road's one-off stroke is being drawn (ui/slip-sweep.ts) */
+    sweeping: () => c.view.sweeping,
     screenOf: (x: number, y: number, z: number) => c.view.project(x, y, z),
     resetCamera: () => c.view.resetCamera(),
     /** select something (as a click would): a bend, pin, crossing, building, stretch or piece at a station */

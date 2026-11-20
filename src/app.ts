@@ -53,6 +53,7 @@ import { createMapGestures } from './ui/map-gestures';
 import { radiusNotes } from './ui/radius-notes';
 import { natureNotes } from './ui/nature-notes';
 import { earnedRecord } from './ui/records';
+import { slipDrive } from './ui/slip-sweep';
 import { MINED_TUNNEL_LORE } from './core/data/lore';
 import { shownS } from './ui/chainage';
 import { watershedLine, type BasinData } from './core/basins';
@@ -239,6 +240,8 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
   const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
   // ---- the selection (ui/selection.ts) ----
+  /** the slip roads already drawn once */
+  const swept = new Set<string>();
   const selection = createSelection({
     session, store, projectStore, pack, view, profile, extras, hud, inspector, annotations, intro, buildTool, activeEndpoints,
     get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
@@ -247,6 +250,14 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
     // A first-time player (the intro is up) finds our road selected, so the first drag bends it as the intro
     // says; a returning player's drags move the map until a click selects a road.
     startSelected: intro.visible,
+    // a finished slip road, the first time it is selected: one stroke in its driving direction (ui/slip-sweep.ts)
+    onRoadSelected: () => {
+      const id = store.activeRouteId, full = session.projectFull;
+      if (!id || swept.has(id) || !full?.complete) return;
+      const r = full.routes[id]?.legacy, pts = r && slipDrive(projectStore.snapshot.design, id, r, (q) => full.routes[q]?.legacy);
+      if (!pts) return;
+      swept.add(id); view.sweepLine(pts);
+    },
   });
   const { selectedPi, select, selectPiece, revalidate, deselect, selectRoad } = selection;
   view.onEndClick = (end) => select({ kind: 'end', end });

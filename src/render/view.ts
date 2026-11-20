@@ -2063,6 +2063,37 @@ export class View {
   get selectedPi() { return this.selected; }
   /** the orbit target in local map coordinates (diagnostics) */
   get target() { const t = this.controls.target; return { x: t.x + this.cx, y: this.cy - t.z }; }
+  private sweep: { line: Line2; raf: number } | null = null;
+  /** One stroke drawn along `points` (local metres) from its first to its last over `ms`, then faded away and gone
+   * (a slip road shown once in its driving direction, ui/slip-sweep.ts). Nothing stays in the scene. */
+  sweepLine(points: readonly { x: number; y: number; z: number }[], ms = 1400) {
+    this.stopSweep();
+    if (points.length < 2) return;
+    const flat: number[] = [], v = new THREE.Vector3();
+    for (const p of points) { this.local(p.x, p.y, p.z * this.exag, v); flat.push(v.x, v.y, v.z); }
+    const line = this.makeLine(flat, null, 5, { color: 0xffffff, opacity: 0.95, depthTest: false, order: 30 });
+    line.name = 'sweep';
+    const geometry = line.geometry as LineGeometry, segments = points.length - 1, material = line.material as LineMaterial;
+    geometry.instanceCount = 0;
+    this.world.add(line);
+    const t0 = performance.now(), fade = 450;
+    const step = () => {
+      const t = performance.now() - t0, k = Math.min(1, t / ms);
+      geometry.instanceCount = Math.max(1, Math.round(segments * (1 - (1 - k) ** 2)));
+      material.opacity = 0.95 * (t <= ms ? 1 : Math.max(0, 1 - (t - ms) / fade));
+      this.dirty = true;
+      if (t < ms + fade) { this.sweep!.raf = requestAnimationFrame(step); return; }
+      this.stopSweep();
+    };
+    this.sweep = { line, raf: requestAnimationFrame(step) };
+  }
+  get sweeping() { return !!this.sweep; }
+  stopSweep() {
+    if (!this.sweep) return;
+    cancelAnimationFrame(this.sweep.raf);
+    this.world.remove(this.sweep.line); this.sweep.line.geometry.dispose(); this.retire(this.sweep.line.material);
+    this.sweep = null; this.dirty = true;
+  }
   private cameraHeld = false;
   /** Hold the camera at `eye` looking at `target` (local metres; a fly-along sets it every frame, ui/fly-along.ts):
    * no orbit, no glide meanwhile. `null`: the orbit back, about the target as it is. */
