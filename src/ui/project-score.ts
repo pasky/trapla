@@ -19,7 +19,7 @@ export function createProjectScore(app: ProjectScoreContext) {
   /** exactly the one legacy road: the unchanged single-road score/verdict applies (core's facade) */
   const legacyFacade = () => {
     const d = app.projectStore.snapshot.design, only = d.routes[0];
-    return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source
+    return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source && !d.takenUp?.length
       && app.store.activeRouteId === only.id && app.store.read() !== null;
   };
   /** player names of the routes; a motorway's two directions are one motorway (its forward name) */

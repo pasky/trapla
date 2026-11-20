@@ -2112,6 +2112,9 @@ must be; an overlap would be an engine limit at a km (never shown: the gate). Ra
 
 ## A drag past the next bend; an unreachable pin (sweep 3 second re-check P2s, no model version, 2026-11-18)
 
+(Superseded for the player's pins by "A pin the player set is honoured", cost model 59: a pin out of reach is met by a
+steeper line next to it; the suggestions below are the fix of what that costs.)
+
 **A drag along the road past the next bend** (D35, a drag at km 12 along the motorway put the new bend beyond
 bend 7: "turns back almost on itself (178°)"). Bends are corners in order from A to B; `core/bend-order.ts`
 `passBends`: where the dragged bend lies ahead of a neighbour along that neighbour's other leg (a turn of more
@@ -2140,6 +2143,9 @@ contain it (the pin −9 m at km 2.7 moves km 12.7, EXPECTED in edit-locality): 
 and leaving those windows unpruned made that pin's line 1.3 bn dearer, so it stays.
 
 ## A pin that leaves a crossing; bends left straight (P2 fixes re-check P1/P2s, cost model 51, 2026-11-18)
+
+(The pin's part is superseded by "A pin the player set is honoured", cost model 59: such a pin is met and the crossing's
+problem says so, its fix the pin; the rule below is the suggestion's check, `pinStrict`.)
 
 **A met pin left a stream in the railway's cut** (Královec starter, the suggested 439.5 m at km 2.03: the cut and cover
 began at km 2.15 instead of km 2.0, the stream at km 2.087 ran through the 8 m open cut, not valid, 198 M cheaper, both
@@ -2722,7 +2728,8 @@ validity unchanged. `node scripts/eggs-shots.mjs [--docs] [--only …]` plays ea
 New pack sidecars (gitignored, like `structures.json`): `basins.json` and `water-names.json`; copy them with the packs, or
 run `uv run --with pyshp --with shapely python pipeline/build_basins.py` and `uv run python pipeline/build_water_names.py`
 on a pack built without them (the main checkout's packs need it once). Without them the watershed line and the card's
-stream names are simply absent.
+stream names are simply absent. The i35 packs are left without both for now (no `basins.json`: their cached inputs
+differ from their manifests; no `water-names.json`: no cached watercourse snapshot); rebuilding them would add both.
 
 Ideas left for the owner: **carbon-3c** "Hear the level difference" (an opt-in sound on a house's noise card: a fixed
 sourced traffic sample at the floor's level with and without walls; the game's first sound, needs the EN 1793-3 table
@@ -2731,3 +2738,141 @@ lookouts (fable-9: they read at Raisova and Žampach, not at Trosky or Máj; ove
 "over the terrain, trees not drawn"), clickable viewpoints with the Cimrman lookout entry (carbon-1 card), place-name
 glosses (Dakota / Toronto), read-only structure names (fable-2, needs river names, now in `water-names.json`), the
 specimen envelope (astra-2, the rival of the ground band).
+
+## A pin the player set is honoured (owner request, cost model 59, 2026-11-20)
+
+**The owner's report** (I/35 Turnov → Valdštejnsko): a pin 256.0 m at km 0.29, where our road crosses the Liberec
+railway, said "Pinned height out of reach: a railway · Set it to …" and was not honoured (cost model 51: a pin met only
+by missing a crossing's clearance was left out like one too steep). "I'd instead expect a violation about the railway
+bridge being too low or something, but honor my pins if set manually."
+
+**Now (`autoprofile.ts` `honour`, `spliced`):** a pin of the player's that the search cannot meet within the norm (out of
+the slopes' reach, or no line found: reason `gradient-envelope` / `search`), or meets only by missing a crossing Auto's
+own line clears (a stream, a river, a railway, a protected area, a structure of the player's; each new miss put down
+to the pin in the way: of the three nearest it, the first without which Auto's line clears it, else the nearest), is met. Auto's own line without those pins is kept everywhere but a span either
+side of each, 500 m first, then 1 and 2 km where no line is found there: the same knots, its heights and grades fixed at
+the knots just outside, the span re-solved by the same DP at its blocks' material values. Within the span the line may
+be steeper than the norm where the way from Auto's line at the span's ends to the pin needs it (`steep`: the grade
+straight there or the norm's, plus a quarter of the norm's for the curves at the ends, at most `STEEP_MAX` × the norm's),
+the search paying
+`STEEP_PENALTY` (10 M CZK per metre per x(1 + x), x the excess over the norm's grade: a search parameter, never billed)
+so the line is no steeper than it must be and spreads the climb. A pin out of reach even so (beyond `STEEP_MAX` = 2.5 ×
+the norm's grade, game rule PROVISIONAL: no norm says how steep a road is built against a pin; the factor the search's
+own last resort uses) is left out as before and said at the pin ("Pinned height out of reach: too steep … Auto finds no
+road to it even 2.5 times as steep as allowed, so it leaves it out"). Pins more than 4 km apart (twice the widest span)
+are honoured each on its own: one out of any reach leaves the others honoured. The retries and lifts of the evaluation
+re-solve on their own line with the same spans (`AutoProfileOptions.honoured`, `steep`, refreshed after each accepted
+retry).
+
+**What it costs is said where it is** (`grade-pins.ts` `honouredPinFixes`, `applyPinFixes`): the too-steep stretches next
+to the pin ("Too steep: 19.7 ‰ climb") and the problems at a crossing the pin's line misses (`pinClearanceBlame`, within
+60 m of it: "Road too low over the railway", "Our earthworks cover a railway", "Our cutting runs through a stream", "Our
+earthworks block a stream", …) get the pin as their fix: "Set the pin at km 0.29 to 260.7 m, or unpin", the height the
+old strict rule finds (`pinStrict`: the suggestion's check, unchanged: a height whose first solve within the norm misses
+no crossing, tried with the player's other pins as they are; none where that is the height the pin has: "Unpin the
+height at km …"), buttons "Set the pin to 260.7 m" and "Unpin" (`ViolationTarget.pin`), the detail "Your height pin (256.0 m
+at km 0.29) holds our road here. At 260.7 m it clears this." / "… is out of reach within the limit: Auto builds our road
+through it as steep as it must be." The pin's card lists them ("Auto passes within 0.5 m of it, at a cost:"). A bridge's
+span problem at a crossing the pin holds too low is dropped beside the crossing's own ("Road too low over the railway"),
+and no lift raises the structure there (a lift against the pin cannot succeed, and it took the lifts of the stretch with
+it: I/35, a stream bridge at km 1.19 "too low" 0.7 km away). No remedy is invented to meet the pin: the crossing stays as
+the line leaves it (a railway in our cut, a stream in our cut), billed as built.
+
+**One problem per crossing, each way past it** (the owner's polish): of the problems at a crossing a pin's line misses,
+one is kept (its clearance before our works on it and our bridge's span there), said as what our road does there: "Our
+road meets the railway at its level (2.2 m under its rails)", "Our bridge over the railway is too low (3.1 m over it, it
+needs 7.5 m)"; a stream's or a road's keeps its own title. Its fix lists each way past the crossing the pin can take
+within the norm (`evaluate.ts` `pinWays`), a button each: over it ("Raise to 260.7 m: our bridge over it", a culvert
+under us for a stream) and, where something can carry it over us, under it (a motorway passed under: "its bridge over
+us"; a stream: "a tunnel under the stream", our line 9 m under its bed). A railway or a river is never carried over our
+road by the engine, so it offers only the raise and says nothing of lowering. A way's height is the fix's own suggestion
+where that lies that way, else the pin moved by what the line misses that way's clearance by (× 1, 1.5, 2.5), checked by
+the strict solve with the other pins as they are; a way none reaches is not offered (the Královec stream at km 2.087:
+only "Lower to 438.3 m: a tunnel under the stream", a culvert 8 m up is out of the norm's reach). Screenshots 690–692
+retaken.
+
+**Played** (`node scripts/pin-honour-shots.mjs`, screenshots 690–696): I/35 starter 5.63 bn VALID; the road line dragged
+in the profile at km 0.29 and 256.0 typed on the pin's card: 5.36 bn NOT VALID, our road 2.2 m under the railway at km
+0.47 in a cut: "Our road meets the railway at its level (2.2 m under its rails) · Raise the pin at km 0.29 to 260.7 m
+(our bridge over it), or unpin" (before the polish: two problems there, "Our earthworks cover a railway" and "Road too
+low over the railway"); the grade as the starter's beyond km 0.9; the button: 6.07 bn VALID (690–693). The Královec railway
+pin 441.9 m at km 2.03 (4 m over the climb at its 12.5 ‰ limit): 10.54 bn NOT VALID, "Too steep: 19.7 ‰ climb" km
+1.53–1.78 and 13.8 ‰ km 1.78–2.03 (the crest at the pin takes height, so the climb is not one grade), the stream at km
+2.087 through the cut ("Lower the pin … to 438.3 m (a tunnel under the stream)"), the steep ones "Set the pin at km 2.03
+to 438.3 m"; the grade as Auto's own outside km
+1.5–2.6 (694, 695); 100 m higher: left out, 10.76 bn, one problem at the pin (696). The pin 439.5 m there: 10.62 bn,
+the stream's problem only. Edit-locality (new QA cases: the owner's I/35 pin, the Královec stream pin): the
+Královec pin +5 m at km 4.2 10.69 → 10.77 bn (its plain line left the stream at km 2.08 in the cut 2 km away: honoured
+locally, too steep 21.9 / 19.5 ‰ at km 3.7–4.2), D11 −8 m at km 7.2 3.66 → 3.68 bn (honoured: two bridge spans too
+low); nothing beyond 10 km changes in any suite. Frozen bills and the twists' references unchanged.
+
+**Tried first, not kept:** Auto's line held by two more pins at its own heights either side (the span's ends): the line
+met them within the pins' ±0.5 m and then climbed its 12.5 ‰ limit 1 m lower to km 8.5, and the lifts at km 9.8 and the
+boundary at km 11.21 moved 4 m at km 12 (Královec). Splicing keeps the knots outside exactly. And a lift failed anywhere
+on a line with a steep stretch, as its grade envelope met that stretch between two points it cannot move
+(`profile-remedies.ts`: such a pair is the line as it was, skipped; only on a pinned line, so an unpinned one's lifts are as
+before). A review's repros are tests (tests/grade-pins.test.ts): a pin out of any reach 5.8 km from one out of the
+norm's reach leaves that one honoured; a pin needing just under 2.5 × the norm is honoured (the curves' slack was counted
+against the cap); one pin under two crossings is blamed for both; of two pins, the one in the way is blamed, not the
+nearer. A span's ends keep the line's own heights (on the solve's other grid they were rounded by up to 8 cm).
+
+**Pins Auto adds:** none. Twists and curveballs set no pins; a motorway direction's pins where the two run side by side
+are the player's (checked, reported); the span's ends are not pins. A suggestion's check (`pinStrict`) keeps the old rule.
+
+**Known issues:** an honoured pin's line may cost less than Auto's own where it gives up a structure (I/35 −331 M: no
+bridge over the railway): not valid, the bill as built. A
+pinned evaluation with such a pin solves more (Auto's line without it, the spans, up to six suggestion solves per pin, in
+every pass of the evaluation): the Královec project with the pin 441.9 m or 439.5 m ≈ 3.0–3.4 s, without a pin ≈ 0.5 s,
+main's left-out rule 1.7–3.0 s; a reachable pin (438.3 m) ≈ 0.6 s as before; drag-perf pin mode within its budgets.
+`scripts/exact.ts`: all 243 results of 16 packs identical to main.
+
+## A selected crossing's parts drag; a dead end cut back (owner report, no model version, 2026-11-20)
+
+- **Bug (owner, I/35 Turnov → Valdštejnsko, Photo view):** Nudvojovická (class III) carried over us at km 1.67, its card
+  open: "anywhere I click on the segment (the big circle, elsewhere), it just drags the landscape". Confirmed: a press on
+  the crossing's ring (it lets the pointer through to the map) or on its lit works selected or kept the crossing, which
+  had no drag, so the press was the camera's (a reroute's new road alone had one, `link-edit.ts`).
+- **Fix (select first, then drag; no modifiers; `ui/crossing-drag.ts`, `ui/map-gestures.ts`):** once a crossing is
+  selected, a drag of
+  - **its ring** slides where the crossed road crosses ours along our road: a mapped road is rebuilt (the any-road
+    editing: its stretch between junctions becomes a project road) and its piece around the crossing is moved across
+    its own direction, so that it keeps its angle to ours and crosses under the pointer (the bends whose curve comes
+    within 60 m of the crossing move together, or two new bends 20–60 m either side on a straight; corrected three
+    times where its curves make the first guess miss: UI choices, the norm then checks what was built). A road of the
+    project (the slid road the second time, a new railway) has its own bends moved alike. Undo "moving where
+    Nudvojovická crosses" (undo steps may now carry a label, `ProjectStore.commit(label)`);
+  - **its works** (ramps, deck, box, rebuilt piece) bends the crossed road as a drag on it selected does; the road's
+    card then shows (its bend card);
+  - **a reroute's new road** keeps its shaping and end handles.
+  The hover says what a drag does ("class III road · drag to move where it crosses", "drag to bend Nudvojovická") or
+  why not: a cut way's ring ("Cut here: pick how it crosses in the card"), a mapped bridge or tunnel ("Bridges and
+  tunnels of existing roads cannot be changed yet": a structure is a source of its own, and a rebuilt stretch is one
+  source between junctions, so the engine cannot rebuild the bridge with the road either side yet), a stretch a road
+  of the project ends on ("A road you built joins it here: …"; slip roads join outside the stretch between junctions:
+  D3 0303's II/105 slides between them, its slip roads stay). Mapped railways are raster obstacles with no crossing
+  card (nothing to drag).
+- **Live:** the first drag of a mapped road converted its line (≈ 70 ms of `fitRoad`) in the first move: the conversion
+  is now prepared at an idle moment after the selection (a crossing's ring stretch, a mapped road's card), used once.
+  A drag preview no longer runs the fix texts' radius searches (≈ 150 ms on a rebuilt road with a curve problem, every
+  move; the full result after release has them; bills unchanged). `drag-perf --mode crossing` (D11, I/35 whole route)
+  in the full gates: preview p50 10–12 ms.
+- **A dead end cut back (owner, same session):** a local road ending at our embankment near I/35 km 3.0 could not be
+  shortened. A selected mapped road's open dead end (no other way meets it, on the map, not a motorway, bridge or
+  tunnel, not rebuilt) now has an **End** handle (`ui/dead-end.ts`; hover "drag to shorten"); dragged back along the
+  road (no further than 5 m short of its last junction, so no other way loses its road; forward past where it ended:
+  nothing) the piece beyond is **taken up** (`ProjectDesign.takenUp`, `core/taken-up.ts`): gone from every road's network
+  (a trim of its way: what is left keeps the way's number, so crossing choices keep their ways) and from the map,
+  billed with our road at a rebuilt stretch's removal rates (OTSKP 113131 / 11333 / 18231 / 18242, layers PROVISIONAL,
+  research/30), nothing regraded. A house (no shed or garage) within 30 m of the piece and not within 30 m of any road
+  left is a problem ("A home loses its road · Leave more of the local road, or buy it out"; the rule of a track cut at
+  our road, STUB_HOUSE); bought out, it is settled. Undo "shortening Local road"; dragged out to where it ended, the road
+  is whole again.
+- **Finding (not fixed here):** that local road's last 3 m under our embankment hold the Auto grade up: with them taken
+  up the starter is 961 M cheaper (5.63 → 4.67 bn; with 120 m taken up, as in the check, the 480 m bridge at km
+  2.42–2.90 and a 70 m one at km 2.97–3.04 become 100 m and 180 m ones), with nothing about that way in the crossings or
+  footprint conflicts. Auto should end
+  such a dead end at our works itself (as it removes a dead end wholly under our earthworks) rather than build over it.
+- **Checked:** `scripts/crossing-drag-scene.mjs [--docs]` (gate `crossing-drag`; screenshots 700–709): both owner cases
+  and D11 road III/3012 with the real mouse (no camera move, the crossing where it was dragged, undo labels), a second
+  slide, a works drag, the cut way's hover, a road of yours joining the crossed road, the D3 0303 diamond, the dead end
+  (handle, hover, forward refused, −120 m, bill, the home's problem, undo). `tests/taken-up.test.ts`.

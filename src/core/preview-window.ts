@@ -329,7 +329,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const shiftS = <T extends { s0: number; s1: number }>(v: T, by: number): T => ({ ...v, s0: v.s0 + by, s1: v.s1 + by });
   // Plan checks belong to the whole alignment (the window run skips them): once, on the new plan.
   const local1 = (v: Result['violations'][number]) => !PLAN_KINDS.has(v.kind);
-  const violations = [...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+  const violations = [...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category, radiusSearches: 0 }),
     ...(d.pis.some(p => p.hairpin) ? hairpinViolations(al, d.pis, d.speed, d.category, ctx.terrain) : []),
     ...r.violations.filter(v => local1(v) && v.s1 < s0), ...w.violations.filter(local1).map(v => shiftS(v, s0)),
     ...r.violations.filter(v => local1(v) && v.s0 > old1).map(v => shiftS(v, shift))];

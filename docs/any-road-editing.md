@@ -984,3 +984,10 @@ Still open:
 
 Gates: tsc; 83 files / 704 tests; build; 11 frozen bills bit-exact; any-road-scene D11 (km 4.1 track
 9.863 bn) and D3; owner-d3-scene; mode-play (railway card) PASS.
+
+## 19. A crossing's parts, a dead end cut back (2026-11-20)
+
+A selected crossing's ring rebuilds its crossed mapped road around the crossing and slides it along our road; its works
+bend it as a drag on the road selected does (`ui/crossing-drag.ts`). A selected mapped road's open dead end has an End
+handle that takes its last piece up (`ProjectDesign.takenUp`, `core/taken-up.ts`). PLAN.md "A selected crossing's parts
+drag; a dead end cut back".

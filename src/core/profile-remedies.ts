@@ -58,6 +58,8 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
         const i = direction > 0 ? k : candidate.length - 1 - k, j = i - direction;
         const need = candidate[j].z - gradeLimitOf(maxGradient, Math.min(candidate[i].s, candidate[j].s), Math.max(candidate[i].s, candidate[j].s)) * Math.abs(candidate[i].s - candidate[j].s);
         if (candidate[i].z >= need - 1e-8) continue;
+        // (between two fixed points the line is as it was: a player's pin honoured by a stretch steeper than the norm)
+        if (locked[i] && locked[j] && pins.length) continue;
         if (locked[i]) { diagnostic?.(`radius ${radius}: grade bound reaches fixed km ${(candidate[i].s / 1000).toFixed(3)} (+${(need - candidate[i].z).toFixed(2)} m)`); impossible = true; break; }
         candidate[i].z = need;
       }

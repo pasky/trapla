@@ -185,12 +185,15 @@ export class RoadNet {
    * its part before the first cut); `extra[k]` is way `wayCount + k`; what follows cut `i` on its way (up
    * to the next cut) is way `wayCount + extra.length + (cuts[i].slot ?? i)`; `ground[k]` (ways another road of the
    * project built on the ground: its relocations) follows the last of those. */
-  edited(cuts: readonly { way: number; d0: number; d1: number; slot?: number }[], extra: readonly { cls: string; xy: readonly number[] }[],
+  edited(cuts: readonly { way: number; d0: number; d1: number; slot?: number; trim?: true }[], extra: readonly { cls: string; xy: readonly number[] }[],
     ground: readonly { cls: string; xy: readonly number[] }[] = []): RoadNet {
     const cls = this.clsNames.slice();
     const clsIndex = (name: string) => { let i = cls.indexOf(name); if (i < 0) { i = cls.length; cls.push(name); } return i; };
     const remnants = this.ways.length + extra.length;
-    const slots = cuts.reduce((n, c, i) => Math.max(n, (c.slot ?? i) + 1), 0);
+    // (a `trim` takes a way's end off, from its start or to its end: what is left keeps the way's index, no slot)
+    // (a cut's default slot is its place among the cuts that are no trims)
+    const order = cuts.map((_, i) => cuts.slice(0, i).filter(c => !c.trim).length);
+    const slots = cuts.reduce((n, c, i) => c.trim ? n : Math.max(n, (c.slot ?? order[i]) + 1), 0);
     const ways = [...this.ways, ...extra.map(e => [clsIndex(e.cls), ...e.xy]), ...Array.from({ length: slots }, () => [0]), ...ground.map(e => [clsIndex(e.cls), ...e.xy])];
     const changed = [...extra.map((_, k) => this.ways.length + k), ...ground.map((_, k) => remnants + slots + k)];
     // Several cuts of one way: what is left between them; the part before the first cut keeps the way's index.
@@ -198,7 +201,7 @@ export class RoadNet {
     cuts.forEach((cut, i) => {
       if (!this.ways[cut.way] || !(cut.d1 > cut.d0)) return;
       let list = byWay.get(cut.way); if (!list) byWay.set(cut.way, list = []);
-      list.push([cut.d0, cut.d1, cut.slot ?? i]);
+      list.push([cut.d0, cut.d1, cut.trim ? -1 : cut.slot ?? order[i]]);
     });
     for (const [way, list] of byWay) {
       const w = this.ways[way], total = this.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
@@ -214,11 +217,13 @@ export class RoadNet {
         const end = q + 1 < list.length ? list[q + 1][0] : total;
         if (end <= at + 0.01) return;
         const rest = piece(at, end);
-        if (rest.length >= 5) { ways[remnants + owner] = rest; changed.push(remnants + owner); }
+        // (what follows a trim from the way's start is the way itself)
+        const k = owner < 0 ? way : remnants + owner;
+        if (rest.length >= 5) { ways[k] = rest; changed.push(k); }
       });
     }
     // an edit of an edited network (not used by the game) is rebuilt in full
-    const net = this.override ? new RoadNet({ cls, ways }) : new RoadNet({ cls, ways }, { base: this, changed });
+    const net = this.override ? new RoadNet({ cls, ways }) : new RoadNet({ cls, ways }, { base: this, changed: [...new Set(changed)] });
     (net as { structures: ReadonlyMap<number, MappedStructure> }).structures = this.structures;
     if (extra.length) {
       net.designedWays = { from: this.ways.length, to: this.ways.length + extra.length };

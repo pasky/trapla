@@ -153,11 +153,13 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - A reroute's new piece can be led to another road by dragging its end (the square handle where it joins its road;
   `CrossingOverride.ends`, cost model 52, PLAN.md "A reroute led where the player drags its end"): built like Auto's
   own, a road that cannot take it leaves Auto's line and says why; a shaped side no longer builds the other side.
-- A pin Auto cannot reach is left out and said at the pin (the line stays Auto's own, engineered as such), also one
-  met only by leaving a crossing it must clear (a stream in an open cut; model 51); its suggested height is a button; a
-  drag past the next bend swaps the two in order, and a bend a drag leaves on the line goes on release
-  (`core/bend-order.ts`; PLAN.md "A drag past the next bend; an unreachable pin", "A pin that leaves a crossing; bends
-  left straight").
+- A pin the player set is honoured (model 59, PLAN.md "A pin the player set is honoured"): one out of the norm's reach or
+  met only by missing a crossing is met by Auto's own line re-solved within 500 m–2 km of it (spliced: the far line
+  exactly Auto's own), steeper than the norm there if it must be (at most 2.5 ×), the crossing missed if it must be; each
+  problem that causes says so where it is, its fix the pin (the height the old strict rule reaches, `pinStrict`, a
+  button) or unpin. Only a pin out of any reach is left out and said at the pin. A drag past the next bend swaps the
+  two in order, and a bend a drag leaves on the line goes on release (`core/bend-order.ts`; PLAN.md "A drag past the
+  next bend; an unreachable pin", "A pin that leaves a crossing; bends left straight").
 - Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
   in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
   boundary at km 11.21 sees that in its window; PLAN.md "Design realism").
@@ -174,4 +176,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   player made the structure, fly-along, the ground band, the watershed line, the printed bridge card. Two new pack
   sidecars, `basins.json` and `water-names.json` (pipeline/build_basins.py, build_water_names.py): copy them with the
   packs; without them those lines are absent.
+- A selected crossing's ring slides where the crossed road crosses ours, its works bend that road (`ui/crossing-drag.ts`);
+  a selected mapped road's open dead end is cut back by its End handle, the piece taken up (`ProjectDesign.takenUp`,
+  `core/taken-up.ts`; PLAN.md "A selected crossing's parts drag; a dead end cut back"). Open: a dead end of a mapped road
+  under our embankment holds Auto's grade up (I/35 Turnov km 3.0: −961 M once its last 3 m are taken up).
 - See PLAN.md "Next steps" and each section's "Known issues".

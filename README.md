@@ -424,6 +424,22 @@ crossroads on road II/114](docs/screenshots/628-slip-road-junction-on-road-ii-11
 diamond](docs/screenshots/632-d3-0303-diamond-overview.png), [its slip road past the tracks the motorway
 moves aside](docs/screenshots/633-d3-0303-slip-road-over-moved-track.png).
 
+A selected crossing's parts drag too (select first, then drag): its ring slides where the crossed road crosses ours
+along our road (the road rebuilt around the crossing, its angle kept; undo "moving where … crosses"), its lit works bend
+that road, a reroute's new road reshapes; what cannot move says why on hover. A selected mapped road's open dead end
+has an End handle: dragged back, the piece beyond is taken up (billed, nothing regraded; a home it was the only road to
+is a problem). Real-mouse check: `node scripts/crossing-drag-scene.mjs [--docs]` (screenshots 700–709).
+
+| The ring of Nudvojovická's crossing, selected | Slid along our road |
+|---|---|
+| ![Ring](docs/screenshots/700-crossing-ring-hover.png) | ![Slid](docs/screenshots/702-crossing-slid-its-card.png) |
+| A dead end's handle | Taken up: the home it served is a problem |
+| ![Dead end](docs/screenshots/707-dead-end-handle.png) | ![Taken up](docs/screenshots/709-dead-end-taken-up.png) |
+
+Also: [the slide's live preview](docs/screenshots/701-crossing-ring-sliding.png), [a drag on its works](docs/screenshots/703-crossed-road-works-bent.png),
+[D11 road III/3012](docs/screenshots/704-d11-iii-3012-ring.png) [slid](docs/screenshots/705-d11-iii-3012-slid.png),
+[a cut way's ring says why](docs/screenshots/706-cut-way-ring-says-why.png), [the dead end dragged back](docs/screenshots/708-dead-end-dragged-back.png).
+
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
 | ![Mapped road selected](docs/screenshots/100-mapped-road-selected.png) | ![Mapped road rebuilt](docs/screenshots/101-mapped-road-rebuilt.png) |
@@ -607,6 +623,12 @@ stream at km 2.09 in an open cut: out of reach, the tunnel kept](docs/screenshot
 [D35 km 4.2 dragged back past bend 2: the bend left on the line, "turns 0°"](docs/screenshots/484-d35-zero-turn-bend-before.png),
 [now gone on release](docs/screenshots/485-d35-zero-turn-bend-dropped.png); [a 2° neighbour the curve fit leaves out, gone on
 release too](docs/screenshots/492-d35-left-out-bend-dropped-on-release.png), [one left out that stays: its card](docs/screenshots/493-d35-left-out-bend-card.png).
+A pin the player set is honoured (cost model 59, `node scripts/pin-honour-shots.mjs`): [the owner's I/35 pin 256.0 m at km
+0.29: our road meets the Liberec railway at its level, one problem there, its fix the pin: raise it for our bridge](docs/screenshots/690-i35-pin-honoured-railway-too-low.png)
+([the problem's card](docs/screenshots/691-i35-pin-railway-problem-card.png), [the pin's: at a cost](docs/screenshots/692-i35-pin-card-at-a-cost.png)),
+[its button: 260.7 m, VALID](docs/screenshots/693-i35-pin-set-by-button-valid.png); [the Královec pin 441.9 m at km 2.03, out of
+reach of the climb: steeper next to it, said there](docs/screenshots/694-kralovec-pin-honoured-steep.png) ([its card](docs/screenshots/695-kralovec-pin-steep-card.png)),
+[100 m higher, out of any reach: left out, said at the pin](docs/screenshots/696-kralovec-pin-out-of-any-reach.png).
 Cost model 53 (before | after, `node scripts/render-works-strip-shots.mjs`): [Královec km 12.98: the houses beside road
 II/2253's ramps, 0.2–0.3 m from their toes, bought out with the working strip](docs/screenshots/510-rail-kralovec-km-12-98-ramps-keep-the-strip-before-after.png)
 ([one's card](docs/screenshots/511-rail-kralovec-km-12-98-house-card-before-after.png)), [III/3012's corner kept on its old

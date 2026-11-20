@@ -2,8 +2,8 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable, usableLine } from './autoprofile';
-import { reachableSuggestions, type GradePinViolation } from './grade-pins';
+import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable, pinClearanceBlame, usableLine } from './autoprofile';
+import { applyPinFixes, honouredPinFixes, PIN_FIX_NEAR, reachableSuggestions, type GradePin, type GradePinViolation, type PinFix } from './grade-pins';
 import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
@@ -52,7 +52,7 @@ import { computeSections, flatSection, type SectionCache } from './sections';
 import { allCut, chooseStructures, cutCoverMask, KIND, TUNNEL_TOO_STEEP, tunnelGrade, wallGapsToBridge, type Run } from './structures';
 import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
-import { buildProfile, elevations, type VPI } from './vertical';
+import { buildProfile, elevationAt, elevations, type Profile, type VPI } from './vertical';
 import { planPis, planSpeeds } from './plan-speeds';
 import { abutmentCone, CONE, coneCovers, coneReach, conePavingCost, coneStands, type AbutmentCone, type BridgeEnd } from './abutment-cone';
 import { carryCrossingPrices, keptOwnHeights, rememberFull, stationWindow, windowedPreview } from './preview-window';
@@ -1277,6 +1277,9 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   let constrainedSolve: ((o: AutoProfileOptions) => ReturnType<typeof autoProfile>) | null = null;
   let keepsExterior = (_v: VPI[]) => true;
   let pinViolations: Violation[] = [];
+  /** the player's pins honoured at a price (a line steeper than the norm next to one, a crossing it misses): where,
+   * and the height Auto reaches within the norm there (the fix of the problems there) */
+  let pinFixes: PinFix[] = [];
   let materialValue = MATERIAL_VALUE.start;
   /** block-wise solve: each block's material value, and per station */
   let blockValues: number[] | undefined, materialAt: Float64Array | undefined;
@@ -1449,12 +1452,21 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
           ...(o.pinBounds ? { pinBounds: { minH: cut(o.pinBounds.minH), maxH: cut(o.pinBounds.maxH),
             ...(o.pinBounds.eitherH ? { eitherH: { above: cut(o.pinBounds.eitherH.above)!, below: cut(o.pinBounds.eitherH.below)! } } : {}) } } : {}),
           pins: inside.map(k => ({ ...o.pins![k], s: o.pins![k].s - sa })),
+          ...(o.steep ? { steep: o.steep.map(w => ({ ...w, s0: w.s0 - sa, s1: w.s1 - sa, pin: { ...w.pin, s: w.pin.s - sa } })) } : {}),
+          ...(o.honoured ? { honoured: { pins: o.honoured.pins.map(p => ({ ...p, s: p.s - sa })), spans: o.honoured.spans.map(([a, b]) => [a - sa, b - sa] as const),
+            left: o.honoured.left.map(p => ({ ...p, s: p.s - sa })) } } : {}),
           ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
         // (each pin as the route has it: its index among all pins, its stations on the route's chainage)
-        return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(v => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa,
+        const routePin = (v: GradePinViolation): GradePinViolation => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa,
           pin: { ...v.pin, index: inside[v.pin.index], requested: { ...o.pins![inside[v.pin.index]] },
             suggested: v.pin.suggested && { ...v.pin.suggested, s: v.pin.suggested.s + sa },
-            ...(v.pin.clearanceAt !== undefined ? { clearanceAt: v.pin.clearanceAt + sa } : {}) } })) };
+            ...(v.pin.clearanceAt !== undefined ? { clearanceAt: v.pin.clearanceAt + sa } : {}) } });
+        // (a pin of this stretch by its own heights: the route's pin it was made from)
+        const routeOf = (p: GradePin): GradePin => ({ ...o.pins![inside.find(k => o.pins![k].s - sa === p.s && o.pins![k].z === p.z)!] });
+        return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(routePin),
+          ...(r.steep ? { steep: r.steep.map(w => ({ ...w, s0: w.s0 + sa, s1: w.s1 + sa, pin: routeOf(w.pin) })) } : {}),
+          ...(r.honoured ? { honoured: { pins: r.honoured.pins.map(routeOf), spans: r.honoured.spans.map(([a, b]) => [a + sa, b + sa] as const),
+            left: r.honoured.left.map(routeOf) } } : {}) };
       };
       constrainedSolve = solveAuto;
       const outside = Array.from(st.s).filter(x => x < sa - 1e-6 || x > sb + 1e-6), fixedZ = elevations(fixedProf, outside);
@@ -1464,6 +1476,10 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     const fixed = preview ? opts.materialValue ?? MATERIAL_VALUE.start : undefined;
     let ap = fixed === undefined ? solveAuto(apOpt)
       : { ...solveAuto({ ...apOpt, costPerM: costFor(fixed), balance: undefined }), materialValue: fixed };
+    // (the retries and lifts below hold Auto's line and run steep where it did to honour a player's pin:
+    // autoprofile.ts honour)
+    if (ap.steep) (apOpt as AutoProfileOptions).steep = ap.steep;
+    if (ap.honoured) (apOpt as AutoProfileOptions).honoured = ap.honoured;
     // vertical curves can shave the clearance the polyline search provided: retry asking for more
     for (let attempt = 0; attempt < 2 && (mustBridge.length || mustBelow.length) && !preview; attempt++) {
       const prof0 = buildProfile(ap.vpis, vlim.crest, vlim.sag);
@@ -1519,6 +1535,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       // (nor a line that meets the pins by one that leaves one out)
       if (d.gradePins?.length && (!usableLine(retry) || (retry.pinViolations?.length ?? 0) > (ap.pinViolations?.length ?? 0))) break;
       ap = retry;
+      // (the pins it honours as it does)
+      if (d.gradePins?.length) { (apOpt as AutoProfileOptions).honoured = ap.honoured; (apOpt as AutoProfileOptions).steep = ap.steep; }
     }
     vpis = ap.vpis;
     materialValue = ap.materialValue ?? MATERIAL_VALUE.start;
@@ -1533,22 +1551,18 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     }
     profileFeasible = usableLine(ap);
     pinViolations = ap.pinViolations ?? [];
-    // a pin Auto cannot meet: the height it does reach instead, found by the same solve (core/grade-pins.ts)
-    if (firstOpt && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, pins => solveAuto({ ...firstOpt, pins, pinStrict: true }));
-    // a pin left out for a crossing its line would not clear: what lies there (the nearest such crossing)
-    pinViolations = pinViolations.map(v => {
-      const at = (v as GradePinViolation).pin?.clearanceAt;
-      if (at === undefined) return v;
-      const c = mustBridge.reduce<MustBridge | undefined>((m, x) => !m || Math.abs(x.s - at) < Math.abs(m.s - at) ? x : m, undefined);
-      const near = c && Math.abs(c.s - at) <= 2 * ds ? c : undefined;
-      const what = !near ? (natureCrown[Math.min(n - 1, Math.round(at / ds))] ? 'a protected area' : 'a crossing')
-        : near.what === 'watercourse' ? 'a stream' : near.what === 'river' ? 'a river' : near.what === 'railway' ? 'a railway' : `a ${near.what}`;
-      const km = (at / 1000).toFixed(2);
-      const how = near?.what === 'watercourse' || near?.what === 'river'
-        ? `our road would run through the ${what.slice(2)} at km ${km}: too high to pass under it in a tunnel, too low to bridge it`
-        : `our road would not clear the ${what.slice(2)} at km ${km}`;
-      return { ...v, title: `Pinned height out of reach: ${what}`, detail: `You asked for ${(v as GradePinViolation).pin.requested.z.toFixed(2)} m; there ${how}. Auto leaves the pin out.` };
-    });
+    // a pin Auto cannot meet at all: the height it does reach instead, found by the same solve (core/grade-pins.ts)
+    const strictSolve = firstOpt && ((pins: GradePin[]) => solveAuto({ ...firstOpt, pins, pinStrict: true }));
+    if (strictSolve && ap.pinViolations?.length) pinViolations = reachableSuggestions(ap.pinViolations, d.gradePins!, strictSolve);
+    // the player's pins honoured at a price: the height each could have within the norm, the fix of what it costs
+    if (strictSolve) pinFixes = honouredPinFixes(d.gradePins!, ap, strictSolve, () => solveAuto({ ...firstOpt!, pins: [] }).vpis,
+      (own) => pinClearanceBlame(st.s, ground, firstOpt!, ap.vpis, own, k => solveAuto({ ...firstOpt!, pins: d.gradePins!.filter((_, j) => j !== k) }).vpis),
+      (vp) => buildProfile(vp, vlim.crest, vlim.sag), maxGradient);
+    // a crossing a pin holds our road too low or high for: each way past it the pin can take within the norm
+    if (strictSolve && pinFixes.some(f => f.kind === 'clearance')) {
+      const prof = buildProfile(ap.vpis, vlim.crest, vlim.sag);
+      pinFixes = pinFixes.map(f => f.kind === 'clearance' ? { ...f, ...pinWays(f, mustBridge, prof, d.gradePins!, strictSolve) } : f);
+    }
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
@@ -1568,7 +1582,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     const list = crossingWays.get(c.way) ?? [];
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
-  return { profileFeasible, autoOptions, constrainedSolve, keepsExterior, pinViolations, materialValue, blockValues,
+  return { profileFeasible, autoOptions, constrainedSolve, keepsExterior, pinViolations, pinFixes, materialValue, blockValues,
     liftBlocks, blockDecision, autoVpis, crossingWays };
 }
 
@@ -2092,7 +2106,9 @@ function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, st
       const x = blocks ? snapped[k] : q.s, z = blocks ? Math.ceil((q.z + fall[k]) * 10 - 1e-9) / 10 : q.z;
       repairTargets.set(x, Math.max(z, repairTargets.get(x) ?? -Infinity));
     });
-    const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
+    // (not where the player's pin holds our road for a crossing: the pin's problem, said there)
+    const held = solved.pinFixes.length ? pinHeld(solved.pinFixes, engineering.supported.runs) : [];
+    const targets = [...repairTargets].map(([s, z]) => ({ s, z })).filter(q => !held.some(([a, b]) => q.s >= a && q.s <= b)).sort((a, b) => a.s - b.s);
     // Each stretch of nearby targets is lifted on its own (a failure elsewhere does not undo it), within
     // its block of the grade solve: a lift never reaches past the block, so it does not depend on targets
     // (and an edit) in another one.
@@ -2695,7 +2711,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     prof, waterZ, retainingWalls, retention, vol, cutByClass, footprint, forestArea, urbanLength,
     structureValue, cutCover, cones, coneFill, conePaving } = quantities;
   const { usable } = prices;
-  const { pinViolations, profileFeasible, materialValue } = solved;
+  const { pinViolations, pinFixes, profileFeasible, materialValue } = solved;
   const { oob, vpis } = lifted;
   const noiseViolations: Violation[] = [];
 
@@ -2776,7 +2792,7 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     ...footprintCheck.violations,
     ...buildingViolations,
     // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
-    ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
+    ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category, ...(opts.preview ? { radiusSearches: 0 } : {}) })),
     ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, terrain)),
     ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch, d.profileMode !== 'auto' && d.vpis.length >= 2 && !opts.heightsGiven),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
@@ -2861,6 +2877,9 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     violations.push(profileViolation(al.length, maxGradient, cat.mode === 'railway'));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
+  // the player's pins honoured at a price: the fix of what each costs is the pin (core/grade-pins.ts); one problem per
+  // crossing it misses (its clearance, not its bridge's span as well)
+  if (pinFixes.length) violations.splice(0, violations.length, ...applyPinFixes(violations, pinFixes));
   // Messages name what is built: a railway is "our railway", not "our road".
   if (cat.mode === 'railway') for (const v of violations) {
     // "Road too low over the river / railway", the side slopes and Auto's heights (checks.ts) name our own
@@ -2940,6 +2959,52 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   const lifting = routeLift(d, setup, caches, out.size ? d.gradePins?.filter((_, k) => !out.has(k)) : d.gradePins);
   const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start: VPI[] = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => finishDesign(ctx, d, opts, solved, setup, engineerStage, lifting, prices, caches, relaxed, strict, start, from);
   return { finish };
+}
+
+/** Where a player's pin holds our road too low or high for a crossing (`fixes` of kind 'clearance'): the crossing's
+ * own stretch (PIN_FIX_NEAR either side) and the structure run holding it, chainage ranges; no lift raises the line there
+ * (the pin's problem, said there). */
+/**
+ * The ways past the crossing (`crossings`, the nearest within PIN_FIX_NEAR of the fix's) a pin's line misses that the pin
+ * can take within the norm: over it (our bridge, a culvert under us for a stream) and, where something can carry it
+ * over us (a road passed under: its bridge over our cutting; a stream: our tunnel 9 m under its bed; never a railway
+ * or a river), under it. Each the height Auto reaches with the pin there (`strict`, the other pins as they are): the
+ * fix's own suggestion where it lies that way, else the pin moved by what the line misses the crossing's clearance by
+ * that way (×1, 1.5, 2.5: the line moves less than the pin away from it); a way no such height reaches is not offered.
+ */
+function pinWays(f: PinFix, crossings: readonly MustBridge[], prof: Profile, pins: readonly GradePin[],
+  strict: (pins: GradePin[]) => { pinViolations?: readonly GradePinViolation[] }): Pick<PinFix, 'ways' | 'crossing'> {
+  const c = crossings.reduce<MustBridge | undefined>((m, x) => !m || Math.abs(x.s - f.s0) < Math.abs(m.s - f.s0) ? x : m, undefined);
+  if (!c || Math.abs(c.s - f.s0) > PIN_FIX_NEAR) return {};
+  const zc = elevationAt(prof, c.s), stream = c.what === 'watercourse', what = stream ? 'stream' : c.what;
+  const others = pins.filter((_, k) => k !== f.index);
+  const reaches = (z: number) => !strict([...others, { s: f.pin.s, z }]).pinViolations?.some(v => v.pin.index === others.length);
+  const ways: NonNullable<PinFix['ways']> = [];
+  const targets = [{ dir: 1, at: c.g + c.need, label: stream ? 'a culvert under us' : 'our bridge over it' },
+    { dir: -1, at: c.below !== undefined ? c.g - c.below : stream ? c.g - STRUCTURE_RULES.portalDepth : NaN, label: stream ? 'a tunnel under the stream' : `its bridge over us` }];
+  for (const { dir, at, label } of targets) {
+    if (Number.isNaN(at)) continue;
+    let z: number | null = f.z !== null && Math.sign(f.z - f.pin.z) === dir ? f.z : null;
+    const shift = at - zc + dir * 0.5;
+    if (z === null && shift * dir > 0) for (const factor of [1, 1.5, 2.5]) {
+      const x = (dir > 0 ? Math.ceil : Math.floor)((f.pin.z + factor * shift) * 10) / 10;
+      if (reaches(x)) { z = x; break; }
+    }
+    if (z !== null) ways.push({ z, label });
+  }
+  return { ways, crossing: { what, above: zc - c.g, need: c.need } };
+}
+
+function pinHeld(fixes: readonly PinFix[], runs: readonly { s0: number; s1: number; kind: number }[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const f of fixes) if (f.kind === 'clearance') {
+    const a0 = f.s0 - PIN_FIX_NEAR, b0 = f.s0 + PIN_FIX_NEAR;
+    let a = a0, b = b0;
+    // (the runs at the crossing itself, not a chain of their neighbours)
+    for (const r of runs) if (r.kind !== KIND.earth && r.s0 <= b0 && r.s1 >= a0) { a = Math.min(a, r.s0 - PIN_FIX_NEAR); b = Math.max(b, r.s1 + PIN_FIX_NEAR); }
+    out.push([a, b]);
+  }
+  return out;
 }
 
 /** our bridges over roads the player chose (setup's choiceDeck) that a pass neither floors nor lifts: the first
