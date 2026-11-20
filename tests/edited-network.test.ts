@@ -320,8 +320,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // 1 m from our embankment (a real conflict, with its concrete fix; 3 m before cost model 39); 45 m towards it, it keeps clear.
     const { nearestLeg } = await import('../src/core/horizontal');
     const quarter = (interval.s1 - interval.s0) / 4;
-    for (const [at, off, shared] of [[10, -60, []], [21, -60, []], [quarter, -60, []], [quarter, 45, []],
-      [quarter, 60, ['Move one of them about 9 m away here']]] as [number, number, string[]][]) {
+    // (cost model 64: our reroute of the rest, at km 4.24, no longer leads it to the road at km 4.01, whose new piece's slopes
+    // would bury another track, but to the underpass at km 4.55: it runs 7 m from the bent stretch at its start, a real
+    // conflict with its fix; bent 45 or 60 m towards our road it now runs beside that reroute)
+    for (const [at, off, shared] of [[10, -60, ['Move one of them about 3 m away here']], [21, -60, []], [quarter, -60, []], [quarter, 45, ['Move one of them about 27 m away here']],
+      [quarter, 60, ['Move one of them about 20 m away here']]] as [number, number, string[]][]) {
       const near = structuredClone(edited), q = near.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
       const g = index.position(track.id, interval.s0 + at)!, g2 = index.position(track.id, interval.s0 + at + 5)!, tl = Math.hypot(g2.x - g.x, g2.y - g.y);
       q.alignment.pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis, g), 0, { x: g.x - (g2.y - g.y) / tl * off, y: g.y + (g2.x - g.x) / tl * off, r: null });
