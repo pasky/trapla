@@ -2544,7 +2544,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
 function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySet<number>, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, houses: ReturnType<typeof finishBuildings>) {
   const { n, st, ds, terrain, al, crossingOverrides, cat, preview, lap, endJunctions, railOurs, retiredAt, water, timing } = setup;
   const { width, kind, sec, engineeredCrossings, prof, urban, grade, runs, channelRelocations, waterZ,
-    retainingWalls, culverts, cutCover } = quantities;
+    retainingWalls, culverts, cutCover, cones } = quantities;
   const { b } = prices;
   const { mergedInto, urbanCentre, reroutes, retainingMemo } = caches;
   const { bld, keptIds, gone, buildingCost, demolished } = houses;
@@ -2712,7 +2712,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
     const wayLevel = wayLevels(ctx.roads, terrain);
     const route: CrossingRoute = { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, ...(wayLevel ? { wayLevel } : {}), obstacle: linkObstacle, houses: linkHouses, served, keptHouse: (j: number) => keptIds.has(j), housesOnDisk, beside, railway, houseCost: (j: number) => bld?.cost[j] ?? 0, dwelling: (j: number) => !!bld?.dwelling[j],
       streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
-      left, right };
+      left, right, ...(cones.length ? { cones } : {}) };
     // (a retry builds only the crossings near what it changed: crossings-kept.ts)
     crossingIssues = buildCrossings(opts.window ? undefined : opts.passCache?.crossings, st, { grade, kind, width: crossWidth, left, right, urban: urbanCentre },
       new Map(demolished.map(p => [p.j, p.i])), crossings, crossingIssues, items => buildCrossingGeometry(items, route, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes),

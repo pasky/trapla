@@ -12,6 +12,7 @@
 // by priced walls; a road's own body between its daylight points, as render/earthwork-surface.ts draws it).
 import type { EvalContext, Result } from './evaluate';
 import { KIND } from './structures';
+import { ourBody } from './our-body';
 import { bridgeLayout, frameColumns } from './bridge';
 import { protectedRasterCells } from './protected-raster';
 import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
@@ -57,37 +58,8 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
   const natural = (x: number, y: number) => ctx.terrain.heightAt(x, y), base = crossingBaseHeight(r, crownWidth, natural);
   const gone = new Set<number>([...r.demolished.map(d => d.j), ...r.boughtOut.map(d => d.j)]);
   const out: WorksClash[] = [], seen = new Set<string>(), strip = BUILDING_RULES.clearance;
-  // our own body (its own checks own what lies under it): lateral reach per station
-  /** Where (x, y) lies in our own earth body: in its formation, or on a cut / fill slope (else null). */
-  // (each station's segment in the grid cells its body can reach: a point is looked up in its own cell's, in order)
-  const CELL = 50, grid = new Map<number, number[]>(), cellOf = (cx: number, cy: number) => cx * 1_000_003 + cy;
-  for (let i = 0; i + 1 < r.n; i++) {
-    const reach = Math.max(r.dayL[i], r.dayR[i], r.dayL[i + 1], r.dayR[i + 1], crownWidth) + 1;
-    for (let cx = Math.floor((Math.min(r.x[i], r.x[i + 1]) - reach) / CELL); cx <= Math.floor((Math.max(r.x[i], r.x[i + 1]) + reach) / CELL); cx++)
-      for (let cy = Math.floor((Math.min(r.y[i], r.y[i + 1]) - reach) / CELL); cy <= Math.floor((Math.max(r.y[i], r.y[i + 1]) + reach) / CELL); cy++) {
-        const key = cellOf(cx, cy), list = grid.get(key);
-        if (list) list.push(i); else grid.set(key, [i]);
-      }
-  }
-  const bodyAt = (x: number, y: number, inset = 0): 'formation' | 'cut' | 'fill' | null => {
-    for (const i of grid.get(cellOf(Math.floor(x / CELL), Math.floor(y / CELL))) ?? []) {
-      const dx = r.x[i + 1] - r.x[i], dy = r.y[i + 1] - r.y[i], len2 = dx * dx + dy * dy;
-      const t = ((x - r.x[i]) * dx + (y - r.y[i]) * dy) / (len2 || 1);
-      if (t < 0 || t > 1) continue;
-      const lat = ((y - r.y[i]) * dx - (x - r.x[i]) * dy) / Math.sqrt(len2 || 1);
-      const k = t < 0.5 ? i : i + 1;
-      // (over a tunnel or under a bridge is no clash with our body: piers are checked on their own)
-      if (r.kind[k] !== KIND.earth || r.keptCells?.[k]) continue;
-      // (the daylight line between two stations, as render/earthwork-surface.ts draws it and crossing-geometry.ts's
-      // margin reads it)
-      const day = lat >= 0 ? r.dayL : r.dayR, reach = r.kind[i] === r.kind[i + 1] ? day[i] + (day[i + 1] - day[i]) * t : day[k];
-      if (Math.abs(lat) > reach - inset) continue;
-      if (Math.abs(lat) <= crownWidth / 2 + 1) return 'formation';
-      // (dug away where the natural ground stands above our grade there)
-      return ctx.terrain.heightAt(x, y) > r.grade[i] + (r.grade[i + 1] - r.grade[i]) * t ? 'cut' : 'fill';
-    }
-    return null;
-  };
+  // our own body (its own checks own what lies under it): the engine's reading of it (our-body.ts)
+  const body = ourBody(r, crownWidth, r.cones, natural), bodyAt = body.at;
   const ours = (x: number, y: number, inset = 0) => bodyAt(x, y, inset) !== null;
   // our bridge piers and deck: per bridge station, the deck underside
   const piers: { x: number; y: number }[] = [];

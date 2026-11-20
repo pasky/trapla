@@ -10,6 +10,7 @@ import { CLOSURE_ROUND, PIECE_SEARCH, pieceAccess, type PieceAccess } from './wa
 export { CLOSURE_ROUND } from './way-pieces';
 import { smoothLink } from './crossing-link';
 import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
+import { ourBody, type OurBody } from './our-body';
 import { crossingWorks, slopeWorks, SOURCE_BREAK, type CrossingTie, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LINK_MAX_SUPPORT, LOWERING_RULES, MAX_RAMP_LENGTH, OVERBRIDGE_CLEARANCE as CLEARANCE, RETAINING_RULES, retainingAssembly, sagDrainage, SQUARE_BELOW, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
 export { SQUARE_BELOW };
@@ -19,6 +20,7 @@ import { KIND } from './structures';
 import { acos, atan2, cos, sin, tan } from './detmath';
 import { INDEPENDENCE_SCREEN } from './project-ledger';
 
+const halfWidths = (width: ArrayLike<number>) => Float64Array.from(width, w => w / 2);
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
 export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road within its steepest allowed slope';
@@ -1861,14 +1863,13 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
   // The rebuilt stretch's own slopes must leave other roads usable: regrade side roads joining it,
   // hold the slope back from roads beside it, or report the treatment infeasible (crossing-works.ts).
   const claimed: XY[][] = [];
-  const crown = (route.crownWidth ?? 0) / 2 + 1;
-  const body = (q: XY) => {
-    if (margin(q, 0, false) > 0) return null;
-    const p = project(q, false);
-    // (under our bridge or over our tunnel there is no earth body of ours)
-    if ((route.kind?.[Math.min(route.s.length - 1, firstAbove(route.s, p.s, true))] ?? KIND.earth) !== KIND.earth) return null;
-    return Math.abs(p.lateral) <= crown ? 'formation' as const : heightAt(q.x, q.y) > p.z ? 'cut' as const : 'fill' as const;
-  };
+  // (our body as drawn, its earth between the stations and its cones, our-body.ts: the works-clash screen's own reading;
+  // read only where a slope is screened against it)
+  let drawn: OurBody | undefined;
+  const ourDrawn = () => drawn ??= ourBody({ n: route.s.length, x: route.x, y: route.y, s: route.s, grade: route.grade,
+    kind: route.kind ?? new Uint8Array(route.s.length), dayL: route.left ?? halfWidths(route.width), dayR: route.right ?? halfWidths(route.width) },
+    route.crownWidth ?? 0, route.cones, heightAt);
+  const body = (q: XY) => ourDrawn().at(q.x, q.y), bodyGap = (q: XY) => ourDrawn().gap(q.x, q.y);
   for (const c of crossings) {
     const g = c.geometry!;
     if (!roads || !g.road || anchorOnly?.has(c) || (c.type !== 'junction' && c.type !== 'overbridge' && !(c.type === 'underpass' && c.lowered)) || g.diagnostics?.length) continue;
@@ -1877,7 +1878,7 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
       ...(route.beside ? { beside: route.beside } : {}),
       // (a junction meets our road, and a lowered way passes through our embankment, by design: only a bridge
       // over us keeps its slopes out of our body)
-      ...(c.type === 'overbridge' ? { body, gap: (q: XY) => margin(q, 0, false) } : {}) });
+      ...(c.type === 'overbridge' ? { body, gap: bodyGap } : {}) });
     for (const message of works.problems) diagnose(g, message);
     if (works.ties.length) g.ties = works.ties;
     for (const [i, wall] of works.walls) g.road[i] = { ...g.road[i], wall };
@@ -1906,7 +1907,7 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
     g.links = g.links.map(path => {
       const key = `${g.width}|${c.roadId}|${c.targetRoadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
       let own = slopes.get(key);
-      const screen = { heightAt, ours: (q: XY, pad: number) => margin(q, pad) <= 0, body, gap: (q: XY) => margin(q, 0, false), ...(route.beside ? { beside: route.beside } : {}) };
+      const screen = { heightAt, ours: (q: XY, pad: number) => margin(q, pad) <= 0, body, gap: bodyGap, ...(route.beside ? { beside: route.beside } : {}) };
       if (!own) slopes.set(key, own = roads ? crossingWorks(path, g.width, source, { ...screen, roads, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed })
         : slopeWorks(path, g.width, screen));
       for (const message of own.problems) diagnose(g, message);
