@@ -1,9 +1,12 @@
 // Twists: is every twist a mission offers achievable, and does it ask for something? (data/twists.ts, core/twists.ts)
 //
-//   npx tsx scripts/twists-check.ts [preset…]          check: the starting bill, what the starter breaks, every reference
-//                                                      design in scripts/twists/<preset>/ VALID and meeting what it claims,
+//   npx tsx scripts/twists-check.ts [preset…]          check (the merge gate, tests/twists.test.ts): the starting bill, what
+//                                                      the starter breaks, the landmarks and curveball places on the map,
+//                                                      every reference design in scripts/twists/<preset>/ loads and is VALID,
 //                                                      every offered twist claimed by one, the default twists + every
-//                                                      curveball + the goal by one (the reveal can be reached); exit 1 if not
+//                                                      curveball + the goal by one (the reveal); exit 1 if not. Whether a
+//                                                      reference still MEETS what it claims under today's bills and goal is
+//                                                      a warning: scripts/twists-refresh.ts searches those again
 //   npx tsx scripts/twists-check.ts --find <preset> --twists earth,landmarks,curveballs [--goal] [--from file.json]
 //        [--iters 600] [--seed 1] [--out scripts/twists/<preset>/<name>.json]
 //                                                      a local search (bends, height pins, bridges) for a VALID design that
@@ -72,8 +75,10 @@ export const evalDesign = (m: Mission, d: ProjectDesign) => evaluateProject(m.ct
 const SCALE = Number(process.env.STEP ?? 1);
 // (WEIGHT=landmarks:5: what a twist still broken weighs, ×; a search from a design that meets it holds on to it)
 const WEIGHT: Record<string, number> = Object.fromEntries((process.env.WEIGHT ?? '').split(',').filter(Boolean).map(w => { const [k, v] = w.split(':'); return [k, Number(v)]; }));
-function find(preset: string, twists: TwistId[], goal: boolean, from: string | undefined, iters: number, seed: number, out: string) {
-  const m = mission(preset);
+/** `deadline`: a time (performance.now()) the search stops at, as after its last iteration; returns whether `out` meets it all */
+export function find(preset: string, twists: TwistId[], goal: boolean, from: string | undefined, iters: number, seed: number, out: string,
+  { deadline = Infinity, log: print = console.log }: { deadline?: number; log?: (line: string) => void } = {}): boolean {
+  const m = mission(preset), scratch = twists.includes('scratch');
   let rng = seed * 2654435761 % 2147483647 || 1;
   const rand = () => (rng = rng * 16807 % 2147483647) / 2147483647;
   const gauss = () => Math.sqrt(-2 * Math.log(rand() + 1e-12)) * Math.cos(2 * Math.PI * rand());
@@ -82,7 +87,7 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
   const bill = m.setup.mission.startBill, target = (1 - GOAL_SHARE) * bill;
   // what is left to do, in CZK: never a verdict, only the search's sense of direction
   const score = (d: ProjectDesign, r: ProjectResult) => {
-    const checks = check(m, d, r, twists), f = facts(m, d, r);
+    const checks = check(m, d, r, twists, scratch), f = facts(m, d, r);
     let p = r.cost.total ?? 10 * bill;
     p += r.issues.length * 0.3 * bill;
     for (const c of checks) if (!c.met) {
@@ -102,9 +107,9 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
   let best = { d: cur, s: curS, r: curR };
   // (the cheapest design that meets everything asked, kept apart: a cheaper one that breaks something never replaces it)
   let bestMet = curS.met ? best : null;
-  const log = (k: number, s: typeof curS, r: ProjectResult) => console.log(`${k} ${(s.p / 1e6).toFixed(0)} M · cost ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} · valid ${r.valid} (${r.issues.length}${r.issues.length ? ": " + r.issues.slice(0, 2).map(i => i.violation?.title ?? i.code).join("; ") : ""}) · ${s.checks.map(c => `${c.id}:${c.met ? '✓' : '✗'} ${c.status}`).join(' | ')}${s.met ? ' · MET' : ''}`);
+  const log = (k: number, s: typeof curS, r: ProjectResult) => print(`${k} ${(s.p / 1e6).toFixed(0)} M · cost ${((r.cost.total ?? NaN) / 1e6).toFixed(0)} · valid ${r.valid} (${r.issues.length}${r.issues.length ? ": " + r.issues.slice(0, 2).map(i => i.violation?.title ?? i.code).join("; ") : ""}) · ${s.checks.map(c => `${c.id}:${c.met ? '✓' : '✗'} ${c.status}`).join(' | ')}${s.met ? ' · MET' : ''}`);
   log(0, curS, curR);
-  for (let k = 1; k <= iters; k++) {
+  for (let k = 1; k <= iters && performance.now() < deadline; k++) {
     const d0 = legacyDesignForRoute(cur, routeId), d: Design = structuredClone(d0), L = curR.routes[routeId]?.legacy;
     if (!L) break;
     const heat = 1 - k / iters, step = SCALE * (30 + 170 * heat * rand());
@@ -175,7 +180,8 @@ function find(preset: string, twists: TwistId[], goal: boolean, from: string | u
     writeFileSync(out, JSON.stringify({ preset, purpose: `Search (seed ${seed}) for ${twists.join(', ')}${goal ? ' and the goal' : ''}`, meets: b.s.met ? twists : [],
       goal: b.s.met && goal, design: b.d } satisfies Fixture, null, 1));
   }
-  console.log(best.s.met ? `found: ${out}` : `not met; best so far in ${out}`);
+  print(best.s.met ? `found: ${out}` : `not met; best so far in ${out}`);
+  return best.s.met;
 }
 /** where a twist's place stands (an issue's `ref`) */
 function placeOf(m: Mission, ref: string | undefined): { x: number; y: number } | undefined {
@@ -193,12 +199,24 @@ export function nearestS(L: { n: number; x: Float64Array; y: Float64Array; s: Fl
 }
 
 // ---- check -----------------------------------------------------------------------------------------
-/** Everything this script checks for one mission; `log`: what it prints. tests/twists.test.ts runs it too. */
-export function checkMission(preset: string, log: (line: string) => void = console.log): { ok: boolean; failures: string[] } {
+/** what a reference claims and no longer meets (or meets no longer VALID): scripts/twists-refresh.ts searches again */
+export interface Stale { file: string; why: string[] }
+/** Everything this script checks for one mission; `log`: what it prints. tests/twists.test.ts runs it too.
+ * `failures`: the twists' definitions are inconsistent, or a reference does not load or is not VALID (the merge gate);
+ * `warnings`: a reference no longer meets what it claims under the current bills and goal (`stale`, per file), or what
+ * is offered has no reference meeting it now: a developer's list for scripts/twists-refresh.ts, never a game rule (the
+ * twist stays offered). */
+export function checkMission(preset: string, log: (line: string) => void = console.log): { ok: boolean; failures: string[]; warnings: string[]; stale: Stale[] } {
   const m = mission(preset), { mission: mt } = m.setup;
   let ok = true;
-  const failures: string[] = [];
+  const failures: string[] = [], warnings: string[] = [], stale: Stale[] = [];
   const fail = (why: string) => { ok = false; failures.push(why); log(`  ✗ ${why}`); };
+  const warn = (why: string, file?: string) => {
+    warnings.push(why); log(`  ! ${why}`);
+    if (!file) return;
+    const s = stale.find(x => x.file === file);
+    if (s) s.why.push(why); else stale.push({ file, why: [why] });
+  };
   const console = { log };
   const r0 = evalDesign(m, m.starter), cost0 = r0.cost.total ?? NaN;
   console.log(`${preset}: starter ${(cost0 / 1e6).toFixed(1)} M (data ${(mt.startBill / 1e6).toFixed(0)} M), ${m.setup.terms.landmarks.length} landmarks, ${m.setup.curveballs.length} curveballs`);
@@ -208,6 +226,12 @@ export function checkMission(preset: string, log: (line: string) => void = conso
   for (const c of check(m, m.starter, r0, constraints)) {
     console.log(`  starter ${c.id}: ${c.met ? 'meets it' : 'breaks it'} (${c.status})`);
     if (c.met) fail(`${c.id}: the starter already meets it (not a challenge)`);
+  }
+  // (each curveball's place on this map, wholly)
+  const W = m.pack.meta.nx * m.pack.meta.cell, H = m.pack.meta.ny * m.pack.meta.cell;
+  for (const c of m.setup.curveballs) if (c.zone) {
+    const z = c.zone.shape, pts = z.kind === 'circle' ? [[z.x - z.r, z.y - z.r], [z.x + z.r, z.y + z.r]] : shapeRings(z).flat();
+    if (pts.some(([x, y]) => !(x >= 0 && x <= W && y >= 0 && y <= H))) fail(`curveball ${c.id}: its place (${c.zone.label}) is not inside the map of ${m.scenario.id}`);
   }
   if (MISSION_TWISTS[preset].offer.includes('landmarks') && !m.pack.heritage) fail(`Hands off offered, public/scenarios/${m.scenario.id}/heritage.json missing (pipeline/build_heritage.py)`);
   if (mt.offer.includes('landmarks') && !m.setup.terms.landmarks.length) fail('landmarks offered, none near the line');
@@ -228,31 +252,47 @@ export function checkMission(preset: string, log: (line: string) => void = conso
     for (const l of broken) if (!named.has(l?.code ?? '')) fail(`the starter breaks ${l?.name}, not named in data/twists.ts inPlay`);
   }
   const dir = `scripts/twists/${preset}`, files = existsSync(dir) ? readdirSync(dir).filter(f => f.endsWith('.json')).sort() : [];
-  const claimed = new Set<TwistId>();
-  let reveal = false;
+  // claimed: what the references say they meet (a definition: every offered twist and the reveal has one); met: what
+  // they meet under today's bills and goal (a warning where not)
+  const claimed = new Set<TwistId>(), met = new Set<TwistId>();
+  let revealClaimed = false, reveal = false;
   const defaults = missionDefaults(mt);
   for (const t of mt.notDefault ?? []) if (!DEFAULT_TWISTS.includes(t) || !mt.offer.includes(t)) fail(`notDefault: ${t} is not a default twist offered here`);
   for (const file of files) {
-    const fx = JSON.parse(readFileSync(`${dir}/${file}`, 'utf8')) as Fixture;
+    let fx: Fixture;
+    try { fx = JSON.parse(readFileSync(`${dir}/${file}`, 'utf8')) as Fixture; } catch (e) { fail(`${file}: does not load: ${(e as Error).message}`); continue; }
     if (fx.preset !== preset) { fail(`${file}: belongs to ${fx.preset}`); continue; }
-    const t0 = performance.now(), r = evalDesign(m, fx.design), checks = check(m, fx.design, r, fx.meets, fx.meets.includes('scratch'));
+    if (!Array.isArray(fx.meets) || !fx.design?.routes?.some(x => x.role === 'mission')) { fail(`${file}: not a reference design (meets, design with our road)`); continue; }
+    for (const t of fx.meets) if (!mt.offer.includes(t)) fail(`${file}: claims ${t}, not offered here`);
+    for (const t of fx.meets) claimed.add(t);
+    if (fx.goal && defaults.every(t => fx.meets.includes(t))) revealClaimed = true;
+    const t0 = performance.now();
+    let r: ProjectResult;
+    try { r = evalDesign(m, fx.design); } catch (e) { fail(`${file}: does not evaluate: ${(e as Error).message}`); continue; }
+    const checks = check(m, fx.design, r, fx.meets, fx.meets.includes('scratch'));
     const beats = (r.cost.total ?? Infinity) <= (1 - GOAL_SHARE) * mt.startBill;
     console.log(`  ${file}: ${r.valid ? 'VALID' : 'NOT VALID'} ${((r.cost.total ?? NaN) / 1e6).toFixed(1)} M${beats ? ' (beats the goal)' : ''} · ${checks.map(c => `${c.id} ${c.met ? '✓' : '✗'} ${c.status}`).join(' · ')} (${Math.round(performance.now() - t0)} ms)`);
-    if (!r.valid) fail(`${file}: not valid: ${r.issues.map(i => i.violation?.title ?? i.code).join('; ')}`);
-    for (const c of checks) if (!c.met) fail(`${file}: claims ${c.id}, breaks it: ${c.status} ${c.issues.map(i => i.text).join('; ')}`);
-    if (fx.goal && !beats) fail(`${file}: claims the goal, ${r.cost.total} is over ${(1 - GOAL_SHARE) * mt.startBill}`);
-    if (r.valid && checks.every(c => c.met)) {
-      for (const t of fx.meets) claimed.add(t);
-      if (fx.goal && beats && defaults.every(t => fx.meets.includes(t))) reveal = true;
+    if (!r.valid) {
+      fail(`${file}: not valid: ${r.issues.map(i => i.violation?.title ?? i.code).join('; ')}`);
+      // (twists-refresh.ts searches this one again too)
+      stale.push({ file, why: ['not valid'] });
+    }
+    for (const c of checks) if (!c.met) warn(`${file}: claims ${c.id}, breaks it: ${c.status} ${c.issues.map(i => i.text).join('; ')}`, file);
+    if (fx.goal && !beats) warn(`${file}: claims the goal, ${r.cost.total} is over ${(1 - GOAL_SHARE) * mt.startBill}`, file);
+    if (r.valid && checks.every(c => c.met) && (!fx.goal || beats)) {
+      for (const t of fx.meets) met.add(t);
+      if (fx.goal && defaults.every(t => fx.meets.includes(t))) reveal = true;
     }
   }
   // From scratch: the starter is a design the straight line can be bent into (its own bends), so the twist asks only
   // that the design began there; its reference is the starter itself, VALID.
-  if (mt.offer.includes('scratch') && r0.valid) claimed.add('scratch');
-  for (const t of mt.offer) if (!claimed.has(t)) fail(`${t}: offered, no reference design meets it`);
-  if (!reveal) fail(`no reference design meets ${defaults.join(' + ')} and the goal (the reveal)`);
-  console.log(ok ? `  ✓ ${preset}` : `  ✗ ${preset}`);
-  return { ok, failures };
+  if (mt.offer.includes('scratch') && r0.valid) { claimed.add('scratch'); met.add('scratch'); }
+  for (const t of mt.offer) if (!claimed.has(t)) fail(`${t}: offered, no reference design claims it`);
+    else if (!met.has(t)) warn(`${t}: offered, no reference design meets it now`);
+  if (!revealClaimed) fail(`no reference design claims ${defaults.join(' + ')} and the goal (the reveal)`);
+  else if (!reveal) warn(`no reference design meets ${defaults.join(' + ')} and the goal now (the reveal)`);
+  console.log(ok ? `  ✓ ${preset}${warnings.length ? ` (${warnings.length} warnings: scripts/twists-refresh.ts)` : ''}` : `  ✗ ${preset}`);
+  return { ok, failures, warnings, stale };
 }
 
 const args = process.argv.slice(2), opt = (k: string) => { const i = args.indexOf(k); return i < 0 ? undefined : args[i + 1]; };
@@ -353,6 +393,9 @@ else if (args[0] === '--show') {
 } else {
   const presets = args.length ? args : Object.keys(MISSION_TWISTS);
   let ok = true;
-  for (const p of presets) ok = checkMission(p).ok && ok;
+  const warned: string[] = [];
+  for (const p of presets) { const c = checkMission(p); ok = c.ok && ok; warned.push(...c.warnings.map(w => `${p}: ${w}`)); }
+  // (references that no longer meet what they claim: a warning, refreshed by scripts/twists-refresh.ts, not on a merge)
+  if (warned.length) console.log(`\n${warned.length} warnings (npx tsx scripts/twists-refresh.ts searches again):\n${warned.map(w => `  ! ${w}`).join('\n')}`);
   if (!ok) process.exitCode = 1;
 }

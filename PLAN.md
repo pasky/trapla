@@ -2741,9 +2741,13 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   sections' (`scripts/twists-stitch.ts`: each section's bends, pins and painted tunnels carried into the whole pack by their
   EPSG:5514 places, stations measured anew; `--freeze` takes the heights the whole line got by hand, where the whole-route
   grade solve misses the sections' pins; `--repair` applies the fixes the issues spell out) and then searched.
-- **Verification**: `npx tsx scripts/twists-check.ts` (run for every mission by `tests/twists.test.ts`): the starting bill, what the
-  starter breaks, every reference VALID and meeting what it claims, every offered twist met by one, and the default twists
-  with every curveball and the goal met by one (the reveal reachable). `--find <preset> --twists … --goal` is the local
+- **Verification**: `npx tsx scripts/twists-check.ts` (run for every mission by `tests/twists.test.ts`, the merge gate): the starting
+  bill, what the starter breaks, the landmarks and curveball places on the map, every reference loads and is VALID, every offered
+  twist claimed by one, and the default twists with every curveball and the goal claimed by one (the reveal). Whether each
+  reference still MEETS what it claims under today's bills and goal is a warning list, not a failure (since 2026-11-21: a bill
+  change used to force hour-long searches on every merge); `npx tsx scripts/twists-refresh.ts` re-checks them and searches
+  the stale ones again (see "Follow-ups"). References are a developer's check, never a game rule: the game offers what
+  data/twists.ts says and reads none of them. `--find <preset> --twists … --goal` is the local
   search the references came from (bends, height pins or heights by hand, bridges, repairs aimed at what a twist still
   finds: a pin out of the ground where a place forbids earthworks, a bend pushed off a place; how far over a forest or
   bridge cap or a curveball's money the design is), `--manual` makes a By hand reference, `--show <file|preset>` prints one
@@ -3221,3 +3225,12 @@ earth-landmarks are this branch's searches, without Hands off (not offered there
   end in the quantities and close up, D11 km 14.13's railway over our cutting and its card, our bridge chosen instead,
   the profile, the pin's two ways), `tests/dead-ends.test.ts`, `tests/road-realignment.test.ts`, `tests/retaining.test.ts`,
   `tests/railway-mode.test.ts` (a motorway passes under a railway on a 6 m embankment).
+
+## Follow-ups
+
+- **Twist references to refresh** (scheduled / manual, never part of a merge): `npx tsx scripts/twists-refresh.ts [preset…]
+  [--minutes 30] [--seeds 1,2,3] [--dry]` re-checks every reference in `scripts/twists/<preset>/` against its twists and the
+  goal under today's bills, searches each stale one again from itself (`twists-check.ts --find`, the twists and goal it
+  claims, its share of the time) and rewrites its design where a search meets it all; what is left is listed (exit 1) and
+  goes here. A merge that breaks a reference only adds it to this list (the merge gate warns, tests/twists.test.ts).
+  Run 2026-11-21 (main 25d4603f): 0 stale. Still stale: none.

@@ -179,9 +179,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   line keeps out of every monument's own ring, the mission names the nearest with their setting's wider ring (data/twists.ts
   `inPlay`, `SETTING_RING`; twists-check checks the names and that the starter breaks one); Šternberk says why it has none.
 - Twists (PLAN.md "Twists and curveballs"): per-mission challenges checked after each full evaluation (never in a drag
-  preview), never changing the bill or validity; `npx tsx scripts/twists-check.ts` (run by tests/twists.test.ts) proves each offered twist with a
-  VALID reference design in `scripts/twists/<preset>/`; a change of the bills can break a reference (search again with
-  `--find`). Curveballs exist for Šternberk only (TODO for D3, D35, D11, Královec: research/92–94).
+  preview), never changing the bill or validity; `npx tsx scripts/twists-check.ts` (run by tests/twists.test.ts) checks the twists'
+  data and that each reference in `scripts/twists/<preset>/` loads VALID. Twist references are refreshed by
+  `scripts/twists-refresh.ts`, not on every merge (one no longer meeting its twists is a warning). Curveballs exist for Šternberk only (TODO for D3, D35, D11, Královec: research/92–94).
 - Small details (PLAN.md "Small details", research/96–101): sourced grey lines on existing cards, records only where the
   player made the structure, fly-along, the ground band, the watershed line, the printed bridge card. Two new pack
   sidecars, `basins.json` and `water-names.json` (pipeline/build_basins.py, build_water_names.py): copy them with the

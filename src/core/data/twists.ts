@@ -1,6 +1,7 @@
-// Which twists each mission offers and their numbers (core/twists.ts). A twist is offered on a mission only where
-// scripts/twists-check.ts finds a VALID reference design that meets it (scripts/twists/<preset>/*.json, tests/twists.test.ts),
-// and only where it asks for something: the starting design breaks it, or it rules out what the cheap designs use.
+// Which twists each mission offers and their numbers (core/twists.ts). A twist is offered on a mission only where a
+// VALID reference design was found to meet it (scripts/twists/<preset>/*.json, scripts/twists-check.ts; kept meeting it
+// by scripts/twists-refresh.ts, a developer's check: the game never reads them, an offer stands whatever they do), and
+// only where it asks for something: the starting design breaks it, or it rules out what the cheap designs use.
 // Game rules, not norms: none changes the bill or validity.
 import { DEFAULT_TWISTS, type LandmarkKind, type TwistId, type TwistTerms } from '../twist-words';
 import type { MonumentKind } from '../heritage';
