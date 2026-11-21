@@ -7,11 +7,12 @@ import { KIND } from './structures';
 import type { EvalContext, EvalOptions, Result } from './evaluate';
 import type { XYZ, SharedWork, ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
 import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type InteractionReason, type RouteContact, type RouteInteraction } from './project-ledger';
-import { evaluateProjectRoad, type SourceWays } from './project-road';
+import { evaluateProjectRoad, sightReplacementWork, type SightRecheck, type SourceWays } from './project-road';
 import type { KeepClear } from './keep-clear';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { takenUpOutcome } from './taken-up';
-import { designedTieIn, ringMark, TIE_IN_RULES } from './tie-in';
+import { bodySurface, designedTieIn, ringMark, sharedSightDigs, sightWork, type SightScreen } from './tie-in';
+import { crossingBaseHeight, crossingSurfaces, groundSegment, type SurfaceSection } from '../render/crossing-surface';
 import type { RoadNet } from './roadnet';
 import { crossingChange } from './road-realignment';
 import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, SLIP_SECTIONS, slipHost, slipRoadAtMotorway } from './slip-roads';
@@ -28,7 +29,7 @@ import { CROSSING_RULES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { STEP } from './evaluate';
 import { thisRoadWords, worksClashText } from './terms';
-import { worksClashes } from './works-clash';
+import { crownOf as builtCrown, DRAPED, worksClashes } from './works-clash';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
 import { stationIndex } from './range';
@@ -182,7 +183,7 @@ export type PreviewPrices = Pick<EvalOptions, 'materialValue' | 'structureValue'
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
   preview = false, prices: PreviewPrices = {}, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ },
   holds?: EvalOptions['holds'], endsOf?: (route: RouteDesign) => ResolvedEnds, keepClear?: KeepClear, moved?: MovedWays): { route: RouteResult; issues: ProjectIssue[];
-    junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[]; sightWorks?: ReplacementWork[]; keptWork?: ReplacementWork } {
+    junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[]; sightWorks?: ReplacementWork[]; sightChecks?: SightRecheck[]; keptWork?: ReplacementWork } {
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
   // (Auto's reroutes planned again clear of another road the player built: evaluateProject)
   if (keepClear?.length) prices = { ...prices, keepClear };
@@ -213,6 +214,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     ...(road?.replacement ? { replacement: road.replacement } : {}),
     ...(road?.ringWorks ? { ringWorks: road.ringWorks } : {}),
     ...(road?.sightWorks ? { sightWorks: road.sightWorks } : {}),
+    ...(road?.sightChecks ? { sightChecks: road.sightChecks } : {}),
     ...(road?.keptWork ? { keptWork: road.keptWork } : evaluated.status === 'evaluated' && 'keptWork' in evaluated && evaluated.keptWork ? { keptWork: evaluated.keptWork } : {}),
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (road?.unpriced ?? ('unpriced' in evaluated && corridor?.children.reverse !== route.id ? evaluated.unpriced ?? [] : [])).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
@@ -581,6 +583,8 @@ function projectStart(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepCl
   /** a rebuilt stretch's own works: old road removed, side roads reconnected (C1 b) */
   const replacements = new Map<string, Replacement>();
   const ringsOf = new Map<string, ReplacementWork[]>();
+  /** each road's junction sight fields as first checked, to check again against the whole project (projectWorks) */
+  const sightsOf = new Map<string, SightRecheck[]>();
   // A side road ending on another designed road follows that road's current line: the joined road is
   // evaluated first (dependency order, stable otherwise). A cycle of such ends is not built yet.
   // A road crossed by a higher-ranking road follows that road's crossing (project-roadnet.ts): the owner first.
@@ -616,7 +620,7 @@ function projectStart(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepCl
     return kids ? [...keepClear.get(kids.forward) ?? [], ...keepClear.get(kids.reverse) ?? []] : keepClear.get(route.id);
   };
   const endsOf = (r: RouteDesign) => lineEnds(design, r, evaluated);
-  return { design, result, priced, engineered, corridorCache, unitOf, builtJunctions, replacements, ringsOf, order,
+  return { design, result, priced, engineered, corridorCache, unitOf, builtJunctions, replacements, ringsOf, sightsOf, order,
     holdsOf, seenOwners, cyclic, legacyOf, ownWorks, designedJunctions, sharedWays, evaluated, routeClear, endsOf };
 }
 
@@ -706,6 +710,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     if (proposal.replacement) replacements.set(route.id, proposal.replacement);
     if (proposal.ringWorks) ringsOf.set(route.id, proposal.ringWorks);
     if (proposal.sightWorks) ownWorks.set(route.id, [...ownWorks.get(route.id) ?? [], ...proposal.sightWorks]);
+    if (proposal.sightChecks) start.sightsOf.set(route.id, proposal.sightChecks);
     if (proposal.keptWork) ownWorks.set(route.id, [...ownWorks.get(route.id) ?? [], proposal.keptWork]);
     for (const i of proposal.issues) { result.issues.push(i); result.cost.unpriced.push({ routeId: route.id, reason: i.code }); }
     if (!proposal.issues.length && proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
@@ -795,6 +800,7 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
   // checked against the joined road's current design. Each road's other junctions (and ends) count.
   const junctionsOn = new Map<string, number[]>();
   const gores: SlipGore[] = [];
+  recheckSights(ctx, start);
   for (const { route, legacy } of engineered) for (const end of ['a', 'b'] as const) {
     const anchor = route.endpoints[end].anchor;
     if (anchor.kind !== 'route' || cyclic.includes(route)) continue;
@@ -819,14 +825,14 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     if (!stations) junctionsOn.set(hostRoute.id, stations = [0, host.length, ...host.crossings.filter(c => c.type === 'junction').map(c => c.s)]);
     const t = designedTieIn(legacy, routeCrownWidth(route), end, { name: hostRoute.role === 'mission' ? 'our road' : hostRoute.name, legalClass: spec.legalClass,
       crownWidth: crown, result: host, junctions: stations }, ctx.legacy.terrain, ctx.legacy.buildings,
-      route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined);
+      route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined,
+      sightScreen(ctx, start, route, legacy.x[end === 'a' ? 0 : legacy.n - 1], legacy.y[end === 'a' ? 0 : legacy.n - 1], [hostRoute.id]) ?? undefined);
     stations.push(t.s);
     if (t.violations.length) { legacy.violations.push(...t.violations); legacy.valid = false; }
     const i = end === 'a' ? 0 : legacy.n - 1, k = stationIndex(host, t.s);
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
-    if (t.sight) list.push({ kind: 'junction', s: legacy.s[i], x: t.sight.x, y: t.sight.y, length: 0, cost: t.sight.cost, label: t.sight.label,
-      dug: { cells: t.sight.dig.cells.map(c => ({ ...c })), size: TIE_IN_RULES.grid } });
+    if (t.sight) list.push(sightReplacementWork(legacy, t.sight));
     if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),
       ring: ringMark(legacy, end, { host: { x: host.tx[k], y: host.ty[k] } }),
       label: `Roundabout's ring: ${Math.round(t.ring.area)} m² of land${t.ring.removed.length ? `, ${t.ring.removed.length} building${t.ring.removed.length > 1 ? 's' : ''} bought out` : ''}` });
@@ -998,6 +1004,19 @@ function sharedJunctions(start: ReturnType<typeof projectStart>) {
       // (a roundabout's ring is the first's: its land and houses once)
       ringsOf.delete(o.route.id);
     }
+    // (the sight fields of its arms dug as one: each cell billed and drawn once, tie-in.ts sharedSightDigs)
+    const digs = group.map(o => (ownWorks.get(o.route.id) ?? []).find(w => w.dug && w.sight && w.s === o.legacy.s[o.i]));
+    if (digs.filter(Boolean).length > 1) {
+      const shared = sharedSightDigs(digs.map(w => w ? { cells: w.dug!.cells, volume: 0, area: 0 } : null));
+      group.forEach((o, k) => {
+        const w = digs[k], d = shared[k];
+        if (!w) return;
+        const list = ownWorks.get(o.route.id)!;
+        if (!d) { list.splice(list.indexOf(w), 1); return; }
+        const again = sightWork(o.end, w.x, w.y, d, w.sight!.urban, w.sight!.what);
+        list[list.indexOf(w)] = sightReplacementWork(o.legacy, again);
+      });
+    }
     // (the junction's works, and its changes of the road it joins, are one design of them all)
     for (const o of group) for (const q of group) if (o !== q) {
       const r = Math.max(o.f.length, q.f.length, ENDPOINT_JUNCTIONS['tie-in'].zone) + o.legacy.cell.width[o.i] / 2 + q.legacy.cell.width[q.i] / 2 + INDEPENDENCE_SCREEN.clearance;
@@ -1007,6 +1026,110 @@ function sharedJunctions(start: ReturnType<typeof projectStart>) {
       const shared = sharedWays.get(o.route.id) ?? []; sharedWays.set(o.route.id, shared);
       for (const way of new Set([o.f.roadId, q.f.roadId].filter((w): w is number => w !== undefined))) shared.push({ routeId: q.route.id, way, ...zone });
     }
+  }
+}
+/** Within this of a junction another road's works may stand in its sight field (the longest leg, ČSN 73 6102 tab. 19's
+ * 160 m, and the joined road's width round it), m. */
+const SIGHT_REACH = 200;
+/** What else of the project stands round a junction of `route` at (x, y) (tie-in.ts SightScreen): the other roads' earth
+ * bodies (between their daylight points, as drawn) and every road's crossing works (their slopes and the roads they
+ * rebuild, as drawn: render/crossing-surface.ts); the roads whose ends meet there too (`hosts`: a designed road joined,
+ * read by the junction itself) are its arms. Works draped on the ground within works-clash.ts DRAPED are the ground
+ * itself. Null where nothing of the kind is near. */
+function sightScreen(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>, route: RouteDesign, x: number, y: number, hosts: string[] = []): SightScreen | null {
+  const { engineered, design } = start, natural = (px: number, py: number) => ctx.legacy.terrain.heightAt(px, py);
+  const near = (r: Result) => { for (let k = 0; k < r.n; k++) if (Math.hypot(r.x[k] - x, r.y[k] - y) < SIGHT_REACH + Math.max(r.dayL[k], r.dayR[k])) return true; return false; };
+  const nameOf = (q: RouteDesign) => q.id === route.id ? 'this road' : q.role === 'mission' || corridorOfRoute(design, q.id)?.children.forward === design.routes.find(m => m.role === 'mission')?.id ? 'our road' : q.name;
+  const works: { name: string; at: (px: number, py: number) => number | null }[] = [], arms: ((px: number, py: number) => { z: number; pavement: boolean } | null)[] = [];
+  const raised: ((px: number, py: number) => number | null)[] = [];
+  const seen = new Set<Result>();
+  for (const { route: q, legacy } of engineered) {
+    if (seen.has(legacy) || !near(legacy)) continue;
+    seen.add(legacy);
+    const crown = builtCrown(legacy) ?? routeCrownWidth(q);
+    const ends = [0, legacy.n - 1].filter(k => Math.hypot(legacy.x[k] - x, legacy.y[k] - y) <= SLIP_ROAD.junctionTolerance);
+    const window = (k0: number, k1: number) => [Math.max(0, k0), Math.min(legacy.n - 1, k1)] as const;
+    if (q.id !== route.id && !hosts.includes(q.id)) {
+      if (ends.length) {
+        // (an arm of this junction: its last metres as built, as our own road's, tie-in.ts sightField)
+        for (const k of ends) {
+          const [a, b] = window(k === 0 ? 0 : k - Math.ceil(60 / legacy.ds), k === 0 ? Math.ceil(60 / legacy.ds) : k);
+          arms.push(bodySurface(legacy, a, b, crown / 2, true));
+        }
+      } else {
+        let k0 = legacy.n, k1 = -1;
+        for (let k = 0; k < legacy.n; k++) if (Math.hypot(legacy.x[k] - x, legacy.y[k] - y) < SIGHT_REACH + Math.max(legacy.dayL[k], legacy.dayR[k]) + legacy.ds) { k0 = Math.min(k0, k); k1 = Math.max(k1, k); }
+        const body = bodySurface(legacy, k0, k1, crown / 2, true);
+        works.push({ name: nameOf(q), at: (px, py) => body(px, py)?.z ?? null });
+      }
+    }
+    // (every road's crossing works, this road's own too)
+    const crossings = legacy.crossings.filter(c => Math.hypot(c.x - x, c.y - y) < SIGHT_REACH + 300);
+    if (crossings.length) {
+      const surfaces = crossingSurfaces(crossings, natural, crossingBaseHeight(legacy, crown, natural));
+      works.push({ name: nameOf(q), at: crossingWorksAt(surfaces) });
+      // (the joined road itself where a crossing rebuilds it: its pavement on its ramps and deck, where the seen car is; read
+      // where the joined road's line runs on a crossed road's rebuilt pavement, whichever way of the map it is there)
+      const own = surfaces.filter(f => !f.link && !f.tie);
+      if (own.length) raised.push(crossingWorksAt(own, true, true));
+    }
+  }
+  if (!works.length && !arms.length && !raised.length) return null;
+  return {
+    host: (px, py) => { for (const h of raised) { const z = h(px, py); if (z !== null) return z; } return null; },
+    works: (px, py) => {
+      for (const w of works) { const z = w.at(px, py); if (z !== null && Math.abs(z - natural(px, py)) > DRAPED) return { z, name: w.name }; }
+      return null;
+    },
+    arms: (px, py) => { for (const a of arms) { const h = a(px, py); if (h) return h; } return null; },
+  };
+}
+/** The height of the crossing works drawn at (x, y) (their pavement and slopes on the ground; null: none there). */
+function crossingWorksAt(surfaces: ReturnType<typeof crossingSurfaces>, decks = false, pavementOnly = false) {
+  const segments: { a: SurfaceSection; b: SurfaceSection; box: [number, number, number, number] }[] = [];
+  for (const surface of surfaces) for (let i = 0; i + 1 < surface.sections.length; i++) {
+    if (!decks && !groundSegment(surface, i)) continue;
+    const a = surface.sections[i], b = surface.sections[i + 1], pts = [...a.toe, ...b.toe, ...a.edge, ...b.edge, a.p, b.p];
+    segments.push({ a, b, box: [Math.min(...pts.map(p => p.x)), Math.min(...pts.map(p => p.y)), Math.max(...pts.map(p => p.x)), Math.max(...pts.map(p => p.y))] });
+  }
+  return (x: number, y: number): number | null => {
+    for (const { a, b, box } of segments) {
+      if (x < box[0] || x > box[2] || y < box[1] || y > box[3]) continue;
+      const dx = b.p.x - a.p.x, dy = b.p.y - a.p.y, len = Math.hypot(dx, dy);
+      if (len < 1e-6) continue;
+      const u = ((x - a.p.x) * dx + (y - a.p.y) * dy) / (len * len);
+      if (u < 0 || u > 1) continue;
+      const v = (-(x - a.p.x) * dy + (y - a.p.y) * dx) / len;
+      // (the side the point is on: the section's edge and toe there, as their offsets from its centre)
+      const off = (q: SurfaceSection, p: { x: number; y: number }) => (-(p.x - q.p.x) * dy + (p.y - q.p.y) * dx) / len;
+      const k = Math.sign(off(a, a.edge[1])) === Math.sign(v || 1) ? 1 : 0;
+      const lerp = (p: number, q: number) => p + (q - p) * u;
+      const edge = Math.abs(lerp(off(a, a.edge[k]), off(b, b.edge[k]))), toe = Math.abs(lerp(off(a, a.toe[k]), off(b, b.toe[k]))), at = Math.abs(v);
+      if (at > (pavementOnly ? edge : Math.max(edge, toe))) continue;
+      const ze = lerp(a.edge[k].z, b.edge[k].z);
+      if (at <= edge || toe <= edge) return ze;
+      return ze + (lerp(a.toe[k].z, b.toe[k].z) - ze) * (at - edge) / (toe - edge);
+    }
+    return null;
+  };
+}
+/** Stage 3: each junction's sight field checked again against what else the project builds there (sightScreen): where
+ * that differs, its problem and its dig replace the first ones. */
+function recheckSights(ctx: ProjectEvalContext, start: ReturnType<typeof projectStart>) {
+  const { engineered, ownWorks, sightsOf } = start;
+  for (const { route, legacy } of engineered) for (const c of sightsOf.get(route.id) ?? []) {
+    const screen = sightScreen(ctx, start, route, c.x, c.y);
+    if (!screen) continue;
+    const again = c.again(screen);
+    const list = ownWorks.get(route.id) ?? [];
+    if (c.work) { const k = list.indexOf(c.work); if (k >= 0) list.splice(k, 1); }
+    if (again.work) list.push(again.work);
+    ownWorks.set(route.id, list);
+    if (c.violation) { const k = legacy.violations.indexOf(c.violation); if (k >= 0) legacy.violations.splice(k, 1); }
+    if (again.violation) legacy.violations.push(again.violation);
+    legacy.valid = legacy.violations.length === 0;
+    // (what now stands, should the same result be checked again)
+    c.work = again.work; c.violation = again.violation;
   }
 }
 /** A slip road's gore on a motorway of the project, for the interchange allowance. */

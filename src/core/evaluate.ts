@@ -47,6 +47,7 @@ import { crossingWallGaps } from './crossing-walls';
 import { natureCells, protectedRasterCells, railwayNear } from './protected-raster';
 import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
+import { junctionWallClear } from './tie-in';
 import { deadEndPieces, deadEndsNear } from './dead-ends';
 import { passesUnder, railCarriedMask, railCrossingRuns, railCrossingsBuilt, type RailChoice, type RailCrossing, type RailRun } from './rail-over';
 import { crossedLevel, mappedKind, wayLevels } from './mapped-structures';
@@ -244,6 +245,9 @@ export interface Result {
 }
 
 export interface EvalOptions {
+  /** Junctions at our ends on designed roads of the project (project-road.ts; a mapped road's are EvalContext.junctions):
+   * their form and the joined road's half width, m, where no noise wall of ours stands (tie-in.ts junctionWallClear) */
+  designedJunctions?: { a?: { form: 'roundabout' | 'T'; half: number }; b?: { form: 'roundabout' | 'T'; half: number } };
   /** Explicit transport heights; never replace the Terrain height query. Omitted preserves legacy. */
   endpointElevations?: { a?: number; b?: number };
   /** Project checks goals on the required connection, not every auxiliary route. */
@@ -2845,6 +2849,28 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
+  // (no wall of ours in a junction at our end: a roundabout's ring, a T's sight triangle, tie-in.ts junctionWallClear)
+  for (const end of ['a', 'b'] as const) {
+    const i = end === 'a' ? 0 : n - 1, mapped = setup.endJunctions.find(j => j.end === end), designed = opts.designedJunctions?.[end];
+    const form = designed?.form ?? (mapped?.kind === 'roundabout' ? 'roundabout' : mapped?.kind === 'tie-in' || mapped?.kind === 'tie-in-minor' ? 'T' : null);
+    if (!form) continue;
+    // (the joined road's line at the end, whichever of its ways: its half width and how askew we meet it)
+    let half = designed?.half ?? 0, sine = 1, gap = Infinity;
+    ctx.roads?.nearSegments([st.x[i] - 2, st.y[i] - 2, st.x[i] + 2, st.y[i] + 2], q => {
+      if (mapped && !mapped.ways.has(q.way)) return;
+      const dx = q.bx - q.ax, dy = q.by - q.ay, l = Math.hypot(dx, dy);
+      if (l < 1e-6) return;
+      const t = Math.max(0, Math.min(1, ((st.x[i] - q.ax) * dx + (st.y[i] - q.ay) * dy) / (l * l))), d = Math.hypot(q.ax + t * dx - st.x[i], q.ay + t * dy - st.y[i]);
+      if (d >= gap) return;
+      gap = d; sine = (st.tx[i] * dy - st.ty[i] * dx) / l;
+      if (!designed) half = (ROAD_CLASSES[q.cls]?.width ?? 6.5) / 2;
+    });
+    const clear = junctionWallClear(form, half, urban[i] >= 0.5, sine);
+    for (let k = 0; k < n; k++) {
+      // (a cell whose near edge lies within it: walls end at the cell's edge beyond, as they are billed and heard)
+      if ((end === 'a' ? st.s[k] : st.s[n - 1] - st.s[k]) - ds / 2 < clear) { wallGaps.L[k] = 1; wallGaps.R[k] = 1; }
+    }
+  }
   // the other carriageway alongside: no wall in the median, houses beyond it are the other's to check
   const joinedSideMask = new Uint8Array(n);
   for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedSideMask[i] = 1; (joinedRight ? wallGaps.R : wallGaps.L)[i] = 1; }

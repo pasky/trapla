@@ -11,6 +11,7 @@ import { railOverPrice } from '../src/core/rail-over';
 import { squareBend } from '../src/ui/road-edit';
 import { CATEGORIES } from '../src/core/data/categories';
 import { ENDPOINT_JUNCTIONS } from '../src/core/data/urban';
+import { ROUNDABOUT_RING } from '../src/core/tie-in';
 import type { Result } from '../src/core/evaluate';
 import type { ProjectDesign } from '../src/core/project';
 import { evaluateProject } from '../src/core/project-evaluate';
@@ -260,6 +261,18 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(allowance).toBeCloseTo(-Math.min(1, km * SLIP_ROAD.allowance.perKm) * SLIP_ROAD.allowance.perInterchange, -3);
     expect(r.cost.total! - alone.cost.total!).toBeGreaterThan(100e6);
   }, 120_000);
+  it('two arms of one crossroads dig its sight field once: each cell billed and drawn by one of them (review: billed twice)', () => {
+    // (the south-east crossroads' dig is Slip road 4's: a second arm built on its very line digs the same field)
+    const d = structuredClone(design), four = d.routes.find(q => q.name === 'Slip road 4')!;
+    const twin = { ...structuredClone(four), id: 'route:twin', name: 'Slip road 5' };
+    d.routes.push(twin);
+    const r = run(d), digs = r.works.items.filter(w => w.dug && [four.id, twin.id].includes(w.owner.id));
+    // (each digs it on its own: the twin in the fixture's place)
+    expect(run({ ...design, routes: design.routes.map(q => q.id === four.id ? twin : q) }).works.items.some(w => w.dug && w.owner.id === twin.id)).toBe(true);
+    expect(digs.map(w => w.owner.id)).toEqual([four.id]);
+    const cells = digs.flatMap(w => w.dug!.cells.map(c => `${c.x},${c.y}`));
+    expect(new Set(cells).size).toBe(cells.length);
+  }, 120_000);
 });
 
 describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`public/scenarios/i35-turnov/${f}`)))('slip roads where our road leads a road it cuts elsewhere', async () => {
@@ -289,5 +302,24 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     };
     const onLink = slips[2].filter(c => c.cls === led.cls).map(c => (led.geometry!.links ?? []).some(l => l.slice(1).some((q, k) => seg(c, l[k], q) < 3)));
     expect(onLink).toEqual([true]);
+  }, 120_000);
+  it('at a roundabout end no noise wall of a slip road reaches into its ring: drawn, billed and heard alike (owner: the wall ran into it)', () => {
+    const r = run(design), R = ROUNDABOUT_RING.outerDiameter / 2;
+    let walled = 0;
+    for (const q of design.routes.filter(q => q.name.startsWith('Slip road'))) {
+      const l = r.routes[q.id].legacy!, rings = r.works.items.filter(w => w.ring && w.owner.id === q.id);
+      const ends = (['a', 'b'] as const).filter(e => q.endpoints[e].anchor.kind === 'source' && (q.alignment.kind === 'pi' && q.alignment.controls.junctionForms?.[e] === 'roundabout'));
+      if (!ends.length) continue;
+      expect(rings.length + r.works.items.filter(w => w.owner.id === q.id && w.label?.startsWith('Shares its junction')).length).toBeGreaterThan(0);
+      for (const e of ends) {
+        const from = (s: number) => e === 'a' ? s : l.length - s;
+        // (drawn: its stretches; billed: the cells' wall area, where the noise model stood them)
+        for (const w of l.walls) expect(Math.min(from(w.s0), from(w.s1))).toBeGreaterThanOrEqual(R - 1e-6);
+        for (let i = 0; i < l.n; i++) if (from(l.s[i]) + l.ds / 2 <= R) expect(l.cell.wallArea[i]).toBe(0);
+        // (the wall the houses beside it need still stands, from the ring's edge on)
+        walled += l.walls.filter(w => Math.min(from(w.s0), from(w.s1)) < R + 2 * l.ds).length;
+      }
+    }
+    expect(walled).toBeGreaterThan(0);
   }, 120_000);
 });

@@ -3338,14 +3338,31 @@ should be plenty of view."
   +0.7 k CZK (< 1 m³ dug); the I/35 Turnov diamond's south-west crossroads had a house with one corner 0.2 m inside its
   field to the left: bought out in the fixture, as its problem's fix says (+2.8 M, and 104 m³ dug); the D35 II/368 exit valid
   on Auto (model 64: "145 m to the right").
-- **Check:** `node scripts/slip-road-marks-scene.mjs [--docs]` (screenshots 786–789), `tests/tie-in-sight.test.ts`,
-  `tests/slip-roads.test.ts` ("a speed-change lane is marked as TP 133 draws it").
-- **Known gaps:** the dug ground is drawn as a tint, the ground not lowered (≤ 1 m), and not screened against protected
-  nature or other works (works-clash.ts); two ends at one crossroads each dig their own field, cells both share billed twice;
-  no splitter islands at a roundabout's
-  arms, its ring flat on what is drawn (not graded as a platform); a slip road's noise wall runs on to its end, into a ring at
-  its end (I/35 Nudvojovická); the seen car stands on the road's line, not in its lane; a roundabout keeps the T junction's
-  lump-sum price plus its ring's land.
+- **Review fixes (cost model 66):** a sight field is dug only where works may be (`core/tie-in.ts sightField`): ground in a
+  nature area that takes no works (reserves, monuments, national parks, CHKO zones I–II: the rule our road's own works keep,
+  research/75) and other works of the project (other roads' earth bodies between their daylight points and every road's
+  crossing works, their slopes and the roads they rebuild, as drawn; works draped within 0.3 m of the ground are the ground)
+  are not dug: as a house, the view is blocked, "No clear view" with its fix ("… without digging in <area>", "… clear of
+  <road>'s earthworks"). Once every road of the project is built each sight field is checked again against it
+  (`core/project-evaluate.ts sightScreen`, `recheckSights`): there the seen car stands on a crossing's ramps and deck where
+  one rebuilds the joined road (a diamond's crossroads by the road's bridge over the motorway; read on the ground, the ramps'
+  own slopes would have hidden a car under them), and the other arms of a shared crossroads read as built, as our own road
+  is. Two arms of one crossroads dig its field as one: each cell once, as deep as the deeper of them needs, billed and drawn
+  by the arm that digs it deeper (the first of equals; `sharedSightDigs`). No noise wall of a road stands in a junction at
+  its end (`core/tie-in.ts junctionWallClear`, `evaluate.ts`): a roundabout's ring to its outer edge (20 m), a T up to the
+  waiting driver's eye (the joined road's half width + the 3 m setback, further where it meets the road askew), so that none
+  stands in the ring, on the joined road or across the sight lines from the eye; as gaps in the wall line at whole station
+  cells (the wall ends at the first cell edge beyond), so what is drawn, billed and heard is one wall. The ring is laid on
+  what is drawn there; its platform's grading is in the roundabout's lump sum (ŘSD awards for whole roundabouts,
+  research/08). Frozen bills, starters and saved designs unchanged (none ends at a T or a roundabout); the I/35 Nudvojovická
+  diamond −0.30 M (its north-west exit's wall begins at its ring's edge, 24.7 m from its end; it ran on into the ring), the
+  D3 0303 / 0304 and I/35 Turnov diamonds unchanged and valid.
+- **Check:** `node scripts/slip-road-marks-scene.mjs [--docs]` (screenshots 786–789), `tests/tie-in-sight.test.ts` (a reserve,
+  other works, a car on a ramp, two arms' digs), `tests/slip-roads.test.ts` ("a speed-change lane is marked as TP 133 draws
+  it", "two arms of one crossroads dig its sight field once", "at a roundabout end no noise wall … reaches into its ring").
+- **Known gaps (genuine limits):** the dug ground is drawn as a tint, the ground not lowered (≤ 1 m); the 1 m dig limit is a
+  game rule with no source; no splitter islands at a roundabout's arms; the seen car stands on the road's line, not in its
+  lane.
 
 ## Follow-ups
 

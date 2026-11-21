@@ -312,8 +312,18 @@
  * land, billed with the junction: tie-in.ts sightField); a house in the field by its corners and walls; deeper ground or a
  * house still a problem. A sweep of approaches along every class II–III road of D35 and D11: 48 % / 34 % of junctions
  * clear, 14 % / 12 % dug clear (≈ 25 m³), the rest a house, a deeper bank or the road's own crest. Every frozen bill
- * unchanged (no frozen design joins a road). PLAN.md "Slip roads: lane markings, roundabouts, sight fields". */
-export const COST_MODEL_VERSION = 65;
+ * unchanged (no frozen design joins a road). PLAN.md "Slip roads: lane markings, roundabouts, sight fields".
+ * Model 66 (review of model 65): a junction's sight field is dug only where works may be: never in a nature area that
+ * takes none (research/75) nor into other works of the project (their earth bodies and crossing works as drawn, as a
+ * house: the view blocked, "No clear view" with its fix); it is read against the project as built (the seen car on a
+ * crossing's ramps and deck where one rebuilds the joined road, the other arms of a shared crossroads as built:
+ * project-evaluate.ts sightScreen); two arms of one crossroads dig each cell once, as deep as the deeper needs, billed and
+ * drawn by that arm (tie-in.ts sharedSightDigs); no noise wall of a road stands in a junction at its end (a roundabout's
+ * ring to its outer edge, a T up to the waiting driver's eye; whole cells, drawn, billed and heard alike: tie-in.ts
+ * junctionWallClear). Every frozen bill and starter unchanged (none ends at a T or a roundabout); the I/35 Nudvojovická
+ * diamond −0.30 M (its north-west exit's wall begins at its ring's edge, 24.7 m from its end, not at the end), the D3
+ * 0303 / 0304 and I/35 Turnov diamonds unchanged. PLAN.md "Slip roads: lane markings, roundabouts, sight fields". */
+export const COST_MODEL_VERSION = 66;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

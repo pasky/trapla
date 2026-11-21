@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Result } from '../src/core/evaluate';
 import type { Terrain } from '../src/core/terrain';
-import { resultLine, sightField, TIE_IN_RULES } from '../src/core/tie-in';
+import { resultLine, sharedSightDigs, sightField, TIE_IN_RULES } from '../src/core/tie-in';
 
 /** a straight road along x through (0, 0), heights `z(x)`, stations every `ds` m from x = −400; `day`: its slopes' reach
  * from its line, to the ground `zDay` */
@@ -59,11 +59,67 @@ describe('the view along the road a new junction joins', () => {
     expect(fine.dig!.cells.every(c => Math.abs(c.y) > 3.75 && c.depth < 0.3)).toBe(true);
     expect(coarse.dig!.volume).toBeCloseTo(fine.dig!.volume, 6);
   });
+  it('ground in a nature reserve is not dug: the low bank there is a problem naming it, the same bank elsewhere dug', () => {
+    // (the bank of the test above, 0.9 m, the reserve over its west half: a 5 m grid, its cells by their columns)
+    const bank = (x: number, y: number) => 300 + (y < -4 && y > -6.5 && Math.abs(x) > 5 ? 0.9 : 0);
+    const nx = 400, ny = 400, cell = 5, reserve = (col: number) => col * cell + cell / 2 - 1000 < -5;
+    const terrain = { heightAt: bank, isOob: () => false, cell, nx, ny, height: 1000, lc: new Uint8Array(nx * ny),
+      protectedAreas: { sites: [{ name: 'Bažiny', kind: 'PR' }], comboAtCell: (col: number) => reserve(col) ? 0 : -1,
+        rulingSite: (combo: number) => combo >= 0 ? 0 : -1 } } as unknown as Terrain;
+    // (the test's frame shifted 1000 m east and 1000 m north into the pack's: the reserve west of x = −5)
+    const shift = (r: Result) => ({ ...r, x: Array.from(r.x, v => v + 1000), y: Array.from(r.y, v => v + 1000) }) as unknown as Result;
+    const shifted = { ...terrain, heightAt: (x: number, y: number) => bank(x - 1000, y - 1000) } as unknown as Terrain;
+    const at = { end: 'b' as const, x: 1000, y: 1000 };
+    const f = sightField(at, shift(ours(300)), 3.75, resultLine(shift(host(() => 300)), 3.75), shifted);
+    expect(f.dig).toBeNull();
+    expect(f.blocked!.fix).toContain('without digging in Bažiny');
+    const free = sightField(at, shift(ours(300)), 3.75, resultLine(shift(host(() => 300)), 3.75),
+      { ...shifted, protectedAreas: undefined } as unknown as Terrain);
+    expect(free.blocked).toBeNull();
+    expect(free.dig!.cells.some(c => c.x < 995)).toBe(true);
+  });
+  it('other works of the project in the field are not dug: their embankment in the way is a problem, their cutting no dig', () => {
+    const bank = ground((x, y) => 300 + (y < -4 && y > -6.5 && Math.abs(x) > 5 ? 0.9 : 0));
+    const works = (z: number) => ({ works: (x: number, y: number) => y < -4 && y > -6.5 && x > 5 ? { z, name: 'Bypass' } : null });
+    const fill = sightField(end, ours(300), 3.75, resultLine(host(() => 300), 3.75), bank, undefined, undefined, works(301));
+    expect(fill.dig).toBeNull();
+    expect(fill.blocked!.fix).toContain('clear of Bypass\'s earthworks');
+    // (a cutting there: the bank east of the junction is dug away by it, only the west one dug for the view)
+    const cut = sightField(end, ours(300), 3.75, resultLine(host(() => 300), 3.75), bank, undefined, undefined, works(299));
+    expect(cut.blocked).toBeNull();
+    expect(cut.dig!.cells.length).toBeGreaterThan(0);
+    expect(cut.dig!.cells.every(c => c.x < -5)).toBe(true);
+  });
+  it('a car on a ramp a crossing builds is seen there: the ramp\'s slopes beside it are under the sight lines to it', () => {
+    // (the road east of x = 30 rising at 4 % up a ramp to a bridge over another road, its slopes 1:1.5 out from its edge)
+    const ramp = (x: number) => x > 30 ? (x - 30) * 0.04 : 0;
+    const slopes = { works: (x: number, y: number) => {
+      const z = 300 + ramp(x) - Math.max(0, Math.abs(y) - 3.75) / 1.5;
+      return Math.abs(y) > 3.75 && z > 300 ? { z, name: 'our road' } : null; } };
+    const flat = resultLine(host(() => 300), 3.75);
+    // (the seen car read on the ground, under its ramp: the ramp's slope in the way)
+    expect(sightField(end, ours(300), 3.75, flat, ground(() => 300), undefined, undefined, slopes).blocked).not.toBeNull();
+    const seen = sightField(end, ours(300), 3.75, flat, ground(() => 300), undefined, undefined, { ...slopes, host: (x: number) => x > 30 ? 300 + ramp(x) : null });
+    expect(seen.blocked).toBeNull();
+  });
   it('the road\'s own crest hides a car only where it rises over the sight line by more than the ground model\'s error', () => {
     // a crest at the junction falling away both ways, its vertical radius R
     const crest = (R: number) => (x: number) => 300 - x * x / (2 * R);
     const at = (R: number) => sightField(end, ours(300), 3.75, resultLine(host(crest(R)), 3.75), ground(x => crest(R)(x)));
     expect(at(1500).blocked).not.toBeNull();
     expect(at(6000).blocked).toBeNull();
+  });
+});
+
+describe('two arms of one junction dig its sight field once', () => {
+  it('each cell billed once, as deep as the deeper of the two, by the arm that digs it deeper (the first of equals)', () => {
+    const a = { cells: [{ x: 0.5, y: 0.5, depth: 0.2 }, { x: 1.5, y: 0.5, depth: 0.4 }], volume: 0.6, area: 2 };
+    const b = { cells: [{ x: 1.5, y: 0.5, depth: 0.4 }, { x: 2.5, y: 0.5, depth: 0.3 }, { x: 0.5, y: 0.5, depth: 0.5 }], volume: 1.2, area: 3 };
+    const [one, two] = sharedSightDigs([a, b]);
+    expect(one).toEqual({ cells: [{ x: 1.5, y: 0.5, depth: 0.4 }], volume: 0.4, area: 1 });
+    expect(two!.cells).toEqual([{ x: 2.5, y: 0.5, depth: 0.3 }, { x: 0.5, y: 0.5, depth: 0.5 }]);
+    expect(two!.volume).toBeCloseTo(0.8, 9);
+    // (an arm left nothing of its own digs nothing)
+    expect(sharedSightDigs([b, a, null])).toEqual([b, null, null]);
   });
 });

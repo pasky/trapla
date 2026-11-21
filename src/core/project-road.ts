@@ -6,7 +6,8 @@ import { evaluate, OLD_ROAD_TIE, type EvalContext, type EvalOptions, type Result
 import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
-import { ringMark, ringWorks, TIE_IN_RULES, tieInChecks, tieIns } from './tie-in';
+import { ringMark, ringWorks, sightCheck, TIE_IN_RULES, tieInChecks, tieIns, type SightScreen, type SightWork } from './tie-in';
+import type { Violation } from './checks';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
 import { applyKept, heldOnOldLine, lineAsDrawn, plannedKept, releaseHeld } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
@@ -14,6 +15,15 @@ import { CATEGORIES } from './data/categories';
 import { holdMiss, RAISE_MEETS, RAISE_PASSES, raisableEnds, raiseEnds, type RaisedEnd } from './junction-raise';
 import { deckHeights, oldLine, oldPieces, type OldPiece } from './stretch-chain';
 
+/** A junction's sight field as a work of the road (drawn: its dug cells; priced and named again where arms share it). */
+export function sightReplacementWork(r: Result, w: SightWork): ReplacementWork {
+  return { kind: 'junction', s: r.s[w.end === 'a' ? 0 : r.n - 1], x: w.x, y: w.y, length: 0, cost: w.cost, label: w.label,
+    dug: { cells: w.dig.cells.map(c => ({ ...c })), size: TIE_IN_RULES.grid }, sight: { what: w.what, urban: w.urban } };
+}
+/** A junction's sight field checked on this road alone, and again against what else of the project stands there. */
+export interface SightRecheck { end: 'a' | 'b'; x: number; y: number;
+  /** what stands now: the problem and the work in the road's result and works */ violation: Violation | null; work: ReplacementWork | null;
+  again(screen: SightScreen): { violation: Violation | null; work: ReplacementWork | null } }
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
   | { status: 'evaluated'; result: Result; unpriced?: 'source-needs-network'[];
@@ -25,6 +35,9 @@ export type ProjectRoadEvaluation =
       ringWorks?: ReplacementWork[];
       /** Junctions' sight fields dug clear (tie-in.ts sightField). */
       sightWorks?: ReplacementWork[];
+      /** each junction's sight field as first checked (this road alone): checked again once every road of the project
+       * is built (project-evaluate.ts), its problem and work replaced */
+      sightChecks?: SightRecheck[];
       /** A rebuilt stretch: what the kernel billed where the old road is kept as it is (a credit). */
       keptWork?: ReplacementWork }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
@@ -135,11 +148,18 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   // the ramps to a deck it is held on where they cannot get down within it, junction-raise.ts)
   // (not an end kept as its old road: nothing is built there)
   const { ends: raisable, endGrades } = route.source ? raisableEnds(ties.filter(t => !kept?.[t.end === 'a' ? 0 : kept.length - 1])) : { ends: [], endGrades: {} };
+  // (a junction at an end on a designed road of the project: no noise wall of ours in it, evaluate.ts)
+  const designedJunctions: NonNullable<EvalOptions['designedJunctions']> = {};
+  if (route.role === 'auxiliary') for (const end of ['a', 'b'] as const) {
+    const anchor = route.endpoints[end].anchor, host = anchor.kind === 'route' ? project.routes.find(q => q.id === anchor.routeId) : undefined;
+    if (host?.kind !== 'road' || host.specification.crossSection === 'existing') continue;
+    designedJunctions[end] = { form: forms[end] === 'roundabout' ? 'roundabout' : 'T', half: CATEGORIES[host.specification.crossSection].crownWidth / 2 };
+  }
   const solve = (raised: { a?: RaisedEnd; b?: RaisedEnd }) => evaluate({ ...ctx, roads, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin },
     ...(ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => raised[t.end] ? { ...t.junction, ties: raised[t.end]!.ties, tiesCost: raised[t.end]!.cost } : t.junction)] } : {}) }, design,
-  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(held ? { line: held } : {}), ...(sideWays.length ? { sideWays } : {}),
+  { ...options, ...(designedJunctions.a || designedJunctions.b ? { designedJunctions } : {}), ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), ...(held ? { line: held } : {}), ...(sideWays.length ? { sideWays } : {}),
     endpointElevations: { a: raised.a?.z ?? explicitZ(a), b: raised.b?.z ?? explicitZ(b) }, ...(endGrades.a || endGrades.b ? { endGrades } : {}),
     operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
@@ -166,11 +186,17 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     }
   }
   let sightWorks: ReplacementWork[] = [];
+  const sightChecks: SightRecheck[] = [];
   if (ties.length && roads && !options.preview) {
-    const found = tieInChecks(ties, result, CATEGORIES[design.category].crownWidth, roads, ctx.terrain, ctx.buildings);
+    const crown = CATEGORIES[design.category].crownWidth, found = tieInChecks(ties, result, crown, roads, ctx.terrain, ctx.buildings);
     if (found.violations.length) { result.violations.push(...found.violations); result.valid = false; }
-    sightWorks = found.sight.map(w => ({ kind: 'junction' as const, s: result.s[w.end === 'a' ? 0 : result.n - 1], x: w.x, y: w.y, length: 0, cost: w.cost, label: w.label,
-      dug: { cells: w.dig.cells.map(c => ({ ...c })), size: TIE_IN_RULES.grid } }));
+    const res = result, net = roads;
+    for (const c of found.checks) {
+      const work = c.sight ? sightReplacementWork(res, c.sight) : null;
+      if (work) sightWorks.push(work);
+      sightChecks.push({ end: c.tie.end, x: c.tie.x, y: c.tie.y, violation: c.violation, work,
+        again: screen => { const d = sightCheck(c.tie, res, crown, net, ctx.terrain, ctx.buildings, screen); return { violation: d.violation, work: d.sight ? sightReplacementWork(res, d.sight) : null }; } });
+    }
   }
   // Where a rebuilt stretch stays on its old road, the old road is kept as it is: no norm, no works, no bill.
   let keptWork: ReplacementWork | null = null;
@@ -194,5 +220,5 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
       label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} bought out` : ''}` };
   });
   return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
-    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(sightWorks.length ? { sightWorks } : {}), ...(keptWork ? { keptWork } : {}) };
+    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(sightWorks.length ? { sightWorks } : {}), ...(sightChecks.length ? { sightChecks } : {}), ...(keptWork ? { keptWork } : {}) };
 }

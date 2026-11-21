@@ -57,6 +57,8 @@ export interface ReplacementWork {
   /** ground it digs off (a junction's sight field: tie-in.ts sightField), squares of `size` m about each cell (`depth`
    * dug there, m), drawn */
   dug?: { cells: { x: number; y: number; depth: number }[]; size: number };
+  /** a sight field's dig: the joined road in words and the end's urban share, to price and name it again (not posted) */
+  sight?: { what: string; urban: number };
 }
 export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
   /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,
