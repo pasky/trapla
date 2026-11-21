@@ -19,16 +19,19 @@ const flags = new Set(['--minutes', '--iters', '--seeds']);
 const presets = args.filter((a, i) => !a.startsWith('--') && !flags.has(args[i - 1]));
 const minutes = Number(opt('--minutes') ?? 30), iters = Number(opt('--iters') ?? 600);
 const seeds = (opt('--seeds') ?? '1,2,3').split(',').map(Number), dry = args.includes('--dry');
-const deadline = performance.now() + minutes * 60e3;
 const quiet = () => {};
 
 const todo: { preset: string; s: Stale }[] = [];
+// (what the merge gate fails on and a search cannot mend: a reference that does not load, the twists' own data)
+const broken: string[] = [];
 for (const preset of presets.length ? presets : Object.keys(MISSION_TWISTS)) {
   const c = checkMission(preset, quiet);
-  for (const f of c.failures) console.log(`${preset}: ✗ ${f}`);
+  for (const f of c.failures) if (!/: not valid: /.test(f)) { broken.push(`${preset}: ${f}`); console.log(`${preset}: ✗ ${f}`); }
   for (const s of c.stale) { todo.push({ preset, s }); console.log(`${preset}/${s.file}: stale (${s.why.join('; ').slice(0, 200)})`); }
 }
 console.log(`${todo.length} stale references${dry ? '' : `, ${minutes} min to search`}`);
+// (the time to search starts after the scan)
+const deadline = performance.now() + minutes * 60e3;
 
 const left: string[] = [];
 for (let k = 0; k < todo.length; k++) {
@@ -42,7 +45,7 @@ for (let k = 0; k < todo.length; k++) {
   for (const seed of seeds) {
     if (performance.now() >= until) break;
     console.log(`${path}: searching (seed ${seed}) for ${fx.meets.join(', ') || 'nothing'}${fx.goal ? ' and the goal' : ''}`);
-    found = find(preset, fx.meets, !!fx.goal, path, iters, seed, tmp, { deadline: until, log: quiet });
+    found = find(preset, fx.meets, !!fx.goal, path, iters, seed, tmp, { deadline: until, log: quiet, first: true });
     if (found) break;
   }
   if (found) {
@@ -50,12 +53,11 @@ for (let k = 0; k < todo.length; k++) {
     writeFileSync(path, JSON.stringify({ ...fx, design } satisfies Fixture, null, 1));
     // (what twists-check says of it now: the search's own verdict is the same check, so this only guards the write)
     const now = checkMission(preset, quiet);
-    if (now.stale.some(x => x.file === s.file)) { writeFileSync(path, JSON.stringify(fx, null, 1)); left.push(path); console.log(`${path}: the design found does not check, kept the old one`); }
+    if (now.stale.some(x => x.file === s.file) || now.failures.some(f => f.startsWith(`${s.file}: `))) { writeFileSync(path, JSON.stringify(fx, null, 1)); left.push(path); console.log(`${path}: the design found does not check, kept the old one`); }
     else console.log(`${path}: refreshed`);
   } else { left.push(path); console.log(`${path}: not found in time, left as it was`); }
   rmSync(tmp, { force: true });
 }
-if (left.length) {
-  console.log(`\nstill stale (list them under PLAN.md "Follow-ups"):\n${left.map(p => `  ${p}`).join('\n')}`);
-  process.exitCode = 1;
-}
+if (left.length) console.log(`\nstill stale (list them under PLAN.md "Follow-ups"):\n${left.map(p => `  ${p}`).join('\n')}`);
+if (broken.length) console.log(`\nnot for a search to mend (twists-check.ts fails on these):\n${broken.map(p => `  ${p}`).join('\n')}`);
+if (left.length || broken.length) process.exitCode = 1;

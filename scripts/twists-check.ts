@@ -75,9 +75,10 @@ export const evalDesign = (m: Mission, d: ProjectDesign) => evaluateProject(m.ct
 const SCALE = Number(process.env.STEP ?? 1);
 // (WEIGHT=landmarks:5: what a twist still broken weighs, ×; a search from a design that meets it holds on to it)
 const WEIGHT: Record<string, number> = Object.fromEntries((process.env.WEIGHT ?? '').split(',').filter(Boolean).map(w => { const [k, v] = w.split(':'); return [k, Number(v)]; }));
-/** `deadline`: a time (performance.now()) the search stops at, as after its last iteration; returns whether `out` meets it all */
+/** `deadline`: a time (performance.now()) the search stops at, as after its last iteration; `first`: stop at the first design
+ * meeting it all (else the cheapest found); returns whether `out` meets it all */
 export function find(preset: string, twists: TwistId[], goal: boolean, from: string | undefined, iters: number, seed: number, out: string,
-  { deadline = Infinity, log: print = console.log }: { deadline?: number; log?: (line: string) => void } = {}): boolean {
+  { deadline = Infinity, log: print = console.log, first = false }: { deadline?: number; log?: (line: string) => void; first?: boolean } = {}): boolean {
   const m = mission(preset), scratch = twists.includes('scratch');
   let rng = seed * 2654435761 % 2147483647 || 1;
   const rand = () => (rng = rng * 16807 % 2147483647) / 2147483647;
@@ -171,6 +172,8 @@ export function find(preset: string, twists: TwistId[], goal: boolean, from: str
     if (accept) { cur = next; curR = r; curS = s; }
     if (s.p < best.s.p) { best = { d: next, s, r }; log(k, s, r); }
     if (s.met && (!bestMet || (r.cost.total ?? Infinity) < (bestMet.r.cost.total ?? Infinity))) bestMet = { d: next, s, r };
+    // (first: the first design that meets it all will do)
+    if (first && bestMet) break;
     if (k % 50 === 0) { cur = best.d; curR = best.r; curS = best.s; save(bestMet ?? best); }
   }
   best = bestMet ?? best;
@@ -279,10 +282,8 @@ export function checkMission(preset: string, log: (line: string) => void = conso
     }
     for (const c of checks) if (!c.met) warn(`${file}: claims ${c.id}, breaks it: ${c.status} ${c.issues.map(i => i.text).join('; ')}`, file);
     if (fx.goal && !beats) warn(`${file}: claims the goal, ${r.cost.total} is over ${(1 - GOAL_SHARE) * mt.startBill}`, file);
-    if (r.valid && checks.every(c => c.met) && (!fx.goal || beats)) {
-      for (const t of fx.meets) met.add(t);
-      if (fx.goal && defaults.every(t => fx.meets.includes(t))) reveal = true;
-    }
+    if (r.valid) for (const c of checks) if (c.met) met.add(c.id);
+    if (r.valid && checks.every(c => c.met) && fx.goal && beats && defaults.every(t => fx.meets.includes(t))) reveal = true;
   }
   // From scratch: the starter is a design the straight line can be bent into (its own bends), so the twist asks only
   // that the design began there; its reference is the starter itself, VALID.
