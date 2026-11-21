@@ -3309,4 +3309,4 @@ a junction's mouth, our own body), each blind to what the others build.
   goal under today's bills, searches each stale one again from itself (`twists-check.ts --find`, the twists and goal it
   claims, its share of the time) and rewrites its design where a search meets it all; what is left is listed (exit 1) and
   goes here. A merge that breaks a reference only adds it to this list (the merge gate warns, tests/twists.test.ts).
-  Run 2026-11-21 (main 25d4603f): 0 stale. Still stale: none.
+  Run 2026-11-21 (main 3db3f7d8, cost model 64): 0 stale. Still stale: none.
