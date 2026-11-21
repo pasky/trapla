@@ -10,7 +10,8 @@ import { CLOSURE_ROUND, PIECE_SEARCH, pieceAccess, type PieceAccess } from './wa
 export { CLOSURE_ROUND } from './way-pieces';
 import { smoothLink } from './crossing-link';
 import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
-import { crossingWorks, slopeWorks, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
+import { ourBody, type OurBody } from './our-body';
+import { crossingWorks, slopeWorks, SOURCE_BREAK, type CrossingTie, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LINK_MAX_SUPPORT, LOWERING_RULES, MAX_RAMP_LENGTH, OVERBRIDGE_CLEARANCE as CLEARANCE, RETAINING_RULES, retainingAssembly, sagDrainage, SQUARE_BELOW, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
 export { SQUARE_BELOW };
 import { slopeSurfaceAt } from './sections';
@@ -19,6 +20,7 @@ import { KIND } from './structures';
 import { acos, atan2, cos, sin, tan } from './detmath';
 import { INDEPENDENCE_SCREEN } from './project-ledger';
 
+const halfWidths = (width: ArrayLike<number>) => Float64Array.from(width, w => w / 2);
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
 export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road within its steepest allowed slope';
@@ -708,6 +710,14 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     for (const message of cached.diagnostics) if (!roads.isDesigned(roadId) || message !== DENSE_CROPPED) diagnose(g, message);
     return cached.path;
   };
+  /** A way alone (no continuations) through (x, y), sampled densely: what a reroute led to it lies on (its diagnostics are
+   * its own crossing's). */
+  const wayPath = (roadId: number, x: number, y: number) => {
+    const key = `way:${roadId}:${x},${y}`;
+    let cached = paths.get(key);
+    if (!cached) paths.set(key, cached = { path: roads ? denseWay(roads.crossingPath(roadId, x, y, MAX_REACH), () => {}) : [], diagnostics: [] });
+    return cached.path;
+  };
 
   const linkEnv: LinkEnv = { heightAt, margin: (q, extra) => margin(q, extra, false), roads, obstacle: route.obstacle, railway: route.railway, streams: route.streams,
     houses: route.houses, houseCost: route.houseCost, memo: linkMemo };
@@ -863,7 +873,7 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
   /** the crossed road's level (a mapped bridge's deck, a tunnel's road), the ground elsewhere */
   const levelAt = level ?? heightAt;
   return { cuts, squares, anchorBuilds, anchorMemo, slopes, pieces, at, project, margin, reads, terrainPoint, groundPoint, levelAt, diagnose, homesOf,
-    rawPaths, rawOf, squaredPaths, survivingSides, anchors, maxLinkWidth, getPath, linkEnv, cutOf,
+    rawPaths, rawOf, squaredPaths, survivingSides, anchors, maxLinkWidth, getPath, wayPath, linkEnv, cutOf,
     squarePath, ours };
 }
 type CrossingTools = ReturnType<typeof crossingTools>;
@@ -1813,7 +1823,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
 /** Stage 4: terrain-only spans refined against the ground between their samples, the works on each crossing
  * (regrades, walls) measured, and the diagnostics turned into the crossings' issues (returned). */
 function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heightAt: (x: number, y: number) => number, roads: RoadNet | undefined, anchorOnly: ReadonlySet<CrossingResult> | undefined, tools: ReturnType<typeof crossingTools>) {
-  const { terrainPoint, diagnose, project, squaredPaths, getPath, margin, homesOf, slopes } = tools;
+  const { terrainPoint, diagnose, project, squaredPaths, getPath, wayPath, margin, homesOf, slopes } = tools;
   // Refine terrain-only spans against interior elevations, not just their endpoints. This prevents
   // a nominally draped 10 m chord from floating over a sharp gully between its stored samples.
   // Original OSM vertices and engineered boundaries retain object identity; recursion and output
@@ -1861,14 +1871,13 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
   // The rebuilt stretch's own slopes must leave other roads usable: regrade side roads joining it,
   // hold the slope back from roads beside it, or report the treatment infeasible (crossing-works.ts).
   const claimed: XY[][] = [];
-  const crown = (route.crownWidth ?? 0) / 2 + 1;
-  const body = (q: XY) => {
-    if (margin(q, 0, false) > 0) return null;
-    const p = project(q, false);
-    // (under our bridge or over our tunnel there is no earth body of ours)
-    if ((route.kind?.[Math.min(route.s.length - 1, firstAbove(route.s, p.s, true))] ?? KIND.earth) !== KIND.earth) return null;
-    return Math.abs(p.lateral) <= crown ? 'formation' as const : heightAt(q.x, q.y) > p.z ? 'cut' as const : 'fill' as const;
-  };
+  // (our body as drawn, its earth between the stations and its cones, our-body.ts: the works-clash screen's own reading;
+  // read only where a slope is screened against it)
+  let drawn: OurBody | undefined;
+  const ourDrawn = () => drawn ??= ourBody({ n: route.s.length, x: route.x, y: route.y, s: route.s, grade: route.grade,
+    kind: route.kind ?? new Uint8Array(route.s.length), dayL: route.left ?? halfWidths(route.width), dayR: route.right ?? halfWidths(route.width) },
+    route.crownWidth ?? 0, route.cones, heightAt);
+  const body = (q: XY) => ourDrawn().at(q.x, q.y), bodyGap = (q: XY) => ourDrawn().gap(q.x, q.y);
   for (const c of crossings) {
     const g = c.geometry!;
     if (!roads || !g.road || anchorOnly?.has(c) || (c.type !== 'junction' && c.type !== 'overbridge' && !(c.type === 'underpass' && c.lowered)) || g.diagnostics?.length) continue;
@@ -1877,7 +1886,7 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
       ...(route.beside ? { beside: route.beside } : {}),
       // (a junction meets our road, and a lowered way passes through our embankment, by design: only a bridge
       // over us keeps its slopes out of our body)
-      ...(c.type === 'overbridge' ? { body, gap: (q: XY) => margin(q, 0, false) } : {}) });
+      ...(c.type === 'overbridge' ? { body, gap: bodyGap } : {}) });
     for (const message of works.problems) diagnose(g, message);
     if (works.ties.length) g.ties = works.ties;
     for (const [i, wall] of works.walls) g.road[i] = { ...g.road[i], wall };
@@ -1889,19 +1898,28 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
     if (works.tieLength > 0) c.tieLength = works.tieLength;
     if (works.wallLength > 0) c.wallLength = works.wallLength;
   }
-  // A reroute's own slopes too: walls where they would run into our earthworks, a railway or a house kept,
-  // houses under them bought out (link-route.ts keeps the road itself off them).
+  // A reroute's own slopes too: walls where they would run into our earthworks, a railway, a house kept or another
+  // mapped road (a side road joining it regraded to meet it, as a crossing's own stretch: crossing-works.ts), houses
+  // under them bought out (link-route.ts keeps the road itself off them).
   for (const c of crossings) {
     const g = c.geometry!;
     if (!g.links || anchorOnly?.has(c) || g.diagnostics?.length || (c.type !== 'reconnection' && c.type !== 'diversion')) continue;
-    let cost = 0, wallLength = 0;
-    const houses = new Set(c.houses ?? []);
+    let cost = 0, wallLength = 0, tieLength = 0;
+    const houses = new Set(c.houses ?? []), ties: CrossingTie[] = [];
+    // (its own way's line and the way it is led to are the reroute itself: crossing-works' source)
+    const source: XY[] = roads ? [...getPath(c.roadId, c.x, c.y, g)] : [];
+    // (the way it is led to, through its own crossing of ours: a link joining it mid-way lies on it, not beside it;
+    // worksClashes counts that way the reroute's own too. That way alone: another way continuing it is another road.)
+    const target = c.targetS === undefined ? undefined : crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId);
+    if (roads && target?.roadId !== undefined) source.push(SOURCE_BREAK, ...wayPath(target.roadId, target.x, target.y));
     g.links = g.links.map(path => {
-      const key = `${g.width}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
+      const key = `${g.width}|${c.roadId}|${c.targetRoadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
       let own = slopes.get(key);
-      if (!own) slopes.set(key, own = slopeWorks(path, g.width, { heightAt, ours: (q, pad) => margin(q, pad) <= 0, body, gap: q => margin(q, 0, false), ...(route.beside ? { beside: route.beside } : {}) }));
+      const screen = { heightAt, ours: (q: XY, pad: number) => margin(q, pad) <= 0, body, gap: bodyGap, ...(route.beside ? { beside: route.beside } : {}) };
+      if (!own) slopes.set(key, own = roads ? crossingWorks(path, g.width, source, { ...screen, roads, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed, crossAt: true })
+        : slopeWorks(path, g.width, screen));
       for (const message of own.problems) diagnose(g, message);
-      cost += own.cost; wallLength += own.wallLength;
+      cost += own.cost; wallLength += own.wallLength; tieLength += own.tieLength; ties.push(...own.ties);
       for (const j of own.houses) houses.add(j);
       if (!own.walls.size) return path;
       const walled = [...path];
@@ -1909,6 +1927,7 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
       return walled;
     }) as [CrossingPoint[], CrossingPoint[]];
     if (cost > 0) { c.worksCost = cost; c.cost += cost; c.wallLength = wallLength; }
+    if (ties.length) { g.ties = ties; c.tieLength = tieLength; }
     const added = [...houses].filter(j => !c.houses?.includes(j));
     if (added.length) {
       const extra = added.reduce((sum, j) => sum + (route.houseCost?.(j) ?? 0), 0);
@@ -2297,6 +2316,47 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     const after = state();
     if (after === before) break;
     before = after;
+  }
+  // The pairing the other way round: a track's or service road's structure others are led to is itself led to one of
+  // them built as the structure instead, wherever that costs the group less. (The dearest crossings are weighed first:
+  // one whose reroute elsewhere cannot be built becomes a structure though its neighbour's box would carry both for less;
+  // I/35 Rovensko km 8.69 / 9.02, PLAN.md "One screen for every earthwork".)
+  const usable = (x: CrossingResult) => feasible(x) && !x.geometry?.runsBack && !takesHome(x);
+  for (const c of crossings.filter(c => (c.type === 'overbridge' || c.type === 'underpass') && (c.cls === 'track' || c.cls === 'service') && usable(c))
+    .sort((a, b) => b.cost - a.cost || a.s - b.s)) {
+    if (c.requestedType || c.designed || c.moved || endsOn(c)) continue;
+    const followers = crossings.filter(x => leadsTo(x, c));
+    if (!followers.length || followers.some(x => x.requestedType || x.via !== undefined)) continue;
+    let least = c.cost + followers.reduce((sum, x) => sum + x.cost, 0), swap: { order: CrossingResult[]; next: CrossingResult[] } | undefined;
+    for (const f of followers) {
+      if (f.moved || f.designed || f.under !== undefined || ROAD_CLASSES[f.cls].noAtGrade || f.geometry?.sameSide) continue;
+      const others = followers.filter(x => x !== f), minor = f.cls === 'track' || f.cls === 'service';
+      // (a public road's traffic is not led to a track's crossing)
+      if (!minor && others.some(x => x.cls !== 'track' && x.cls !== 'service')) continue;
+      for (const type of [...(route.kind?.[f.i] === KIND.earth && underpassFits(f, 0) ? ['underpass' as const] : []), 'overbridge' as const]) {
+        const carrier = clone(f); carrier.type = type;
+        delete carrier.targetS; delete carrier.targetRoadId; delete carrier.linkLength; delete carrier.span; delete carrier.approachLength; delete carrier.underpassLength;
+        delete carrier.under; delete carrier.closure; delete carrier.farClosure; delete carrier.accessFor; delete carrier.buyout; delete carrier.cutOff;
+        build([carrier]);
+        if (!usable(carrier) || carrier.cost >= least) continue;
+        let total = carrier.cost;
+        const links: CrossingResult[] = [];
+        for (const x of [c, ...others]) {
+          const link = clone(x); link.type = x.cls === 'track' ? 'diversion' : 'reconnection';
+          delete link.span; delete link.approachLength; delete link.underpassLength;
+          link.targetS = carrier.s; link.targetRoadId = carrier.roadId; delete link.under; delete link.closure; delete link.farClosure; delete link.accessFor; delete link.buyout; delete link.cutOff;
+          const anchor = clone(carrier); anchor.square = carrier.square;
+          build([anchor, link], least - total, new Set([anchor]));
+          if (!feasible(link) || takesHome(link)) { total = Infinity; break; }
+          total += link.cost; links.push(link);
+          if (total >= least) break;
+        }
+        if (total < least) { least = total; swap = { order: [f, c, ...others], next: [carrier, ...links] }; }
+      }
+    }
+    if (!swap) continue;
+    swap.order.forEach((x, k) => { for (const key of FIELDS) delete x[key]; Object.assign(x, swap!.next[k]); });
+    changed = true;
   }
   // A way that comes back out of our earthworks on the side it went in needs no crossing of its own: it is
   // moved beside them where that, with the roads led to its crossing led to the nearest other one, is

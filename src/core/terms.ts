@@ -20,6 +20,7 @@ import type { CrossingResult } from './crossings';
 import type { FootprintConflict } from './footprint';
 import type { RoadRealignmentPlan } from './road-realignment';
 import type { ProjectReceiver } from './project';
+import type { WorksClash } from './works-clash';
 import * as dm from './detmath';
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { LOWERING_RULES, underpassAssembly } from './data/remedies';
@@ -324,6 +325,17 @@ export const BRIDGE_STYLE_TEXT: readonly ['short' | 'long' | 'arch', string, str
   ['long', 'Long spans', 'Fewer, taller piers 45–60 m apart and a deeper deck, or one long span with longer spans beside it over what lies below.'],
   ['arch', 'Arch', 'One arch springing from the valley sides, the deck on columns; only where the valley fits an arch of 100–250 m.'],
 ];
+
+/** Earthworks standing on what nothing there moves aside, walls off or buys out (core/works-clash.ts): the problem's words.
+ * `fix`: 'move' (the player's road: moved away from it), 'auto' (a crossing the player chose: set back to Auto). */
+export function worksClashText(c: Pick<WorksClash, 'what' | 'wayCls' | 'path' | 'cls'>, fix: 'move' | 'auto'): { title: string; fix: string } {
+  const own = c.path === 'body' || c.path === 'cone', label = (cls?: string) => ROAD_CLASSES[cls ?? '']?.label ?? 'road';
+  const whose = own ? 'This road’s earthworks' : c.path === 'tie' ? 'A regraded side road' : `The ${label(c.cls)}’s earthworks`;
+  const what = c.what === 'road' ? `cover a ${label(c.wayCls)}` : c.what === 'house' ? 'come too close to a house'
+    : c.what === 'railway' ? 'cover a railway' : c.what === 'pier' ? 'stand on a pier of our bridge' : c.what === 'deck' ? 'reach up into our bridge'
+    : 'run into our road’s earthworks';
+  return { title: `${whose} ${what}`, fix: fix === 'auto' ? 'Set this crossing back to Auto' : 'Move this road away from it here' };
+}
 
 /** Footprint outcomes (things our earthworks cover beside the road). */
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation' | 'takenUp' | 'buyout'>): OutcomeText {

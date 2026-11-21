@@ -478,6 +478,22 @@ road ends or something holds it, and the hover says what ("The road ends here", 
 Also: [its two squares](docs/screenshots/780-stretch-ends.png), [its Start pulled back past its junction](docs/screenshots/783-stretch-start-past-junction.png),
 [both ends pulled](docs/screenshots/784-stretch-both-ends-pulled.png), [held at a road you built, saying why](docs/screenshots/785-stretch-end-held-at-your-road.png).
 
+Every earthwork body is screened the same way after a full evaluation: a crossing's ramps, links, ties and turning
+areas, a raised junction's ties, end cones and a road's own body, against houses, railways, our piers and deck, our
+body and the other mapped roads. Auto keeps its own clear (walls, moved links); what is left on the player's roads or
+crossings is a problem with a fix. A rebuilt road held on its bridge between two junctions raises them with its ramps
+(within 30 m of a junction at most 6 %), the roads meeting there regraded down along their arms and the end's fill a
+cone round it. `node scripts/works-clash-scene.mjs [--docs] [--base <checkout>]` (screenshots 770–776),
+`npx tsx scripts/works-clash-audit.ts --edits --gate`.
+
+| D11 km 8.39, the service road (its bridge picked on its card) slid back 40 m: before, its ramps fanned round the junction | Now the junction is raised, its arms regraded down to it |
+|---|---|
+| ![Before](docs/screenshots/770-slid-crossing-before.png) | ![After](docs/screenshots/771-slid-crossing-east-junction.png) |
+
+Also: [its other junction](docs/screenshots/772-slid-crossing-north-junction.png), [both from the side](docs/screenshots/773-slid-crossing-both-junctions.png),
+[our road's card of it](docs/screenshots/774-slid-crossing-card.png), [a track's new link walled off our embankment at D11 km 15.53](docs/screenshots/775-link-off-our-cone.png),
+[whole I/35 km 23.13 slid: the class I road under its fill, a problem with its fix](docs/screenshots/776-i35-slid-problem.png).
+
 A mapped dead end that serves nothing beyond our works is ended beside them by Auto (its last metres taken up, billed
 and drawn so, a turning area on a public road); an existing railway may be carried over our road on a new bridge (Auto
 weighs it, the player picks it on the railway's card, a pin's fix offers it). `node scripts/rail-dead-end-shots.mjs

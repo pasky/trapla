@@ -588,6 +588,8 @@ export interface CrossingRoute {
   width: ArrayLike<number>;
   /** Optional asymmetric built footprint distances, positive to either side. */
   left?: ArrayLike<number>; right?: ArrayLike<number>;
+  /** The cones of fill in front of our abutments (abutment-cone.ts): part of our body a slope keeps out of (our-body.ts). */
+  cones?: readonly import('./abutment-cone').AbutmentCone[];
   crownWidth?: number;
   /** Built structure kind per station; Auto considers an underpass only under earthwork. */
   kind?: ArrayLike<number>;

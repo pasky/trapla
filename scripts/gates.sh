@@ -49,6 +49,7 @@ local-retry|node|full|npx tsx scripts/local-retry-report.ts
 vc-overlap|node|full|npx tsx scripts/vc-overlap-audit.ts
 bridge-ends|node|full|npx tsx scripts/bridge-ends-audit.ts
 dead-ends|node|full|npx tsx scripts/dead-end-audit.ts --quiet
+works-clash|node|full|npx tsx scripts/works-clash-audit.ts --edits --gate
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 scenario-d11-motorway|node|full|env SCENARIO=d11 PRESET=d11-motorway node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts
 $(for p in i35-turnov i35-rovensko i35-jicin i35-full; do echo "scenario-$p-road|node|full|env SCENARIO=$p PRESET=$p-road node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)

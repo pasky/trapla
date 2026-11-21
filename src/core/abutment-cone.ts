@@ -52,6 +52,9 @@ export interface AbutmentCone {
   length: number; side: number;
   /** fill, m³; paving, m²; toe sill, m */
   volume: number; paved: number; sill: number;
+  /** a road's end raised with its junction (core/junction-raise.ts): the fill round the node, its top the road's own
+   * level, no deck over it (nothing paved, no sill billed) */
+  end?: true;
 }
 
 /** the cone's surface at `u` m into the bridge from the abutment and `v` m off the axis (no ground) */

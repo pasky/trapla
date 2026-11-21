@@ -288,8 +288,22 @@
  * part kept as the old road, a bridge or tunnel the kernel built wholly there is not built (drawn as the old road, as it
  * was billed), and one reaching a part built anew is built whole and billed (project-kept.ts). Every frozen bill,
  * starter and saved design unchanged (eval-regression, a rebuilt-stretch audit of 8 designs). PLAN.md "A rebuilt stretch
- * over several ways". */
-export const COST_MODEL_VERSION = 63;
+ * over several ways".
+ * Model 64 (owner report: an embankment over another road after a crossing road was dragged): one works-clash screen
+ * for every earthwork body (works-clash.ts; an audit over the starters and player edits, a full gate). A reroute's new
+ * piece is screened like a crossing's own stretch (crossing-works.ts: a side road meeting it regraded, one beside it walled
+ * off, else Auto takes another treatment), the way it is led to that way's own; a crossed road counts as itself only where
+ * a segment lies on its line all along; an arm buried beyond a junction's mouth is a road covered; our own body is one
+ * reading for the engine and the screen (our-body.ts: the earth station's section to its cell's end, round a station on
+ * a bend's outside, the abutment cones); a footprint junction owns the earth over a way only as far as it regrades it
+ * (footprint.ts junctionRegrade); a continuation ending at a real junction is checked for its grade; a rebuilt stretch
+ * ending at a junction meets it at ≤ 6 % within 30 m, its end raised (the roads there tied down to it, a cone of fill
+ * round the node) where its deck would else miss our road's clearance (junction-raise.ts). Frozen D11: straight +17.9 M
+ * (track 3541's diversion buried two other tracks: an overbridge), best 0 … +0.3 (walls beside our cones), demo unchanged, direct-80 −13.8
+ * (3564, 5189: overbridges and a box for diversions over other roads; the grade re-solved round them), direct-90 +32.3
+ * (walls held back from our cones and a junction's regrade; one more bridge span), town-centre / town-controls +20.3 / +20.4
+ * (2721, 3564: overbridges for diversions over other tracks). PLAN.md "One screen for every earthwork". */
+export const COST_MODEL_VERSION = 64;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

@@ -300,9 +300,12 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const grab = 0.85 * track.stations.at(-1);
     // without our earthworks the stretch would run 190 m along and under our road
     expect(derivedStretch(index, track.id, grab, [])!.s0).toBeLessThan(100);
-    const interval = derivedStretch(index, track.id, grab, covered)!;
-    expect(interval.s0).toBeGreaterThan(250);
-    expect(derivedStretch(index, track.id, 150, covered)).toBeNull(); // under our road: nothing to rebuild there
+    // (since cost model 64 the rest of the track is led to track 3533's crossing by a 9 m link: our works cover it to 131 m,
+    // not 267 m as when a 71 m diversion ran along it)
+    const interval = derivedStretch(index, track.id, grab, covered)!, under = Math.max(...covered.map(c => c.s1));
+    expect(under).toBeGreaterThan(100);
+    expect(interval.s0).toBeGreaterThanOrEqual(under - 1);
+    expect(derivedStretch(index, track.id, 100, covered)).toBeNull(); // under our road: nothing to rebuild there
     const command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
     const r1 = edited.routes[1]; if (r1.alignment.kind !== 'pi') throw new Error('converted');
@@ -320,8 +323,10 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // 1 m from our embankment (a real conflict, with its concrete fix; 3 m before cost model 39); 45 m towards it, it keeps clear.
     const { nearestLeg } = await import('../src/core/horizontal');
     const quarter = (interval.s1 - interval.s0) / 4;
+    // (cost model 64: our reroute of the rest, at km 4.24, is a 9 m link to track 3533's own crossing next to it, the pairing
+    // weighed the other way round: nothing of it runs along the bent stretch any more, which keeps clear of it each way)
     for (const [at, off, shared] of [[10, -60, []], [21, -60, []], [quarter, -60, []], [quarter, 45, []],
-      [quarter, 60, ['Move one of them about 9 m away here']]] as [number, number, string[]][]) {
+      [quarter, 60, []]] as [number, number, string[]][]) {
       const near = structuredClone(edited), q = near.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
       const g = index.position(track.id, interval.s0 + at)!, g2 = index.position(track.id, interval.s0 + at + 5)!, tl = Math.hypot(g2.x - g.x, g2.y - g.y);
       q.alignment.pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis, g), 0, { x: g.x - (g2.y - g.y) / tl * off, y: g.y + (g2.x - g.x) / tl * off, r: null });

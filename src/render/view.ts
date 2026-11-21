@@ -19,6 +19,7 @@ import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import type { CrossingSurface } from './crossing-surface';
+import { annotationSamples } from './crossings';
 import { routeMask, type RouteMaskInput } from './route-mask';
 import { buildRouteSurfaces, routeSurfaceContext, routeSurfaceContextSliced, type RouteSurfaceContext } from './route-surfaces';
 import { RouteGroups } from './route-groups';
@@ -285,6 +286,7 @@ export class View {
     this.buildTerrain();
     this.buildOfficial();
     this.buildLabels();
+    this.warm('crossing-annotations', annotationSamples);
     this.contourLabels = new ContourLabels(overlay, this.renderer.domElement, this.terrain, (x, y) => this.pick(x, y),
       (x, y, z) => this.screenOf(x, y, z), (x, y) => (this.inFootprint(x, y) ? null : this.meshHeight(x, y)), () => { this.dirty = true; });
     this.controls.addEventListener('change', () => this.contourLabels?.schedule(this.contourStep * 5));
@@ -477,7 +479,7 @@ export class View {
     tex.needsUpdate = true;
     this.landcover?.invalidate();
     // three.js forgot every program with the context: kept materials would only block new keepers
-    this.keepers.clear();
+    this.keepers.clear(); this.warmed.clear(); this.warm('crossing-annotations', annotationSamples);
     this.drawMask(this.maskSources);
     this.dirty = true;
   }
@@ -1089,7 +1091,7 @@ export class View {
       for (let a = 0; a < nu; a++) for (let q = 0; q < nv; q++) {
         const u = Math.min(U, u0 + a * G), vv = -side + q * G * (2 * side) / ((nv - 1) * G);
         const x = c.x + c.tx * u - c.ty * vv, y = c.y + c.ty * u + c.tx * vv, g = natural(x, y);
-        const zc = coneSurface(c, Math.max(0, u), vv), paved = Math.abs(vv) <= deckHalf && u >= CONE.berm;
+        const zc = coneSurface(c, Math.max(0, u), vv), paved = !c.end && Math.abs(vv) <= deckHalf && u >= CONE.berm;
         above.push(zc > g + 0.05);
         ids.push(push(x, y, Math.max(zc, g) + groundLift, paved ? concrete : fillC, Math.max(zc, g), slopeInk, paved ? EW_KIND.structure : EW_KIND.fill));
       }
@@ -1844,6 +1846,28 @@ export class View {
   }
 
   requestRender() { this.dirty = true; }
+
+  /** what warm() has compiled, by name */
+  private warmed = new Set<string>();
+  /**
+   * Compile, once per view (`name`), the shader programs of objects some result may draw later, and keep them: three.js
+   * compiles a program when it first draws an object, so the first of them a drag's result brings into view (a road's
+   * removed old line, dashed) would compile then, a stall in the drag (scripts/drag-perf.mjs). The objects only carry
+   * their materials and are not drawn.
+   */
+  warm(name: string, make: () => THREE.Object3D[]) {
+    if (this.warmed.has(name)) return;
+    this.warmed.add(name);
+    const objects = make(), group = new THREE.Group();
+    group.add(...objects);
+    this.renderer.compile(group, this.camera, this.scene);
+    for (const o of objects) {
+      const m = (o as THREE.Mesh).material as THREE.Material;
+      const program = (this.renderer.properties.get(m) as { currentProgram?: { cacheKey: string } }).currentProgram;
+      if (program && !this.keepers.has(program.cacheKey)) this.keepers.set(program.cacheKey, m); else m.dispose();
+      (o as THREE.Mesh).geometry.dispose();
+    }
+  }
 
   /**
    * Dispose a retired material, unless it is the last user of the shader program it was last drawn

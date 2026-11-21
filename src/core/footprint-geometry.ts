@@ -4,6 +4,8 @@ export interface FootprintCell extends Point2 {
   i: number; s: number; tx: number; ty: number;
   along: number; left: number; right: number;
   structure?: 'abutment' | 'pier' | 'portal';
+  /** a raised end's cone of fill round its node (footprint.ts): its surface is the cone's, not the station's */
+  cone?: { x: number; y: number; tx: number; ty: number; half: number; top: number };
 }
 export interface Segment2 { ax: number; ay: number; bx: number; by: number; d: number; length: number }
 

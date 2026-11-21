@@ -107,3 +107,27 @@ describe('earthworks of a raised crossing approach leave other roads usable', ()
     expect(c.cost).toBeCloseTo(once, 6);
   });
 });
+
+// A reroute's new link has no nodes of its own: another way it crosses meets it there in a junction, regraded to its
+// level as at a node, not a road buried under its slopes (whole I/35 km 14.39: track 2966's link to 2984 crosses track
+// 3111 4–7 m up; refused, Auto built a 93 M overbridge instead; PLAN.md "One screen for every earthwork").
+describe('a new link crossing another way', () => {
+  it('meets it in a junction, the way regraded to the link and billed, where it would bury it otherwise', async () => {
+    const { crossingWorks, WORKS_COVER_ROAD } = await import('../src/core/crossing-works');
+    const { rampLimit } = await import('../src/core/crossing-geometry');
+    // the link along y = 0, raised 3 m over flat 100 m ground from x = 60 to 140; a track across it at x = 100
+    const link = Array.from({ length: 41 }, (_, k) => {
+      const x = 5 * k, z = 100 + Math.max(0, 3 - Math.abs(x - 100) / 40 * 3 * 2);
+      return { x, y: 0, z, ground: 100, surface: 'ramp' as const };
+    });
+    const roads = new RoadNet({ cls: ['track'], ways: [[0, 100, -200, 100, 200]] });
+    const ctx = { roads, heightAt: () => 100, ours: () => false, rampLimit, maxTie: 250, urban: 0 as const };
+    const buried = crossingWorks(link, ROAD_CLASSES.track.width, [], ctx);
+    expect(buried.problems).toContain(WORKS_COVER_ROAD);
+    const met = crossingWorks(link, ROAD_CLASSES.track.width, [], { ...ctx, crossAt: true });
+    expect(met.problems).toEqual([]);
+    expect(met.ties.map(t => t.way)).toEqual([0, 0]); // both arms of the track, from the link's 3 m down to the ground
+    for (const t of met.ties) { expect(t.path[0].z - t.path[0].ground).toBeGreaterThan(2.9); expect(t.path.at(-1)!.z).toBe(t.path.at(-1)!.ground); }
+    expect(met.cost).toBeCloseTo(met.tieLength * ROAD_CLASSES.track.roadPerKm[0] / 1000, 0);
+  });
+});

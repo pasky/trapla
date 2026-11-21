@@ -27,7 +27,8 @@ import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { STEP } from './evaluate';
-import { thisRoadWords } from './terms';
+import { thisRoadWords, worksClashText } from './terms';
+import { worksClashes } from './works-clash';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
 import { stationIndex } from './range';
@@ -445,6 +446,30 @@ const interactionIssue = (i: RouteInteraction, at: { x: number; y: number } | un
   scope: { routeIds: i.routeIds, ...(i.buildingIndex === undefined ? {} : { buildingIndex: i.buildingIndex }) }, locations, ...(at ? { at } : {}),
   violation: { kind: 'crossing', basis: 'engine', ...INTERACTION[i.reason](i, houses),
     rule: 'Engine limit: roads get one total only when they share no land, houses, noise or existing road; designing those together is not finished.' } });
+
+/** Each engineered road's works clashes (works-clash.ts) as problems: a road of the player's whole (fix: move it), a mission
+ * road's crossings the player set (fix: back to Auto). One per crossing (or the road's own works) and what it stands on. */
+function clashIssues(ctx: ProjectEvalContext, engineered: readonly { route: RouteDesign; legacy: Result }[]): ProjectIssue[] {
+  const out: ProjectIssue[] = [], seen = new Set<Result>();
+  for (const { route, legacy } of engineered) {
+    if (seen.has(legacy)) continue;
+    seen.add(legacy);
+    const mission = route.role === 'mission', chosen = new Set((route.alignment.kind === 'pi' ? route.alignment.controls.crossings ?? [] : [])
+      .flatMap(c => c.target.kind === 'legacy-way' ? [c.target.roadId] : []));
+    if (mission && !chosen.size) continue;
+    const found = worksClashes(legacy, ctx.legacy, undefined, mission ? c => c.roadId !== undefined && chosen.has(c.roadId) : undefined), keys = new Set<string>();
+    for (const c of found) {
+      const key = `${c.path === 'body' || c.path === 'cone' ? 'own' : `${c.roadId}:${Math.round(c.s)}`}:${c.what}`;
+      if (keys.has(key)) continue;
+      keys.add(key);
+      const s = legacy.s[Math.max(0, Math.min(legacy.n - 1, c.path === 'body' || c.path === 'cone' ? c.i : nearestStation(legacy, c.x, c.y)))];
+      out.push({ code: 'works-clash', blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] }, locations: [{ routeId: route.id, s0: s, s1: s }],
+        at: { x: c.x, y: c.y }, violation: { kind: 'crossing', basis: 'engine', ...worksClashText(c, mission ? 'auto' : 'move'),
+          rule: 'Engine limit: nothing here moves it aside, walls it off or buys it out; earthworks may not stand on another road, a house, a railway or our road.' } });
+    }
+  }
+  return out;
+}
 
 const junctionsPending = (routeIds: string[], rail: boolean): ProjectIssue => ({ code: 'connection-pending', blocking: 'incomplete', check: 'not-checked',
   scope: { routeIds }, locations: [],
@@ -1373,6 +1398,12 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   }
   // a road that ends nowhere: its unit is priced and not valid (a road not priced for another reason: listed)
   for (const i of network.nowhere) {
+    const unit = units.find(u => u.members.includes(i.scope.routeIds[0]));
+    if (unit) { unit.issues.push(i); unit.valid = false; } else result.issues.push(i);
+  }
+  // what a road builds standing on what nothing there moves aside, walls off or buys out (works-clash.ts): the player's
+  // roads whole, a mission road's crossings the player chose (Auto's own answer to scripts/works-clash-audit.ts)
+  for (const i of clashIssues(ctx, engineered)) {
     const unit = units.find(u => u.members.includes(i.scope.routeIds[0]));
     if (unit) { unit.issues.push(i); unit.valid = false; } else result.issues.push(i);
   }

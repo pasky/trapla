@@ -203,4 +203,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   HEARD at the old crown edge (the motorway's noise is solved before its slip roads exist; moving it means re-solving the
   motorway's noise after them); a crossing choice on what is left of a way our road cuts is not kept (a new way in the slip
   road's network).
+- One works-clash screen for every earthwork body (cost model 64, PLAN.md "One screen for every earthwork"):
+  `src/core/works-clash.ts` after a full evaluation; leftovers on the player's roads or crossings are problems with a fix,
+  Auto's own are the full gate `scripts/works-clash-audit.ts --edits --gate` (known open: `scripts/works-clash/known.json`,
+  3 keys). Our body is one reading for engine and screen (`src/core/our-body.ts`); a reroute's new piece is screened like
+  a crossing's stretch; a rebuilt stretch meets a junction at ≤ 6 % and is raised with ties and a cone where its deck needs
+  it (`src/core/junction-raise.ts`). A structure others are led to is weighed against one of them built instead (the pairing the other way round); a link meets a way it crosses at a junction (`crossAt`). Open: three known clashes, a link laid along an existing track (Šternberk km 1.70).
 - See PLAN.md "Next steps" and each section's "Known issues".
