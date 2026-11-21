@@ -61,8 +61,16 @@ export const LANE_LENGTHS = [
 export const laneLengths = (speed: number) => LANE_LENGTHS.find(r => r.speed >= speed) ?? LANE_LENGTHS[LANE_LENGTHS.length - 1];
 
 export const SLIP_ROAD = {
-  /** The V 2b dashed line between the through lane and the speed-change lane (VL 3 sheet 400.12: 1.5 / 1.5 / 0.25 m). */
-  marking: { width: 0.25, dash: 1.5, gap: 1.5 },
+  /** The V 2b dashed line between the through lane and the speed-change lane (VL 3 sheet 400.12: 1.5 / 1.5 / 0.25 m),
+   * along the whole lane, its taper too, but the `solid` m by the gore, where the carriageway's edge line goes on solid
+   * (V 1a, 30 m) to the gore's hatching (TP 133 (2013) §6.2–6.3, obr. 9–10: the V 2b continues the edge line V 4, which
+   * bends out along the taper as the lane's outer edge). TP 133's text gives an entry lane's V 2b as 0.5 / 1.5 m, its
+   * obr. 10 as 1.5 / 1.5 m: the figure's, as VL 3's. */
+  marking: { width: 0.25, dash: 1.5, gap: 1.5, solid: 30 },
+  /** The gore between the carriageway's edge line and the slip road's: hatched with chevrons (V 13a, broken where it
+   * parts lanes of one direction), 0.5 m wide at 45° forward, 1.0 m apart (TP 133 §17.1, obr. 9–10), where it is at
+   * least `from` m wide, out to where the two pavements part. `from`: TP 133's shortest hatch line 0.5 m (game choice). */
+  hatch: { width: 0.5, gap: 1.0, from: 0.75 },
   /** The stretch of a slip road by its end a problem there is marked on, m (display; the D 130 exit lane's taper). */
   endZone: 100,
   /** Earth-built ramps already in a divided road's price: SPK CN 2026 report p. 7, the standard of a divided road
@@ -134,8 +142,9 @@ export interface SpeedChangeLane {
   /** paved area added to the carriageway (SlipSection.widening; tapers at half), on ground / on bridges, m² */
   area: { ground: number; bridge: number };
   cost: number;
-  /** the dashed line between it and the through lane, its taper's edge, and the paving it adds beyond the paved
-   * shoulder (the middle of that strip, `halfWidth` its half; drawn; any may be empty) */
+  /** the dashed line between it and the through lane, its outer edge (bending out along the taper), the paving it adds
+   * beyond the paved shoulder (the middle of that strip, `halfWidth` its half), then the gore's chevrons, each a line
+   * (`halfWidth` its half width; slipRoadAtMotorway, goreMarks); drawn; any may be empty */
   lines: (XYZ & { halfWidth?: number })[][];
   /** how much wider the formation is on its side, at the paired road's stations `k` (drawn, as billed: `area`) */
   widen: { k: number; extra: number }[];
@@ -180,9 +189,13 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
     const da = sec.widening * w * (q === 0 || q === steps ? du / 2 : du);
     if (line.kind[k] === KIND.bridge) area.bridge += da; else area.ground += da;
     const r = rightOf(line, k, direction), z = line.grade[k];
-    // the dashed line at the through lanes' edge where the lane is full width; along the taper its outer edge
-    if (w >= 1 - 1e-9) lines[0].push({ x: line.x[k] + r.x * (sec.through + 0.125), y: line.y[k] + r.y * (sec.through + 0.125), z });
-    else { const off = sec.through + 0.25 + 3.5 * w; lines[1].push({ x: line.x[k] + r.x * off, y: line.y[k] + r.y * off, z }); }
+    // the dashed line at the through lanes' edge (not its last / first metres by the gore: the edge line solid there),
+    // and the lane's outer edge line, bending out along the taper (SLIP_ROAD.marking)
+    const byGore = kind === 'exit' ? length - u : u;
+    if (byGore >= SLIP_ROAD.marking.solid - 1e-9) lines[0].push({ x: line.x[k] + r.x * (sec.through + 0.125), y: line.y[k] + r.y * (sec.through + 0.125), z });
+    // (from the edge line where the taper starts out to the lane's own, beyond it: TP 133 obr. 9)
+    const off = sec.through + SLIP_ROAD.marking.width / 2 + (LANE.guideStrip + LANE.width) * w;
+    lines[1].push({ x: line.x[k] + r.x * off, y: line.y[k] + r.y * off, z });
     // the paving beyond the paved shoulder, and the formation that much wider (as billed: `da`)
     const extra = sec.widening * w;
     if (extra > 1e-6) { const mid = sec.paved + extra / 2; lines[2].push({ x: line.x[k] + r.x * mid, y: line.y[k] + r.y * mid, z, halfWidth: extra / 2 }); }
@@ -403,7 +416,62 @@ export function slipRoadAtMotorway(ramp: Result, end: 'a' | 'b', line: Result, d
   const ridge = dugRidges(ramp, line, heightAt, host.category);
   for (let q = 0; q < ramp.n; q++) if (ridge.area[q] > 0) { dug += ridge.area[q] * ramp.ds; dugCost += ridge.area[q] * ramp.ds * (rate.cut + rate.haul); }
   const insideM = Math.min(ramp.length, inside * ramp.ds);
+  lane.lines.push(...goreMarks(ramp, end, line, direction, host.category));
   return { kind, lane, violations, zones, goreZones, credit, insideM, overlap: Math.max(0, overlap), dug, dugCost, gore: g, sGore: line.s[k] };
+}
+
+/** The gore's hatching (SLIP_ROAD.hatch) where slip road `ramp`'s end `end` meets carriageway `direction` of the paired
+ * road `line` of category `c`: chevrons between the carriageway's edge line and the slip road's, from where the two are
+ * `hatch.from` apart out to where their pavements part, each a line edge – apex – edge, its apex upstream, its arms 45°
+ * forward (TP 133 obr. 9–10), at the carriageway's height (display). */
+export function goreMarks(ramp: Pick<Result, 'n' | 'x' | 'y' | 'ds'>, end: 'a' | 'b', line: Pick<Result, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'grade'>,
+  direction: 1 | -1, c: PairedCategoryId): (XYZ & { halfWidth: number })[][] {
+  const sec = SLIP_SECTIONS[c], own = CATEGORIES['V7.25'].section!, mark = SLIP_ROAD.marking.width, hatch = SLIP_ROAD.hatch;
+  // across, right of the travel: the carriageway's edge line's outer side, and where the slip road's edge line's outer
+  // side is when the pavements part (the carriageway's paved shoulder, past the gore, meets the slip road's)
+  const inner = sec.through + mark, edge = own.lane + own.edgeLine, nose = sec.paved + own.lane + own.hardShoulder - edge;
+  // the slip road's edge line along the travel (v: m along the carriageway's travel, its station times `direction`)
+  const along: { v: number; e: number }[] = [];
+  let kk = -1;
+  for (let step = 0; step < ramp.n && step * ramp.ds < 300; step++) {
+    const q = end === 'a' ? step : ramp.n - 1 - step;
+    let best = Infinity;
+    const j0 = kk < 0 ? 0 : Math.max(0, kk - 30), j1 = kk < 0 ? line.n - 1 : Math.min(line.n - 1, kk + 30);
+    for (let j = j0; j <= j1; j++) { const d = Math.hypot(line.x[j] - ramp.x[q], line.y[j] - ramp.y[q]); if (d < best) { best = d; kk = j; } }
+    const r = rightOf(line, kk, direction), dx = ramp.x[q] - line.x[kk], dy = ramp.y[q] - line.y[kk];
+    along.push({ v: direction * (line.s[kk] + dx * line.tx[kk] + dy * line.ty[kk]), e: dx * r.x + dy * r.y - edge });
+    if (along[along.length - 1].e > nose) break;
+  }
+  along.sort((p, q) => p.v - q.v);
+  if (along.length < 2) return [];
+  const eAt = (v: number) => {
+    let j = 1; while (j < along.length - 1 && along[j].v < v) j++;
+    const p = along[j - 1], q = along[j], t = Math.max(0, Math.min(1, (v - p.v) / ((q.v - p.v) || 1)));
+    return p.e + (q.e - p.e) * t;
+  };
+  // a point `off` right of the travel at travel position v, on the carriageway's surface
+  const at = (v: number, off: number) => {
+    const s = direction * v, k = Math.max(0, Math.min(line.n - 2, Math.floor(s / line.ds)));
+    const t = Math.max(0, Math.min(1, (s - line.s[k]) / ((line.s[k + 1] - line.s[k]) || 1)));
+    const x = line.x[k] + (line.x[k + 1] - line.x[k]) * t, y = line.y[k] + (line.y[k + 1] - line.y[k]) * t, r = rightOf(line, k, direction);
+    return { x: x + r.x * off, y: y + r.y * off, z: line.grade[k] + (line.grade[k + 1] - line.grade[k]) * t, halfWidth: hatch.width / 2 };
+  };
+  // (from the gore out: forward for an exit, back against the travel for an entry; one chevron every period along it)
+  const out: (XYZ & { halfWidth: number })[][] = [], period = (hatch.width + hatch.gap) * Math.SQRT2, sign = end === 'a' ? 1 : -1;
+  const v0 = end === 'a' ? along[0].v : along[along.length - 1].v, reach = Math.abs(along[along.length - 1].v - along[0].v);
+  for (let d = 0; d <= reach; d += 0.25) {
+    const v = v0 + sign * d, gap = eAt(v) - inner;
+    if (gap < hatch.from) continue;
+    for (let w = d; w <= reach; w += period) {
+      const vc = v0 + sign * w, g = eAt(vc) - inner;
+      if (g > nose - inner) break;
+      // (inside the two edge lines: the arms end on them)
+      const tip = vc + g / 2;
+      out.push([at(tip, inner + hatch.width / 2), at(vc, inner + g / 2), at(tip, eAt(tip) - hatch.width / 2)]);
+    }
+    break;
+  }
+  return out;
 }
 
 /** Where a slip road and its carriageway are one paved area at one level: from the gore while their crowns are

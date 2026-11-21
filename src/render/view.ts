@@ -36,6 +36,8 @@ import { ARCH_DECK_DEPTH, ARCH_RIB_DEPTH, archColumns, archRib, frameColumns } f
 import { FRAME_PIER } from '../core/data/bridges';
 import { CATEGORIES, pairedCategoryOf } from '../core/data/categories';
 import { natureLayers } from './nature';
+import { digTriangles, ringTriangles } from './roundabouts';
+import type { RingMark } from '../core/tie-in';
 
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
@@ -190,6 +192,7 @@ export class View {
   private proposalLines = new Map<string, { key: string; line: Line2 }>();
   private laneMarks: THREE.Mesh | null = null;
   private laneKey = '';
+  private rings: THREE.Mesh | null = null;
   get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
   private labelRoom = new Declutter();
@@ -237,6 +240,8 @@ export class View {
   private maxTex = 0;
   /** Settled inputs only, also used to restore the GPU-only masks after a lost context. */
   private maskSources: readonly RouteMaskInput[] = [];
+  /** the terrain mask's triangles as last drawn (View.local x, 0, z per vertex): where the ground is not drawn */
+  private maskTriangles: readonly number[] = [];
   private maskMat: THREE.ShaderMaterial | null = null;
   private retired: THREE.Material[] = [];
   /** one material per shader program that would otherwise lose its last user (see release) */
@@ -813,6 +818,101 @@ export class View {
       this.laneMarks.name = 'lane-marks'; this.laneMarks.renderOrder = 2; this.world.add(this.laneMarks);
     }
     this.dirty = true;
+  }
+
+  /** Junction works on the ground (render/roundabouts.ts): roundabouts' rings where roads of ours end on others, over
+   * both roads, and the ground dug off sight fields. */
+  setJunctionMarks(rings: readonly RingMark[], digs: readonly { cells: readonly { x: number; y: number }[]; size: number }[] = []) {
+    // (laid on the scene as just committed: rebuilt every time, but for none after none)
+    if (!rings.length && !digs.length && !this.rings) return;
+    if (this.rings) { this.world.remove(this.rings); this.rings.geometry.dispose(); (this.rings.material as THREE.Material).dispose(); this.rings = null; }
+    const pos: number[] = [], col: number[] = [], v = new THREE.Vector3();
+    for (const ring of rings) {
+      const t = ringTriangles(ring, this.drawnSurface(ring.x, ring.y, ring.r + 2), 0.2);
+      for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); }
+      col.push(...t.col);
+    }
+    for (const dig of digs) {
+      const t = digTriangles(dig, (x, y) => this.drapeHeight(x, y), 0.1);
+      for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); }
+      col.push(...t.col);
+    }
+    if (pos.length) {
+      const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geometry.computeBoundingSphere();
+      this.rings = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+      this.rings.name = 'junction-marks'; this.rings.renderOrder = 2; this.world.add(this.rings);
+    }
+    this.dirty = true;
+  }
+
+  /** The height of what is drawn about (cx, cy) out to `reach` m: the road bodies' crowns and slopes and the crossings'
+   * ground where they are (not decks), and the ground as drawn where it is not masked out under them; the highest within
+   * half a metre (a decal laid on it stays over the faces it crosses). */
+  private drawnSurface(cx: number, cy: number, reach: number): (x: number, y: number) => number {
+    const cell = 0.5, n = Math.ceil(2 * reach / cell) + 1, x0 = cx - reach, y0 = cy - reach, grid = new Float32Array(n * n).fill(NaN);
+    // (which cells' ground is masked out: the mask's triangles, in View.local x and z)
+    const masked = new Uint8Array(n * n), M = this.maskTriangles;
+    for (let t = 0; t + 8 < M.length; t += 9) {
+      const ax = M[t] + this.cx, ay = this.cy - M[t + 2], bx = M[t + 3] + this.cx, by = this.cy - M[t + 5], qx = M[t + 6] + this.cx, qy = this.cy - M[t + 8];
+      const det = (by - qy) * (ax - qx) + (qx - bx) * (ay - qy);
+      if (Math.abs(det) < 1e-9 || Math.max(ax, bx, qx) < x0 || Math.max(ay, by, qy) < y0 || Math.min(ax, bx, qx) > x0 + 2 * reach || Math.min(ay, by, qy) > y0 + 2 * reach) continue;
+      for (let i = Math.max(0, Math.ceil((Math.min(ax, bx, qx) - x0) / cell)); i <= Math.min(n - 1, Math.floor((Math.max(ax, bx, qx) - x0) / cell)); i++)
+        for (let j = Math.max(0, Math.ceil((Math.min(ay, by, qy) - y0) / cell)); j <= Math.min(n - 1, Math.floor((Math.max(ay, by, qy) - y0) / cell)); j++) {
+          const px = x0 + i * cell, py = y0 + j * cell;
+          const l1 = ((by - qy) * (px - qx) + (qx - bx) * (py - qy)) / det, l2 = ((qy - ay) * (px - qx) + (ax - qx) * (py - qy)) / det;
+          if (l1 >= -1e-6 && l2 >= -1e-6 && 1 - l1 - l2 >= -1e-6) masked[i * n + j] = 1;
+        }
+    }
+    // (the mask is drawn through a ≈ 2.5 m texture, its edge soft: masked only where all within 1.5 m is)
+    const inside = new Uint8Array(n * n), e = 3;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      let all = masked[i * n + j] === 1;
+      for (let di = -e; di <= e && all; di++) for (let dj = -e; dj <= e && all; dj++) {
+        const ii = i + di, jj = j + dj;
+        if (ii >= 0 && jj >= 0 && ii < n && jj < n && !masked[ii * n + jj]) all = false;
+      }
+      inside[i * n + j] = all ? 1 : 0;
+    }
+    const inv = new THREE.Matrix4().copy(this.world.matrixWorld).invert(), m = new THREE.Matrix4(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const names = new Set(['ribbon', 'daylight-ground', 'crossing-terrain', 'crossing-earthworks']);
+    // (a vertex in the map's x, y and its height)
+    const toMap = (v: THREE.Vector3) => v.applyMatrix4(m).set(v.x + this.cx, this.cy - v.z, v.y);
+    this.world.updateMatrixWorld();
+    this.world.traverse(o => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !names.has(mesh.name) || !mesh.visible) return;
+      const pos = mesh.geometry.getAttribute('position'), index = mesh.geometry.getIndex();
+      if (!pos) return;
+      m.multiplyMatrices(inv, mesh.matrixWorld);
+      const count = index ? index.count : pos.count;
+      for (let t = 0; t + 2 < count; t += 3) {
+        const ia = index ? index.getX(t) : t, ib = index ? index.getX(t + 1) : t + 1, ic = index ? index.getX(t + 2) : t + 2;
+        toMap(a.fromBufferAttribute(pos, ia)); toMap(b.fromBufferAttribute(pos, ib)); toMap(c.fromBufferAttribute(pos, ic));
+        const lo = { x: Math.min(a.x, b.x, c.x), y: Math.min(a.y, b.y, c.y) }, hi = { x: Math.max(a.x, b.x, c.x), y: Math.max(a.y, b.y, c.y) };
+        if (hi.x < x0 || hi.y < y0 || lo.x > x0 + 2 * reach || lo.y > y0 + 2 * reach) continue;
+        const det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+        if (Math.abs(det) < 1e-9) continue;
+        for (let i = Math.max(0, Math.ceil((lo.x - x0) / cell)); i <= Math.min(n - 1, Math.floor((hi.x - x0) / cell)); i++)
+          for (let j = Math.max(0, Math.ceil((lo.y - y0) / cell)); j <= Math.min(n - 1, Math.floor((hi.y - y0) / cell)); j++) {
+            const px = x0 + i * cell, py = y0 + j * cell;
+            const l1 = ((b.y - c.y) * (px - c.x) + (c.x - b.x) * (py - c.y)) / det, l2 = ((c.y - a.y) * (px - c.x) + (a.x - c.x) * (py - c.y)) / det, l3 = 1 - l1 - l2;
+            if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+            const z = l1 * a.z + l2 * b.z + l3 * c.z, k = i * n + j;
+            if (!(grid[k] >= z)) grid[k] = z;
+          }
+      }
+    });
+    return (x: number, y: number) => {
+      const i = Math.round((x - x0) / cell), j = Math.round((y - y0) / cell);
+      if (i < 0 || j < 0 || i >= n || j >= n || Number.isNaN(grid[i * n + j])) return this.drapeHeight(x, y);
+      let z = inside[i * n + j] ? -Infinity : this.drapeHeight(x, y);
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        const ii = i + di, jj = j + dj, g = ii >= 0 && jj >= 0 && ii < n && jj < n ? grid[ii * n + jj] : NaN;
+        if (g > z) z = g;
+      }
+      return z;
+    };
   }
 
   private sourceSelectionLine: Line2 | null = null;
@@ -1547,6 +1647,7 @@ export class View {
 
   private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {
     const { terrain: pos, original, cuts, box: bounds } = prepared ?? routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+    this.maskTriangles = pos;
     if (!bounds) {
       this.maskUniforms.maskOn.value = this.originalMask.maskOn.value = this.crossingCut.maskOn.value = 0;
       return;

@@ -60,6 +60,7 @@ toolbar|browser|full|PORT=\$((PORT + 30)) node scripts/toolbar-layout.mjs --out 
 interchange|browser|full|PORT=\$((PORT + 80)) node scripts/interchange-scene.mjs
 crossing-drag|browser|full|PORT=\$((PORT + 90)) node scripts/crossing-drag-scene.mjs
 rail-dead-end|browser|full|PORT=\$((PORT + 100)) node scripts/rail-dead-end-shots.mjs
+slip-marks|browser|full|PORT=\$((PORT + 110)) node scripts/slip-road-marks-scene.mjs
 smoke-dist|browser|full|DIST=dist PORT=\$((PORT + 40)) node scripts/smoke.mjs
 playtest-dist|browser|full|DIST=dist PORT=\$((PORT + 50)) OUT=$log/playtest-dist-shots node scripts/playtest.mjs
 toolbar-dist|browser|full|DIST=dist PORT=\$((PORT + 60)) node scripts/toolbar-layout.mjs --out $log/toolbar-dist-shots

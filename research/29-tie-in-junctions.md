@@ -127,3 +127,25 @@ The opened [VL 3 (2010) PDF](https://pjpk.rsd.cz/data/USR_001_2_10_VL/VL_3_2010_
 13. Retain class-I T/X 25m (15–35m, low) and roundabout 32m (20–40m, medium) from [08]/[13].
 14. Simple class-III/local T tie-in 5–10m (midpoint 7m) is **PROVISIONAL, very low confidence**.
 15. Class-III 2021 roundabout listing estimated 5.322m; scope is mixed and no award price confirmed—evidence of possible low-cost cases, not a unit rate.
+
+## Addendum (2026-11-21): the sight triangle's geometry, a roundabout's widths, the ground model's accuracy
+
+- **Sight triangle points** (ČSN 73 6102 as reproduced by *Dopravní inženýrství*, "Nová verze software Rozhled a norma ČSN
+  73 6102", opened): "Rozhledový bod vozidla na vedlejší komunikaci … v ose vozidla ve vzdálenosti 2,0 m od přídě vozidla
+  vždy ve výšce 1,0 m nad vozovkou (pro vozidla skupiny 1) … Rozhledový bod vozidla na hlavní komunikaci je bod uprostřed
+  přídě vozidla ve výšce 1,0 m nad vozovkou. … třetím bodem je průsečík os jízdních pruhů, ve kterých jedou posuzovaná
+  vozidla (na hlavní komunikaci … jízdní pruh daného směru nejbližší vedlejší komunikaci)"; the waiting car's front
+  n ≥ 1.0 m from the through lane's edge (so the eye 3.0 m from it). [Article](https://www.dopravniinzenyrstvi.cz/clanky/nova-verze-software-rozhled-a-norma-csn-73-6102/)
+  (medium: a secondary reproduction of the norm by its software's authors). Confirms the game's 1.0 m / 1.0 m heights (§3
+  item 9 now medium); the seen car is in its lane, the game keeps it on the road's line (a lane's offset, PROVISIONAL).
+- **What the game does with it** (cost model 65, `core/tie-in.ts sightField`): every sight line from the eye to the joined
+  road between the junction and the seen car (the whole triangle, on a 1 m grid), not only the far one. VL 3's obstacle rule
+  (objects reaching above 0.25 m under the sight line) applies to the ground beside the road; designers keep the sight
+  field clear, so such ground is dug down to it (PROVISIONAL game rule: up to 1 m; excavation hauled to a tip and its land,
+  billed with the junction); deeper ground and houses stay problems. The joined road's own surface is read along its line
+  (its centreline height on the ground model, not the verge the 5 m grid blends into its edge) and hides the car only where
+  it rises over the sight line itself by more than the ground model's stated accuracy.
+- **Ground model accuracy**: DMR 5G 0.18 m in open ground, 0.30 m under forest (ČÚZK's stated accuracy, research/00).
+- **Roundabout widths** (TP 135 (2017) tab. 2, "Doporučené šířkové uspořádání JOK v extravilánu", read from
+  [the PDF](https://pjpk.rsd.cz/data/USR_001_2_8_TP/TP_135_2017.pdf) p. 23): D 40 m: ring 5.10 m, apron (prstenec) 1.20 m,
+  unpaved island 27.4 m (D 30: 6.00 / 1.80 / 14.4; D 50: 4.70 / 1.00 / 38.6). The game draws its 40 m ring so (high).

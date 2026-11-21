@@ -5,7 +5,7 @@
 // on the four-lane class I road S 21.5 of the I/35 Turnov stage (km 0.98, road II/610 over it), on that road's own lanes.
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { dugRidge, gore, laneLengths, MERGE_GAP, MERGE_REACH, MERGE_SLOPE, MERGE_TOLERANCE, mergeBands, SLIP_ROAD, SLIP_SECTIONS, speedChangeLane } from '../src/core/slip-roads';
+import { dugRidge, gore, goreMarks, laneLengths, MERGE_GAP, MERGE_REACH, MERGE_SLOPE, MERGE_TOLERANCE, mergeBands, SLIP_ROAD, SLIP_SECTIONS, speedChangeLane } from '../src/core/slip-roads';
 import { PAIRED_SECTIONS } from '../src/core/data/motorway';
 import { railOverPrice } from '../src/core/rail-over';
 import { squareBend } from '../src/ui/road-edit';
@@ -60,6 +60,39 @@ describe('a slip road meets one carriageway', () => {
     // (a railway our road passes over, or not under its lane: nothing)
     Object.assign(l, { railCrossings: [{ ...(l as unknown as { railCrossings: object[] }).railCrossings[0], how: 'ours', cost: 0 }] });
     expect(speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', { s0: 0, s1: 100 }, D130).rail).toEqual([]);
+  });
+});
+
+describe('a speed-change lane is marked as TP 133 draws it (owner: a solid line where the exit lane begins)', () => {
+  it('its dashed line runs along the whole lane, taper too, but the last (first) 30 m by the gore; its outer edge bends out', () => {
+    const l = line(), at = { s0: 0, s1: 100 };
+    const exit = speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', at, D130), entry = speedChangeLane(l, 1000, 1, 'entry', 50, 'hilly', at, D130);
+    // (its points on the carriageway's stations, 10 m apart here)
+    const xs = (p: { x: number }[]) => p.map(q => q.x), near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThanOrEqual(l.ds / 2);
+    near(Math.min(...xs(exit.lines[0])), 1000 - 234);
+    expect(Math.max(...xs(exit.lines[0]))).toBeLessThanOrEqual(1000 - SLIP_ROAD.marking.solid + l.ds / 2);
+    expect(Math.min(...xs(entry.lines[0]))).toBeGreaterThanOrEqual(1000 + SLIP_ROAD.marking.solid - l.ds / 2);
+    near(Math.max(...xs(entry.lines[0])), 1000 + 295);
+    // the outer edge starts on the carriageway's edge line and is the lane's edge (3.75 m out) where it is full width
+    expect(-exit.lines[1][0].y).toBeCloseTo(D.through + SLIP_ROAD.marking.width / 2);
+    expect(-exit.lines[1].at(-1)!.y).toBeCloseTo(D.through + SLIP_ROAD.marking.width / 2 + 3.75);
+  });
+  it('its gore is hatched with chevrons between the two edge lines, out to where the pavements part', () => {
+    // an exit leaving the forward carriageway along +x, diverging 1 m in 20 from its gore
+    const l = line(), n = 31, ramp = { n, ds: 10, x: Array.from({ length: n }, (_, k) => 1000 + 10 * k), y: Array.from({ length: n }, (_, k) => -(D.goreOffset + k / 2)) } as unknown as Result;
+    const marks = goreMarks(ramp, 'a', l, 1, 'D27.5');
+    expect(marks.length).toBeGreaterThan(10);
+    const inner = D.through + SLIP_ROAD.marking.width;
+    for (const [a, apex, b] of marks) {
+      // apex upstream, arms 45° forward, ending on the carriageway's edge line and on the slip road's
+      expect(a.x).toBeGreaterThan(apex.x); expect(b.x).toBeGreaterThan(apex.x);
+      expect(-a.y).toBeCloseTo(inner + SLIP_ROAD.hatch.width / 2);
+      expect(-b.y).toBeGreaterThan(-apex.y);
+      expect(a.x - apex.x).toBeCloseTo(-apex.y - inner, 0);
+    }
+    // (where the slip road's edge line is well past the carriageway's paved shoulder: no more hatching)
+    const last = marks.at(-1)![2];
+    expect(-last.y).toBeLessThan(D.paved + 3.125 - 2 + 0.5);
   });
 });
 

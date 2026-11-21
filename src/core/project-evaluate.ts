@@ -11,7 +11,7 @@ import { evaluateProjectRoad, type SourceWays } from './project-road';
 import type { KeepClear } from './keep-clear';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { takenUpOutcome } from './taken-up';
-import { designedTieIn } from './tie-in';
+import { designedTieIn, ringMark, TIE_IN_RULES } from './tie-in';
 import type { RoadNet } from './roadnet';
 import { crossingChange } from './road-realignment';
 import { carriagewayOf, gore, isSlipRoad, mergeBands, SLIP_ROAD, SLIP_SECTIONS, slipHost, slipRoadAtMotorway } from './slip-roads';
@@ -182,7 +182,7 @@ export type PreviewPrices = Pick<EvalOptions, 'materialValue' | 'structureValue'
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
   preview = false, prices: PreviewPrices = {}, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ },
   holds?: EvalOptions['holds'], endsOf?: (route: RouteDesign) => ResolvedEnds, keepClear?: KeepClear, moved?: MovedWays): { route: RouteResult; issues: ProjectIssue[];
-    junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[]; keptWork?: ReplacementWork } {
+    junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[]; sightWorks?: ReplacementWork[]; keptWork?: ReplacementWork } {
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
   // (Auto's reroutes planned again clear of another road the player built: evaluateProject)
   if (keepClear?.length) prices = { ...prices, keepClear };
@@ -212,6 +212,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     junctionEnds: road?.junctionEnds ?? [],
     ...(road?.replacement ? { replacement: road.replacement } : {}),
     ...(road?.ringWorks ? { ringWorks: road.ringWorks } : {}),
+    ...(road?.sightWorks ? { sightWorks: road.sightWorks } : {}),
     ...(road?.keptWork ? { keptWork: road.keptWork } : evaluated.status === 'evaluated' && 'keptWork' in evaluated && evaluated.keptWork ? { keptWork: evaluated.keptWork } : {}),
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (road?.unpriced ?? ('unpriced' in evaluated && corridor?.children.reverse !== route.id ? evaluated.unpriced ?? [] : [])).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
@@ -704,6 +705,7 @@ function projectRoutes(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, start
     for (const end of proposal.junctionEnds) builtJunctions.add(`${route.id}:${end}`);
     if (proposal.replacement) replacements.set(route.id, proposal.replacement);
     if (proposal.ringWorks) ringsOf.set(route.id, proposal.ringWorks);
+    if (proposal.sightWorks) ownWorks.set(route.id, [...ownWorks.get(route.id) ?? [], ...proposal.sightWorks]);
     if (proposal.keptWork) ownWorks.set(route.id, [...ownWorks.get(route.id) ?? [], proposal.keptWork]);
     for (const i of proposal.issues) { result.issues.push(i); result.cost.unpriced.push({ routeId: route.id, reason: i.code }); }
     if (!proposal.issues.length && proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
@@ -823,7 +825,10 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     const i = end === 'a' ? 0 : legacy.n - 1, k = stationIndex(host, t.s);
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
+    if (t.sight) list.push({ kind: 'junction', s: legacy.s[i], x: t.sight.x, y: t.sight.y, length: 0, cost: t.sight.cost, label: t.sight.label,
+      dug: { cells: t.sight.dig.cells.map(c => ({ x: c.x, y: c.y })), size: TIE_IN_RULES.grid } });
     if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),
+      ring: ringMark(legacy, end, { host: { x: host.tx[k], y: host.ty[k] } }),
       label: `Roundabout's ring: ${Math.round(t.ring.area)} m² of land${t.ring.removed.length ? `, ${t.ring.removed.length} building${t.ring.removed.length > 1 ? 's' : ''} bought out` : ''}` });
     // The side road's first metres lie inside the joined road's own earthworks: built (and bought) once.
     const inside = host.cell.width[k] / 2;
@@ -1489,6 +1494,8 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
     kind: w.kind === 'removal' || w.kind === 'kept' ? 'formation' : w.kind === 'land' ? 'land' : w.kind === 'noise-wall' ? 'noise' : w.kind === 'buyout' ? 'property' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' || w.kind === 'kept' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
     cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s }, ...(w.removes ? { removes: [...w.removes] } : {}),
+    ...(w.ring ? { ring: { ...w.ring, arms: w.ring.arms.map(a => ({ ...a })) } } : {}),
+    ...(w.dug ? { dug: { cells: w.dug.cells.map(c => ({ ...c })), size: w.dug.size } } : {}),
     ...(w.lines ? { surfaces: w.lines.map(l => ({ routeId: route.id, revision: route.revision, points: l.map(p => ({ ...p, s: 0, halfWidth: p.halfWidth ?? SLIP_ROAD.marking.width / 2, structure: 'ground' as const })) })) } : {}) };
 }
 

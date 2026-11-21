@@ -3302,6 +3302,42 @@ a junction's mouth, our own body), each blind to what the others build.
   0.2 m below the drawn surface's: the link's sections as refined differ from those drawn). A link laid along an
   existing track (Šternberk km 1.70).
 
+## Slip roads: lane markings, roundabouts, sight fields (owner report, cost model 65, 2026-11-21)
+
+Owner report on a D35 slip road to road II/368: "the start has a solid line on the motorway instead of a proper exit lane;
+the end is a roundabout but not drawn as one; on Auto I cannot get rid of 'No clear view along the class II road', and there
+should be plenty of view."
+
+- **Lane markings (display):** the exit / entry lane is marked as TP 133 (2013) obr. 9–10 draws it (research/90 addendum
+  2026-11-21): the V 2b dashed line along the whole lane, its taper too (it continues the carriageway's edge line, which bends
+  out along the taper as the lane's outer edge, now drawn along the full-width part too), solid (V 1a) for the 30 m by the
+  gore, and the gore between the carriageway's edge line and the slip road's hatched with V 13a chevrons (0.5 m at 45°, 1.0 m
+  apart) out to where the two pavements part (`core/slip-roads.ts speedChangeLane`, `goreMarks`). Before: the dashes only
+  where the lane is full width, the carriageway's solid edge line left along the taper.
+- **Roundabouts drawn:** a road's end set to Roundabout (on an existing road or a designed one) draws its ring: TP 135 (2017)
+  tab. 2 at D 40 m, 5.10 m carriageway with its outer edge line broken at each arm, 1.20 m apron, the island's grass
+  (research/29 addendum; `core/tie-in.ts ringMark` on the ring's work, `render/roundabouts.ts`), laid on what is drawn there
+  (`View.drawnSurface`: the road bodies and crossings' ground where the terrain is masked out under them, else the ground,
+  the highest within 0.5 m), over both roads. Display only: the ring's price and land are as before.
+- **Sight fields (cost model 65):** the check was the far sight line alone against the 5 m ground model, with a 0.25 m margin,
+  the eye at the station nearest its point: along gently convex roads and their verges it failed at most junctions (a sweep of
+  level approaches every 25 m along every class II–III road of D35 and D11: about half). Now (`core/tie-in.ts sightField`): the
+  whole triangle, every sight line from the eye to the road between the junction and the seen car (ČSN 73 6102 as reproduced,
+  research/29 addendum); the eye's height interpolated on our road; on the joined road its own surface along its line,
+  hiding the car only past the ground model's stated accuracy (DMR 5G 0.18 m); beside it the ground kept 0.25 m under the
+  sight lines (VL 3), dug so where it is not, up to 1 m deep (PROVISIONAL game rule): excavation hauled to a tip plus its land,
+  a work of the road ("Ground dug away so drivers see along …: N m³"), drawn as a cut-coloured patch. Deeper ground, the
+  road's own crest and houses are problems as before. The same sweep (an approach on the ground every 50 m): clear 44 % (D35) /
+  27 % (D11), dug clear 17 % / 18 % (≈ 10 m³), a house 17 % / 14 %, ground deeper than 1 m 15 % / 30 % (banks of roads in
+  cuttings, the inside of bends), the road's own crest 7 % / 11 %. Every frozen bill and saved design unchanged (none joins a road); the I/35
+  Turnov diamond +14 k CZK (6 m³ dug off one sight triangle), the D35 II/368 exit valid on Auto (model 64: "145 m to the right").
+- **Check:** `node scripts/slip-road-marks-scene.mjs [--docs]` (screenshots 786–789), `tests/tie-in-sight.test.ts`,
+  `tests/slip-roads.test.ts` ("a speed-change lane is marked as TP 133 draws it").
+- **Known gaps:** the dug ground is drawn as a tint, the ground not lowered (≤ 1 m); no splitter islands at a roundabout's
+  arms, its ring flat on what is drawn (not graded as a platform); a slip road's noise wall runs on to its end, into a ring at
+  its end (I/35 Nudvojovická); the seen car stands on the road's line, not in its lane; a roundabout keeps the T junction's
+  lump-sum price plus its ring's land.
+
 ## Follow-ups
 
 - **Twist references to refresh** (scheduled / manual, never part of a merge): `npx tsx scripts/twists-refresh.ts [preset…]

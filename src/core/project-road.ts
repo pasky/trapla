@@ -6,7 +6,7 @@ import { evaluate, OLD_ROAD_TIE, type EvalContext, type EvalOptions, type Result
 import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
-import { ringWorks, tieInChecks, tieIns } from './tie-in';
+import { ringMark, ringWorks, TIE_IN_RULES, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
 import { applyKept, heldOnOldLine, lineAsDrawn, plannedKept, releaseHeld } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
@@ -23,6 +23,8 @@ export type ProjectRoadEvaluation =
       replacement?: Replacement;
       /** A roundabout's ring at an end: its land and the houses on it. */
       ringWorks?: ReplacementWork[];
+      /** Junctions' sight fields dug clear (tie-in.ts sightField). */
+      sightWorks?: ReplacementWork[];
       /** A rebuilt stretch: what the kernel billed where the old road is kept as it is (a credit). */
       keptWork?: ReplacementWork }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
@@ -163,9 +165,12 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
       if ([...screen(best)].every(k => before.has(k))) result = best;
     }
   }
+  let sightWorks: ReplacementWork[] = [];
   if (ties.length && roads && !options.preview) {
     const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);
-    if (found.length) { result.violations.push(...found); result.valid = false; }
+    if (found.violations.length) { result.violations.push(...found.violations); result.valid = false; }
+    sightWorks = found.sight.map(w => ({ kind: 'junction' as const, s: result.s[w.end === 'a' ? 0 : result.n - 1], x: w.x, y: w.y, length: 0, cost: w.cost, label: w.label,
+      dug: { cells: w.dig.cells.map(c => ({ x: c.x, y: c.y })), size: TIE_IN_RULES.grid } }));
   }
   // Where a rebuilt stretch stays on its old road, the old road is kept as it is: no norm, no works, no bill.
   let keptWork: ReplacementWork | null = null;
@@ -185,8 +190,9 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const rings: ReplacementWork[] = options.preview ? [] : ties.filter(t => t.junction.kind === 'roundabout').map(t => {
     const i = t.end === 'a' ? 0 : result.n - 1, w = ringWorks(t.x, t.y, ROAD_CLASSES[t.cls]?.width ?? 6.5, result.cell.urban[i], ctx.buildings, gone);
     return { kind: 'junction' as const, s: result.s[i], x: t.x, y: t.y, length: 0, cost: w.cost, ...(w.removed.length ? { removes: [...w.removed] } : {}),
+      ring: ringMark(result, t.end, { roads: roads! }),
       label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} bought out` : ''}` };
   });
   return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
-    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(keptWork ? { keptWork } : {}) };
+    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(sightWorks.length ? { sightWorks } : {}), ...(keptWork ? { keptWork } : {}) };
 }

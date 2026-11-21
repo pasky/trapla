@@ -195,6 +195,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   gate. An existing railway may be carried over our road on a new bridge (`core/rail-over.ts`, research/105): Auto weighs
   it in the grade search, the player picks it on the railway's card, a pin's fix offers it. Open: piers still keep off
   dead ends; the search does not foresee the walls beside a railway bridge; no ground water under a railway in a valley.
+- Slip roads and junctions (cost model 65, PLAN.md "Slip roads: lane markings, roundabouts, sight fields"): speed-change
+  lanes are marked as TP 133 draws them (dashed from the taper's start, the gore hatched), a roundabout end draws its ring,
+  a new junction's sight field is the whole triangle, ground a little in the way dug off (billed); the joined road's own
+  crest blocks only past the ground model's accuracy. `scripts/slip-road-marks-scene.mjs`.
 - Hand-built slip roads work on any divided road (D 27.5, S 21.5: the road's own lanes, speeds and price; cost model 60)
   and are built against the roads as our road's crossings leave them (cost model 61; PLAN.md "Slip roads see our road's
   crossings"; a dead end one road takes up relies on no detour, and a lane under a railway's new bridge lengthens it,

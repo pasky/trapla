@@ -302,8 +302,17 @@
  * (track 3541's diversion buried two other tracks: an overbridge), best 0 … +0.3 (walls beside our cones), demo unchanged, direct-80 −13.8
  * (3564, 5189: overbridges and a box for diversions over other roads; the grade re-solved round them), direct-90 +32.3
  * (walls held back from our cones and a junction's regrade; one more bridge span), town-centre / town-controls +20.3 / +20.4
- * (2721, 3564: overbridges for diversions over other tracks). PLAN.md "One screen for every earthwork". */
-export const COST_MODEL_VERSION = 64;
+ * (2721, 3564: overbridges for diversions over other tracks). PLAN.md "One screen for every earthwork".
+ * Model 65 (owner report: a slip road's T junction on a class II road across open fields "no clear view", whatever the
+ * player did): a new junction's sight field is the whole triangle (every sight line from the eye to the joined road
+ * between the junction and the seen car, ČSN 73 6102), the eye's height on our road as designed between its stations;
+ * the joined road's own surface is read along its line (not the 5 m ground model's verge beside it) and blocks only past
+ * the ground model's stated accuracy (DMR 5G 0.18 m, research/00); ground beside the road within 0.25 m of a sight line
+ * is dug down to it up to 1 m (excavation hauled to a tip and its land, billed with the junction: tie-in.ts sightField),
+ * deeper ground or a house still a problem. A sweep of approaches along every class II–III road of D35 and D11: 44 % /
+ * 27 % of junctions clear, 17 % / 18 % dug clear (≈ 10 m³), the rest a house, a deeper bank or the road's own crest.
+ * Every frozen bill unchanged (no frozen design joins a road). PLAN.md "Slip roads: lane markings, roundabouts, sight fields". */
+export const COST_MODEL_VERSION = 65;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

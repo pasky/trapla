@@ -197,3 +197,18 @@ No 2–4 real Czech awarded contracts were verified in this pass to isolate one 
 | 110 (S 21.5, D 27.5) | 100 + 98 = 198 (100 + 118 = 218) m | 295 m | Lv and entry: the 120 column; Ld: formula, level |
 | 100 | 80 + 71 = 151 (80 + 92 = 172) m | 30 + 145 + 80 = 255 m | tables + formula, level |
 | 90 | 70 + 47 = 117 (70 + 67 = 137) m | 30 + 130 + 70 = 230 m | tables + formula, level |
+
+## Addendum (2026-11-21): how a speed-change lane is marked (TP 133)
+
+- TP 133 (2013) "Zásady pro vodorovné dopravní značení" §6.2, read from [the PDF](https://pjpk.rsd.cz/data/USR_001_2_8_TP/TP_133.pdf)
+  p. 32 and obr. 9: an exit lane "se odděluje podélnou čárou přerušovanou (č. V 2b) v provedení 1,5/1,5/0,25 m, která navazuje
+  na předchozí vodicí čáru č. V 4. V úseku předcházejícímu značce ‚Šikmé rovnoběžné čáry‘ (č. V 13a) … na čáru č. V 2b navazuje
+  podélná čára souvislá (č. V1a) v délce 30 m"; the figure draws the V 2b from where the taper starts (the edge line V 4 bending
+  out along it as the lane's edge) and the gore hatched (high).
+- §6.3 and obr. 10, an entry lane: V 13a, then V 1a 30 m (min. 20 m), then V 2b to where the lane ends on the edge line V 4. The
+  text gives that V 2b as 0.5/1.5/0.25 m, the figure as 1.5/1.5/0.25 m: the game draws the figure's (and VL 3's).
+- §17.1, V 13a: lines 0.50 m wide at 45° "směrem do jízdního pruhu, kam je provoz usměrňován", 0.5/1.0 m; between lanes of one
+  direction broken (chevrons); the hatched area at least 1.5 m wide, its lines at least 0.5 m long (high).
+- What the game drew before (owner report, 2026-11-21): the V 2b only where the lane is full width, the carriageway's solid edge
+  line left along the taper (a solid line where the lane begins), no V 1a and no hatching. Now as above
+  (`core/slip-roads.ts speedChangeLane`, `goreMarks`; display only).

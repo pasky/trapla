@@ -449,6 +449,17 @@ not its old line), one design with ours: [a diamond at Nudvojovická](docs/scree
 (I/35 km 1.67, `i35-nudvojovicka-diamond.json`), [its exit over the local road's new link](docs/screenshots/731-nudvojovicka-exit-over-the-local-road-s-new-link.png),
 [its entry dragged off Nudvojovická](docs/screenshots/727-nudvojovicka-entry-dragged-off-the-road.png).
 
+A speed-change lane is marked as TP 133 draws it: the dashed line from where its taper starts, solid for the last 30 m, the
+gore hatched with chevrons; a road's end set to Roundabout draws its ring; a new junction's view along the road it joins
+is checked over its whole sight triangle, the ground a little in the way dug off (billed). Real-mouse check:
+`node scripts/slip-road-marks-scene.mjs [--docs]` (D35, a slip road to road II/368).
+
+| The exit lane's gore | Its end a roundabout |
+|---|---|
+| ![Gore](docs/screenshots/786-exit-lane-gore-hatched.png) | ![Roundabout](docs/screenshots/788-slip-road-roundabout.png) |
+
+Also: [the taper, dashed from its start](docs/screenshots/787-exit-lane-taper-dashed.png), [the ring on the photo](docs/screenshots/789-slip-road-roundabout-photo.png).
+
 A selected crossing's parts drag too (select first, then drag): its ring slides where the crossed road crosses ours
 along our road (the road rebuilt around the crossing, its angle kept; undo "moving where … crosses"), its lit works bend
 that road, a reroute's new road reshapes; what cannot move says why on hover. A selected mapped road's open dead end

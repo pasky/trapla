@@ -284,11 +284,15 @@ export function createResultDisplay(app: ResultDisplayContext) {
     })(), ([geometry, sources]) => {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
       app.links.picker?.setAccepted(result.acceptedRenderReplacements);
-      // a slip road's speed-change lane: its lines on the motorway (the dashed one first, then its taper's edge), and
-      // the paving it adds beyond the hard shoulder (its middle, each point's half width)
+      // a slip road's speed-change lane: its lines on the motorway (the dashed one first, then its outer edge), the
+      // paving it adds beyond the hard shoulder (its middle, each point's half width), then the gore's chevrons (each
+      // a line, its half width on its points; core/slip-roads.ts speedChangeLane, goreMarks)
       app.view.setLaneMarks(result.works.items.filter(w => w.id.includes(':lane:')).flatMap(w => w.surfaces.map((q, k) => k === 2
         ? { points: q.points, dashed: false, width: 0, paving: q.points.map(p => p.halfWidth) }
-        : { points: q.points, dashed: k === 0, width: SLIP_ROAD.marking.width })));
+        : { points: q.points, dashed: k === 0, width: k === 0 ? SLIP_ROAD.marking.width : 2 * (q.points[0]?.halfWidth ?? SLIP_ROAD.marking.width / 2) })));
+      // roundabouts' rings (on what is drawn there), and the ground dug off junctions' sight fields
+      app.view.setJunctionMarks(result.works.items.flatMap(w => w.ring ? [w.ring] : []),
+        result.works.items.flatMap(w => w.dug ? [w.dug] : []));
       syncDecorations(result);
       app.session.displayedProject = result; heavy = null;
       app.projectStore.offerBest(result); app.projectScore(false);
