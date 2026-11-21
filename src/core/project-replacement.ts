@@ -54,8 +54,9 @@ export interface ReplacementWork {
   lines?: { x: number; y: number; z: number; halfWidth?: number }[][];
   /** the roundabout's ring it builds, drawn */
   ring?: RingMark;
-  /** ground it digs off (a junction's sight field: tie-in.ts sightField), squares of `size` m about each cell, drawn */
-  dug?: { cells: { x: number; y: number }[]; size: number };
+  /** ground it digs off (a junction's sight field: tie-in.ts sightField), squares of `size` m about each cell (`depth`
+   * dug there, m), drawn */
+  dug?: { cells: { x: number; y: number; depth: number }[]; size: number };
 }
 export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
   /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,

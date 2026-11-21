@@ -132,12 +132,12 @@ export function sightDigCost(dig: SightDig, urban: number): number {
 /** A junction's sight field dug clear, as a work of the road: where, and its words. */
 export interface SightWork { end: 'a' | 'b'; x: number; y: number; dig: SightDig; cost: number; label: string }
 const sightWork = (end: 'a' | 'b', x: number, y: number, dig: SightDig, urban: number, what: string): SightWork =>
-  ({ end, x, y, dig, cost: sightDigCost(dig, urban), label: `Ground dug away so drivers see along ${what}: ${Math.max(1, Math.round(dig.volume)).toLocaleString('en')} m³` });
+  ({ end, x, y, dig, cost: sightDigCost(dig, urban), label: `Clear the view along ${what}: ${dig.volume < 1 ? '< 1' : Math.round(dig.volume).toLocaleString('en')} m³ dug` });
 
 /** What a designer checks at each new junction: no at-grade junction on a motorway, class I spacing,
  * the joining road's grade in the junction, and the view along the joined road (its sight field dug clear where only
  * ground beside the road is in the way: `sight`, works of the road). */
-export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, terrain: Terrain, buildings?: BuildingIndex): { violations: Violation[]; sight: SightWork[] } {
+export function tieInChecks(ties: readonly TieIn[], r: Result, crownWidth: number, roads: RoadNet, terrain: Terrain, buildings?: BuildingIndex): { violations: Violation[]; sight: SightWork[] } {
   const out: Violation[] = [], sight: SightWork[] = [];
   for (const t of ties) {
     // the old road goes on: no new junction to check, unless other roads meet there (the stretch between junctions ends at
@@ -170,7 +170,9 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
       'Set this junction back to Auto', 'Game rule: roundabouts join public roads (class I–III and local roads), not tracks or service roads.', 'game'));
     // A roundabout's entries see to the left around the ring (TP 135), not along a through road: the T
     // junction's sight triangle does not apply to it.
-    const field = t.junction.kind === 'roundabout' ? null : sightField(t, r, wayLine(roads, t.way, terrain), terrain, buildings), blocked = field?.blocked;
+    // (another mapped road in the sight field is not dug: the roads meeting here are the junction's own mouths)
+    const others = (x: number, y: number) => { const w = roads.nearestWay(x, y, OTHER_ROAD); return w !== undefined && !t.ways.includes(w); };
+    const field = t.junction.kind === 'roundabout' ? null : sightField(t, r, crownWidth / 2, wayLine(roads, t.way, terrain), terrain, buildings, others), blocked = field?.blocked;
     if (field?.dig) sight.push(sightWork(t.end, t.x, t.y, field.dig, r.cell.urban[t.end === 'a' ? 0 : r.n - 1], `the ${what}`));
     if (blocked) out.push({ ...issue(s0, s1, `No clear view along the ${what}`, blocked.fix,
       `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along the ${what} (sight triangle)`), // research/29
@@ -182,19 +184,24 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
 /** The road being joined, as a line with stations: an existing way (on its ground) or a designed road. */
 export interface HostLine {
   length: number; halfWidth: number;
+  /** how far its heights may be off, m: a mapped road's are the ground model's (TIE_IN_RULES.groundAccuracy), a designed
+   * road's its own (0) */
+  accuracy: number;
   station(x: number, y: number): number;
   /** point at station d, with the road surface height there */
   point(d: number): { x: number; y: number; z: number } | null;
+  /** a designed road's own body (its crown and slopes as built) */
+  result?: Result;
 }
 export function wayLine(roads: RoadNet, way: number, terrain: Terrain): HostLine {
   const total = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
-  return { length: total, halfWidth: (ROAD_CLASSES[roads.wayClass(way)]?.width ?? 6.5) / 2,
+  return { length: total, halfWidth: (ROAD_CLASSES[roads.wayClass(way)]?.width ?? 6.5) / 2, accuracy: TIE_IN_RULES.groundAccuracy,
     station: (x, y) => roads.wayStation(way, x, y),
     point: d => { if (d < 0 || d > total) return null; const run = roads.wayPath(way, Math.max(0, d - 0.5), d), p = run.at(-1);
       return p ? { x: p.x, y: p.y, z: terrain.heightAt(p.x, p.y) } : null; } };
 }
 export function resultLine(h: Result, halfWidth: number): HostLine {
-  return { length: h.length, halfWidth,
+  return { length: h.length, halfWidth, accuracy: 0, result: h,
     station: (x, y) => { let best = Infinity, s = 0; for (let k = 0; k < h.n; k++) { const d = Math.hypot(h.x[k] - x, h.y[k] - y); if (d < best) { best = d; s = h.s[k]; } } return s; },
     point: d => { if (d < 0 || d > h.length) return null; const i = Math.min(h.n - 2, Math.floor(d / h.ds)), t = (d - h.s[i]) / h.ds;
       return { x: h.x[i] + t * (h.x[i + 1] - h.x[i]), y: h.y[i] + t * (h.y[i + 1] - h.y[i]), z: h.grade[i] + t * (h.grade[i + 1] - h.grade[i]) }; } };
@@ -214,14 +221,16 @@ function nearestJunction(roads: RoadNet, t: TieIn): number | null {
 
 /** Ground dug off a junction's sight triangles (TIE_IN_RULES.graded): its cells (centre, depth), volume and area. */
 export interface SightDig { cells: { x: number; y: number; depth: number }[]; volume: number; area: number }
-/** The sight triangle's two legs along the joined road (eye, junction, the seen car `length` m along the road): every
- * sight line from the eye to the road between the junction and that car must be clear. A house in the triangle, or on
- * its far sight line, blocks it; so does the joined road's own surface reaching a sight line (its profile along its
- * line: a crest), or ground that would have to be dug deeper than TIE_IN_RULES.graded. Ground beside the road reaching
- * within the clearance of a sight line is dug down to it (`dig`: billed with the junction, tieInChecks). Measured on the
- * existing ground, on our road's own crown and slopes where they are. */
-export function sightField(t: Pick<TieIn, 'end' | 'x' | 'y'>, r: Result, host: HostLine, terrain: Terrain, buildings?: BuildingIndex):
-  { blocked: { fix: string; legs: string; building?: number } | null; dig: SightDig | null } {
+/** The sight triangle's two legs along the joined road (eye, junction, the seen car `length` m along the road, or as far
+ * as the road goes): every sight line from the eye to the road between the junction and that car must be clear (a fan
+ * of lines to the road's own points, so a bend is followed). A house in the triangle, or on its far sight line, blocks
+ * it; so does the joined road's own surface reaching a sight line past what its heights may be off (its profile along
+ * its line: a crest), our own road's pavement, another road (`others`: not dug), or ground that would have to be dug
+ * deeper than TIE_IN_RULES.graded. Ground beside the roads reaching within the clearance of a sight line is dug down to
+ * it (`dig`: billed with the junction, tieInChecks). Measured on the existing ground, on our road's own crown (half
+ * width `ownHalf`) and slopes where they are. */
+export function sightField(t: Pick<TieIn, 'end' | 'x' | 'y'>, r: Result, ownHalf: number, host: HostLine, terrain: Terrain, buildings?: BuildingIndex,
+  others?: (x: number, y: number) => boolean): { blocked: { fix: string; legs: string; building?: number } | null; dig: SightDig | null } {
   const i = t.end === 'a' ? 0 : r.n - 1, urban = r.cell.urban[i] >= 0.5;
   const speed = urban ? TIE_IN_RULES.defaultSpeed.urban : TIE_IN_RULES.defaultSpeed.rural;
   const [xb, xc] = TIE_IN_RULES.sight[speed];
@@ -232,64 +241,75 @@ export function sightField(t: Pick<TieIn, 'end' | 'x' | 'y'>, r: Result, host: H
   if (!p0 || !p1) return { blocked: null, dig: null };
   let hx = p1.x - p0.x, hy = p1.y - p0.y;
   const hl = Math.hypot(hx, hy) || 1; hx /= hl; hy /= hl;
-  const eye = { x: t.x - ix * (half + setback), y: t.y - iy * (half + setback) };
   // left of a driver facing into the junction: rotate the inward direction +90°
   const leftSign = Math.sign(hx * -iy + hy * ix) || 1;
   const legs: [number, number][] = [[xb, leftSign], [xc, -leftSign]];
-  // the eye is on our road as designed, (half + setback) m before its end (its height between its stations there)
-  const back = Math.min(r.length, half + setback), sEye = t.end === 'a' ? back : r.length - back;
+  // the eye on our road as designed, (half + setback) m out from the joined road's line (further along our road where it
+  // meets it askew), at its height there
+  const sine = Math.max(0.25, Math.abs(hx * iy - hy * ix)), back = Math.min(r.length, (half + setback) / sine), sEye = t.end === 'a' ? back : r.length - back;
   const k0 = Math.max(0, Math.min(r.n - 2, Math.floor(sEye / r.ds))), f = Math.max(0, Math.min(1, (sEye - r.s[k0]) / ((r.s[k0 + 1] - r.s[k0]) || 1)));
-  const zEye = r.grade[k0] + (r.grade[k0 + 1] - r.grade[k0]) * f + TIE_IN_RULES.eyeHeight;
-  const words = (length: number, sign: number) => `Move this end along the road to where the ground lets a driver see ${length} m ${sign === leftSign ? 'to the left' : 'to the right'}`;
-  // what stands at (x, y): our road's crown and slopes near its end where they are, else the ground
-  const surface = ownSurface(r, t.end, (x, y) => terrain.heightAt(x, y));
+  const lerp = (a: ArrayLike<number>) => a[k0] + (a[k0 + 1] - a[k0]) * f;
+  const eye = { x: lerp(r.x), y: lerp(r.y) }, zEye = lerp(r.grade) + TIE_IN_RULES.eyeHeight;
+  const blockedBy = (length: number, sign: number) => ({ blocked: { fix: `Move this end along the road to where the ground lets a driver see ${length} m ${sign === leftSign ? 'to the left' : 'to the right'}`, legs: `${xb} / ${xc}` }, dig: null });
+  const ends = t.end === 'a' ? [0, Math.min(r.n - 1, Math.ceil(60 / r.ds))] : [Math.max(0, r.n - 1 - Math.ceil(60 / r.ds)), r.n - 1];
+  const own = bodySurface(r, ends[0], ends[1], ownHalf);
+  // (a designed road joined: its slopes as built beside its pavement, along the two legs)
+  const h = host.result, reach = Math.max(xb, xc) + 20;
+  const theirs = h ? bodySurface(h, Math.max(0, Math.floor((at - reach) / h.ds)), Math.min(h.n - 1, Math.ceil((at + reach) / h.ds)), half) : null;
   const dug = new Map<string, { x: number; y: number; depth: number }>(), grid = TIE_IN_RULES.grid;
   for (const [length, sign] of legs) {
-    // the seen car is ON the joined road, `length` m along it (it may bend), not on its tangent
-    const towards = sign > 0 ? 1 : -1, dist = at + towards * length;
-    const far = host.point(dist);
-    if (!far) continue; // the joined road ends sooner: nothing comes from there on it
-    const target = { x: far.x, y: far.y };
-    if (terrain.isOob(target.x, target.y)) continue;
-    // every point of the triangle eye – junction – car, against the sight line through it to the road (the chord
-    // junction – car standing for the road, its height the road's at the matching station)
-    const jx = t.x, jy = t.y, ex = target.x - jx, ey = target.y - jy;
-    const x0 = Math.min(eye.x, jx, target.x), x1 = Math.max(eye.x, jx, target.x), y0 = Math.min(eye.y, jy, target.y), y1 = Math.max(eye.y, jy, target.y);
-    for (let x = Math.floor(x0 / grid) * grid + grid / 2; x < x1; x += grid) for (let y = Math.floor(y0 / grid) * grid + grid / 2; y < y1; y += grid) {
-      if (!inTriangle(x, y, eye, t, target)) continue;
-      // where the line eye → (x, y) meets the chord: eye + u·(p − eye) = j + v·e
-      const px = x - eye.x, py = y - eye.y, den = px * ey - py * ex;
-      if (Math.abs(den) < 1e-9) continue;
-      const u = ((jx - eye.x) * ey - (jy - eye.y) * ex) / den, v = ((jx - eye.x) * py - (jy - eye.y) * px) / den;
-      if (!(u >= 1 - 1e-9) || v < 0 || v > 1) continue;
-      const q = host.point(at + towards * v * length);
-      if (!q) continue;
-      const ray = zEye + (q.z + TIE_IN_RULES.objectHeight - zEye) / u;
-      // on the joined road: its own surface (its height along its line), clear of the line itself (within the ground
-      // model's error, TIE_IN_RULES.groundAccuracy); beside it: the
-      // ground, kept the clearance under it (dug so where it is not)
-      const st = host.station(x, y), on = host.point(st);
-      if (on && Math.hypot(on.x - x, on.y - y) <= half) {
-        if (on.z > ray + TIE_IN_RULES.groundAccuracy) return { blocked: { fix: words(length, sign), legs: `${xb} / ${xc}` }, dig: null };
-        continue;
-      }
-      const depth = surface(x, y) - (ray - TIE_IN_RULES.clearance);
-      if (!(depth > 0)) continue;
-      if (depth > TIE_IN_RULES.graded) return { blocked: { fix: words(length, sign), legs: `${xb} / ${xc}` }, dig: null };
-      const key = `${Math.round(x / grid)},${Math.round(y / grid)}`, old = dug.get(key);
-      if (!old || old.depth < depth) dug.set(key, { x, y, depth });
+    // the joined road from the junction to the seen car, ON the road (it may bend), or as far as it goes on the map
+    const towards = sign > 0 ? 1 : -1, road: { x: number; y: number; z: number }[] = [];
+    const along = Array.from({ length: Math.ceil(length / 2) + 1 }, (_, k) => Math.min(length, 2 * k));
+    for (const d of along) {
+      const p = host.point(at + towards * d);
+      if (!p || terrain.isOob(p.x, p.y)) break;
+      road.push(p);
     }
-    // a house (one our road does not demolish or buy) inside the triangle eye – junction – target, or on its sight line
+    if (road.length < 2) continue;
+    // the road's surface at (x, y) where it is on its pavement: its height along its line (null: off it); searched about
+    // its point `near` (a sight line's point at u of the way to the road's point q is by the road's point u·q)
+    const onRoad = (x: number, y: number, near: number) => {
+      let best = Infinity, z = 0;
+      for (let k = Math.max(1, near - 10); k < Math.min(road.length, near + 11); k++) {
+        const a = road[k - 1], b = road[k], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+        const u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)), d = Math.hypot(a.x + u * dx - x, a.y + u * dy - y);
+        if (d < best) { best = d; z = a.z + u * (b.z - a.z); }
+      }
+      return best <= half ? z : null;
+    };
+    for (const [kq, q] of road.entries()) {
+      const dx = q.x - eye.x, dy = q.y - eye.y, d = Math.hypot(dx, dy), zq = q.z + TIE_IN_RULES.objectHeight;
+      for (let w = grid; w < d; w += grid) {
+        const u = w / d, x = eye.x + u * dx, y = eye.y + u * dy, ray = zEye + u * (zq - zEye);
+        // on the joined road: its own surface, clear of the line itself (past what its heights may be off)
+        const zr = onRoad(x, y, Math.round(u * kq));
+        if (zr !== null) { if (zr > ray + host.accuracy) return blockedBy(length, sign); continue; }
+        // on our road's pavement: as built; beside the roads: the ground (their slopes where they are), kept the clearance
+        // under the line, dug so where it is not (not another road)
+        const mine = own(x, y) ?? theirs?.(x, y);
+        if (mine?.pavement) { if (mine.z > ray) return blockedBy(length, sign); continue; }
+        const depth = (mine?.z ?? terrain.heightAt(x, y)) - (ray - TIE_IN_RULES.clearance);
+        if (!(depth > 0)) continue;
+        // (another road is not dug: as the joined road's surface, in the way only where it reaches the line itself)
+        if (others?.(x, y)) { if (depth > TIE_IN_RULES.clearance + TIE_IN_RULES.groundAccuracy) return blockedBy(length, sign); continue; }
+        if (depth > TIE_IN_RULES.graded) return blockedBy(length, sign);
+        const cx = (Math.floor(x / grid) + 0.5) * grid, cy = (Math.floor(y / grid) + 0.5) * grid, key = `${cx},${cy}`, old = dug.get(key);
+        if (!old || old.depth < depth) dug.set(key, { x: cx, y: cy, depth });
+      }
+    }
+    // a house (one our road does not demolish or buy) in the sight field: a corner inside it (the eye and the road to the
+    // seen car round it), or a wall across its sight lines to the junction or to the car
     if (buildings) {
-      const dx = target.x - eye.x, dy = target.y - eye.y, steps = Math.ceil(Math.hypot(dx, dy) / 5);
+      const field = [eye, ...road], target = road[road.length - 1];
       const cx = (eye.x + t.x + target.x) / 3, cy = (eye.y + t.y + target.y) / 3;
       const gone = new Set([...r.demolished, ...r.boughtOut].map(b => b.j));
       let hit: number | undefined;
       buildings.near(cx, cy, length, j => {
         if (hit !== undefined || gone.has(j)) return;
-        const b = buildings.items[j];
-        if (inTriangle(b[0], b[1], eye, t, target)) { hit = j; return; }
-        for (let k = 0; k <= steps; k++) if (buildings.facadeDistance(j, eye.x + k / steps * dx, eye.y + k / steps * dy) < 0.5) { hit = j; return; }
+        const c = buildings.corners(j);
+        if (c.some(([x, y]) => inPolygon(x, y, field))
+          || c.some((p, k) => [road[0], target].some(q => crosses(p, c[(k + 1) % 4], [eye.x, eye.y], [q.x, q.y])))) hit = j;
       });
       if (hit !== undefined) return { blocked: { fix: `Buy out the building in the way, or move this end along the road`, legs: `${xb} / ${xc}`, building: hit }, dig: null };
     }
@@ -298,30 +318,48 @@ export function sightField(t: Pick<TieIn, 'end' | 'x' | 'y'>, r: Result, host: H
   const cells = [...dug.values()];
   return { blocked: null, dig: { cells, volume: cells.reduce((a, c) => a + c.depth, 0) * grid * grid, area: cells.length * grid * grid } };
 }
-/** The height of our road's crown and slopes at (x, y) within its last (first) 60 m by end `end`, else `ground`. */
-function ownSurface(r: Result, end: 'a' | 'b', ground: (x: number, y: number) => number) {
-  const reach = Math.ceil(60 / r.ds), q0 = end === 'a' ? 0 : Math.max(0, r.n - 1 - reach), q1 = end === 'a' ? Math.min(r.n - 1, reach) : r.n - 1;
-  return (x: number, y: number) => {
-    const g = ground(x, y);
-    let k = q0, best = Infinity;
-    for (let q = q0; q <= q1; q++) { const d = Math.hypot(r.x[q] - x, r.y[q] - y); if (d < best) { best = d; k = q; } }
-    const dx = x - r.x[k], dy = y - r.y[k], along = dx * r.tx[k] + dy * r.ty[k], across = -dx * r.ty[k] + dy * r.tx[k];
-    if (Math.abs(along) > r.ds) return g;
-    const o = Math.abs(across), w = r.cell.width[k] / 2, left = across > 0, day = left ? r.dayL[k] : r.dayR[k], zDay = left ? r.zDayL[k] : r.zDayR[k];
-    if (o <= w) return r.grade[k];
-    if (o <= day && day > w) return r.grade[k] + (zDay - r.grade[k]) * (o - w) / (day - w);
-    return g;
+/** A road's surface at (x, y) between its stations q0 and q1: its crown (`pavement`, half width `half`) and slopes, by its
+ * line between its stations; null: off its body there. */
+function bodySurface(r: Result, q0: number, q1: number, half: number) {
+  return (x: number, y: number): { z: number; pavement: boolean } | null => {
+    let best = Infinity, hit: { k: number; u: number; across: number } | null = null;
+    for (let k = q0; k < Math.min(q1, r.n - 1); k++) {
+      const dx = r.x[k + 1] - r.x[k], dy = r.y[k + 1] - r.y[k], l2 = dx * dx + dy * dy || 1;
+      const u = ((x - r.x[k]) * dx + (y - r.y[k]) * dy) / l2;
+      if (u < -1e-9 || u > 1 + 1e-9) continue;
+      const across = (-(x - r.x[k]) * dy + (y - r.y[k]) * dx) / Math.sqrt(l2);
+      if (Math.abs(across) < best) { best = Math.abs(across); hit = { k, u, across }; }
+    }
+    if (!hit) return null;
+    const { k, u, across } = hit, at = (a: ArrayLike<number>) => a[k] + (a[k + 1] - a[k]) * u;
+    const z = at(r.grade), o = Math.abs(across), left = across > 0, day = at(left ? r.dayL : r.dayR), zDay = at(left ? r.zDayL : r.zDayR);
+    if (o <= half) return { z, pavement: true };
+    if (o <= day && day > half) return { z: z + (zDay - z) * (o - half) / (day - half), pavement: false };
+    return null;
   };
 }
-function inTriangle(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
-  const s = (p: { x: number; y: number }, q: { x: number; y: number }) => (q.x - p.x) * (py - p.y) - (q.y - p.y) * (px - p.x);
-  const d1 = s(a, b), d2 = s(b, c), d3 = s(c, a);
-  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+function inPolygon(px: number, py: number, poly: readonly { x: number; y: number }[]) {
+  let inside = false;
+  for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+    const a = poly[k], b = poly[m];
+    if ((a.y > py) !== (b.y > py) && px < (b.x - a.x) * (py - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+/** Whether segments a–b and c–d cross. */
+function crosses(a: readonly number[], b: readonly number[], c: readonly number[], d: readonly number[]) {
+  const side = (p: readonly number[], q: readonly number[], r: readonly number[]) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return side(a, b, c) !== side(a, b, d) && side(c, d, a) !== side(c, d, b);
 }
 
+/** Ground within this of another mapped road's line is that road (not dug off a sight field), m: a lane's half width
+ * and its edge (the class tables' narrowest roads, data/urban ROAD_CLASSES, are about 6 m across). */
+const OTHER_ROAD = 3;
+
 /** A side road's end on another designed road (our road): the junction it builds there, priced as the
- * one onto an existing road of the same class, and the same checks against the designed road. */
-export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string; legalClass: string; crownWidth: number; result: Result;
+ * one onto an existing road of the same class, and the same checks against the designed road (`sideCrown`: the side
+ * road's crown width, m). */
+export function designedTieIn(side: Result, sideCrown: number, end: 'a' | 'b', host: { name: string; legalClass: string; crownWidth: number; result: Result;
   /** stations of the other junctions on the designed road (its ends count, as for our road's own junctions) */
   junctions: number[] }, terrain: Terrain, buildings?: BuildingIndex, form?: 'roundabout'): { violations: Violation[]; cost: number; label: string; s: number; ring?: ReturnType<typeof ringWorks>; sight?: SightWork } {
   const h = host.result, i = end === 'a' ? 0 : side.n - 1, line = resultLine(h, host.crownWidth / 2);
@@ -342,7 +380,7 @@ export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string
   if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins ${what}`,
     `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
     'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction')); // research/29
-  const field = form === 'roundabout' ? null : sightField({ end, x: side.x[i], y: side.y[i] }, side, line, terrain, buildings), blocked = field?.blocked;
+  const field = form === 'roundabout' ? null : sightField({ end, x: side.x[i], y: side.y[i] }, side, sideCrown / 2, line, terrain, buildings), blocked = field?.blocked;
   const sight = field?.dig ? sightWork(end, side.x[i], side.y[i], field.dig, side.cell.urban[i], what) : undefined;
   if (blocked) out.push({ ...issue(s0, s1, `No clear view along ${what}`, blocked.fix,
     `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along ${what} (sight triangle)`), // research/29

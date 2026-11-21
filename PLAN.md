@@ -3322,18 +3322,27 @@ should be plenty of view."
 - **Sight fields (cost model 65):** the check was the far sight line alone against the 5 m ground model, with a 0.25 m margin,
   the eye at the station nearest its point: along gently convex roads and their verges it failed at most junctions (a sweep of
   level approaches every 25 m along every class II–III road of D35 and D11: about half). Now (`core/tie-in.ts sightField`): the
-  whole triangle, every sight line from the eye to the road between the junction and the seen car (ČSN 73 6102 as reproduced,
-  research/29 addendum); the eye's height interpolated on our road; on the joined road its own surface along its line,
-  hiding the car only past the ground model's stated accuracy (DMR 5G 0.18 m); beside it the ground kept 0.25 m under the
-  sight lines (VL 3), dug so where it is not, up to 1 m deep (PROVISIONAL game rule): excavation hauled to a tip plus its land,
-  a work of the road ("Ground dug away so drivers see along …: N m³"), drawn as a cut-coloured patch. Deeper ground, the
-  road's own crest and houses are problems as before. The same sweep (an approach on the ground every 50 m): clear 44 % (D35) /
-  27 % (D11), dug clear 17 % / 18 % (≈ 10 m³), a house 17 % / 14 %, ground deeper than 1 m 15 % / 30 % (banks of roads in
-  cuttings, the inside of bends), the road's own crest 7 % / 11 %. Every frozen bill and saved design unchanged (none joins a road); the I/35
-  Turnov diamond +14 k CZK (6 m³ dug off one sight triangle), the D35 II/368 exit valid on Auto (model 64: "145 m to the right").
+  whole field, a fan of sight lines from the eye to the road's own points between the junction and the seen car, 2 m apart
+  (ČSN 73 6102 as reproduced, research/29 addendum; a bend followed, a road ending sooner checked as far as it goes); the eye
+  on our road's line, its height there, (half + 3 m) out from the joined road's line square to it (further back where our road
+  meets it askew); on the joined road its own surface along its line, hiding the car only past what its heights may be off
+  (a mapped road's: DMR 5G's stated 0.18 m; a designed road's: 0); on our pavement as built; beside them the ground (a
+  designed road's slopes and ours as built) kept 0.25 m under the sight lines (VL 3), dug so where it is not, up to 1 m deep
+  (PROVISIONAL game rule): excavation hauled to a tip plus its land, a work of the road ("Clear the view along …: N m³ dug"),
+  drawn as a cut-coloured patch; another mapped road there is not dug (in the way only where it reaches a line itself). A house
+  blocks where a corner of it is in the field or a wall crosses its first or last sight line (was: its centre in the
+  triangle, or within 0.5 m of the far line at 5 m steps). Deeper ground, the road's own crest and houses are problems as
+  before. The same sweep (an approach on the ground every 50 m): clear 48 % (D35) / 34 % (D11), dug clear 14 % / 12 %
+  (≈ 25 m³), a house 17 % / 14 %, ground deeper than 1 m 10 % / 22 % (banks of roads in cuttings, the inside of bends), the
+  road's own crest 10 % / 17 %. Every frozen bill and saved design unchanged (none joins a road); the D3 0303 diamond
+  +0.7 k CZK (< 1 m³ dug); the I/35 Turnov diamond's south-west crossroads had a house with one corner 0.2 m inside its
+  field to the left: bought out in the fixture, as its problem's fix says (+2.8 M, and 104 m³ dug); the D35 II/368 exit valid
+  on Auto (model 64: "145 m to the right").
 - **Check:** `node scripts/slip-road-marks-scene.mjs [--docs]` (screenshots 786–789), `tests/tie-in-sight.test.ts`,
   `tests/slip-roads.test.ts` ("a speed-change lane is marked as TP 133 draws it").
-- **Known gaps:** the dug ground is drawn as a tint, the ground not lowered (≤ 1 m); no splitter islands at a roundabout's
+- **Known gaps:** the dug ground is drawn as a tint, the ground not lowered (≤ 1 m), and not screened against protected
+  nature or other works (works-clash.ts); two ends at one crossroads each dig their own field, cells both share billed twice;
+  no splitter islands at a roundabout's
   arms, its ring flat on what is drawn (not graded as a platform); a slip road's noise wall runs on to its end, into a ring at
   its end (I/35 Nudvojovická); the seen car stands on the road's line, not in its lane; a roundabout keeps the T junction's
   lump-sum price plus its ring's land.

@@ -89,6 +89,10 @@ const LEGACY_ROUTE = 'legacy';
 /** what the project takes: a bought-out house (its colour in every view, the noise view's too) */
 export const BOUGHT_COLOR = 0xc43c9b;
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
+/** a decal on the ground (render/roundabouts.ts) lies on what is drawn no more than this over the ground there, m: a road
+ * body by its end (a junction keeps its grade near the ground's), not a deck over it */
+const DECAL_ABOVE_GROUND = 3;
+const IDENTITY = new THREE.Matrix4();
 export type EndSign = 'interchange' | 'roundabout' | 'joins' | 'continues';
 /** small symbols for an end's marker: an interchange (two roads crossing with loop ramps), a roundabout
  * with our arm, a road carrying on */
@@ -874,23 +878,33 @@ export class View {
       }
       inside[i * n + j] = all ? 1 : 0;
     }
+    this.world.updateMatrixWorld();
     const inv = new THREE.Matrix4().copy(this.world.matrixWorld).invert(), m = new THREE.Matrix4(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
     const names = new Set(['ribbon', 'daylight-ground', 'crossing-terrain', 'crossing-earthworks']);
-    // (a vertex in the map's x, y and its height)
-    const toMap = (v: THREE.Vector3) => v.applyMatrix4(m).set(v.x + this.cx, this.cy - v.z, v.y);
-    this.world.updateMatrixWorld();
+    // (a vertex in the map's x, y and its height; most meshes sit in the world as they are)
+    let same = true;
+    const toMap = (v: THREE.Vector3) => (same ? v : v.applyMatrix4(m)).set(v.x + this.cx, this.cy - v.z, v.y);
+    // (a deck over the ground there, a bridge's crown and soffit in the same ribbon, is not what a ring lies on)
+    const onGround = (v: THREE.Vector3) => v.z <= this.drapeHeight(v.x, v.y) + DECAL_ABOVE_GROUND;
     this.world.traverse(o => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !names.has(mesh.name) || !mesh.visible) return;
       const pos = mesh.geometry.getAttribute('position'), index = mesh.geometry.getIndex();
       if (!pos) return;
-      m.multiplyMatrices(inv, mesh.matrixWorld);
+      m.multiplyMatrices(inv, mesh.matrixWorld); same = m.equals(IDENTITY);
       const count = index ? index.count : pos.count;
+      // (the ring's square in the mesh's own x and z when it sits as it is: most triangles rejected before any transform)
+      const lx0 = x0 - this.cx, lx1 = x0 + 2 * reach - this.cx, lz0 = this.cy - (y0 + 2 * reach), lz1 = this.cy - y0, P = pos.array;
       for (let t = 0; t + 2 < count; t += 3) {
         const ia = index ? index.getX(t) : t, ib = index ? index.getX(t + 1) : t + 1, ic = index ? index.getX(t + 2) : t + 2;
+        if (same && pos.itemSize === 3 && !(pos as THREE.BufferAttribute).normalized) {
+          const xa = P[3 * ia], xb = P[3 * ib], xc = P[3 * ic], za = P[3 * ia + 2], zb = P[3 * ib + 2], zc = P[3 * ic + 2];
+          if (Math.max(xa, xb, xc) < lx0 || Math.min(xa, xb, xc) > lx1 || Math.max(za, zb, zc) < lz0 || Math.min(za, zb, zc) > lz1) continue;
+        }
         toMap(a.fromBufferAttribute(pos, ia)); toMap(b.fromBufferAttribute(pos, ib)); toMap(c.fromBufferAttribute(pos, ic));
         const lo = { x: Math.min(a.x, b.x, c.x), y: Math.min(a.y, b.y, c.y) }, hi = { x: Math.max(a.x, b.x, c.x), y: Math.max(a.y, b.y, c.y) };
         if (hi.x < x0 || hi.y < y0 || lo.x > x0 + 2 * reach || lo.y > y0 + 2 * reach) continue;
+        if (!onGround(a) || !onGround(b) || !onGround(c)) continue;
         const det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
         if (Math.abs(det) < 1e-9) continue;
         for (let i = Math.max(0, Math.ceil((lo.x - x0) / cell)); i <= Math.min(n - 1, Math.floor((hi.x - x0) / cell)); i++)
@@ -905,8 +919,9 @@ export class View {
     });
     return (x: number, y: number) => {
       const i = Math.round((x - x0) / cell), j = Math.round((y - y0) / cell);
-      if (i < 0 || j < 0 || i >= n || j >= n || Number.isNaN(grid[i * n + j])) return this.drapeHeight(x, y);
-      let z = inside[i * n + j] ? -Infinity : this.drapeHeight(x, y);
+      if (i < 0 || j < 0 || i >= n || j >= n) return this.drapeHeight(x, y);
+      // (off every body: the ground, but not under a body's edge beside it)
+      let z = inside[i * n + j] && !Number.isNaN(grid[i * n + j]) ? -Infinity : this.drapeHeight(x, y);
       for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
         const ii = i + di, jj = j + dj, g = ii >= 0 && jj >= 0 && ii < n && jj < n ? grid[ii * n + jj] : NaN;
         if (g > z) z = g;
@@ -916,6 +931,7 @@ export class View {
   }
 
   private sourceSelectionLine: Line2 | null = null;
+
   private sourceAheadLine: Line2 | null = null;
   /** the base-road stretch chosen with the Change road handles (display only); `ahead`: the old road a dragged end can
    * still go along, lit fainter */

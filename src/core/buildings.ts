@@ -163,6 +163,12 @@ export class BuildingIndex {
     return Math.hypot(along, across);
   }
 
+  /** The corners of building j's oriented rectangle, in order round it. */
+  corners(j: number): [number, number][] {
+    const ox = this.ox[j], oy = this.oy[j], ux = this.ux[j], uy = this.uy[j], l = this.hl[j], w = this.hw[j];
+    return [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([a, b]) => [ox + ux * l * a - uy * w * b, oy + uy * l * a + ux * w * b] as [number, number]);
+  }
+
   /** facadeDistance squared (cheaper; for comparisons) */
   facadeDistanceSq(j: number, x: number, y: number): number {
     const dx = x - this.ox[j], dy = y - this.oy[j];

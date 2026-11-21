@@ -167,10 +167,10 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   }
   let sightWorks: ReplacementWork[] = [];
   if (ties.length && roads && !options.preview) {
-    const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);
+    const found = tieInChecks(ties, result, CATEGORIES[design.category].crownWidth, roads, ctx.terrain, ctx.buildings);
     if (found.violations.length) { result.violations.push(...found.violations); result.valid = false; }
     sightWorks = found.sight.map(w => ({ kind: 'junction' as const, s: result.s[w.end === 'a' ? 0 : result.n - 1], x: w.x, y: w.y, length: 0, cost: w.cost, label: w.label,
-      dug: { cells: w.dig.cells.map(c => ({ x: c.x, y: c.y })), size: TIE_IN_RULES.grid } }));
+      dug: { cells: w.dig.cells.map(c => ({ ...c })), size: TIE_IN_RULES.grid } }));
   }
   // Where a rebuilt stretch stays on its old road, the old road is kept as it is: no norm, no works, no bill.
   let keptWork: ReplacementWork | null = null;

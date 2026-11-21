@@ -139,7 +139,8 @@ The opened [VL 3 (2010) PDF](https://pjpk.rsd.cz/data/USR_001_2_10_VL/VL_3_2010_
   (medium: a secondary reproduction of the norm by its software's authors). Confirms the game's 1.0 m / 1.0 m heights (§3
   item 9 now medium); the seen car is in its lane, the game keeps it on the road's line (a lane's offset, PROVISIONAL).
 - **What the game does with it** (cost model 65, `core/tie-in.ts sightField`): every sight line from the eye to the joined
-  road between the junction and the seen car (the whole triangle, on a 1 m grid), not only the far one. VL 3's obstacle rule
+  road between the junction and the seen car (a fan to the road's own points 2 m apart, each sampled every 1 m), not only
+  the far one. VL 3's obstacle rule
   (objects reaching above 0.25 m under the sight line) applies to the ground beside the road; designers keep the sight
   field clear, so such ground is dug down to it (PROVISIONAL game rule: up to 1 m; excavation hauled to a tip and its land,
   billed with the junction); deeper ground and houses stay problems. The joined road's own surface is read along its line

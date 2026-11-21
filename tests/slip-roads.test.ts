@@ -67,12 +67,12 @@ describe('a speed-change lane is marked as TP 133 draws it (owner: a solid line 
   it('its dashed line runs along the whole lane, taper too, but the last (first) 30 m by the gore; its outer edge bends out', () => {
     const l = line(), at = { s0: 0, s1: 100 };
     const exit = speedChangeLane(l, 1000, 1, 'exit', 50, 'hilly', at, D130), entry = speedChangeLane(l, 1000, 1, 'entry', 50, 'hilly', at, D130);
-    // (its points on the carriageway's stations, 10 m apart here)
-    const xs = (p: { x: number }[]) => p.map(q => q.x), near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThanOrEqual(l.ds / 2);
-    near(Math.min(...xs(exit.lines[0])), 1000 - 234);
-    expect(Math.max(...xs(exit.lines[0]))).toBeLessThanOrEqual(1000 - SLIP_ROAD.marking.solid + l.ds / 2);
-    expect(Math.min(...xs(entry.lines[0]))).toBeGreaterThanOrEqual(1000 + SLIP_ROAD.marking.solid - l.ds / 2);
-    near(Math.max(...xs(entry.lines[0])), 1000 + 295);
+    // (between the carriageway's stations, 10 m apart here)
+    const xs = (p: { x: number }[]) => p.map(q => q.x);
+    expect(Math.min(...xs(exit.lines[0]))).toBeCloseTo(1000 - 234);
+    expect(Math.max(...xs(exit.lines[0]))).toBeCloseTo(1000 - SLIP_ROAD.marking.solid);
+    expect(Math.min(...xs(entry.lines[0]))).toBeCloseTo(1000 + SLIP_ROAD.marking.solid);
+    expect(Math.max(...xs(entry.lines[0]))).toBeCloseTo(1000 + 295);
     // the outer edge starts on the carriageway's edge line and is the lane's edge (3.75 m out) where it is full width
     expect(-exit.lines[1][0].y).toBeCloseTo(D.through + SLIP_ROAD.marking.width / 2);
     expect(-exit.lines[1].at(-1)!.y).toBeCloseTo(D.through + SLIP_ROAD.marking.width / 2 + 3.75);
@@ -233,6 +233,8 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   const { projectContext } = await import('../scripts/eval-project');
   const design = JSON.parse(readFileSync('tests/fixtures/interchange/i35-turnov-diamond.json', 'utf8')) as ProjectDesign;
   const run = (d: ProjectDesign) => evaluateProject(projectContext(d).ctx, { epoch: 'e', revision: 1, design: d });
+  // (since cost model 65 the house at the south-west crossroads, one corner 0.2 m inside its sight field to the left, is
+  // bought out, as its problem's fix says: buildingOverrides)
   it('I/35 Turnov km 0.98, road II/610 (built in the game): valid and priced on the S 21.5\'s own lanes, its bill unchanged', () => {
     const r = run(design), slips = design.routes.filter(q => q.name.startsWith('Slip road'));
     expect(slips).toHaveLength(4);

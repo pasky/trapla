@@ -32,7 +32,7 @@ import { worksClashes } from './works-clash';
 import { wallStretches } from './noise';
 import { legacyDesignForRoute } from './project-legacy';
 import { stationIndex } from './range';
-import { motorwayCategory, routeCategory, routeWord } from './route-section';
+import { motorwayCategory, routeCategory, routeCrownWidth, routeWord } from './route-section';
 import { structureSurcharge, surchargeRate } from './cost';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
@@ -817,7 +817,7 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     const spec = hostRoute.specification, crown = CATEGORIES[spec.crossSection as Exclude<typeof spec.crossSection, 'existing'>].crownWidth;
     let stations = junctionsOn.get(hostRoute.id);
     if (!stations) junctionsOn.set(hostRoute.id, stations = [0, host.length, ...host.crossings.filter(c => c.type === 'junction').map(c => c.s)]);
-    const t = designedTieIn(legacy, end, { name: hostRoute.role === 'mission' ? 'our road' : hostRoute.name, legalClass: spec.legalClass,
+    const t = designedTieIn(legacy, routeCrownWidth(route), end, { name: hostRoute.role === 'mission' ? 'our road' : hostRoute.name, legalClass: spec.legalClass,
       crownWidth: crown, result: host, junctions: stations }, ctx.legacy.terrain, ctx.legacy.buildings,
       route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined);
     stations.push(t.s);
@@ -826,7 +826,7 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
     if (t.sight) list.push({ kind: 'junction', s: legacy.s[i], x: t.sight.x, y: t.sight.y, length: 0, cost: t.sight.cost, label: t.sight.label,
-      dug: { cells: t.sight.dig.cells.map(c => ({ x: c.x, y: c.y })), size: TIE_IN_RULES.grid } });
+      dug: { cells: t.sight.dig.cells.map(c => ({ ...c })), size: TIE_IN_RULES.grid } });
     if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),
       ring: ringMark(legacy, end, { host: { x: host.tx[k], y: host.ty[k] } }),
       label: `Roundabout's ring: ${Math.round(t.ring.area)} m² of land${t.ring.removed.length ? `, ${t.ring.removed.length} building${t.ring.removed.length > 1 ? 's' : ''} bought out` : ''}` });

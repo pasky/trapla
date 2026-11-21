@@ -69,8 +69,8 @@ export const SLIP_ROAD = {
   marking: { width: 0.25, dash: 1.5, gap: 1.5, solid: 30 },
   /** The gore between the carriageway's edge line and the slip road's: hatched with chevrons (V 13a, broken where it
    * parts lanes of one direction), 0.5 m wide at 45° forward, 1.0 m apart (TP 133 §17.1, obr. 9–10), where it is at
-   * least `from` m wide, out to where the two pavements part. `from`: TP 133's shortest hatch line 0.5 m (game choice). */
-  hatch: { width: 0.5, gap: 1.0, from: 0.75 },
+   * least `from` m wide ("Nejmenší šířka plochy … alespoň 1,5 m"), out to where the two pavements part. */
+  hatch: { width: 0.5, gap: 1.0, from: 1.5 },
   /** The stretch of a slip road by its end a problem there is marked on, m (display; the D 130 exit lane's taper). */
   endZone: 100,
   /** Earth-built ramps already in a divided road's price: SPK CN 2026 report p. 7, the standard of a divided road
@@ -103,6 +103,13 @@ export function carriagewayOf(design: ProjectDesign, routeId: string): { corrido
 export function sideAt(line: Pick<Result, 'n' | 'ds' | 'x' | 'y' | 'tx' | 'ty'>, s: number, p: { x: number; y: number }): 1 | -1 {
   const k = stationIndex(line, s), across = -(p.x - line.x[k]) * line.ty[k] + (p.y - line.y[k]) * line.tx[k];
   return across > 0 ? -1 : 1;
+}
+/** The paired road's line at station s, between its stations (its height too), and the right of travel there. */
+function along(line: Pick<Result, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'grade'>, s: number, direction: 1 | -1) {
+  const k = Math.max(0, Math.min(line.n - 2, Math.floor(s / line.ds))), t = Math.max(0, Math.min(1, (s - line.s[k]) / ((line.s[k + 1] - line.s[k]) || 1)));
+  const tx = line.tx[k] + (line.tx[k + 1] - line.tx[k]) * t, ty = line.ty[k] + (line.ty[k + 1] - line.ty[k]) * t, l = Math.hypot(tx, ty) || 1;
+  return { x: line.x[k] + (line.x[k + 1] - line.x[k]) * t, y: line.y[k] + (line.y[k + 1] - line.y[k]) * t, z: line.grade[k] + (line.grade[k + 1] - line.grade[k]) * t,
+    r: { x: direction * ty / l, y: -direction * tx / l } };
 }
 /** Unit vector to the right of travel on carriageway `direction` at station index k. */
 const rightOf = (line: Pick<Result, 'tx' | 'ty'>, k: number, direction: 1 | -1) => ({ x: direction * line.ty[k], y: -direction * line.tx[k] });
@@ -188,17 +195,22 @@ export function speedChangeLane(line: Result, sGore: number, direction: 1 | -1, 
     // (the paving each sample stands for: half a step at the ends)
     const da = sec.widening * w * (q === 0 || q === steps ? du / 2 : du);
     if (line.kind[k] === KIND.bridge) area.bridge += da; else area.ground += da;
-    const r = rightOf(line, k, direction), z = line.grade[k];
-    // the dashed line at the through lanes' edge (not its last / first metres by the gore: the edge line solid there),
-    // and the lane's outer edge line, bending out along the taper (SLIP_ROAD.marking)
-    const byGore = kind === 'exit' ? length - u : u;
-    if (byGore >= SLIP_ROAD.marking.solid - 1e-9) lines[0].push({ x: line.x[k] + r.x * (sec.through + 0.125), y: line.y[k] + r.y * (sec.through + 0.125), z });
+  }
+  // drawn: the dashed line at the through lanes' edge (not its last / first metres by the gore: the edge line solid
+  // there), the lane's outer edge line bending out along the taper (SLIP_ROAD.marking), and the paving beyond the paved
+  // shoulder (as billed: `da`); on the carriageway's line between its stations, every 2 m and where each part changes
+  const solidFrom = kind === 'exit' ? length - SLIP_ROAD.marking.solid : SLIP_ROAD.marking.solid, taperEnd = kind === 'exit' ? spec.taper : length - spec.taper;
+  const us = [...new Set([...Array.from({ length: Math.ceil(length / 2) + 1 }, (_, q) => Math.min(length, 2 * q)), solidFrom, taperEnd]
+    .filter(u => u >= 0 && u <= length))].sort((a, b) => a - b);
+  for (const u of us) {
+    const s = upstream + direction * u;
+    if (s < 0 || s > line.length) continue;
+    const p = along(line, s, direction), w = width(u), out = (o: number) => ({ x: p.x + p.r.x * o, y: p.y + p.r.y * o, z: p.z });
+    if (kind === 'exit' ? u <= solidFrom + 1e-9 : u >= solidFrom - 1e-9) lines[0].push(out(sec.through + SLIP_ROAD.marking.width / 2));
     // (from the edge line where the taper starts out to the lane's own, beyond it: TP 133 obr. 9)
-    const off = sec.through + SLIP_ROAD.marking.width / 2 + (LANE.guideStrip + LANE.width) * w;
-    lines[1].push({ x: line.x[k] + r.x * off, y: line.y[k] + r.y * off, z });
-    // the paving beyond the paved shoulder, and the formation that much wider (as billed: `da`)
+    lines[1].push(out(sec.through + SLIP_ROAD.marking.width / 2 + (LANE.guideStrip + LANE.width) * w));
     const extra = sec.widening * w;
-    if (extra > 1e-6) { const mid = sec.paved + extra / 2; lines[2].push({ x: line.x[k] + r.x * mid, y: line.y[k] + r.y * mid, z, halfWidth: extra / 2 }); }
+    if (extra > 1e-6) lines[2].push({ ...out(sec.paved + extra / 2), halfWidth: extra / 2 });
   }
   for (let k = 0; k < line.n; k++) if (line.s[k] >= s0 && line.s[k] <= s1) widen.push({ k, extra: sec.widening * width(direction * (line.s[k] - upstream)) });
   if (tunnel) violations.push(issue(at.s0, at.s1, `Its ${what} runs into a tunnel`, `Move this end along ${word}, out of the tunnel`,

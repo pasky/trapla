@@ -495,7 +495,12 @@
   }
  ],
  "connections": [],
- "buildingOverrides": [],
+ "buildingOverrides": [
+  {
+   "j": 3940,
+   "action": "buy"
+  }
+ ],
  "mission": {
   "id": "i35-turnov:i35-turnov-road",
   "revision": 0,
