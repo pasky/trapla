@@ -3310,3 +3310,11 @@ a junction's mouth, our own body), each blind to what the others build.
   claims, its share of the time) and rewrites its design where a search meets it all; what is left is listed (exit 1) and
   goes here. A merge that breaks a reference only adds it to this list (the merge gate warns, tests/twists.test.ts).
   Run 2026-11-21 (main 3db3f7d8, cost model 64): 0 stale. Still stale: none.
+- **Easter-egg candidate (convener's break, 2026-11-21), not built:** the unfinished 1939–42 A88 Vratislav–Vídeň
+  motorway's Linhartice viaduct over the Třebůvka (546 m, 12 concrete arches with almost no steel, spans 24–30 m;
+  two trial piers built; a works siding from the Moravská Třebová–Chornice line) lies inside the **d35-full** pack
+  (Linhartice is in its labels), unlike Městečko Trnávka, which killed the board's carbon-7 entry. Its facing sandstone
+  was to come from deep quarries at Mladějov na Moravě and Nová Ves u Kunčiny, both on the d35 Start-here map. A
+  one-line card note on the Třebůvka / I/35 near Linhartice would be true and earned. Source: ebeton.cz 2020/4/66
+  "Nedokončená dálnice Vratislav–Brno–Vídeň"; ŘSD "Německá průchozí dálnice II. díl" for a primary. Check the exact
+  site against the pack before building it.
