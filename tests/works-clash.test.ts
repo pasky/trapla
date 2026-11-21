@@ -57,7 +57,9 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('a slid crossing 
   it('raises the junctions with its ramps: valid, nothing under its works (D11 motorway km 8.39, slid −40 m)', async () => {
     const { playerEdits } = await import('../scripts/works-clash-edits');
     const { projectClashes } = await import('../scripts/works-clash-audit');
-    const [edit] = [...playerEdits(['d11:d11-motorway'], 7, { roadIds: [4828], slides: [-40] })];
+    // (Auto now leads this service road to track 4833's box at km 8.54, one crossing for both: the owner's case begins
+    // with "Its bridge over us" on its card, then the ring slid)
+    const [edit] = [...playerEdits(['d11:d11-motorway'], 7, { roadIds: [4828], slides: [-40], chosen: 'overbridge' })];
     const { result, routes } = projectClashes(edit.design);
     const r = result.routes['route:edited'].legacy!;
     expect(routes.find(q => q.id === 'route:edited')!.clashes).toEqual([]);
@@ -83,5 +85,22 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('a slid crossing 
     expect(r.valid).toBe(false);
     // (the road it would bury it does not change: no clash with our road's reconnection of it)
     expect(result.issues.map(i => i.code)).not.toContain('shared-road');
+  }, 300_000);
+});
+
+// Rovensko km 8.69 / 9.02: two tracks either side of a crest, one box for both. Track 958's own reroute elsewhere now
+// buries track 1096 (the screen), so it is weighed first as a 150 m overbridge and 1096 led to it (98 M); the pairing the
+// other way round, 1096's box with 958 led to it (27 M), is weighed too (crossing-geometry.ts, after the joins).
+describe.skipIf(!existsSync('public/scenarios/i35-rovensko/meta.json'))('neighbouring tracks share the cheaper box', () => {
+  it('one led to the other\'s box, not the other\'s dear bridge (I/35 Rovensko km 8.69 / 9.02)', () => {
+    const only = process.env.ONLY;
+    process.env.ONLY = 'i35-rovensko';
+    try {
+      for (const { result } of starterClashes()) {
+        const at = (way: number) => result.crossings.find(c => c.roadId === way)!;
+        expect([at(1096).type, at(958).type, at(958).targetRoadId]).toEqual(['underpass', 'diversion', 1096]);
+        expect(at(1096).cost + at(958).cost).toBeLessThan(30e6);
+      }
+    } finally { if (only === undefined) delete process.env.ONLY; else process.env.ONLY = only; }
   }, 300_000);
 });

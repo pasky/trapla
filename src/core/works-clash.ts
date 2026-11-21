@@ -21,6 +21,7 @@ import { clearedHit } from './mapped-structures';
 import { junctionRegrade, junctionRejoin } from './footprint';
 import { SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
 import { coneCovers, coneSurface } from './abutment-cone';
+import { crossingPoint } from './crossing-works';
 import { roadRealignmentCrossingIntervals, severedCrossingIntervals } from './road-realignment';
 import { crossingBaseHeight, crossingSurfaces, footprintSurfaces, groundSegment, turnaroundSurfaces } from '../render/crossing-surface';
 
@@ -111,6 +112,20 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       }
     });
   }
+  /** where each other way crosses a crossing's links, by way (memo per crossing) */
+  const crossedBy = new Map<object, Map<number, { x: number; y: number }[]>>();
+  const linkCrossings = (c: Result['crossings'][number]) => {
+    let m = crossedBy.get(c);
+    if (m) return m;
+    crossedBy.set(c, m = new Map());
+    for (const link of c.geometry?.links ?? []) if (roads && link.length > 1) {
+      const xs = link.map(q => q.x), ys = link.map(q => q.y);
+      roads.nearSegments([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], s => {
+        for (let j = 0; j + 1 < link.length; j++) { const p = crossingPoint(link[j], link[j + 1], s); if (p) (m!.get(s.way) ?? m!.set(s.way, []).get(s.way)!).push(p); }
+      });
+    }
+    return m;
+  };
   for (const surface of surfaces) {
     const c = surface.crossing, pathKind = surface.tie ? 'tie' : surface.link ? 'link' : 'road';
     let at = 0;
@@ -185,6 +200,8 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
         // (the crossing's own paths: the crossed road raised, its links, the side roads it regrades)
         const g = c.geometry, paths = [g?.road ?? [], ...(g?.links ?? []), ...(g?.ties ?? []).map(t => t.path)];
         const own = new Set<number>([c.roadId, c.targetRoadId, ...(c.geometry?.ties ?? []).map(t => t.way)].filter((w): w is number => w !== undefined));
+        // (a reroute's new link has no nodes of its own: a way it crosses meets it there, crossing-works.ts crossAt)
+        const crossed = linkCrossings(c);
         roads.nearSegments([x - len / 2 - half - 2, y - len / 2 - half - 2, x + len / 2 + half + 2, y + len / 2 + half + 2], s => {
           if (own.has(s.way) || roads.isDesigned(s.way) || roads.structure(s.way) || s.length <= 0) return;
           // (the crossed road itself where it runs on along the path: another way of its line)
@@ -193,12 +210,14 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
           // (a side road joining one of its paths: its mouth, within the slopes' reach of the node, is the junction's;
           // crossing-works.ts besideRoads)
           const nodes = [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }].filter(p => paths.some(path => onPath(path, p.x, p.y, 2)));
+          nodes.push(...crossed.get(s.way) ?? []);
           for (let k = 0; k <= count; k++) {
             const px = s.ax + (s.bx - s.ax) * k / count, py = s.ay + (s.by - s.ay) * k / count;
             const u = ((px - a.p.x) * tx + (py - a.p.y) * ty) / len;
             // (on the path itself: another way of its line, raised with it)
             if (u < 0 || u > 1 || paths.some(path => onPath(path, px, py, 1))) continue;
-            if (nodes.some(p => Math.hypot(px - p.x, py - p.y) <= mouthOf(p) + half)) continue;
+            // (crossing-works.ts resolves what lies within ON_PATH, 0.5 m, of the mouth's stretch of the arm)
+            if (nodes.some(p => Math.hypot(px - p.x, py - p.y) <= mouthOf(p) + half + 0.5)) continue;
             const v = -(px - a.p.x) * ty + (py - a.p.y) * tx, side: 0 | 1 = v >= 0 ? 1 : 0;
             // (a way joining it that runs on under its pavement is paved with it: crossing-works.ts besideRoads)
             if (nodes.length && Math.abs(v) <= edgeOf(a, side) + (edgeOf(b, side) - edgeOf(a, side)) * u) continue;

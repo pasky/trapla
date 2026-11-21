@@ -59,9 +59,19 @@ export interface WorksContext {
   body?: (q: XY) => 'formation' | 'cut' | 'fill' | null;
   /** How far q is outside our road's earthworks, m (negative inside). */
   gap?: (q: XY) => number;
+  /** A new road (a reroute's link): it has no nodes of its own, so another way it crosses meets it there, a junction
+   * (that way regraded to its level as at a node), not a road its slopes bury. */
+  crossAt?: boolean;
 }
 export interface BesideHit { what: 'house' | 'kept' | 'railway' | 'ours'; j?: number; x: number; y: number; lateral: number }
 
+/** Where segment a–b crosses the road segment s, if it does (a crossing at b is the next segment's). */
+export const crossingPoint = (a: XY, b: XY, s: Pick<RoadSegment, 'ax' | 'ay' | 'bx' | 'by'>): XY | undefined => {
+  const rx = b.x - a.x, ry = b.y - a.y, sx = s.bx - s.ax, sy = s.by - s.ay, d = rx * sy - ry * sx;
+  if (Math.abs(d) < 1e-9) return undefined;
+  const t = ((s.ax - a.x) * sy - (s.ay - a.y) * sx) / d, u = ((s.ax - a.x) * ry - (s.ay - a.y) * rx) / d;
+  return t >= 0 && t < 1 && u >= 0 && u <= 1 ? { x: a.x + rx * t, y: a.y + ry * t } : undefined;
+};
 const segDist = (q: XY, a: XY, b: XY) => {
   const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
   return Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy);
@@ -360,6 +370,10 @@ function besideRoads(works: CrossingWorks, road: readonly CrossingPoint[], width
     const joins: XY[] = [];
     for (const s of segments.get(way) ?? []) for (const p of [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }])
       if (onPath(p, road, JOIN) && !joins.some(o => Math.hypot(o.x - p.x, o.y - p.y) < 1)) joins.push(p);
+    if (ctx.crossAt) for (const s of segments.get(way) ?? []) for (let j = 0; j + 1 < n; j++) {
+      const p = crossingPoint(road[j], road[j + 1], s);
+      if (p && !joins.some(o => Math.hypot(o.x - p.x, o.y - p.y) < 1)) joins.push(p);
+    }
     if (joins.length) joined.add(way);
     for (const p of joins) {
       const z = zAt(p), g0 = heightAt(p.x, p.y);

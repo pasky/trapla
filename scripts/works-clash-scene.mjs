@@ -1,6 +1,7 @@
 // One screen for every earthwork (owner report 2026-11-20, recurring: "we have embankment interfering with another road
 // if we drag the crossing road"), played with the real mouse in Photo view:
-//  1. D11 motorway km 8.39, a service road carried over us between two junctions 100 m apart: its ring slid back 40 m
+//  1. D11 motorway km 8.39, a service road between two junctions 100 m apart (Auto leads it to track 4833's box; the
+//     player picks "Its bridge over us" on its card), carried over us: its ring slid back 40 m
 //     rebuilds it there on a bridge over our road. Its ramps no longer rise from the junction nodes as fans round them:
 //     each junction is raised with the ramps, the roads meeting there regraded down from it along their arms, the end's
 //     fill a cone; within 30 m of each junction its grade is at most 6 %. Valid, nothing under its works.
@@ -39,9 +40,12 @@ async function play(root) {
   const select = async (route, roadId) => { await T(([route, roadId]) => { window.trapla.setActiveRoute(route); window.trapla.selectCrossing(roadId); }, [route, roadId]); await game.idle(); };
   const open = async (q) => { await game.open(q); await T(() => window.trapla.whenTransport()); await T(() => window.trapla.setView({ photo: true, contours: false })); };
   /** slide the crossing of mapped way `roadId` on `route` by `along` m with the mouse; the rebuilt road's id */
-  const slide = async (route, roadId, along, at) => {
+  const slide = async (route, roadId, along, at, choose = null) => {
+    await select(route, roadId);
+    // (the player's choice on its card first, where Auto cuts the way)
+    if (choose) { await page.locator('#inspector button', { hasText: choose }).first().click(); await game.idle(600); await select(route, roadId); }
     const [c] = await crossingOf(route, `c => c.roadId === ${roadId}`);
-    await select(route, roadId); await look(c.x, c.y, at.dist, at.yaw, at.pitch);
+    await look(c.x, c.y, at.dist, at.yaw, at.pitch);
     const d = await alongRoad(c.s, along), had = await T(() => window.trapla.getProject().routes.map(r => r.id));
     await drag(await ring(), d.dx, d.dy);
     return { before: c, id: await T((had) => window.trapla.getProject().routes.find(r => r.source && !had.includes(r.id))?.id, had) };
@@ -52,7 +56,7 @@ async function play(root) {
 // the owner's case: D11 motorway km 8.39, the service road (way 4828) slid back 40 m
 const M = 'route:motorway-forward', NORTH = { x: 10013, y: 10200, d: 150, yaw: -30, pitch: 35 }, EAST = { x: 10087, y: 10130, d: 150, yaw: 150, pitch: 35 };
 const OVER = { x: 10045, y: 10160, d: 300, yaw: 200, pitch: 32 };
-const owners = async (g) => { await g.open('scenario=d11&preset=d11-motorway'); return g.slide(M, 4828, -40, { dist: 500, yaw: 0, pitch: 50 }); };
+const owners = async (g) => { await g.open('scenario=d11&preset=d11-motorway'); return g.slide(M, 4828, -40, { dist: 500, yaw: 0, pitch: 50 }, /^Its bridge over us$/); };
 const at = (g, v) => g.look(v.x, v.y, v.d, v.yaw, v.pitch);
 
 if (baseRoot) {

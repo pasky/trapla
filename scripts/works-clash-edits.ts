@@ -21,6 +21,8 @@ import { deadEnds } from '../src/ui/dead-end';
 import { nearestLeg } from '../src/core/horizontal';
 import type { CategoryId } from '../src/core/data/categories';
 import type { ProjectDesign } from '../src/core/project';
+import type { CrossingChoice } from '../src/core/crossings';
+import { corridorOfRoute } from '../src/core/project-motorway';
 
 /** The packs and missions edited: a motorway, a class I road, the four-lane I/35, a D3 motorway section, the Šternberk
  * bypass (EDIT_PACKS=<scenario:preset,…> narrows it). */
@@ -38,15 +40,22 @@ function random(seed: number) {
 export interface PlayerEdit { name: string; design: ProjectDesign }
 
 /** Every edit, its project as the player would leave it (evaluated by the caller). */
-/** `only`: just these crossed ways (by legacy id) slid by these offsets (no dead ends, no saved projects): a repro. */
+/** `only`: just these crossed ways (by legacy id) slid by these offsets (no dead ends, no saved projects): a repro;
+ * `chosen`: the player's choice on those crossings first (their card), e.g. 'overbridge' where Auto cuts the way. */
 export function* playerEdits(packs = process.env.EDIT_PACKS?.split(',') ?? EDIT_PACKS, seed = 7,
-  only?: { roadIds: number[]; slides: number[] }): Generator<PlayerEdit> {
+  only?: { roadIds: number[]; slides: number[]; chosen?: CrossingChoice }): Generator<PlayerEdit> {
   for (const spec of packs) {
     // (each pack its own sequence: narrowing EDIT_PACKS keeps its edits)
     const rnd = random(seed + [...spec].reduce((h, ch) => Math.imul(h, 31) + ch.charCodeAt(0) | 0, 0));
     const [id, presetId] = spec.split(':'), dir = `public/scenarios/${id}`;
     if (!existsSync(`${dir}/meta.json`)) continue;
     const pack = loadPack(dir), sc = scenarioParams(id, presetId), design = packProject(pack, sc, dir).initial();
+    if (only?.chosen) {
+      const first = design.routes[0], corridor = corridorOfRoute(design, first.id);
+      const controls = corridor?.mode === 'paired' && corridor.spine.kind === 'pi' ? corridor.spine.controls : first.alignment.kind === 'pi' ? first.alignment.controls : undefined;
+      if (controls) for (const roadId of only.roadIds)
+        (controls.crossings ??= []).push({ choice: only.chosen, target: { kind: 'legacy-way', objectData: design.objectData, roadId } });
+    }
     const { ctx, graph } = projectContext(design);
     if (!graph) continue;
     const index = new ProjectTransportIndex(graph, ctx.environment.transportData!, graph.vectorData, pack.terrain, pack.census);

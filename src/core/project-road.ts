@@ -1,5 +1,5 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
-import { noteNetwork } from './works-clash';
+import { noteNetwork, worksClashes, type WorksClash } from './works-clash';
 import { editedNetwork, type MovedWays, type OldLineOf, type ResolvedEnds, type SourceWays } from './project-roadnet';
 import { KIND } from './structures';
 import { evaluate, OLD_ROAD_TIE, type EvalContext, type EvalOptions, type Result } from './evaluate';
@@ -154,7 +154,14 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
       if (holdMiss(again, options.holds).miss >= holdMiss(best, options.holds).miss) break;
       best = again; raised = next;
     }
-    if (best !== result && holdMiss(best, options.holds).miss <= RAISE_MEETS) result = best;
+    // (and only where the raised node's works, its cone and the roads regraded down from it, stand on nothing the stretch
+    // left as it was did not: a railway or a house beside the junction keeps it at its level, the screen of works-clash.ts)
+    const key = (c: WorksClash) => `${c.path}:${c.what}:${c.way ?? c.j ?? `${Math.round(c.x / 5)},${Math.round(c.y / 5)}`}`;
+    const screen = (r: Result) => new Set(worksClashes(r, { terrain: ctx.terrain, buildings: ctx.buildings, roads }, CATEGORIES[design.category].crownWidth).map(key));
+    if (best !== result && holdMiss(best, options.holds).miss <= RAISE_MEETS) {
+      const before = screen(result);
+      if ([...screen(best)].every(k => before.has(k))) result = best;
+    }
   }
   if (ties.length && roads && !options.preview) {
     const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);

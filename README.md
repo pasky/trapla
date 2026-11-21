@@ -486,7 +486,7 @@ crossings is a problem with a fix. A rebuilt road held on its bridge between two
 cone round it. `node scripts/works-clash-scene.mjs [--docs] [--base <checkout>]` (screenshots 770–776),
 `npx tsx scripts/works-clash-audit.ts --edits --gate`.
 
-| D11 km 8.39, the service road slid back 40 m: before, its ramps fanned round the junction | Now the junction is raised, its arms regraded down to it |
+| D11 km 8.39, the service road (its bridge picked on its card) slid back 40 m: before, its ramps fanned round the junction | Now the junction is raised, its arms regraded down to it |
 |---|---|
 | ![Before](docs/screenshots/770-slid-crossing-before.png) | ![After](docs/screenshots/771-slid-crossing-east-junction.png) |
 

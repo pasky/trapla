@@ -1916,7 +1916,7 @@ function crossingFinish(crossings: CrossingResult[], route: CrossingRoute, heigh
       const key = `${g.width}|${c.roadId}|${c.targetRoadId}|${path.map(q => `${q.x},${q.y},${q.z},${q.ground},${q.surface}`).join(';')}`;
       let own = slopes.get(key);
       const screen = { heightAt, ours: (q: XY, pad: number) => margin(q, pad) <= 0, body, gap: bodyGap, ...(route.beside ? { beside: route.beside } : {}) };
-      if (!own) slopes.set(key, own = roads ? crossingWorks(path, g.width, source, { ...screen, roads, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed })
+      if (!own) slopes.set(key, own = roads ? crossingWorks(path, g.width, source, { ...screen, roads, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed, crossAt: true })
         : slopeWorks(path, g.width, screen));
       for (const message of own.problems) diagnose(g, message);
       cost += own.cost; wallLength += own.wallLength; tieLength += own.tieLength; ties.push(...own.ties);
@@ -2316,6 +2316,47 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     const after = state();
     if (after === before) break;
     before = after;
+  }
+  // The pairing the other way round: a track's or service road's structure others are led to is itself led to one of
+  // them built as the structure instead, wherever that costs the group less. (The dearest crossings are weighed first:
+  // one whose reroute elsewhere cannot be built becomes a structure though its neighbour's box would carry both for less;
+  // I/35 Rovensko km 8.69 / 9.02, PLAN.md "One screen for every earthwork".)
+  const usable = (x: CrossingResult) => feasible(x) && !x.geometry?.runsBack && !takesHome(x);
+  for (const c of crossings.filter(c => (c.type === 'overbridge' || c.type === 'underpass') && (c.cls === 'track' || c.cls === 'service') && usable(c))
+    .sort((a, b) => b.cost - a.cost || a.s - b.s)) {
+    if (c.requestedType || c.designed || c.moved || endsOn(c)) continue;
+    const followers = crossings.filter(x => leadsTo(x, c));
+    if (!followers.length || followers.some(x => x.requestedType || x.via !== undefined)) continue;
+    let least = c.cost + followers.reduce((sum, x) => sum + x.cost, 0), swap: { order: CrossingResult[]; next: CrossingResult[] } | undefined;
+    for (const f of followers) {
+      if (f.moved || f.designed || f.under !== undefined || ROAD_CLASSES[f.cls].noAtGrade || f.geometry?.sameSide) continue;
+      const others = followers.filter(x => x !== f), minor = f.cls === 'track' || f.cls === 'service';
+      // (a public road's traffic is not led to a track's crossing)
+      if (!minor && others.some(x => x.cls !== 'track' && x.cls !== 'service')) continue;
+      for (const type of [...(route.kind?.[f.i] === KIND.earth && underpassFits(f, 0) ? ['underpass' as const] : []), 'overbridge' as const]) {
+        const carrier = clone(f); carrier.type = type;
+        delete carrier.targetS; delete carrier.targetRoadId; delete carrier.linkLength; delete carrier.span; delete carrier.approachLength; delete carrier.underpassLength;
+        delete carrier.under; delete carrier.closure; delete carrier.farClosure; delete carrier.accessFor; delete carrier.buyout; delete carrier.cutOff;
+        build([carrier]);
+        if (!usable(carrier) || carrier.cost >= least) continue;
+        let total = carrier.cost;
+        const links: CrossingResult[] = [];
+        for (const x of [c, ...others]) {
+          const link = clone(x); link.type = x.cls === 'track' ? 'diversion' : 'reconnection';
+          delete link.span; delete link.approachLength; delete link.underpassLength;
+          link.targetS = carrier.s; link.targetRoadId = carrier.roadId; delete link.under; delete link.closure; delete link.farClosure; delete link.accessFor; delete link.buyout; delete link.cutOff;
+          const anchor = clone(carrier); anchor.square = carrier.square;
+          build([anchor, link], least - total, new Set([anchor]));
+          if (!feasible(link) || takesHome(link)) { total = Infinity; break; }
+          total += link.cost; links.push(link);
+          if (total >= least) break;
+        }
+        if (total < least) { least = total; swap = { order: [f, c, ...others], next: [carrier, ...links] }; }
+      }
+    }
+    if (!swap) continue;
+    swap.order.forEach((x, k) => { for (const key of FIELDS) delete x[key]; Object.assign(x, swap!.next[k]); });
+    changed = true;
   }
   // A way that comes back out of our earthworks on the side it went in needs no crossing of its own: it is
   // moved beside them where that, with the roads led to its crossing led to the nearest other one, is
