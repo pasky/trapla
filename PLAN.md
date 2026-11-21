@@ -227,12 +227,7 @@ What exists (details and commands in `README.md`):
   nearest to it; a way crossed more than once is shaped only after "Cut and reroute" is chosen for it. Checked:
   off our earthworks, no steeper than the class's justified maximum over 20 m stretches (PROVISIONAL averaging
   length), not across motorways (at grade), railways, water or buildings, at most 8 km. A first drag starts from
-  the automatic path's own bends, so it only changes the road near the pointer. Engine gap: automatic reroutes
-  are not checked for steepness (published designs reach 22–29 % over 20 m along steep slope toes) nor against
-  railways, water and buildings; a shape may therefore be as steep as the automatic path (+1 point).
-- Known gap: a crossed way whose cut ends stay connected over other roads is rerouted instead of closed (crossings
-  have no "closed" outcome; footprint rebuilds do). Example: the service-loop fixture's 1.4 + 1.4 km reroute
-  of a 100 m loop chord (`docs/footprint-conflicts.md` § Model 19).
+  the automatic path's own bends, so it only changes the road near the pointer.
 
 ### Motorway and railway scoring (cost model 20, 2026-11-15)
 
@@ -374,11 +369,8 @@ What exists (details and commands in `README.md`):
   still move off roads, rails and water (the player picks the bridge, not its piers); an automatic bridge whose
   piers cannot all stand clear within the span limit is not chosen there. Poříčí halls (D11 straight km
   4.9–5.9) are now bridged by Auto on its own heights.
-- Remaining gap (not fixed here): the auto-profile's per-metre costs are rural (no buildings, no urban land), so
-  Auto does not raise the line to bridge a town. On D11 straight, painting a bridge over km 5.09–5.50 makes Auto
-  re-plan the heights (cut through the hill at km 4.7 instead of a tunnel, a 33 m viaduct) and the project
-  ≈ 80 M cheaper than Auto's own design. The piece card therefore says "Auto: at this height cheaper than a
-  bridge", and "Your choice; Auto set the road height for it" when the player's choice re-planned the heights.
+- The piece card says "Auto: at this height cheaper than a bridge", and "Your choice; Auto set the road height for
+  it" when the player's choice re-planned the heights.
 - A chimney, silo or shed (≤ 200 m², ≤ 1/4 of the other) wholly within a demolished building's outline goes
   with it (Nová Paka km 1.97); a stream left under the earthwork just beyond a bridge's end with too little
   cover is spanned by one more engineering pass.
@@ -856,10 +848,6 @@ Research: research/65.
   ends priced): model 39.
 - Screenshots `docs/screenshots/310…314-qa3fix-*.png`: the new road's card (−48 M), the new railway on its bridge
   over ours, III/3012's old corner built anew (R 176 m, auto), the profile's river tooltip, *Back to Auto*.
-- **Known issue (audit)**: a box lowered under our road for a road of the project (our road too low over it) bills
-  the lowered approach ramps on our road while the held road stays at the ground through the box: its hold should be
-  the box floor, but where the held road ends within the ramps (D11 km 4.03 service road) it cannot reach it, and the
-  owner, evaluated first, cannot see that. Left as it was (no QA repro of a priced case).
 
 ### A retry builds only the crossings near what it changed (no model version, 2026-11-17)
 
@@ -1076,9 +1064,7 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
 - **Known limits.** A protection zone is a note only; ventilation shafts, groundwater protection zones and the Act's
   exemptions are not modelled; a national park's villages are the land cover's built-up areas; an area near our road
   but outside the crown holds no grade limit (a wall or a structure keeps the slope out; a cut 9–14 m deep within
-  about 30 m of an area is avoided as a possible tunnel end). The tunnel penalty is a weight, not a price. The Auto
-  tunnels of steep roads can still exceed 5 % where the structure choice turns a deep cut into a tunnel on a steep
-  grade (QA new road across Královec: 6.1 %; said on the card, not a problem).
+  about 30 m of an area is avoided as a possible tunnel end).
 
 ### Natura 2000 a note; tunnels within the law's 5 % (cost model 47, 2026-11-18)
 
@@ -1814,9 +1800,6 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - Motorway / expressway crossings: the auto-profile requests a bridge clearance rather than optimising
   the cut-and-overbridge alternative (which manual profiles can choose); the forced bridge is the 30 m minimum whatever
   the motorway's width and the crossing angle.
-- (Fixed in cost model 21: walls in cuts now stand on the cut's top edge, or none where the cut screens.)
-- (Fixed in cost model 21: the pale seams beside slopes and abutments, screenshots 128 / 129; see the noise
-  section's render bullet.)
 
 ## Bridges vs high fills, player overrides (cost model 11)
 
@@ -2433,9 +2416,6 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   railway right under it stands its piers on the track where no frame pier's columns miss it (a 100 m drag on the last
   stage, 1 of 72); Auto takes the Pelešany stretch in cuts and on bridges and buys out homes where the real design
   tunnels under the houses; the interchanges are not built (slip roads can be built by hand: "Slip roads on any divided road").
-- **A reroute's drag on a whole route was not live** (found here, not new; fixed: "Reroute drags on whole routes"
-  below): dragging the longest reroute (a 1.4 km diversion along our embankment at km 14.4 of the whole I/35) took
-  latency p50 70–95 ms (budget 60), the whole D3's 170 ms: its first drag was never a window.
 
 ## Hand-built interchanges: slip roads; a built road's ends (owner request, cost model 58, 2026-11-19)
 
@@ -2792,8 +2772,6 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   `drag-i35-full-link` (the last stage's link gate dropped). Full results unchanged (exact.ts).
 - **Known issues:** a reroute led to another road (`to` / `ends` changed) still previews the whole route; its end is
   only moved on release (no preview during the drag), so no drag waits for it.
-- **Whole D3: long tasks after release (not new; fixed below, "Whole-D3 drags after release").** Any drag on the whole
-  D3 (bend on main dfc5388: 3 of 3 runs; link here: ≈ 6 of 15) missed the "no long task ≥ 50 ms after release" budget.
 
 ## Whole-D3 drags after release (no model version, 2026-11-19)
 
