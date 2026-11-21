@@ -278,7 +278,7 @@ try {
   }
   ok(!(await issues()).list.some(t => /Slip road 2: Bend/.test(t)), 'the south-west entry\'s bends fit');
   // (since cost model 65 a house's corner stands 0.2 m inside a crossroads' sight field: bought out, as its fix says)
-  const inWay = await page.evaluate(() => window.trapla.projectResult().issues.flatMap(i => /No clear view/.test(i.violation.title) ? i.violation.target?.buildings ?? [] : []));
+  const inWay = await page.evaluate(() => Object.values(window.trapla.projectResult().routes).flatMap(r => (r.legacy?.violations ?? []).flatMap(v => /No clear view/.test(v.title) ? v.target?.buildings ?? [] : [])));
   if (inWay.length) { await page.evaluate((js) => { const t = window.trapla, d = t.getProject(); t.setProject({ ...d, buildingOverrides: [...d.buildingOverrides, ...js.map(j => ({ j, action: 'buy' }))] }); }, inWay); await game.idle(); }
   const done4 = await issues();
   ok(done4.valid && done4.total !== null && done4.list.length === 0, `the I/35 diamond is VALID and priced: ${(done4.total / 1e9).toFixed(4)} bn (${done4.list.join('; ') || 'no problems'})`);
