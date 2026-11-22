@@ -13,6 +13,7 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
 import { startDesign } from '../src/state';
+import { culvertPlans } from '../src/render/culvert-geometry';
 
 // Our road along y = 0 (earthworks 10 m each side); a class I road crosses at x = 3000 (a junction), a street at
 // x = 3800 is cut; north of us a street runs along y = 200 (it does not cross us), south a track along y = −200.
@@ -120,6 +121,14 @@ describe.skipIf(!existsSync('public/scenarios/d35-full/meta.json'))('D35 full: t
     // billed on what is drawn (here dearer than Auto's line only by its length: Auto's needs a culvert, this one none)
     expect(b.c.cost).toBeCloseTo(b.c.linkLength! * b.c.roadPerKm! / 1000 + (b.c.culvertCost ?? 0) + (b.c.houseCost ?? 0), 0);
     expect(b.c.culverts).toBeUndefined(); expect(a.c.culverts).toBe(1);
+    // Auto's culvert drawn as billed (render/culvert-geometry.ts): its barrel as long as billed, centred where its new road
+    // crosses the stream, along the stream
+    const [k] = a.c.geometry!.culverts!;
+    expect(a.c.geometry!.culverts).toHaveLength(1); expect(k.cost).toBeCloseTo(a.c.culvertCost!, 6);
+    const plan = culvertPlans(a.r, ctx.terrain.watercourses, (x, y) => ctx.terrain.heightAt(x, y)).find(p => p.crossing === 1327)!;
+    expect(Math.hypot(plan.ends[0].x - plan.ends[1].x, plan.ends[0].y - plan.ends[1].y)).toBeCloseTo(k.length, 6);
+    expect(Math.hypot((plan.ends[0].x + plan.ends[1].x) / 2 - k.x, (plan.ends[0].y + plan.ends[1].y) / 2 - k.y)).toBeLessThan(1e-6);
+    expect(Math.abs(plan.ends[0].ox * k.tx + plan.ends[0].oy * k.ty)).toBeCloseTo(1, 6);
     // only this crossing's bill moves: our road's own works stay as they were
     const ours = (r: typeof a.r) => r.cost.total - r.cost.crossings - r.cost.surcharge;
     expect(ours(b.r)).toBeCloseTo(ours(a.r), -3);

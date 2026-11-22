@@ -1351,7 +1351,8 @@ our road crossed nothing there. Across the packs 1,700 such ways (bridges over s
     crossing a railway viaduct is our bridge over the railway at the valley floor or the railway carried over our cutting,
     never our road under the viaduct it already has (research/107: 34 such bridges ≥ 6 m high across D11, whole D3, D35,
     I/35). A kept railway bridge is the follow-up.
-  - A road moved aside ignores a mapped bridge's level (passes under or over it, unchecked).
+  - A road moved aside ignores a mapped bridge's level (passes under or over it, unchecked; none of the 432 roads moved
+    aside on every starter, the saved designs and 4 random lines per pack meets one).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
@@ -1392,8 +1393,13 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   barrel runs toe to toe, a real one ends where the slope covers it). An end at a retaining wall stands 0.5 m out
   of its face. The drawn barrel is within ≈ ±10 % of the billed length (the toe where the stream really leaves the
   embankment vs. the station's footprint / sine). A click on an end, its map mark or its profile ring opens the
-  culvert card. Not drawn yet: the culverts under our reroutes and the longer culverts where our slope covers a
-  stream running beside it (footprint culverts; none on the saved designs).
+  culvert card. The culverts under a crossed road's new road (a reroute, a way moved beside our earthworks, a
+  straightened crossing: `link-route.ts`, `CrossingGeometry.culverts`) are drawn the same way: the billed barrel
+  straight along the stream where the new road crosses it, centred under the new road (lifted to the culvert's cover,
+  its slopes come down about where the barrel ends), each end cut along the new road at the ground; a click there
+  selects the crossing. Not drawn yet: the culvert of a road moved aside where it crosses its own stream again
+  (`road-realignment.ts`, billed without the cover over it) and the longer culverts where our slope covers a stream
+  running beside it (footprint culverts); neither occurs on any starter or saved design.
 - Junction approaches on class I–III roads are not length-capped (the 250 m cap is for ramps up to bridges over
   us): since cost model 29 town-centre km 11.65 meets class I road 2136 5.6 m up and regrades it over 271 m.
 - Free haul (1 km) is credited on the pooled haul moment, not per movement.
@@ -1438,8 +1444,12 @@ houses, mapped railways, our piers and our own body, and each cut way's detour o
   150 m, PROVISIONAL; km 5.69 and 10.22: 181 m and 292 m of new track instead of a closure and a 145 m reroute
   that bought a home). No reroute joins its own way's line (the stubs). Card and summary say what is closed and why.
 - Screenshots 360–364. Open: a disconnected piece that serves nothing (no building, no field reachable only
-  through it) is still given access rather than closed; the drawn slope of our own embankment beside a bridge end
-  can run far down a valley side (Královec km 5.68: 135 m) and looks billed for less (87 m² of section; not traced);
+  through it) is still given access rather than closed; a fill's toe band (1:2.5 within 3 m of the ground) laid on a
+  valley side falling at about that slope runs along it a metre or three above the ground (the model-42 Královec
+  starter's km 5.68: 135 m out, 90 m of it 1.6–3.3 m over the ground; drawn as billed, 605 m² of section on that side);
+  a designer would measure the bands from the real toe up or end the face on a toe wall (`sections.ts` sideSection: every
+  fill on sloping ground, a model change; on today's starters a toe band over 30 m long on 0–17 stations a mission, most
+  on the Šternberk bypass km 3.14–3.30 and Nová Paka km 1.18–1.27);
   two projects' crossings changing one junction are reported as such (the QA's new railway across Královec).
 
 ### Next steps

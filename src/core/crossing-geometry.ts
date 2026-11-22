@@ -9,7 +9,7 @@ import { cutOffFix, END_AUTO_TEXT } from './terms';
 import { CLOSURE_ROUND, PIECE_SEARCH, pieceAccess, type PieceAccess } from './way-pieces';
 export { CLOSURE_ROUND } from './way-pieces';
 import { smoothLink } from './crossing-link';
-import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
+import { engineerLink, LINK_CORRIDOR, profileLink, routeAlong, surveyLink, type LinkCulvert, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
 import { ourBody, type OurBody } from './our-body';
 import { crossingWorks, slopeWorks, SOURCE_BREAK, type CrossingTie, WORKS_COVER_HOUSE, WORKS_COVER_OURS, WORKS_COVER_RAILWAY, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LINK_MAX_SUPPORT, LOWERING_RULES, MAX_RAMP_LENGTH, OVERBRIDGE_CLEARANCE as CLEARANCE, RETAINING_RULES, retainingAssembly, sagDrainage, SQUARE_BELOW, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
@@ -835,12 +835,13 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     // what the new pieces run across, as for a reroute (link-route.ts): its line, not its ramps
     const problems = new Set<string>();
     let culvertCost = 0;
+    const culverts: LinkCulvert[] = [];
     for (const part of [legA, [...legB].reverse()]) {
       // (from the old way to the structure's end of the straight run: the box or the ramps take over there)
       const survey = surveyLink(part, g.width, linkEnv);
       for (const p of survey.problems) if (p !== 'footprint') problems.add(p);
       if (survey.houses.length) problems.add('building');
-      culvertCost += survey.culverts.reduce((a, w) => a + w.cost, 0);
+      culvertCost += survey.culverts.reduce((a, w) => a + w.cost, 0); culverts.push(...survey.culverts);
     }
     if (problems.size) return { problem: [...problems].sort().join(',') };
     // the new way: the old one up to where it enters the corridor, the new line, the old one beyond
@@ -857,7 +858,7 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     });
     for (const q of out) q.d -= centre;
     const notes: string[] = [];
-    return { path: denseWay(out, message => notes.push(message)), notes, p0: start - centre, p1: end - centre, culvertCost, removed: [a.d, b.d] as [number, number] };
+    return { path: denseWay(out, message => notes.push(message)), notes, p0: start - centre, p1: end - centre, culvertCost, culverts, removed: [a.d, b.d] as [number, number] };
   };
   /** Everything one crossing's own structure (stage 2) reads of our road; nothing else there may. A build kept
    * from one pass to the next would have to key on what it asked here:
@@ -916,7 +917,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
   if (cut) { g.skew = cut.angle; g.skewRun = cut.run; if (!cut.open) g.sameSide = cut.sides[0] === cut.sides[1]; }
   // Straightened to cross square (Auto's candidate or the player's choice): the structure and its ramps
   // are built on the new line, and the new road beyond them is billed here.
-  let keep: { p0: number; p1: number; culvertCost: number } | undefined;
+  let keep: { p0: number; p1: number; culvertCost: number; culverts: LinkCulvert[] } | undefined;
   if (c.square && (c.type === 'overbridge' || c.type === 'underpass')) {
     const squareKey = `${cutKey}:${c.cls}`;
     const squared = (squares.get(squareKey) as ReturnType<typeof squarePath> | undefined) ?? (cut ? squarePath(c, g, path, cut) : { problem: 'room' as const });
@@ -925,6 +926,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       path = squared.path; squaredPaths.set(c, path); keep = squared;
       for (const message of squared.notes) diagnose(g, message);
       c.squared = cut!.angle; g.removed = squared.removed;
+      if (squared.culverts.length) g.culverts = squared.culverts;
     } else diagnose(g, `${SQUARE_FAILS}${squared.problem}`);
   }
   // Connection works consume short stubs through the whole link corridor, not just the main
@@ -1465,7 +1467,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
    * road), engineered as a designer would (link-route.ts); `shape`: the player's bend points; `ended`: b is where
    * the player led it (its problems are said as the player's). */
   const buildSide = (c: CrossingResult, g: CrossingGeometry, a: CrossingPoint, b: CrossingPoint, side: number, shape?: readonly XY[], ended = false) => {
-    const out = { link: [] as CrossingPoint[], culverts: 0, culvertCost: 0, houses: [] as number[], steepest: 0,
+    const out = { link: [] as CrossingPoint[], culverts: 0, culvertCost: 0, placed: [] as LinkCulvert[], houses: [] as number[], steepest: 0,
       /** (an unshaped line to the player's end that cannot be built: why, as diagnosed) */
       endFails: undefined as string | undefined };
     const sidePoint = (s: number, side: number) => {
@@ -1575,7 +1577,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       }
       // (its far end a copy: it may be a point of the target crossing's own geometry, which is not this crossing's)
       link = plan.points.map((p, i) => i === 0 ? a : i === plan!.points.length - 1 ? { ...b } : { ...p });
-      out.culverts = plan.culverts.length; out.culvertCost = plan.culvertCost; out.houses = plan.houses;
+      out.culverts = plan.culverts.length; out.culvertCost = plan.culvertCost; out.placed = plan.culverts; out.houses = plan.houses;
       if (plan.grade > ROAD_CLASSES[c.cls].rampGradient && !plan.problems.includes('steep')) out.steepest = plan.grade;
     }
     out.link = link;
@@ -1593,6 +1595,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     if (Math.hypot(b.x - a.x, b.y - a.y) * rate >= budget) { diagnose(g, OVER_BUDGET); continue; }
     const built = buildSide(c, g, a, b, cut.sides[0]);
     g.links = cut.sides[0] < 0 ? [built.link, []] : [[], built.link];
+    if (built.placed.length) g.culverts = built.placed; else delete g.culverts;
     g.removed = [cut.d0, cut.d1]; g.turnarounds = [];
     c.linkLength = crossingPlanLength(built.link);
     const houseCost = built.houses.reduce((sum, j) => sum + (route.houseCost?.(j) ?? 0), 0);
@@ -1732,6 +1735,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     if ((straight[0] + straight[1]) * linkRate + access >= budget) { diagnose(g, OVER_BUDGET); continue; }
     const links: CrossingPoint[][] = [], kept: CrossingPoint[][] = [];
     let culverts = 0, culvertCost = 0, steepest = 0, spent = 0, abandon = false;
+    const placed: LinkCulvert[] = [];
     const houses = new Set<number>();
     for (const side of [-1, 1]) {
       const k = side < 0 ? 0 : 1, a = start?.[k], b = finish?.[k], issuesBefore = g.diagnostics?.length ?? 0;
@@ -1773,7 +1777,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       }
       for (const m of why) diagnose(g, m);
       const link = built.link;
-      culverts += built.culverts; culvertCost += built.culvertCost;
+      culverts += built.culverts; culvertCost += built.culvertCost; placed.push(...built.placed);
       for (const h of built.houses) houses.add(h);
       steepest = Math.max(steepest, built.steepest);
       links.push(link);
@@ -1791,6 +1795,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     // (led under our bridge: the two new pieces meet across under the deck)
     if (c.under !== undefined && links[0].length && links[1].length) links[0] = [...links[0], { ...links[1][links[1].length - 1] }];
     g.links = links as [CrossingPoint[], CrossingPoint[]];
+    if (placed.length) g.culverts = placed; else delete g.culverts;
     if (kept.length) g.keptEnds = kept; else delete g.keptEnds;
     // (closed with the buildings it served bought out: billed with it, as houses a reroute runs through)
     if (c.buyout && c.closure && !links.some(l => l.length)) for (const j of c.accessFor ?? []) houses.add(j);

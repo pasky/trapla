@@ -7,7 +7,7 @@ import type { CrossingPoint } from './crossings';
 import { ROAD_CLASSES } from './data/urban';
 import { LINK_MAX_SUPPORT, SIDE_ROAD_FLAT as SLOPE_FLAT, SIDE_ROAD_SLOPE as SLOPE } from './data/remedies';
 export { LINK_MAX_SUPPORT };
-import { barrelLength, waterSize, type WaterCrossing } from './watercourses';
+import { barrelLength, waterSize, type WaterCrossing, type WaterSize } from './watercourses';
 import type { RoadNet } from './roadnet';
 
 type XY = { x: number; y: number };
@@ -52,10 +52,14 @@ export interface LinkEnv {
    * stands at a 2 m lattice point (-1 blocked, else the price of the houses there). */
   memo?: { free: Map<number, number>; slopes?: Map<string, { blocked: LinkObstacle | null; houses: number[] }> };
 }
+/** A culvert under a new road: where it crosses the stream, the stream's id and direction there (the barrel's), its
+ * billed barrel length (m), size and price (CZK). */
+export interface LinkCulvert { x: number; y: number; length: number; cost: number; id: number; tx: number; ty: number;
+  size: Pick<WaterSize, 'type' | 'width' | 'height' | 'buried'> }
 export interface LinkPlan {
   points: CrossingPoint[];
   problems: LinkProblem[];
-  culverts: { x: number; y: number; length: number; cost: number }[];
+  culverts: LinkCulvert[];
   /** Pre-surcharge CZK of the culverts (the pavement is billed per metre by the caller). */
   culvertCost: number;
   /** Houses bought out and demolished for it. */
@@ -152,7 +156,9 @@ export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv)
       size = fill(width + 2 * 1.5 * size.minHeight);
       if (size.type === 'bridge') { problems.add('river'); continue; }
       const length = barrelLength(w.crossing, width + 2 * 1.5 * size.minHeight);
-      culverts.push({ x: w.x, y: w.y, length, cost: length * size.perM + 2 * size.head });
+      const { channelTx: tx = -(b.y - a.y) / len, channelTy: ty = (b.x - a.x) / len } = w.crossing;
+      culverts.push({ x: w.x, y: w.y, length, cost: length * size.perM + 2 * size.head, id: w.crossing.id, tx, ty,
+        size: { type: size.type, width: size.width, height: size.height, ...(size.buried ? { buried: true } : {}) } });
       const t = Math.max(0, Math.min(1, ((w.x - a.x) * (b.x - a.x) + (w.y - a.y) * (b.y - a.y)) / (len * len)));
       streams.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, d: a.d! + (b.d! - a.d!) * t, need: env.heightAt(w.x, w.y) + size.minHeight });
     }

@@ -486,7 +486,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "4d9e1c3d02db713b0cb2a979e16b13162a761feac402521e127b7b53afa6dae1",
+        "geometryHash": "b0dacaa597259e6e75730750c4ae9617eee5304565da182afd2ccf5217d7a83a",
         "cost": {
           "roadBase": 820091372.3699149,
           "earthworks": 612292510.5420986,
@@ -965,7 +965,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "12098cc5e00a64dd4e7e8198618cc2543e495ddda6e9b076a23fe0903961d131",
+        "geometryHash": "08e3134bc13b811e5a1817bdc690ee31a387f3281885ecb86021298f5d054d69",
         "cost": {
           "roadBase": 824273686.9211785,
           "earthworks": 613013117.7825003,
@@ -1455,7 +1455,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "eefebb9dd005c07cf7e1ca896b9eb885a09e73e34e5f2ca1681737d7b5737978",
+        "geometryHash": "75d23b43d72a75bbef8ff44a5a5b522852529936763d6e923f8bb30dfc2b69e1",
         "cost": {
           "roadBase": 820091372.3699149,
           "earthworks": 623779868.8604949,
@@ -1946,7 +1946,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "5b7d1f6b71d762742cbf98fd7bdadeaf46da020ef19e868940eca0deab5c8a7b",
+        "geometryHash": "15fe845c42f2972f3b7a2872bec1d2235619a9b0a793d592a651a87c0418ba59",
         "cost": {
           "roadBase": 815890364.5053337,
           "earthworks": 626155669.4473345,
@@ -2761,7 +2761,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "5742c0fda7250b0e8107d7804a8f8ff5efa4f5d5d9f12d93eb1b1a92248b7104",
+        "geometryHash": "be5d64d757e1f4968392775a7ad2ed15e65106732a999b1a38a39e5f9ddd4dc8",
         "cost": {
           "roadBase": 820091372.3699149,
           "earthworks": 608450520.5154144,
@@ -3251,7 +3251,7 @@
         ]
       },
       "expected": {
-        "geometryHash": "8e37c1d45a11a8b76b5a54df6b2c1aa18ac85a6397fb8248d4da0d55f03170a1",
+        "geometryHash": "cc064a1f28f2aa46d9ee6885e7bb0cbc50d92652080063555198650046ae7ab8",
         "cost": {
           "roadBase": 834907956.4136062,
           "earthworks": 994945918.54836,

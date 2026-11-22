@@ -61,6 +61,9 @@ export interface CrossingGeometry {
   road?: CrossingPoint[];
   /** Two side links, ending on existing roads / A/B collector anchors, never on our axis. */
   links?: [CrossingPoint[], CrossingPoint[]];
+  /** The culverts under its new road (the links, or a straightened line): billed in its cost (`culvertCost`), drawn as
+   * our road's (render/culvert-geometry.ts). */
+  culverts?: import('./link-route').LinkCulvert[];
   width: number;
   /** Inclusive indices in road; deck top clears our crown by 4.8 m plus this depth. */
   deck?: { start: number; end: number; depth: number };

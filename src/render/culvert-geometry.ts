@@ -7,6 +7,8 @@ import type { Result } from '../core/evaluate';
 import { CULVERT_RULES } from '../core/data/culverts';
 import { KIND } from '../core/structures';
 import type { WaterNet, WaterReach, WaterResult } from '../core/watercourses';
+import type { CrossingResult } from '../core/crossings';
+import type { LinkCulvert } from '../core/link-route';
 
 /** one end of the barrel: on the toe line, at the ground there (the stream's bed); `ox, oy` points out of the
  * embankment along the barrel; `skew`: the end is cut along the toe (parallel to our road, as skewed culverts are
@@ -16,6 +18,8 @@ export interface CulvertEnd { x: number; y: number; z: number; ox: number; oy: n
 export interface CulvertPlan {
   /** the crossing's station and stream (Result.waterCrossings) */
   s: number; id: number;
+  /** under the new road of a crossed road (CrossingGeometry.culverts): that crossing's way, whose card it is part of */
+  crossing?: number;
   /** precast pipe, precast frame, or a buried bridge (a concrete vault cast in place under a high fill) */
   shape: 'pipe' | 'box' | 'vault';
   /** clear opening, m (a vault: its span and the height of its walls; the arch rises above them) */
@@ -161,7 +165,7 @@ function exit(path: Path, inside: (x: number, y: number) => boolean, reach: numb
  * where the mapped stream leaves our embankment (else where the stream's line at the crossing does), at the
  * ground there. `natural`: the terrain's height.
  */
-export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'>, water: WaterNet | undefined,
+export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'> & Partial<Pick<Result, 'crossings'>>, water: WaterNet | undefined,
   natural: (x: number, y: number) => number): CulvertPlan[] {
   const out: CulvertPlan[] = [];
   for (const c of r.waterCrossings) {
@@ -193,7 +197,32 @@ export function culvertPlans(r: Route & Pick<Result, 'waterCrossings' | 'ds'>, w
     };
     out.push({ s: c.s, id: c.id, ...culvertSection(c.size), ends: [end(a, ux, uy), end(b, -ux, -uy)] });
   }
+  // (a crossing built with the other direction of a split motorway: drawn with that direction's)
+  for (const c of r.crossings ?? []) if (!c.shared) for (const k of c.geometry?.culverts ?? []) out.push(linkCulvert(c, k, natural));
   return out;
+}
+
+/**
+ * A culvert under the new road of a crossed road (a reroute, a road moved aside or straightened: link-route.ts): its
+ * billed barrel straight along the stream's line where the new road crosses it, centred under the new road (whose
+ * slopes, at the culvert's cover, come down where it ends), each end cut along the new road at the ground.
+ */
+function linkCulvert(c: Pick<CrossingResult, 's' | 'roadId' | 'geometry'>, k: LinkCulvert, natural: (x: number, y: number) => number): CulvertPlan {
+  // the new road's direction where it crosses: its nearest segment
+  let lx = -k.ty, ly = k.tx, best = Infinity;
+  const g = c.geometry!;
+  for (const path of [...g.links ?? [], g.road ?? []]) for (let j = 1; j < path.length; j++) {
+    const a = path[j - 1], b = path[j], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    if (!(l2 > 1e-9)) continue;
+    const t = Math.max(0, Math.min(1, ((k.x - a.x) * dx + (k.y - a.y) * dy) / l2)), e = Math.hypot(a.x + t * dx - k.x, a.y + t * dy - k.y);
+    if (e < best) { best = e; lx = dx / Math.sqrt(l2); ly = dy / Math.sqrt(l2); }
+  }
+  const nx = k.ty, ny = -k.tx, along = lx * k.tx + ly * k.ty, across = lx * nx + ly * ny;
+  const end = (sign: number): CulvertEnd => {
+    const ox = sign * k.tx, oy = sign * k.ty, x = k.x + ox * k.length / 2, y = k.y + oy * k.length / 2;
+    return { x, y, z: natural(x, y), ox, oy, skew: Math.max(-1, Math.min(1, sign * along / (Math.abs(across) > 1e-6 ? across : 1e-6))) };
+  };
+  return { s: c.s, id: k.id, crossing: c.roadId, ...culvertSection(k.size), ends: [end(1), end(-1)] };
 }
 
 /**
