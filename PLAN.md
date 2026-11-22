@@ -1451,7 +1451,9 @@ houses, mapped railways, our piers and our own body, and each cut way's detour o
   a designer would measure the bands from the real toe up or end the face on a toe wall (`sections.ts` sideSection: every
   fill on sloping ground, a model change; on today's starters a toe band over 30 m long on 0–17 stations a mission, most
   on the Šternberk bypass km 3.14–3.30 and Nová Paka km 1.18–1.27);
-  two projects' crossings changing one junction are reported as such (the QA's new railway across Královec).
+  two projects' crossings changing one junction are reported as such (the QA's new railway across Královec);
+  two reroutes led to the same road along one strip are laid ≈ 2 m apart, both built and billed (I/35 Jičín starter:
+  the track at km 2.71 and the class I road at km 3.01, two culverts each at the same streams).
 
 ### Next steps
 - Editing aid (future, not planned now): a drag on a long straight puts in one bend, so the whole line turns
