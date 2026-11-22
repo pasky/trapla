@@ -321,7 +321,14 @@ What exists (details and commands in `README.md`):
   where it comes nearest, or (cost model 69) the new road of a way as important or more led to the same crossing, on
   the same side, where that comes nearer: one new road along the strip beside our earthworks, billed once, not two
   laid side by side (I/35 Jičín km 2.71: the track's cut ends join the class I road's new road 4 m away, 6.9 → 0.1 M,
-  its two culverts gone; D3 starter km 2.08: a class III road joins its neighbour's at km 2.05, 22.4 → 1.7 M). A reroute's earth slopes take the houses they reach. A dead-end stub our earthworks take
+  its two culverts gone; D3 starter km 2.08: a class III road joins its neighbour's at km 2.05, 22.4 → 1.7 M; I/35
+  Rovensko km 8.69 / 9.02: both tracks led to the class III road's bridge at km 9.31 over one new track, 27 → 21 M, no
+  box). Never the cut way's own other crossing (its own line); a side road that met the joining way's old line is led on
+  along the road it joins (`CrossingGeometry.onto`); the card says where it joins. Every starter and saved design stays
+  VALID and gets cheaper (the D3 starter −38.9 M, whole I/35 −15.1 M). Known: Auto weighs a crossing's houses at their
+  price, not the noise buyouts buying them saves (the whole-D3 "all news" twist reference: at km 6.86–7.45 two reroutes
+  and a box that bought 65 M of houses give way to a bridge over us and one shared track, the crossings 25 M cheaper,
+  the bill 36 M dearer by 69 M of noise buyouts for the houses kept). A reroute's earth slopes take the houses they reach. A dead-end stub our earthworks take
   (almost) whole is removed. An automatic crossing with nothing buildable under a ≥ 6 m embankment lengthens our
   bridge over it.
 - Against model 27 all published designs stay VALID and get cheaper (straight −17 M, best −40 M, demo −37 M,

@@ -25,8 +25,11 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('other ways\' wor
         // (or bought out, where that costs less than the way across it replaces, and billed and drawn as bought out)
         if (c.buyout && !(c.accessFor?.length && c.accessFor.every(j => c.houses?.includes(j) && result.demolished.some(p => p.j === j)) && c.cost < (c.buyout.instead?.cost ?? 0)))
           failures.push(`${name} km ${Math.round(c.s)}: a buyout not cheaper or not billed (${JSON.stringify(c.buyout)})`);
-        // no reroute of next to nothing that is not said to be a closure (two stubs onto the way's own line)
-        if (!c.closure && !c.moved && !c.issues?.length && (c.linkLength ?? 0) > 0 && (c.linkLength ?? 0) < 20) failures.push(`${name} km ${Math.round(c.s)}: a ${Math.round(c.linkLength!)} m reroute`);
+        // no reroute of next to nothing that is not said to be a closure (two stubs onto the way's own line); a short piece
+        // onto another way's new road led to the same crossing is a junction with it (`joined`: that one's crossing)
+        const onto = c.joined && result.crossings.find(o => o.s === c.joined!.s && o.roadId === c.joined!.roadId && o.roadId !== c.roadId
+          && o.targetS === c.targetS && (o.linkLength ?? 0) >= 20);
+        if (!c.closure && !c.moved && !onto && !c.issues?.length && (c.linkLength ?? 0) > 0 && (c.linkLength ?? 0) < 20) failures.push(`${name} km ${Math.round(c.s)}: a ${Math.round(c.linkLength!)} m reroute`);
       }
     }
     expect(failures).toEqual([]);
@@ -88,18 +91,21 @@ describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('a slid crossing 
   }, 300_000);
 });
 
-// Rovensko km 8.69 / 9.02: two tracks either side of a crest, one box for both. Track 958's own reroute elsewhere now
-// buries track 1096 (the screen), so it is weighed first as a 150 m overbridge and 1096 led to it (98 M); the pairing the
-// other way round, 1096's box with 958 led to it (27 M), is weighed too (crossing-geometry.ts, after the joins).
+// Rovensko km 8.69 / 9.02: two tracks either side of a crest, one crossing for both. Track 958's own reroute elsewhere
+// buried track 1096 (the screen), so it was weighed first as a 150 m overbridge and 1096 led to it (98 M); the pairing the
+// other way round, 1096's box with 958 led to it (27 M), is weighed too (crossing-geometry.ts, after the joins). Since cost
+// model 69 both are led to the class III road's bridge at km 9.31 over one new track, 958's, 1096's cut end joining it
+// (21 M, no box).
 describe.skipIf(!existsSync('public/scenarios/i35-rovensko/meta.json'))('neighbouring tracks share the cheaper box', () => {
-  it('one led to the other\'s box, not the other\'s dear bridge (I/35 Rovensko km 8.69 / 9.02)', () => {
+  it('led over one new track, not to the other\'s dear bridge (I/35 Rovensko km 8.69 / 9.02)', () => {
     const only = process.env.ONLY;
     process.env.ONLY = 'i35-rovensko';
     try {
       for (const { result } of starterClashes()) {
         const at = (way: number) => result.crossings.find(c => c.roadId === way)!;
-        expect([at(1096).type, at(958).type, at(958).targetRoadId]).toEqual(['underpass', 'diversion', 1096]);
-        expect(at(1096).cost + at(958).cost).toBeLessThan(30e6);
+        expect([at(1096).type, at(958).type, at(958).targetRoadId, at(1096).targetRoadId]).toEqual(['diversion', 'diversion', 976, 976]);
+        expect(at(1096).joined?.roadId).toBe(958);
+        expect(at(1096).cost + at(958).cost).toBeLessThan(25e6);
       }
     } finally { if (only === undefined) delete process.env.ONLY; else process.env.ONLY = only; }
   }, 300_000);

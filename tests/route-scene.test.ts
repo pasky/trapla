@@ -112,7 +112,7 @@ describe('constructed route scene ownership', () => {
     expect(both.original.length).toBe(first.original.length * 2);
     expect(both.box!.minZ).toBeLessThan(-1000);
     expect(routeMask([{ result: a, surfaces: [] }, { result: b, surfaces: [] }], 0, 0, () => 0).terrain).toEqual(first.terrain);
-    expect(routeMask([], 0, 0, () => 0)).toEqual({ terrain: [], original: [], cuts: [], box: null });
+    expect(routeMask([], 0, 0, () => 0)).toEqual({ terrain: [], original: [], cuts: [], works: [], box: null });
   });
 
   it('disposes private geometry/materials exactly once but never disposes shared materials', () => {

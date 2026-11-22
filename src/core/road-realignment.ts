@@ -137,7 +137,8 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
     }
     if (g.removed) { a = Math.min(a, g.removed[0]); b = Math.max(b, g.removed[1]); }
     path = slice(raw, Math.max(raw[0].d, a), Math.min(raw[raw.length - 1].d, b));
-    targets = [...(g.links ?? []).flat(), ...(g.keptEnds ?? []).flat()];
+    // (and the other way's new road its pieces join: what reached them goes on along it)
+    targets = [...(g.links ?? []).flat(), ...(g.keptEnds ?? []).flat(), ...(g.onto ?? []).flat()];
   } else return;
   const intervals: RoadSourceInterval[] = [], removed: RoadSourceInterval[] = [];
   // (the old line given up: a severed stretch, or a moved or squared way's old line; a stretch kept at its line is not)

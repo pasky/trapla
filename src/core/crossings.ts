@@ -83,6 +83,9 @@ export interface CrossingGeometry {
   /** A closed way's pieces that just end: each its cut end and the old road's first metres beyond it (what a road
    * rebuilt beside our earthworks meets; nothing built, drawn or billed). */
   keptEnds?: CrossingPoint[][];
+  /** The new road of another way led to the same crossing that a side's piece joins (CrossingResult.joined), per side
+   * ([] where that side joins none): what reaches this way's pieces goes on along it. */
+  onto?: CrossingPoint[][];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   /** Explicit priced turning disk, distinct from legacy small severed-end heads. */
@@ -214,6 +217,9 @@ export interface CrossingResult {
   squared?: number;
   realignLength?: number;
   realignCost?: number;
+  /** A reroute whose new piece (on a side) ends on another way's new road led to the same crossing, rather than on the
+   * crossed road: that crossing (its chainage, its way); the road along the strip is that one's, built and billed once. */
+  joined?: { s: number; roadId?: number; cls: string };
   /** A reroute that only moves the crossed road beside our earthworks: it comes back out of them on
    * the side it went in, so it needs no crossing (no target; links on that side only). */
   moved?: true;
@@ -397,7 +403,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
     delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.ends; delete c.endTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade; delete c.closure; delete c.farClosure; delete c.accessFor; delete c.buyout; delete c.cutOff;
-    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.under; delete c.overRailway; delete c.kept;
+    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved; delete c.under; delete c.overRailway; delete c.kept; delete c.joined;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);
     if (square !== undefined) c.square = square; else delete c.square;

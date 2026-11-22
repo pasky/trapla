@@ -336,10 +336,11 @@
  * Model 69 (PLAN.md "Neighbouring minor roads share one crossing"): reroutes led to one crossing are built the more
  * important ways first, and a way's new piece joins the new road of one as important or more led there (same side, clear
  * of our earthworks) where that is nearer than the crossed road: one new road along the strip, not two side by side
- * (crossing-geometry.ts crossingReroutes, `ledLinks`). Every starter and saved design stays VALID and gets cheaper: I/35
+ * (crossing-geometry.ts crossingReroutes, `ledLinks`; never the cut way's own other crossing; what reached its pieces goes
+ * on along that road: road-realignment.ts targets, CrossingGeometry.onto; the card says so: CrossingResult.joined). Every starter and saved design stays VALID and gets cheaper: I/35
  * Jičín −8.8 M (the track at km 2.71 joins the class I road's new road: 6.9 → 0.1 M), D3 starter −38.9 M (km 2.08's class
  * III road joins km 2.05's, the track at km 1.77 too), I/35 Rovensko −7.9 M, whole I/35 −15.1 M, D3 0304 −8.5 M, whole D3
- * −8.5 M, D3 0305 −2.7 M, Šternberk −2.8 M, its reference −4.7 M, D11 demo −4.4 M, D11 straight −6.0 M (km 4.55's track
+ * −8.5 M, D3 0305 −2.7 M, Šternberk −2.8 M, its reference −4.7 M, D11 demo −4.6 M, D11 straight −6.0 M (km 4.55's track
  * joins km 4.10's). */
 export const COST_MODEL_VERSION = 69;
 

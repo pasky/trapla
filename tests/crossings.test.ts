@@ -424,10 +424,14 @@ describe('crossing geometry and map overlay', () => {
     expect(end.x - 3000).toBeCloseTo(end.y, 6); // actual bent target way, not an invented normal
     expect(end.y).toBeGreaterThanOrEqual(10 + ROAD_CLASSES.residential.width / 2 + 3);
     expect(cs[1].linkLength).toBeCloseTo(links.reduce((sum, path) => sum + crossingPlanLength(path), 0), 6);
-    // the track beside it leads to the same junction, not to the cut street
+    // the track beside it leads to the same junction, not to the cut street, over the street's new road: each side's
+    // piece ends on it (at the street's cut end, 100 m along), the street's 100 m of new road along the strip not laid twice
     expect(cs[2].targetS).toBe(3000);
-    expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0].at(-1));
-    expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1].at(-1));
+    for (const k of [0, 1] as const) {
+      const own = cs[2].geometry!.links![k], end = own.at(-1)!;
+      expect(links[k].some(p => Math.hypot(p.x - end.x, p.y - end.y) < 1e-6)).toBe(true);
+      expect(crossingPlanLength(own)).toBeLessThan(0.8 * (3200 - 3000));
+    }
   });
 
   it('clears the crown across a skewed footprint, grades approaches to sloping terrain and anchors links at their feet', () => {

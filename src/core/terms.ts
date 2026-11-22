@@ -84,7 +84,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
   | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId' | 'closure' | 'overRailway' | 'under' | 'endTo' | 'ends' | 'farClosure' | 'requestedType' | 'houseCost' | 'buyout'
-  | 'mapped' | 'kept'> & { h?: number };
+  | 'mapped' | 'kept' | 'joined'> & { h?: number };
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -154,6 +154,8 @@ function ownOutcome(c: OutcomeOf, name?: RoadNamer): OutcomeText {
   const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; nearby it is laid on a new line crossing at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what}).` : '';
   const joinedTo = c.targetRoadId === undefined ? 'the road our road joins at its end' : `the road that crosses at km ${km(c.targetS ?? 0)}`;
   const crossesAt = c.targetRoadId === undefined ? 'the road at our road\'s end' : `the crossing at km ${km(c.targetS ?? 0)}`;
+  // (a new piece that ends on another way's new road to the same crossing: that road leads on)
+  const onto = c.joined ? ` Where the new road of the ${label(c.joined.cls)} cut at km ${km(c.joined.s)} passes, it joins that, which leads on.` : '';
   // Led under our bridge beside it (crossing-geometry.ts c.under)
   if (c.under !== undefined && (c.type === 'reconnection' || c.type === 'diversion')) {
     const piece = c.cls === 'track' ? 'track' : 'road';
@@ -232,10 +234,10 @@ function ownOutcome(c: OutcomeOf, name?: RoadNamer): OutcomeText {
       explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.${works}` };
     case 'reconnection': return { tag: 'reconnected',
       label: `Reconnected to the crossing at km ${km(c.targetS ?? 0)} (+${m(c.linkLength)} m of new road)`,
-      explain: `The ${what} is cut by the new road; on each side a new piece of road joins it to ${joinedTo}, along the outside of the earthworks where it has to. The cut ends get a turning area.${link}` };
+      explain: `The ${what} is cut by the new road; on each side a new piece of road joins it to ${joinedTo}, along the outside of the earthworks where it has to. The cut ends get a turning area.${onto}${link}` };
     case 'diversion': return { tag: 'rerouted',
       label: `Rerouted to the nearest crossing at km ${km(c.targetS ?? 0)} (+${m(c.linkLength)} m of new track)`,
-      explain: `The track is cut by the new road; a new piece of track joins it to ${joinedTo}, along the outside of the earthworks where it has to. The stub ends in a turnaround.${link}` };
+      explain: `The track is cut by the new road; a new piece of track joins it to ${joinedTo}, along the outside of the earthworks where it has to. The stub ends in a turnaround.${onto}${link}` };
     case 'underpass': {
       const box = row?.underpass ? underpassAssembly(row.underpass, 0) : undefined;
       const inside = box ? ` (${box.width} × ${box.height} m inside)` : '';
