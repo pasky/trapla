@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14 C6 10 6 6 14 2' stroke='%23ffb000' stroke-width='3' fill='none'/%3E%3C/svg%3E" />
+    <title>Trapla — road design on real terrain</title>
+    <script type="module" crossorigin src="./assets/index-A_bM6m54.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/packs-DQ7738hm.js">
+    <link rel="stylesheet" crossorigin href="./assets/packs-s-j9FQD-.css">
+    <link rel="stylesheet" crossorigin href="./assets/index-D8qv-AIh.css">
+  </head>
+  <body>
+    <div id="app">
+      <div id="view">
+        <div id="overlay"></div>
+        <div id="brand">Trapla <small>prototype</small></div>
+        <div id="editbar"></div>
+        <div id="viewbar"></div>
+        <div id="legend">
+          <span><i style="background:#ffb000"></i><span id="legend-route">road</span></span>
+          <span><i style="background:#2f8fff"></i>bridge</span>
+          <span><i style="background:#a070ff"></i>tunnel</span>
+          <span><i class="wall"></i>noise wall</span>
+          <span><i style="background:#ff2a2a"></i>problem</span>
+          <span><i class="diamond"></i>bought out</span>
+          <span><i class="dash"></i><span id="legend-official">official line</span></span>
+          <span hidden><i class="nature"></i><span title="Nature reserves and monuments, national parks, Natura 2000 sites: no works there (dashed: their protection zones)">protected nature</span></span>
+        </div>
+        <div id="attrib"></div>
+        <div id="status">Loading…</div>
+      </div>
+      <div id="profile">
+        <div class="profile-bar"><b title="The road's height from A (left) to B (right), the cost per metre below">Profile</b>
+          <span class="legend"><span><i class="sw ground"></i>ground</span><span><i class="sw road"></i><span id="legend-height">road height</span></span><span class="lg-hp"><i class="sw hp"></i>height pin</span><span><i class="sw fill"></i>embankment</span><span><i class="sw cut"></i>cut</span><span><i class="sw br"></i>bridge</span><span><i class="sw tn"></i>tunnel</span></span>
+          <button id="key-toggle" class="key-toggle" aria-expanded="false" aria-controls="profile-key" title="What the marks and colours mean">Key ▾</button>
+          <span class="zoom" role="group" aria-label="Profile zoom"><button id="fit" title="Zoom out to the whole route" hidden>⤢ Whole route</button><button id="zoom-out" title="Zoom out (or the mouse wheel)">−</button><button id="zoom-in" title="Zoom in (or the mouse wheel)">+</button></span></div>
+        <div id="profile-key" class="profile-key" hidden>
+          <div class="key-col"><h3>Route</h3>
+            <div><i class="sw bendmk">1</i>bend (same number as on the map)</div>
+            <div><i class="sw pinmk"></i>pinned height</div>
+            <div><i class="sw hp"></i>height pin (By hand)</div>
+            <div><i class="sw ground"></i>ground · <i class="sw road"></i>road height</div>
+            <div><i class="sw mapwin"></i>the part the map shows</div>
+            <div><i class="sw fill"></i>embankment · <i class="sw cut"></i>cut</div>
+            <div><i class="sw br"></i>bridge · <i class="sw tn"></i>tunnel</div>
+            <div><i class="sw yours"></i>your bridge / tunnel / earthwork</div>
+          </div>
+          <div class="key-col"><h3>Along the road</h3>
+            <div><i class="sw xing paid"></i>crossed road, priced</div>
+            <div><i class="sw xing"></i>crossed road under our bridge / over our tunnel</div>
+            <div><i class="sw xing yours"></i>crossed road, your choice</div>
+            <div><i class="sw xing bad"></i>crossing with a problem</div>
+            <div><i class="sw culvert"></i>culvert</div>
+            <div><i class="sw buy"></i>bought out · <i class="sw keep"></i>kept</div>
+          </div>
+          <div class="key-col"><h3>Ground</h3><label class="key-check"><input type="checkbox" id="ground-band"> Show the mapped ground under the ground line</label><div class="cost-key" id="ground-key"></div></div>
+          <div class="key-col"><h3>Cost per metre <small>(bottom strip)</small></h3><div class="cost-key" id="cost-key"></div></div>
+        </div>
+        <canvas id="profile-canvas"></canvas>
+      </div>
+      <aside id="hud"><section class="card loading"><div class="kicker">Trapla</div><b>Road design on real terrain</b></section></aside>
+    </div>
+    <noscript><p style="position:fixed;inset:0;margin:0;padding:40px;background:#edf0e9;font:16px system-ui,sans-serif;z-index:9">Trapla is a game that runs in the browser: please turn on JavaScript.</p></noscript>
+  </body>
+</html>
