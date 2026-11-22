@@ -3331,7 +3331,7 @@ should be plenty of view."
   long, 2.6 m wide at the ring from the lanes' 5° deflection; research/29 addendum; `core/tie-in.ts SPLITTER_ISLAND`) along
   the arm's own line (on across the ways it continues by, no further than the road goes: none where it ends sooner), its
   mouth widened as much each side; none in a one-way arm (a slip road, a mapped one-way street). Display only: the ring's price
-  and land are as before. Screenshot 790: the Nudvojovická roundabout on ground falling ≈ 4.7 m across it, laid on it.
+  and land are as before. Screenshot 792: the Nudvojovická roundabout on ground falling ≈ 4.7 m across it, laid on it.
 - **Sight fields (cost model 65):** the check was the far sight line alone against the 5 m ground model, with a 0.25 m margin,
   the eye at the station nearest its point: along gently convex roads and their verges it failed at most junctions (a sweep of
   level approaches every 25 m along every class II–III road of D35 and D11: about half). Now (`core/tie-in.ts sightField`): the
