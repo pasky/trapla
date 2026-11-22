@@ -1352,7 +1352,7 @@ our road crossed nothing there. Across the packs 1,700 such ways (bridges over s
     never our road under the viaduct it already has (research/107: 34 such bridges ≥ 6 m high across D11, whole D3, D35,
     I/35). A kept railway bridge is the follow-up.
   - A road moved aside ignores a mapped bridge's level (passes under or over it, unchecked; none of the 432 roads moved
-    aside on every starter, the saved designs and 4 random lines per pack meets one).
+    aside that we checked crossed one: every starter, the saved designs and 4 random lines per pack).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
@@ -1393,13 +1393,14 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   barrel runs toe to toe, a real one ends where the slope covers it). An end at a retaining wall stands 0.5 m out
   of its face. The drawn barrel is within ≈ ±10 % of the billed length (the toe where the stream really leaves the
   embankment vs. the station's footprint / sine). A click on an end, its map mark or its profile ring opens the
-  culvert card. The culverts under a crossed road's new road (a reroute, a way moved beside our earthworks, a
-  straightened crossing: `link-route.ts`, `CrossingGeometry.culverts`) are drawn the same way: the billed barrel
-  straight along the stream where the new road crosses it, centred under the new road (lifted to the culvert's cover,
-  its slopes come down about where the barrel ends), each end cut along the new road at the ground; a click there
-  selects the crossing. Not drawn yet: the culvert of a road moved aside where it crosses its own stream again
-  (`road-realignment.ts`, billed without the cover over it) and the longer culverts where our slope covers a stream
-  running beside it (footprint culverts); neither occurs on any starter or saved design.
+  culvert card. The culverts under a reroute's new road (also a way moved beside our earthworks: `link-route.ts`,
+  `CrossingGeometry.culverts`) are drawn the same way: the billed barrel straight along the stream where the new road
+  crosses it, centred under the new road (lifted to the culvert's cover, its slopes come down about where the barrel
+  ends), each end cut along the new road at the ground; a click there selects the crossing. Not drawn yet: the culverts
+  of a straightened crossing (billed on its whole new line, though its ramps are built without their cover), of a road
+  moved aside where it crosses its own stream again (`road-realignment.ts`, billed without the cover over it; none on
+  any starter or saved design) and the longer culverts where our slope covers a stream running beside it (footprint
+  culverts; none either).
 - Junction approaches on class I–III roads are not length-capped (the 250 m cap is for ramps up to bridges over
   us): since cost model 29 town-centre km 11.65 meets class I road 2136 5.6 m up and regrades it over 271 m.
 - Free haul (1 km) is credited on the pooled haul moment, not per movement.

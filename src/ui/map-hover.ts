@@ -65,7 +65,9 @@ export function installMapHover(app: MapHoverContext): { highlightBend(i: number
       cursor = 'grab'; key = 'mapped';
       if (key !== mapHoverKey) { const g = app.view.pick(at.x, at.y); if (g) app.view.setHover({ x: g.x, y: g.y, z: app.view.drape(g.x, g.y) }, 'drag to change'); }
     } else if (at && r && !app.buildTool.active) {
-      const culvert = app.extras.culvertAt(at.x, at.y), cross = culvert ? null : app.crossingAt(at.x, at.y);
+      // (a culvert under a crossed road's new road is part of that crossing)
+      const end = app.extras.culvertAt(at.x, at.y), culvert = end?.crossing === undefined ? end : null;
+      const cross = end?.crossing !== undefined ? r.crossings.find(c => c.roadId === end.crossing) ?? null : culvert ? null : app.crossingAt(at.x, at.y);
       const k = cross || culvert ? -1 : app.roadAt(at.x, at.y, 10);
       const building = cross || k >= 0 ? null : app.buildingAt(at.x, at.y);
       let works: ReturnType<typeof app.crossingWorksAt> = null;

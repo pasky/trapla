@@ -124,8 +124,7 @@ export class RouteExtras {
     const rect = this.view.renderer.domElement.getBoundingClientRect();
     const mx = clientX - rect.left, my = clientY - rect.top;
     const hits: { p: CulvertPlan; at: { x: number; y: number; z: number }; d: number }[] = [];
-    // (one under a crossed road's new road is part of that crossing: its works select its card)
-    for (const p of this.culvertPlans) if (p.crossing === undefined) for (const e of p.ends) {
+    for (const p of this.culvertPlans) for (const e of p.ends) {
       // the end's middle, out over its apron, and its reach on screen (its half-width)
       const at = { x: e.x + e.ox, y: e.y + e.oy, z: e.z + p.height / 2 };
       const mid = this.view.project(at.x, at.y, at.z), side = this.view.project(e.x - e.oy * (p.width / 2 + 1.5), e.y + e.ox * (p.width / 2 + 1.5), e.z + p.height / 2);

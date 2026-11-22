@@ -835,13 +835,12 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     // what the new pieces run across, as for a reroute (link-route.ts): its line, not its ramps
     const problems = new Set<string>();
     let culvertCost = 0;
-    const culverts: LinkCulvert[] = [];
     for (const part of [legA, [...legB].reverse()]) {
       // (from the old way to the structure's end of the straight run: the box or the ramps take over there)
       const survey = surveyLink(part, g.width, linkEnv);
       for (const p of survey.problems) if (p !== 'footprint') problems.add(p);
       if (survey.houses.length) problems.add('building');
-      culvertCost += survey.culverts.reduce((a, w) => a + w.cost, 0); culverts.push(...survey.culverts);
+      culvertCost += survey.culverts.reduce((a, w) => a + w.cost, 0);
     }
     if (problems.size) return { problem: [...problems].sort().join(',') };
     // the new way: the old one up to where it enters the corridor, the new line, the old one beyond
@@ -858,7 +857,7 @@ function crossingTools(crossings: CrossingResult[], route: CrossingRoute, height
     });
     for (const q of out) q.d -= centre;
     const notes: string[] = [];
-    return { path: denseWay(out, message => notes.push(message)), notes, p0: start - centre, p1: end - centre, culvertCost, culverts, removed: [a.d, b.d] as [number, number] };
+    return { path: denseWay(out, message => notes.push(message)), notes, p0: start - centre, p1: end - centre, culvertCost, removed: [a.d, b.d] as [number, number] };
   };
   /** Everything one crossing's own structure (stage 2) reads of our road; nothing else there may. A build kept
    * from one pass to the next would have to key on what it asked here:
@@ -917,7 +916,7 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
   if (cut) { g.skew = cut.angle; g.skewRun = cut.run; if (!cut.open) g.sameSide = cut.sides[0] === cut.sides[1]; }
   // Straightened to cross square (Auto's candidate or the player's choice): the structure and its ramps
   // are built on the new line, and the new road beyond them is billed here.
-  let keep: { p0: number; p1: number; culvertCost: number; culverts: LinkCulvert[] } | undefined;
+  let keep: { p0: number; p1: number; culvertCost: number } | undefined;
   if (c.square && (c.type === 'overbridge' || c.type === 'underpass')) {
     const squareKey = `${cutKey}:${c.cls}`;
     const squared = (squares.get(squareKey) as ReturnType<typeof squarePath> | undefined) ?? (cut ? squarePath(c, g, path, cut) : { problem: 'room' as const });
@@ -926,7 +925,6 @@ function crossingStructure(c: CrossingResult, ours: OurRoad, heightAt: (x: numbe
       path = squared.path; squaredPaths.set(c, path); keep = squared;
       for (const message of squared.notes) diagnose(g, message);
       c.squared = cut!.angle; g.removed = squared.removed;
-      if (squared.culverts.length) g.culverts = squared.culverts;
     } else diagnose(g, `${SQUARE_FAILS}${squared.problem}`);
   }
   // Connection works consume short stubs through the whole link corridor, not just the main

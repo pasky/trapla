@@ -122,7 +122,8 @@ export function createMapPicks(app: MapPickContext) {
   const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | { kind: 'official' } | null => {
     // a culvert's end (close up: its headwall, wings and apron at the slope's toe, a small target of its own)
     const culvert = app.extras.culvertAt(clientX, clientY);
-    if (culvert) return { kind: 'culvert', id: culvert.id, s: culvert.s };
+    // (one under a crossed road's new road is part of that crossing)
+    if (culvert) return culvert.crossing !== undefined ? { kind: 'crossing', roadId: culvert.crossing } : { kind: 'culvert', id: culvert.id, s: culvert.s };
     const c = crossingAt(clientX, clientY);
     if (c) return { kind: 'crossing', roadId: c.roadId! };
     // a railway carried over us on its new bridge: its deck (a short target over our road, at the rails' level)
