@@ -76,10 +76,12 @@ const PASSES: Pass[] = [
   // nature protection areas (render/nature.ts): where no works may go a soft band with a solid edge, a
   // protection zone dashed, an area that allows works dotted
   ...NATURE_PASSES,
-  // what the project takes (buildPlots): a bought-out house keeps its roof inside a dashed ring
+  // what the project takes (buildPlots): a bought-out house's footprint in its colour inside a dashed ring (where the
+  // house is not drawn standing: far away, and where our works took it down)
+  { layer: 'buyout-plots', kind: 'poly', color: [196, 60, 155], alpha: 1 },
   { layer: 'buyout-rings', kind: 'line', color: [196, 60, 155], alpha: 0.95, width: 0.9, minPx: 1.6, dash: [4, 0.62] },
 ];
-const PLOT_LAYERS = ['buyout-rings'];
+const PLOT_LAYERS = ['buyout-plots', 'buyout-rings'];
 /** how far a bought-out building's ring stands off its walls, m */
 const RING_OFFSET = 3;
 /** plots changes are redrawn in boxes of the buildings within cells of this size, m */
@@ -297,10 +299,10 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
 
 const buildingChunk = (b: BuildingData, chunk: number, i: number) =>
   Math.floor(b.verts[2 * b.starts[i] + 1] / chunk) * 4096 + Math.floor(b.verts[2 * b.starts[i]] / chunk);
-/** footprints by chunk */
-function buildingGeos(b: BuildingData, chunk: number): Geo[] {
+/** footprints by chunk (of the buildings `only`, or all) */
+function buildingGeos(b: BuildingData, chunk: number, only?: Iterable<number>): Geo[] {
   const groups = new Map<number, number[]>();
-  for (let i = 0; i < b.count; i++) {
+  for (const i of only ?? Array.from({ length: b.count }, (_, k) => k)) {
     const key = buildingChunk(b, chunk, i);
     let g = groups.get(key);
     if (!g) groups.set(key, g = []);
@@ -542,7 +544,7 @@ export class LandCover {
   }
   private owned: Set<string> | null = null;
   private netLayers() { return new Set(NET_PASSES.map(p => p.layer)); }
-  /** Over the photo too, what the project takes: the buyout rings (the map's own passes,
+  /** Over the photo too, what the project takes: the buyout plots and rings (the map's own passes,
    * sharing the map scene's geometries) */
   private plotPasses() { return PASSES.filter(p => PLOT_LAYERS.includes(p.layer)); }
   private plotGeos(): Map<string, Geo[]> {
@@ -761,7 +763,8 @@ export class LandCover {
   /** the buildings drawn ringed (render indices), as committed */
   private plots = '';
 
-  /** Stage the map for what the project takes: every bought-out building (render indices) gets a ring;
+  /** Stage the map for what the project takes: every bought-out building (render indices) gets its footprint in its
+   * colour and a ring;
    * the map is redrawn around what changed on commit (as for source replacements). */
   *buildPlots(bought: ReadonlySet<number>): Generator<void, Staged> {
     const b = this.vectors.buildings, chunk = this.vectors.chunk;
@@ -769,10 +772,12 @@ export class LandCover {
     if (!b || bKey === this.plots) return { commit() {}, dispose() {} };
     yield;
     const rings = yield* buildLineGeos(footprintRings(b, bought, RING_OFFSET), chunk, false);
+    yield;
+    const layers = new Map<string, Geo[]>([['buyout-plots', buildingGeos(b, chunk, [...bought].sort((x, y) => x - y))], ['buyout-rings', rings]]);
     let settled = false;
     const dispose = () => {
       if (settled) return; settled = true;
-      for (const g of rings) g.geo.dispose();
+      for (const list of layers.values()) for (const g of list) g.geo.dispose();
     };
     return { dispose, commit: () => {
       if (settled) return;
@@ -781,7 +786,7 @@ export class LandCover {
         if (!PLOT_LAYERS.includes(entry.pass.layer)) continue;
         const order = PASSES.indexOf(entry.pass);
         for (const mesh of entry.meshes) { this.scene.remove(mesh); mesh.geometry.dispose(); }
-        entry.meshes = rings.map(g => this.mesh(g, entry.mat, order, this.scene));
+        entry.meshes = (layers.get(entry.pass.layer) ?? []).map(g => this.mesh(g, entry.mat, order, this.scene));
       }
       // the photo overlay shares those geometries (already disposed above where replaced)
       if (this.net) {

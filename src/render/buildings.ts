@@ -41,6 +41,11 @@ export class Buildings {
     }
     // a little self-light keeps the shaded walls from going muddy
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x38332c });
+    // (a house taken down for our works, `setMarked`'s `gone`: not drawn, its vertices put out of view)
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float gone;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nif (gone > 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);');
+    };
     const col = new THREE.Color();
     const lin = (c: [number, number, number], f: number): [number, number, number] => {
       col.setRGB(Math.min(1, (c[0] / 255) * f), Math.min(1, (c[1] / 255) * f), Math.min(1, (c[2] / 255) * f), THREE.SRGBColorSpace);
@@ -102,6 +107,7 @@ export class Buildings {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(colr, 3, true));
+      geo.setAttribute('gone', new THREE.BufferAttribute(new Uint8Array(nv), 1, true));
       geo.setIndex(new THREE.BufferAttribute(idx, 1));
       geo.computeBoundingSphere();
       const mesh = new THREE.Mesh(geo, mat);
@@ -159,8 +165,20 @@ export class Buildings {
   /** standing colours (bought-out houses): over every tint, in every view */
   private marked = new Map<number, number>();
   private lastTint: { colors: Map<number, number>; mute: boolean } = { colors: new Map(), mute: false };
-  /** Colour these buildings in every view (render index → 0xRRGGBB), over a view's own tint. */
-  setMarked(colors: Map<number, number>) {
+  private gone = new Set<number>();
+  /** Colour these buildings in every view (render index → 0xRRGGBB), over a view's own tint; those `gone` (taken down
+   * where our works are drawn) are not drawn. */
+  setMarked(colors: Map<number, number>, gone: ReadonlySet<number> = new Set()) {
+    const flag = (i: number, on: number) => {
+      const c = this.where[3 * i];
+      if (c < 0) return;
+      const attr = this.chunks[c].mesh.geometry.getAttribute('gone') as THREE.BufferAttribute;
+      (attr.array as Uint8Array).fill(on, this.where[3 * i + 1], this.where[3 * i + 1] + this.where[3 * i + 2]);
+      attr.needsUpdate = true;
+    };
+    for (const i of this.gone) if (!gone.has(i)) flag(i, 0);
+    for (const i of gone) if (!this.gone.has(i)) flag(i, 255);
+    this.gone = new Set(gone);
     this.marked = colors;
     this.tint(this.lastTint.colors, this.lastTint.mute);
   }
@@ -214,6 +232,18 @@ export class Buildings {
     }
     for (const c of dirty) (this.chunks[c].mesh.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
+
+  /** building i's footprint's corners and its middle (map x, y) */
+  outline(i: number): { x: number; y: number }[] {
+    const b = this.b, v0 = b.starts[i], n = b.starts[i + 1] - v0, out: { x: number; y: number }[] = [];
+    let x = 0, y = 0;
+    for (let k = 0; k < n; k++) { out.push({ x: b.verts[2 * (v0 + k)], y: b.verts[2 * (v0 + k) + 1] }); x += out[k].x; y += out[k].y; }
+    if (n > 0) out.push({ x: x / n, y: y / n });
+    return out;
+  }
+
+  /** render building i is not drawn (taken down: setMarked's `gone`) */
+  isGone(i: number) { return this.gone.has(i); }
 
   /** render building i has a standing colour (setMarked: bought out) */
   isMarked(i: number) { return this.marked.has(i); }

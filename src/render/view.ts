@@ -246,6 +246,46 @@ export class View {
   private maskSources: readonly RouteMaskInput[] = [];
   /** the terrain mask's triangles as last drawn (View.local x, 0, z per vertex): where the ground is not drawn */
   private maskTriangles: readonly number[] = [];
+  /** our works' own footprint (routeMask's `works`) and its triangles (their first index there) by 50 m cell of the
+   * view's local x, z (built when asked) */
+  private worksTriangles: readonly number[] = [];
+  private worksIndex: Map<number, number[]> | null = null;
+  /** the houses the project takes (render index → colour) and roundabouts' rings (map x, y, radius) as last drawn */
+  private bought = new Map<number, number>();
+  private ringDisks: { x: number; y: number; r: number }[] = [];
+
+  /** (map x, y) is under our works as drawn: inside a road body's or a crossing's footprint or a roundabout's ring */
+  private underWorks(x: number, y: number): boolean {
+    if (this.ringDisks.some(q => Math.hypot(x - q.x, y - q.y) < q.r)) return true;
+    const M = this.worksTriangles, G = 50;
+    if (!this.worksIndex) {
+      const index = this.worksIndex = new Map<number, number[]>();
+      for (let t = 0; t + 8 < M.length; t += 9) {
+        const x0 = Math.floor(Math.min(M[t], M[t + 3], M[t + 6]) / G), x1 = Math.floor(Math.max(M[t], M[t + 3], M[t + 6]) / G);
+        const z0 = Math.floor(Math.min(M[t + 2], M[t + 5], M[t + 8]) / G), z1 = Math.floor(Math.max(M[t + 2], M[t + 5], M[t + 8]) / G);
+        for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) { const k = i * 65536 + j; let a = index.get(k); if (!a) index.set(k, a = []); a.push(t); }
+      }
+    }
+    const px = x - this.cx, pz = this.cy - y;
+    for (const t of this.worksIndex.get(Math.floor(px / G) * 65536 + Math.floor(pz / G)) ?? []) {
+      const ax = M[t], az = M[t + 2], bx = M[t + 3], bz = M[t + 5], qx = M[t + 6], qz = M[t + 8];
+      const det = (bz - qz) * (ax - qx) + (qx - bx) * (az - qz);
+      if (Math.abs(det) < 1e-9) continue;
+      const l1 = ((bz - qz) * (px - qx) + (qx - bx) * (pz - qz)) / det, l2 = ((qz - az) * (px - qx) + (ax - qx) * (pz - qz)) / det;
+      if (l1 >= 0 && l2 >= 0 && 1 - l1 - l2 >= 0) return true;
+    }
+    return false;
+  }
+
+  /** The houses the project takes: standing in its colour, but taken down where any of one is under our works as drawn
+   * (its plot, marked on the map, beside them). */
+  private markTaken() {
+    const B = this.buildings;
+    if (!B) return;
+    const gone = new Set<number>();
+    for (const k of this.bought.keys()) if (B.outline(k).some(p => this.underWorks(p.x, p.y))) gone.add(k);
+    B.setMarked(this.bought, gone);
+  }
   private maskMat: THREE.ShaderMaterial | null = null;
   private retired: THREE.Material[] = [];
   /** one material per shader program that would otherwise lose its last user (see release) */
@@ -830,21 +870,38 @@ export class View {
     // (laid on the scene as just committed: rebuilt every time, but for none after none)
     if (!rings.length && !digs.length && !this.rings) return;
     if (this.rings) { this.world.remove(this.rings); this.rings.geometry.dispose(); (this.rings.material as THREE.Material).dispose(); this.rings = null; }
-    const pos: number[] = [], col: number[] = [], v = new THREE.Vector3();
+    const pos: number[] = [], col: number[] = [], pull: number[] = [], v = new THREE.Vector3();
+    // (a house taken for our works is not drawn standing in a ring)
+    this.ringDisks = rings.map(q => ({ x: q.x, y: q.y, r: q.r }));
+    this.markTaken();
     for (const ring of rings) {
       const t = ringTriangles(ring, this.drawnSurface(ring.x, ring.y, ring.r + SPLITTER_ISLAND.length + 3), 0.2);
-      for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); }
+      for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); pull.push(k / 3 < t.pulled ? t.pull : 0); }
       col.push(...t.col);
     }
     for (const dig of digs) {
       const t = digTriangles(dig, (x, y) => this.drapeHeight(x, y), 0.1);
-      for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); }
+      for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); pull.push(0); }
       col.push(...t.col);
     }
     if (pos.length) {
       const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geometry.computeBoundingSphere();
-      this.rings = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geometry.setAttribute('pull', new THREE.Float32BufferAttribute(pull, 1));
+      geometry.computeBoundingSphere();
+      // (a ring drawn `pull` m towards the eye, at most half way: over the ground and bodies its platform's grading takes off
+      // and its faces cover, which stand that much over it; the relief's exaggeration scales them)
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+      const scale = { value: 1 };
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.pullScale = scale;
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float pull;\nuniform float pullScale;')
+          .replace('#include <project_vertex>', `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+            float eyeDistance = length(mvPosition.xyz);
+            mvPosition.xyz -= mvPosition.xyz / max(eyeDistance, 1e-3) * min(pull * pullScale, 0.5 * eyeDistance);
+            gl_Position = projectionMatrix * mvPosition;`);
+      };
+      this.rings = new THREE.Mesh(geometry, material);
+      this.rings.onBeforeRender = () => { scale.value = this.world.scale.y; };
       this.rings.name = 'junction-marks'; this.rings.renderOrder = 2; this.world.add(this.rings);
     }
     this.dirty = true;
@@ -1626,11 +1683,12 @@ export class View {
       (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y)).replacementHeight;
     this.contourLabels?.schedule(this.contourStep * 5);
     this.drawMask(this.maskSources, ready?.mask);
-    // every house the project takes stands, in its own colour in every view, until it is cleared
+    // every house the project takes stands in its own colour in every view, but none on our works as drawn
     const taken = globalTaken ?? [...this.routeInputs.values()].flatMap(({ result }) => [...result.demolished, ...result.boughtOut].map(b => b.j));
     const bought = new Map<number, number>();
     for (const j of taken) { const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR); }
-    this.buildings?.setMarked(bought);
+    this.bought = bought;
+    this.markTaken();
     this.setTakenMarkers(taken);
     this.dirty = true;
   }
@@ -1662,8 +1720,8 @@ export class View {
   }
 
   private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {
-    const { terrain: pos, original, cuts, box: bounds } = prepared ?? routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
-    this.maskTriangles = pos;
+    const { terrain: pos, original, cuts, works, box: bounds } = prepared ?? routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+    this.maskTriangles = pos; this.worksTriangles = works; this.worksIndex = null;
     if (!bounds) {
       this.maskUniforms.maskOn.value = this.originalMask.maskOn.value = this.crossingCut.maskOn.value = 0;
       return;

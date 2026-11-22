@@ -196,6 +196,10 @@ export function installAutomation(c: AutomationContext): void {
     buildingShown: (j: number) => c.view.buildingMesh(j) >= 0,
     /** building j is drawn as taken by the project (bought out: its standing colour) */
     buildingTaken: (j: number) => { const k = c.view.buildingMesh(j); return k >= 0 && !!c.view.buildingMeshes?.isMarked(k); },
+    /** a house the project takes is not drawn standing (it is under our works as drawn) */
+    buildingGone: (j: number) => { const k = c.view.buildingMesh(j); return k >= 0 && !!c.view.buildingMeshes?.isGone(k); },
+    /** building j's middle on the map */
+    buildingAt: (j: number) => { const b = c.pack.overlays.buildings[j]; return b ? { x: b[0], y: b[1] } : null; },
     buildingScreen: (j: number, up = 2) => {
       const b = c.pack.overlays.buildings[j];
       return b && c.view.project(b[0], b[1], c.pack.terrain.heightAt(b[0], b[1]) + up);

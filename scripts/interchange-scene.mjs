@@ -402,6 +402,12 @@ try {
   // splitter islands in Nudvojovická's arms)
   await page.evaluate(() => window.trapla.lookAt(2645, 3260, 55, 270, 40));
   await game.idle(); await game.still(); await shot('792-nudvojovicka-roundabout-on-the-slope');
+  // (the houses the slip roads take inside the rings are not drawn standing on them)
+  const ringHouses = await page.evaluate(() => { const t = window.trapla, r = t.projectResult(), rings = r.works.items.filter(w => w.ring).map(w => w.ring);
+    const taken = [...new Set(Object.values(r.routes).flatMap(q => q.legacy.demolished.map(b => b.j)))];
+    const inside = taken.filter(j => { const p = t.buildingAt(j); return p && rings.some(q => Math.hypot(p.x - q.x, p.y - q.y) < q.r); });
+    return { inside: inside.length, standing: inside.filter(j => !t.buildingGone(j)) }; });
+  ok(ringHouses.inside > 0 && ringHouses.standing.length === 0, `the ${ringHouses.inside} houses taken inside the rings are not drawn standing (${ringHouses.standing.join(', ') || 'none'})`);
   }
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }

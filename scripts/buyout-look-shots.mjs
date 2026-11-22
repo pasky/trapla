@@ -1,5 +1,5 @@
-// Shots of one look for every house the project takes (bought out: a magenta box with a ring on the map, a
-// diamond far away), wherever it stands: the D11 house under the bridge end's cone at km 4.07 in the normal,
+// Shots of one look for every house the project takes (bought out: a magenta box with a magenta plot and a ring on the
+// map, the plot alone where our works took it down, a diamond far away), wherever it stands: the D11 house under the bridge end's cone at km 4.07 in the normal,
 // noise, photo and plan views, a noise buyout, the Královec railway starter's houses under its works.
 //   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/buyout-look-shots.mjs [--out docs/screenshots] [--first 520]
 import assert from 'node:assert/strict';

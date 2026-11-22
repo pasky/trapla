@@ -712,7 +712,8 @@ II/2253's ramps, 0.2–0.3 m from their toes, bought out with the working strip]
 ([one's card](docs/screenshots/511-rail-kralovec-km-12-98-house-card-before-after.png)), [III/3012's corner kept on its old
 road, lifted onto its bridge over us: rebuilt on the old road our road crossed, not 5.7 m off it](docs/screenshots/512-d11-iii3012-kept-lifted-from-above-before-after.png)
 ([under our viaduct](docs/screenshots/513-d11-iii3012-kept-lifted-under-our-viaduct-before-after.png)).
-One word and one look for every house taken (`node scripts/buyout-look-shots.mjs`): [D11 km 4.07, the house under the
+One word and one look for every house taken (`node scripts/buyout-look-shots.mjs`; a magenta box, or its magenta plot
+where our works took it down): [D11 km 4.07, the house under the
 bridge end's cone: bought out](docs/screenshots/520-d11-km-4-07-house-under-a-cone-bought-out.png), [noise
 view](docs/screenshots/521-d11-km-4-07-noise-view.png), [photo](docs/screenshots/522-d11-km-4-07-photo.png),
 [kept there, in the photo: its ring gone](docs/screenshots/523-d11-km-4-07-photo-kept.png), [plan](docs/screenshots/524-d11-km-4-07-plan.png);

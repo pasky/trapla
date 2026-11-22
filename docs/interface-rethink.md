@@ -115,7 +115,7 @@ Its tooltip shrinks to 3 lines and stays inside the profile.
 ### 2.6 Visual language
 
 - Same colours everywhere: road orange, bridge blue, tunnel purple, wall teal, violation red,
-  bought out magenta (every house the project takes, wherever it stands), kept green.
+  bought out magenta (every house the project takes, wherever it stands; where our works took it down, its plot), kept green.
 - Noise is one ramp (pale → yellow at the limit → red) used by the band, the building colours and the
   inspector's diagram.
 - Map legend: short, one line.

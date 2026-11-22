@@ -12,6 +12,9 @@ export interface RouteMask {
   terrain: number[];
   original: number[];
   cuts: number[];
+  /** our works' own footprint (x, 0, z per vertex): our roads' bodies to their daylight lines, the crossings' to their slopes'
+   * toes (none of their ground collars) */
+  works: number[];
   box: { minX: number; minZ: number; maxX: number; maxZ: number } | null;
 }
 
@@ -22,7 +25,7 @@ const MASK_END_INSET = 3;
 /** Coordinates match View.local's horizontal axes. Empty scenes have no mask, not infinite bounds. */
 export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: number,
   natural: (x: number, y: number) => number): RouteMask {
-  const terrain: number[] = [], original: number[] = [], cuts: number[] = [];
+  const terrain: number[] = [], original: number[] = [], cuts: number[] = [], works: number[] = [];
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
   const bounds = (x: number, z: number) => {
     minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
@@ -96,6 +99,7 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
           [a0, a1, b0, b1] = [lerp(a0, b0, t0), lerp(a1, b1, t0), lerp(a0, b0, t1), lerp(a1, b1, t1)];
         }
         addQuad(terrain, a0, a1, b0, b1);
+        if (!surface.keptEnd) addQuad(works, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
         if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
       }
     }
@@ -128,5 +132,5 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
       }
     }
   }
-  return { terrain, original, cuts, box: Number.isFinite(minX) ? { minX: minX - 20, minZ: minZ - 20, maxX: maxX + 20, maxZ: maxZ + 20 } : null };
+  return { terrain, original, cuts, works: [...original, ...works], box: Number.isFinite(minX) ? { minX: minX - 20, minZ: minZ - 20, maxX: maxX + 20, maxZ: maxZ + 20 } : null };
 }

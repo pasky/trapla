@@ -3340,13 +3340,21 @@ should be plenty of view."
   where the lane is full width, the carriageway's solid edge line left along the taper.
 - **Roundabouts drawn:** a road's end set to Roundabout (on an existing road or a designed one) draws its ring: TP 135 (2017)
   tab. 2 at D 40 m, 5.10 m carriageway with its outer edge line broken at each arm, 1.20 m apron, the island's grass
-  (research/29 addendum; `core/tie-in.ts ringMark` on the ring's work, `render/roundabouts.ts`), laid on what is drawn there
-  (`View.drawnSurface`: the road bodies and crossings' ground where the terrain is masked out under them, else the ground,
-  the highest within 0.5 m), over both roads. In each two-way arm a kerbed splitter island (TP 135 §1.7.1, §3.2.2: 15 m
+  (research/29 addendum; `core/tie-in.ts ringMark` on the ring's work, `render/roundabouts.ts`), over both roads on its
+  graded platform (`ringPlatform`): its outer edge at each arm's mouth at that arm's road as drawn there (`View.drawnSurface`:
+  the road bodies and crossings' ground where the terrain is masked out under them, else the ground), round the ring
+  between two arms in proportion to the angle, the island's middle at the mouths' mean; where what is drawn round it is
+  lower, a fill face 1:1.5 down to it; the ring drawn as far towards the eye as what is drawn inside it stands over the
+  platform (the ground and bodies its grading takes off), so none of it shows through. In each two-way arm a kerbed splitter island (TP 135 §1.7.1, §3.2.2: 15 m
   long, 2.6 m wide at the ring from the lanes' 5° deflection; research/29 addendum; `core/tie-in.ts SPLITTER_ISLAND`) along
   the arm's own line (on across the ways it continues by, no further than the road goes: none where it ends sooner), its
   mouth widened as much each side; none in a one-way arm (a slip road, a mapped one-way street). Display only: the ring's price
-  and land are as before. Screenshot 792: the Nudvojovická roundabout on ground falling ≈ 4.7 m across it, laid on it.
+  and land are as before. Screenshot 792: the Nudvojovická roundabout on ground falling ≈ 4.7 m across it, a slip road in a
+  cutting coming in. A house the project takes is not drawn standing where our works are drawn (a road's body to its
+  daylight lines, a crossing's to its slopes' toes, a ring): where any of it is under them it is taken down, its plot left
+  in its colour inside its dashed ring (`View.markTaken`, `render/buildings.ts`); beside them it stands in its colour as
+  before. Every bought-out plot is drawn in that colour on the map (far away, where the houses are not drawn: screenshots
+  520–527).
 - **Sight fields (cost model 65):** the check was the far sight line alone against the 5 m ground model, with a 0.25 m margin,
   the eye at the station nearest its point: along gently convex roads and their verges it failed at most junctions (a sweep of
   level approaches every 25 m along every class II–III road of D35 and D11: about half). Now (`core/tie-in.ts sightField`): the
