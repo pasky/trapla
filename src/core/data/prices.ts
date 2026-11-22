@@ -329,8 +329,11 @@
  * keeps 8.6 m over its rails or 10.35 m under them (the grade search's either-or, a problem where a player's grade does
  * neither; research/107). Every frozen bill and starter unchanged (the D3 starter's railway crossing at km 4.43 on its
  * viaduct, over the Jílovský tunel II 35 m under the ground, is gone, and the D3 0302 starter's at km 2.67; the bills
- * the same); the whole D3 along its official line −1.9 M (its crossing of that tunnel at km 11.32). */
-export const COST_MODEL_VERSION = 67;
+ * the same); the whole D3 along its official line −1.9 M (its crossing of that tunnel at km 11.32).
+ * Model 68 (PLAN.md "Slip roads see our road's crossings"): a slip road's crossing choice on a way our road cuts is the
+ * player's on what is left of it beyond the cut and on its new pieces too (it was dropped there: a saved design with such a
+ * choice is now evaluated with it). Every frozen bill, starter and fixture unchanged (none has a choice there). */
+export const COST_MODEL_VERSION = 68;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

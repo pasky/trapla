@@ -48,10 +48,13 @@ export class DecisionList {
     for (const o of [...(d.wallOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="wall"></i>${o.height ? `${o.height} m wall` : 'No wall'} ${o.side === 'L' ? 'left' : 'right'} <small>km ${kmr(o.s0, o.s1)}</small>`);
     for (const p of d.gradePins ?? []) li(`data-pin="${p.s}"`, `<i class="pin"></i>Height ${p.z.toFixed(1)} m <small>km ${km(p.s)}${p.s > r.length ? ' · past the end' : ''}</small>`);
     const inactive: number[] = [];
+    // (a way and its pieces another road's cut left are one choice, core/project-roadnet.ts withPieces: no longer crossed
+    // only where none of them is)
+    const wayOf = new Map(r.pieceOf?.list ?? []), crossed = new Set(r.crossings.map(c => c.roadId === undefined ? undefined : wayOf.get(c.roadId) ?? c.roadId));
     for (const o of d.crossingOverrides ?? []) {
       const c = r.crossings.find((c) => c.roadId === o.roadId);
       if (c) li(`data-road="${o.roadId}"`, `<i class="xing"></i>${CHOICE[o.type]}${o.via ? ' (your path)' : ''} · ${esc(ROAD_CLASSES[c.cls].label)} <small>km ${km(c.s)}</small>`);
-      else inactive.push(o.roadId);
+      else if (!crossed.has(wayOf.get(o.roadId) ?? o.roadId)) inactive.push(o.roadId);
     }
     for (const o of d.buildingOverrides ?? []) li(`data-building-j="${o.j}"`, `<i class="${o.action === 'keep' ? 'keep' : 'buy'}"></i>${o.action === 'keep' ? 'Keep' : 'Buy out'} ${esc(kind(o.j))}`);
     const roads = crossedRoads(r);

@@ -227,7 +227,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const left = r.routes[slip.id].legacy!.crossings.find(c => c.roadId! >= roads.wayCount && c.cls === 'track' && Math.hypot(c.x - 3594, c.y - 7738) < 30)!;
     expect(left.type).not.toBe('junction');
     const track = roads.nearestWay(left.x, left.y, 1)!, pieces = r.routes[slip.id].legacy!.pieceOf;
-    expect(pieces).toContainEqual([left.roadId, track]);
+    expect(pieces!.list).toContainEqual([left.roadId, track]);
     // the player picks a level crossing on its card (the store shows the track's choices on its pieces, and folds them back)
     const d = legacyDesignForRoute(design, slip.id, { pieces });
     d.crossingOverrides = [...d.crossingOverrides ?? [], { roadId: left.roadId!, type: 'junction' }];
@@ -330,7 +330,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // a choice saved on that local road is the player's on its new link too
     const exit = design.routes.find(q => q.name === 'Slip road 3')!, link = slips[2].find(c => c.cls === led.cls)!;
     expect(link.type).not.toBe('junction');
-    expect(r.routes[exit.id].legacy!.pieceOf).toContainEqual([link.roadId, led.roadId]);
+    expect(r.routes[exit.id].legacy!.pieceOf!.list).toContainEqual([link.roadId, led.roadId]);
     const d = legacyDesignForRoute(design, exit.id);
     d.crossingOverrides = [{ roadId: led.roadId!, type: 'junction' }];
     const chosen = run(replaceRouteFromLegacy(design, exit.id, d)).routes[exit.id].legacy!.crossings.find(c => c.roadId === link.roadId)!;

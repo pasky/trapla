@@ -3,6 +3,7 @@
 import type { Design } from '../core/evaluate';
 import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../core/project-legacy';
+import type { WayPieces } from '../core/project-roadnet';
 import type { ProjectStoreApi } from '../project-store-contract';
 import { carryVpis } from '../core/carry-heights';
 import { bendRules, horizontalRules } from '../core/data/norms';
@@ -19,8 +20,8 @@ export class ActiveRouteStore {
   private atomic = false;
   /** ways of a road's network that are pieces of another, from its last full result (Result.pieceOf): a choice on a
    * piece is shown and stored as its way's (legacyDesignForRoute) */
-  pieces?: (id: RouteId) => [number, number][] | undefined;
-  private cached: { project: ProjectDesign; id: RouteId; one: boolean; pieces: [number, number][] | undefined; design: Design | null } | null = null;
+  pieces?: (id: RouteId) => WayPieces | undefined;
+  private cached: { project: ProjectDesign; id: RouteId; one: boolean; pieces: WayPieces | undefined; design: Design | null } | null = null;
   constructor(readonly project: ProjectStoreApi, private initialProject: () => ProjectDesign) {
     this.activeRouteId = project.snapshot.design.routes[0]?.id ?? null;
   }

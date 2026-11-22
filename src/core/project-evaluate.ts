@@ -272,7 +272,8 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
     if (!intervals.length) continue;
     // (a stretch closed rather than moved: taken out with nothing in its place)
     const paths = (f.geometry?.links ?? [f.geometry?.road ?? []]).filter(p => p.length > 1);
-    const cut = out.cuts.length;
+    // (its new pieces are pieces of the way it moves, whatever else it takes out: editedNetwork's pieces)
+    const cut = out.cuts.length + Math.max(0, intervals.findIndex(i => i.way === f.roadId));
     for (const i of intervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
     for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]), cut });
     // (its reach: the moved piece, and the junction mouths where it meets what is left; a dead end taken up: the piece
@@ -283,7 +284,7 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
   if (roads) {
     const changes = crossingChanges(host, roads, design, sourceWays);
     for (const c of changes) {
-      const cut = out.cuts.length;
+      const cut = out.cuts.length + Math.max(0, c.cuts.findIndex(i => i.way === c.way));
       out.cuts.push(...c.cuts); out.ways.push(...c.ways.map(w => ({ ...w, cut })));
       for (const way of new Set(c.cuts.map(i => i.way))) out.zones.push({ way, x: c.x, y: c.y, r: reachOf(c.reach) });
     }
@@ -310,7 +311,8 @@ function crossingChanges(host: Result, roads: RoadNet, design: ProjectDesign, so
   return changes;
 }
 function crossingChangeList(host: Result, roads: RoadNet, heads: ReadonlyMap<number, number>) {
-  const out: { x: number; y: number; reach: number; cuts: MovedWays['cuts']; ways: MovedWays['ways'] }[] = [];
+  /** `way`: the pack way the crossing changes (its new pieces are pieces of it) */
+  const out: { x: number; y: number; reach: number; way: number; cuts: MovedWays['cuts']; ways: MovedWays['ways'] }[] = [];
   for (const c of host.crossings) {
     if (c.shared || c.roadId === undefined) continue;
     // (a crossing of what is left of a way our road's own network cut, a later way there: the pack's way at that place)
@@ -320,7 +322,7 @@ function crossingChangeList(host: Result, roads: RoadNet, heads: ReadonlyMap<num
     if (!change || !removed.length) continue;
     const cuts = removed.map(i => { const by = heads.get(i.way) ?? 0; return { way: i.way, d0: Math.max(0, i.a - by), d1: Math.max(0, i.b - by) }; }).filter(i => i.d1 > i.d0);
     if (!cuts.length) continue;
-    out.push({ x: c.x, y: c.y, reach: change.reach, cuts, ways: change.pieces.map(p => ({ cls: c.cls, xy: p.flatMap(q => [q.x, q.y]) })) });
+    out.push({ x: c.x, y: c.y, reach: change.reach, way, cuts, ways: change.pieces.map(p => ({ cls: c.cls, xy: p.flatMap(q => [q.x, q.y]) })) });
   }
   return out;
 }

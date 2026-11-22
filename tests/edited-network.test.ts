@@ -5,7 +5,7 @@ import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { D11_SCENARIO, D3_MOTORWAY } from '../src/core/data/scenario';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
-import { crossingOverridesOf, crossingTargetsOf, editedNetwork } from '../src/core/project-roadnet';
+import { crossingOverridesOf, crossingTargetsOf, currentPieces, designedSlots, editedNetwork, foldPieces, shapedOnce, withPieces } from '../src/core/project-roadnet';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
 import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
@@ -194,6 +194,29 @@ describe('the edited network follows the project as it is now', () => {
     // a save from before (what was left was way `size + q`) still reaches it
     expect(crossingOverridesOf(p2, [{ choice: 'overbridge', target: { kind: 'legacy-way', objectData: 'objects', roadId: 1 } }])).toEqual([{ roadId: 3, type: 'overbridge' }]);
     expect(mission).toBeTruthy();
+  });
+  it('what is left of a way beyond another road\'s cut, and the cut\'s new piece, are pieces of that way: a choice on one is that way\'s', () => {
+    const { ctx, project } = setup();
+    evaluateProject(ctx, { epoch: 'e', revision: 1, design: project }); // learns the map's size (1 way)
+    // (a slip road's network: its motorway takes 400–500 m of the track out and leads it round that stretch)
+    const roads = new RoadNet({ cls: ['track'], ways: [[0, 0, 0, 1000, 0]] });
+    const moved = { cuts: [{ way: 0, d0: 400, d1: 500 }], ways: [{ cls: 'track', xy: [400, 0, 450, 50, 500, 0], cut: 0 }] };
+    const net = editedNetwork(roads, project, [], undefined, undefined, undefined, moved)!, size = 1 + designedSlots(project).length;
+    expect(net.pieces).toEqual({ from: size, list: [[size, 0], [size + 1, 0]] });
+    expect(net.roads.intersections(2, [0, 100], [800, 800], [-10, 10]).map(h => h.way)).toEqual([size]);
+    expect(net.roads.intersections(2, [0, 100], [450, 450], [20, 60]).map(h => h.way)).toEqual([size + 1]);
+    // shown on every piece; changed or taken back on one, stored (or taken back) on the way
+    const pieces = net.pieces!.list, shown = withPieces([{ roadId: 0, type: 'overbridge' }], pieces);
+    expect(shown.map(o => [o.roadId, o.type])).toEqual([[0, 'overbridge'], [size, 'overbridge'], [size + 1, 'overbridge']]);
+    expect(foldPieces(shown, shown.map(o => o.roadId === size ? { ...o, type: 'junction' as const } : o), pieces)).toEqual([{ roadId: 0, type: 'junction' }]);
+    expect(foldPieces(shown, shown.filter(o => o.roadId !== size + 1), pieces)).toEqual([]);
+    // a reroute's shape is the one piece's nearest to it
+    const via: [{ x: number; y: number }[], { x: number; y: number }[]] = [[{ x: 800, y: 30 }], []];
+    expect(shapedOnce(withPieces([{ roadId: 0, type: 'reconnection', via }], pieces), pieces, net.roads).map(o => [o.roadId, !!o.via]))
+      .toEqual([[0, false], [size, true], [size + 1, false]]);
+    // a result from before a road was added numbers them otherwise: its pieces are not used
+    expect(currentPieces(project, net.pieces)).toEqual(pieces);
+    expect(currentPieces({ ...project, routes: [...project.routes, road('new', [300, 20], [300, 480])] }, net.pieces)).toBeUndefined();
   });
 });
 

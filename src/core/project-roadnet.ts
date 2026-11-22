@@ -206,19 +206,61 @@ export interface EditedNetwork {
   /** the plan line each designed road is drawn with (by route id) */
   lines: Map<string, number[]>;
   /** ways that are pieces of another way (what is left beyond a cut another road of the project made, and that cut's
-   * new pieces: MovedWays), [piece, way]: a choice on the way is one on every piece of it (withPieces, foldPieces) */
-  pieces?: [number, number][];
+   * new pieces: MovedWays): a choice on the way is one on every piece of it (withPieces, foldPieces) */
+  pieces?: WayPieces;
 }
+/** Ways of a road's network that are pieces of another, [piece, way]; `from`: the first way past every way a choice is
+ * stored on (the pack's, the designed roads', what follows each rebuilt stretch), so the numbering they belong to is known. */
+export interface WayPieces { from: number; list: [number, number][] }
 /** The player's crossing choices as a road whose network has pieces of ways (EditedNetwork.pieces) sees them: a way's
  * choice on each piece of it too. */
 export function withPieces(list: readonly CrossingOverride[], pieces: readonly [number, number][] | undefined): CrossingOverride[] {
   if (!pieces?.length) return list.slice();
   const out = list.slice();
   for (const [piece, way] of pieces) {
-    const o = list.find(o => o.roadId === way);
+    // (of two choices for one way, the kernel's: the last)
+    let o: CrossingOverride | undefined;
+    for (const q of list) if (q.roadId === way) o = q;
     if (o && !out.some(q => q.roadId === piece)) out.push({ ...o, roadId: piece });
   }
   return out;
+}
+/** The pieces a result's network had (Result.pieceOf) while the project still numbers its ways alike (a result from before
+ * a road was added or removed numbers them otherwise: none). */
+export function currentPieces(project: ProjectDesign, pieces: WayPieces | undefined): [number, number][] | undefined {
+  const size = netSizes.get(project.objectData);
+  if (!pieces?.list.length || size === undefined) return undefined;
+  const designed = size + designedSlots(project).length, first = designed + rebuiltSlots(project).length;
+  return pieces.from === first && pieces.list.every(([piece, way]) => piece >= first && (way < size || (way >= designed && way < first))) ? pieces.list : undefined;
+}
+/** A reroute's shape (its bend points, the ends the player led it to) is absolute: of a way and its pieces, only the one
+ * nearest to it keeps it (as of a way crossed twice the crossing nearest to it does: crossings.ts resolveCrossings). */
+export function shapedOnce(list: CrossingOverride[], pieces: readonly [number, number][] | undefined, roads: RoadNet): CrossingOverride[] {
+  if (!pieces?.length || !list.some(o => o.via || o.ends)) return list;
+  const wayOf = new Map<number, number>(pieces.map(([p, w]) => [p, w]));
+  const far = (o: CrossingOverride) => {
+    const points: { x: number; y: number }[] = [...o.via?.[0] ?? [], ...o.via?.[1] ?? []];
+    for (const e of o.ends ?? []) if (e) points.push(e);
+    if (!points.length) return 0;
+    const x = points.reduce((a, p) => a + p.x, 0) / points.length, y = points.reduce((a, p) => a + p.y, 0) / points.length;
+    const path = roads.wayPath(o.roadId, 0, Infinity);
+    let best = Infinity;
+    for (let k = 0; k + 1 < path.length; k++) {
+      const a = path[k], b = path[k + 1], dx = b.x - a.x, dy = b.y - a.y, u = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      best = Math.min(best, Math.hypot(x - a.x - u * dx, y - a.y - u * dy));
+    }
+    return best;
+  };
+  const owner = new Map<number, CrossingOverride>();
+  for (const o of list) if (o.via || o.ends) {
+    const way = wayOf.get(o.roadId) ?? o.roadId, now = owner.get(way);
+    if (!now || far(o) < far(now)) owner.set(way, o);
+  }
+  return list.map(o => {
+    if (!(o.via || o.ends) || owner.get(wayOf.get(o.roadId) ?? o.roadId) === o) return o;
+    const { via: _v, to: _t, ends: _e, ...rest } = o;
+    return rest;
+  });
 }
 /** Choices edited as withPieces showed them (`before`) back on the ways they are stored on: a choice changed (or taken
  * back) on one piece of a way is that way's. */
@@ -278,7 +320,7 @@ const cache: { key: string; base: RoadNet; net: EditedNetwork }[] = [], CACHE = 
 /** Existing ways another road of the project moves aside (its footprint relocations), as a road built with it sees
  * them (a slip road: its motorway's, project-evaluate.ts): the stretches taken out, and the new pieces on the ground. */
 export interface MovedWays { cuts: { way: number; d0: number; d1: number }[];
-  /** `cut`: the first of `cuts` the change that built it made (it is a piece of the way that cut is made in) */
+  /** `cut`: the one of `cuts` its change made in the way it moves or leads (it is a piece of the way that cut is made in) */
   ways: { cls: string; xy: number[]; cut?: number }[] }
 export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: readonly RouteDesign[], sourceWays: SourceWays | undefined,
   endsOf: (route: RouteDesign) => ResolvedEnds = () => undefined, oldOf?: OldLineOf, moved?: MovedWays): EditedNetwork | null {
@@ -305,7 +347,7 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   const all: Parameters<RoadNet['edited']>[0] = [...cuts, ...trims];
   // what follows each such cut, and the new pieces its change built (after every cut's slot), are pieces of that way
   const remnantSlots = cuts.reduce((n, c) => Math.max(n, c.slot + 1), 0);
-  const pieces: [number, number][] = [...movedCuts.map((c, k): [number, number] => [size + c.slot, parents[k]]),
+  const list: [number, number][] = [...movedCuts.map((c, k): [number, number] => [size + c.slot, parents[k]]),
     ...(moved?.ways ?? []).flatMap((w, j): [number, number][] => w.cut !== undefined && parents[w.cut] !== undefined ? [[size + remnantSlots + j, parents[w.cut]]] : [])];
   const drawn = slots.map(r => owners.length > 0 && owners.every(o => o !== r && draws(design, o, r)));
   if (!all.length && !drawn.some(Boolean) && !moved?.ways.length) return { roads, designed: new Map(), lines: new Map() };
@@ -318,7 +360,7 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   const at = cache.findIndex(c => c.key === key && c.base === roads);
   if (at >= 0) { const [hit] = cache.splice(at, 1); cache.unshift(hit); return hit.net; }
   const lines = slots.map((r, k) => drawn[k] ? planLine(r, ends[k], LINE_STEP, design, oldOf?.(r), true) : []);
-  const net: EditedNetwork = { roads: roads.edited(all, slots.map((r, k) => ({ cls: mapClass(design, r)!, xy: lines[k] })), moved?.ways ?? []), ...(pieces.length ? { pieces } : {}),
+  const net: EditedNetwork = { roads: roads.edited(all, slots.map((r, k) => ({ cls: mapClass(design, r)!, xy: lines[k] })), moved?.ways ?? []), ...(list.length ? { pieces: { from: size + rebuilt, list } } : {}),
     designed: new Map(slots.flatMap((r, k) => drawn[k] ? [[roads.wayCount + k, r.id] as const] : [])),
     lines: new Map(slots.flatMap((r, k) => drawn[k] ? [[r.id, lines[k]] as const] : [])) };
   cache.unshift({ key, base: roads, net }); cache.length = Math.min(cache.length, CACHE);

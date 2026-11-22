@@ -1,6 +1,6 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
 import { noteNetwork, worksClashes, type WorksClash } from './works-clash';
-import { editedNetwork, type MovedWays, type OldLineOf, type ResolvedEnds, type SourceWays } from './project-roadnet';
+import { editedNetwork, shapedOnce, type WayPieces, type MovedWays, type OldLineOf, type ResolvedEnds, type SourceWays } from './project-roadnet';
 import { KIND } from './structures';
 import { evaluate, OLD_ROAD_TIE, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
@@ -74,7 +74,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (route.endpoints.a.tangent || route.endpoints.b.tangent) return { status: 'incomplete', reason: 'unimplemented-tangent' };
   // Every road is checked against the network as the player edited it: rebuilt stretches gone, the
   // designed roads it crosses present (project-roadnet.ts). A rebuilt stretch needs the sidecar's link.
-  let roads = ctx.roads, pieces: OldPiece[] | undefined, wayPieces: [number, number][] | undefined;
+  let roads = ctx.roads, pieces: OldPiece[] | undefined, wayPieces: WayPieces | undefined;
   if (route.source) {
     // (its old road: one way, or several in a row, core/stretch-chain.ts)
     pieces = ctx.roads ? oldPieces(ctx.roads, route, project.connections, options.sourceWays) : undefined;
@@ -106,6 +106,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   }
   // (a choice on a way is one on each piece of it another road's cut left: EditedNetwork.pieces)
   const design = legacyDesignForRoute(project, routeId, { pieces: wayPieces });
+  if (wayPieces && design.crossingOverrides && roads) design.crossingOverrides = shapedOnce(design.crossingOverrides, wayPieces.list, roads);
   // On its bridge over a higher-ranking road this road is that bridge (the player's own structures win).
   const decks = (options.holds ?? []).flatMap(h => h.bridge ? [{ s0: h.bridge[0], s1: h.bridge[1], kind: KIND.bridge }] : []);
   if (decks.length) design.structureOverrides = [...decks, ...design.structureOverrides ?? []];
