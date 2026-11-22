@@ -127,7 +127,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Mapped road bridges and tunnels (each pack's `structures.json`, `pipeline/build_structures.py`; copy it with the pack,
   and run the script on a pack built without it) are crossings at their own level: one with room over / under our road is
   kept (billed 0), else engineered (cost model 55, PLAN.md "Mapped bridges and tunnels are crossings";
-  `scripts/mapped-structures-audit.ts`). Railway tunnels are still in the railway raster.
+  `scripts/mapped-structures-audit.ts`). The same file carries the railway tunnels (`rail`): where one runs underground
+  its cells leave the railway raster and our road keeps over its vault or under its floor (cost model 67, research/107;
+  re-run the script on a pack whose `structures.json` has no `rail`). Railway bridges are still read at the ground under them.
 - A bridge over what runs along under it (a street, a stream, a railway in its valley) stands on frame piers where no
   wall pier moved aside can (two columns under the deck's edges, a billed crossbeam; cost model 56, PLAN.md "The D11
   motorway mission"); a road drag (a bend added) and a reroute drag preview in a window, not the whole route.

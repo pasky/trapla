@@ -11,6 +11,7 @@ import type { NoiseBandOut, ProjectWorkerIn, ProjectWorkerOut } from './core/pro
 import type { RoadNetData } from './core/roadnet';
 import type { WaterData } from './core/watercourses';
 import type { ProtectedData } from './core/data/protected';
+import type { RailStructureData } from './core/rail-tunnels';
 
 /** The scenario pack and its identities; sent once, before anything else (the height and land-cover grids
  * are transferred, not copied). */
@@ -20,6 +21,8 @@ export interface WorkerInit {
   binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData;
   /** nature protection areas (the pack's protected.json) */
   protectedAreas?: ProtectedData;
+  /** mapped railway tunnels (the pack's structures.json `rail`; `lc` is already without their underground cells) */
+  railTunnels?: RailStructureData;
   projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[];
   /** 'full' passes each full result on `port` to the 'preview' worker (base of its windowed previews). */
   role?: 'full' | 'preview'; port?: MessagePort;

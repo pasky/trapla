@@ -14,7 +14,7 @@ import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
-import { categoryViolation, crossingViolation, mergeNearby, RAIL_ON_LEVEL, oobViolation, profileViolation, railOverViolation, ROAD_CHECKS, ROAD_TOO_LOW, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
+import { categoryViolation, crossingViolation, mergeNearby, RAIL_ON_LEVEL, RAIL_TUNNEL_TOO_NEAR, railTunnelViolation, oobViolation, profileViolation, railOverViolation, ROAD_CHECKS, ROAD_TOO_LOW, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, cutCoverPitHalfWidth, cutCoverPitPerM, tunnelTubeFactor, decisionPrices, dividedRoad, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
@@ -40,7 +40,8 @@ import {
 } from './noise';
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
-import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TRACK_CENTRES_M, TURNOUT_ANGLE_RAD } from './data/railway';
+import { RAIL_TIE_IN_M, RAIL_TUNNEL_OVER, RAIL_TURNOUT_M, TRACK_CENTRES_M, TURNOUT_ANGLE_RAD } from './data/railway';
+import { RAIL_TUNNEL_UNDER } from './rail-tunnels';
 import { pairedCrossSection } from './data/motorway';
 import { sourceReach, type SourceLane } from './noise-field';
 import { crossingWallGaps } from './crossing-walls';
@@ -558,7 +559,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         || m === WORKS_COVER_RAILWAY || m === WORKS_COVER_HOUSE || m === WORKS_COVER_OURS));
     // …and where it paid the clearance penalty over a river, railway or stream instead of clearing it.
     // (a railway Auto may pass under too: rail-over.ts)
-    const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water' || (v.clearance === 'either' && v.title === RAIL_ON_LEVEL)));
+    const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water' || (v.clearance === 'either' && (v.title === RAIL_ON_LEVEL || v.title === RAIL_TUNNEL_TOO_NEAR))));
     // …and where a way could be led to no other crossing and nothing else was buildable there either: it
     // too is cleared (where our cutting is already deep enough for its bridge, that bridge's ramps could
     // not be built: our bridge over it).
@@ -677,6 +678,8 @@ function withPlanSpeeds(ctx: EvalContext, d: Design, r: Result): Result {
   return r;
 }
 
+/** a mapped railway tunnel under our road (rail-tunnels.ts): a MustBridge's `what` */
+const RAIL_TUNNEL_WHAT = 'railway tunnel';
 type MustBridge = { s: number; g: number; need: number; what: string; below?: number;
   /** the player's choice to pass under it (a railway on its new bridge over us): never raised over it */ under?: true;
   /** a mapped railway's crossing (rail-over.ts): whether our road passes under it is decided for all of it at once */ run?: RailRun };
@@ -897,6 +900,20 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
       if (blocks) clearanceS[j] = c.s;
     }
     mustBridge.push({ s: c.s, g, need, what: 'watercourse' });
+  }
+  // A mapped railway tunnel under our line where it runs underground (rail-tunnels.ts: its cells are out of the railway
+  // raster there): our road over its vault or in a tunnel under its floor, the grade search's either-or as a stream's.
+  // (Where the railway raster is still there, near a portal, it is the railway at the ground as ever.)
+  for (const h of terrain.railTunnels?.crossings(traced.n, traced.s, traced.x, traced.y) ?? []) {
+    if (oldAt(h.s) || tieIn(h.s)) continue;
+    if ([-1, 0, 1].some(a => [-1, 0, 1].some(b => terrain.crossing(h.x + a * terrain.cell, h.y + b * terrain.cell) === 2))) continue;
+    const i0 = Math.max(0, Math.min(n - 2, Math.floor(h.s / ds)));
+    for (const j of [i0, Math.min(n - 1, i0 + 1)]) {
+      waterMin[j] = Math.max(Number.isNaN(waterMin[j]) ? -Infinity : waterMin[j], h.level + RAIL_TUNNEL_OVER - ground[j]);
+      waterBelow[j] = Math.min(Number.isNaN(waterBelow[j]) ? Infinity : waterBelow[j], h.level - RAIL_TUNNEL_UNDER - ground[j]);
+      if (blocks) clearanceS[j] = h.s;
+    }
+    mustBridge.push({ s: h.s, g: h.level, need: RAIL_TUNNEL_OVER, what: RAIL_TUNNEL_WHAT, below: RAIL_TUNNEL_UNDER });
   }
   // A protected area that takes no works under our crown (research/75): Auto takes the road over it on a bridge
   // (its supports outside, support-layout.ts) or under it in a mined tunnel (its dug ends outside), as the
@@ -1231,7 +1248,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
   // changes length elsewhere), with the built-up share taken at the centreline only.
   const balanceSamples = new Map<string, BalanceSamples>();
   const roadS = roadX.map((c) => c.s);
-  const riversAndRails = mustBridge.filter(c => c.what !== 'watercourse').map(c => c.s);
+  const riversAndRails = mustBridge.filter(c => c.what !== 'watercourse' && c.what !== RAIL_TUNNEL_WHAT).map(c => c.s);
   const samplesFor = (r0: number, r1: number): BalanceSamples => {
     const key = `${r0}|${r1}`;
     let smp = balanceSamples.get(key);
@@ -1604,7 +1621,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         short = Math.max(short, deficit);
         const raise = (target: Float64Array, j: number) => { target[j] = Math.max(Number.isNaN(target[j]) ? -Infinity : target[j], c.g + c.need - ground[j] + deficit + 0.5); };
         if (slots) { for (const j of slots) raise(either ? waterAbove : minH, j); return; }
-        const target = c.what === 'watercourse' || either ? waterAbove : minH;
+        const target = c.what === 'watercourse' || c.what === RAIL_TUNNEL_WHAT || either ? waterAbove : minH;
         const i0 = Math.min(n - 2, Math.floor(c.s / ds));
         if (blocks) clearanceS[i0] = clearanceS[i0 + 1] = c.s;
         for (const i of [i0, i0 + 1]) target[i] = Math.max(Number.isNaN(target[i]) ? -Infinity : target[i], c.g + c.need - ground[i] + deficit + 0.5);
@@ -3008,6 +3025,10 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
         return;
       }
       if (under) return;
+      if (c.what === RAIL_TUNNEL_WHAT) {
+        if (above < c.need - 1e-6 && above > -c.below! + 1e-6 && c.s - (last.get(c.what) ?? -Infinity) >= 50) { last.set(c.what, c.s); violations.push(railTunnelViolation(c.s, above, c.need, c.below!)); }
+        return;
+      }
       if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6) return;
       if (!c.run && c.below !== undefined && above <= -c.below + 1e-6) return;
       if (c.s - (last.get(c.what) ?? -Infinity) < 50) return;
@@ -3129,9 +3150,9 @@ function pinWays(f: PinFix, crossings: readonly MustBridge[], prof: Profile, pin
   const others = pins.filter((_, k) => k !== f.index);
   const reaches = (z: number) => !strict([...others, { s: f.pin.s, z }]).pinViolations?.some(v => v.pin.index === others.length);
   const ways: NonNullable<PinFix['ways']> = [];
-  const targets = [{ dir: 1, at: c.g + c.need, label: stream ? 'a culvert under us' : 'our bridge over it' },
+  const targets = [{ dir: 1, at: c.g + c.need, label: stream ? 'a culvert under us' : c.what === RAIL_TUNNEL_WHAT ? 'over its tunnel' : 'our bridge over it' },
     { dir: -1, at: c.below !== undefined ? c.g - c.below : stream ? c.g - STRUCTURE_RULES.portalDepth : NaN,
-      label: stream ? 'a tunnel under the stream' : c.what === 'railway' ? 'the railway on a bridge over us' : `its bridge over us` }];
+      label: stream ? 'a tunnel under the stream' : c.what === 'railway' ? 'the railway on a bridge over us' : c.what === RAIL_TUNNEL_WHAT ? 'our tunnel under it' : `its bridge over us` }];
   for (const { dir, at, label } of targets) {
     if (Number.isNaN(at)) continue;
     let z: number | null = f.z !== null && Math.sign(f.z - f.pin.z) === dir ? f.z : null;

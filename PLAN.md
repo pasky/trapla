@@ -1329,15 +1329,28 @@ our road crossed nothing there. Across the packs 1,700 such ways (bridges over s
   (`RoadNet.joinsAt`: no junction with a road under a span); their hits are never merged with roads on the ground. A
   choice on one is saved with its OSM id (`target.structure`); an older save's raw remnant id keeps its meaning. The
   sidecar is used only with the transport graph it was built from.
+- **Railway tunnels** (cost model 67, research/107). The overlays' railway raster draws every mapped railway, its
+  tunnels too, so a road over one met the railway at the ground (the D3 starter at km 4.43 over the 130 m Jílovský tunel
+  II, 35 m under the ground). `structures.json` now also carries the railway tunnels (`rail`, portal to portal: tunnel ways
+  meeting end to end joined), so only the sidecar is regenerated, not the pack. Their rails run straight between the
+  ground at the portals (the lowest within 15 m beyond each end: the cutting's floor). Where the ground is 8.6 m or more
+  over them (the SŽDC double-track tunnel's vault 7.6 m over the rails, its lining and our pavement) the tunnel is
+  underground: its cells leave the raster as the pack loads (`rail-tunnels.ts`, the class the commonest around; the
+  workers are handed the cleared cells), so no railway crossing, forced bridge or buried railway there, and our road
+  keeps 8.6 m over the rails or 10.35 m under them (the grade search's either-or, as a stream's; "Too near the railway
+  tunnel" where a player's grade does neither, its fix the height either way). Nearer the portals it is the railway at
+  the ground as before. Starters and frozen bills unchanged (the D3 and D3 0302 starters cross it on their viaducts);
+  the whole D3 along its official line −1.9 M. Shots 790–791 (`scripts/rail-tunnel-shots.mjs`).
 - **Bills.** D11 frozen: see COST_MODEL_VERSION 55 in prices.ts. Starters against model 54 (M CZK): D11 8,798.2 →
   8,771.0; Nová Paka 1,237.6 → 1,274.8; D3 full 36,290.4 → 36,279.9; D3 0305 9,467.1 → 9,458.1; the rest unchanged;
   validity unchanged.
 - **Open:**
   - The grade search does not aim for a mapped bridge's clearance (keeping it is not in its objective): Nová Paka's two
     bridges are rebuilt where lowering the line 3 m might have been cheaper.
-  - Mapped railway tunnels are still drawn into the railway raster (build_pack.py: every `railway=rail`), so our road
-    over one is treated as crossing the railway at the ground (the D3 official line meets the 130 m tunnel OSM 30231638);
-    fixing it needs the packs rebuilt.
+  - A railway bridge is still read at the ground under it (the raster draws it there, as it drew tunnels): our road
+    crossing a railway viaduct is our bridge over the railway at the valley floor or the railway carried over our cutting,
+    never our road under the viaduct it already has (research/107: 34 such bridges ≥ 6 m high across D11, whole D3, D35,
+    I/35). A kept railway bridge is the follow-up.
   - A road moved aside ignores a mapped bridge's level (passes under or over it, unchecked).
 
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)

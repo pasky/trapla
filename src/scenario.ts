@@ -132,6 +132,7 @@ async function structuresSidecar(base: string): Promise<StructureData | null> {
   const data = await optional<StructureData>(`${base}/structures.json`);
   if (data === ABSENT) return null;
   if (data?.version !== 1 || !Array.isArray(data.ways) || !Array.isArray(data.kind) || data.kind.length !== data.ways.length) throw new Error('Unsupported mapped bridges file');
+  if (data.rail !== undefined && (!Array.isArray(data.rail?.ways) || !Array.isArray(data.rail.kind) || data.rail.kind.length !== data.rail.ways.length)) throw new Error('Unsupported mapped bridges file');
   return data;
 }
 
@@ -218,12 +219,14 @@ export async function loadPack(base: string): Promise<Pack> {
   })().catch((error) => { console.warn('Water names unavailable', error); return new Map<number, string>(); });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
-  const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
-    ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
-    watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined, protectedAreas: protectedAreas ?? undefined });
   // (built from this pack's transport graph: one left from an older build is not used)
   const ownStructures = structures && structures.transport === transportMeta?.fingerprint ? structures : null;
   if (structures && !ownStructures) console.warn('Mapped bridges file is from another build of this map: run pipeline/build_structures.py');
+  // (its railway tunnels take their underground cells out of `lc`, which the evaluation workers are handed)
+  const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
+    ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
+    watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined, protectedAreas: protectedAreas ?? undefined,
+    railTunnels: ownStructures?.rail });
   const roadNet = overlays.net ? withStructures(overlays.net, ownStructures) : undefined;
   return { base, meta, terrain, q, lc, overlays, roadNet, vectors, heritage, transportMeta, prefetchTransport, loadTransport, loadTraffic, loadBasins, loadWaterNames };
 }

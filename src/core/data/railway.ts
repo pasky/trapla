@@ -145,3 +145,19 @@ export const RAIL_OVER = {
    * at least this): a railway running nearly along our road is bridged by us, or it is no crossing. */
   minSine: 0.5,
 } as const;
+
+/** A mapped railway tunnel under our road (structures.json `rail`, rail-tunnels.ts; research/107). Heights from the top
+ * of rail: the Czech double-track tunnel's sample cross-section (SŽDC vzorový list světlého tunelového průřezu, Tunel
+ * 2/2005 p. 46): the inner face of the lining's vault 7.60 m above the rails, the tunnel's floor 0.85 m below them. A
+ * single-track tunnel is lower; the raster does not tell them apart, so every tunnel is taken at this size. */
+export const RAIL_TUNNEL = {
+  crown: 7.6,
+  invert: 0.85,
+  /** PROVISIONAL (no source taken): the lining's thickness, primary and final together, m */
+  lining: 0.5,
+  /** PROVISIONAL (no source taken): our road's pavement and formation over the vault, m */
+  buildUp: 0.5,
+} as const;
+/** Our grade at least this far above a railway tunnel's rails: its vault, its lining and our pavement, m. Where the
+ * ground is this far above them the tunnel is underground: no railway at the ground for our works. */
+export const RAIL_TUNNEL_OVER = RAIL_TUNNEL.crown + RAIL_TUNNEL.lining + RAIL_TUNNEL.buildUp;

@@ -322,8 +322,15 @@
  * ring to its outer edge, a T up to the waiting driver's eye; whole cells, drawn, billed and heard alike: tie-in.ts
  * junctionWallClear). Every frozen bill and starter unchanged (none ends at a T or a roundabout); the I/35 Nudvojovická
  * diamond −0.30 M (its north-west exit's wall begins at its ring's edge, 24.7 m from its end, not at the end), the D3
- * 0303 / 0304 and I/35 Turnov diamonds unchanged. PLAN.md "Slip roads: lane markings, roundabouts, sight fields". */
-export const COST_MODEL_VERSION = 66;
+ * 0303 / 0304 and I/35 Turnov diamonds unchanged. PLAN.md "Slip roads: lane markings, roundabouts, sight fields".
+ * Model 67 (PLAN.md "Mapped bridges and tunnels are crossings"): a mapped railway tunnel (structures.json `rail`,
+ * pipeline/build_structures.py) is no railway at the ground where it runs underground (the ground ≥ 8.6 m over its
+ * rails: rail-tunnels.ts takes its cells out of the railway raster, their class the commonest around); our road there
+ * keeps 8.6 m over its rails or 10.35 m under them (the grade search's either-or, a problem where a player's grade does
+ * neither; research/107). Every frozen bill and starter unchanged (the D3 starter's railway crossing at km 4.43 on its
+ * viaduct, over the Jílovský tunel II 35 m under the ground, is gone, and the D3 0302 starter's at km 2.67; the bills
+ * the same); the whole D3 along its official line −1.9 M (its crossing of that tunnel at km 11.32). */
+export const COST_MODEL_VERSION = 67;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

@@ -706,6 +706,22 @@ export function crossingViolation(s: number, what: string, above: number, need: 
   };
 }
 
+/** A mapped railway tunnel our road comes too near (rail-tunnels.ts): its title. */
+export const RAIL_TUNNEL_TOO_NEAR = 'Too near the railway tunnel';
+/** Our road over a railway's tunnel without room for its vault, or not deep enough under it (rail-tunnels.ts). */
+export function railTunnelViolation(s: number, above: number, over: number, under: number): Violation {
+  const raise = Math.ceil((over - above) * 10 - 1e-6) / 10, lower = Math.ceil((above + under) * 10 - 1e-6) / 10;
+  const r = `Raise the road here by ${fmt(raise, 1)} m`, l = `lower it by ${fmt(lower, 1)} m to pass under it in a tunnel`;
+  return {
+    kind: 'crossing', s0: s, s1: s, clearance: 'either',
+    title: RAIL_TUNNEL_TOO_NEAR,
+    fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
+    detail: `A railway runs in a tunnel under the ground here. The road must stay at least ${fmt(over, 1)} m above its rails, over the tunnel's vault, or ${fmt(under, 1)} m below them; it is ${fmt(Math.abs(above), 1)} m ${above >= 0 ? 'above' : 'below'} them.`,
+    basis: 'norm', rule: `SŽDC sample tunnel cross-section (Tunel 2/2005): the vault 7.6 m above the rails, the floor 0.85 m below them. The lining and our road's build-up over it are game estimates`,
+    size: Math.min(raise, lower),
+  };
+}
+
 /** A railway our road crosses neither over nor under (crossingViolation with a way under it): its title. */
 export const RAIL_ON_LEVEL = 'The railway cannot be crossed on the level';
 /** The player chose the railway carried over our road on a new bridge (rail-over.ts), and our road is not low enough

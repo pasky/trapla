@@ -1,0 +1,53 @@
+// A mapped railway tunnel under our road (structures.json `rail`, src/core/rail-tunnels.ts): underground it is no
+// railway at the ground; our road keeps over its vault or under its floor.
+import { describe, expect, it } from 'vitest';
+import { evaluate, type Design } from '../src/core/evaluate';
+import { D11_SCENARIO } from '../src/core/data/scenario';
+import { RAIL_TUNNEL_TOO_NEAR } from '../src/core/checks';
+import { LC, RAIL_CROSSING_BIT, Terrain } from '../src/core/terrain';
+
+// a hill 40 m high (round, 250 m across its foot) at (1000, 300); a railway north–south through it at x 1000, in a
+// tunnel from y 60 to 540 (its rails at the ground beyond: 100 m); our road east–west over the hill at y 300
+const nx = 400, ny = 120;
+function terrain(tunnels: boolean) {
+  const q = new Uint16Array(nx * ny), lc = new Uint8Array(nx * ny);
+  for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+    const x = (c + 0.5) * 5, y = ny * 5 - (r + 0.5) * 5;
+    q[r * nx + c] = Math.round((100 + 40 * Math.max(0, 1 - Math.hypot(x - 1000, y - 300) / 250)) * 100);
+    if (c === 199 || c === 200) lc[r * nx + c] = LC.rail | RAIL_CROSSING_BIT;
+  }
+  return new Terrain({ nx, ny, cell: 5, base: 0, scale: 0.01, q, lc,
+    ...(tunnels ? { railTunnels: { ways: [[1000, 60, 1000, 540]], kind: ['tunnel'] } } : {}) });
+}
+const ctx = (t: Terrain) => ({ terrain: t, scenario: D11_SCENARIO, a: { x: 250, y: 300 }, b: { x: 1750, y: 300 } });
+
+describe('a railway tunnel under our road', () => {
+  it('leaves the railway raster where it runs underground, not near its portals', () => {
+    const t = terrain(true);
+    expect(t.crossing(1000, 300)).toBe(0);
+    expect(t.landcover(1000, 300)).toBe(LC.none);
+    // (the ground 8.6 m over the rails 207 m from the hill's top: nearer the portals still the railway)
+    expect(t.crossing(1000, 300 - 240)).toBe(2);
+    expect(t.crossing(1000, 300 - 150)).toBe(0);
+    expect(t.crossing(1000, 20)).toBe(2);
+    // (idempotent: the workers are handed the cleared cells and clear them again)
+    const again = new Terrain({ nx, ny, cell: 5, base: 0, scale: 0.01, q: new Uint16Array(nx * ny), lc: t.lc.slice(), railTunnels: t.railTunnels!.data });
+    expect(Array.from(again.lc)).toEqual(Array.from(t.lc));
+  });
+  it('a road over it is no railway crossing; one cut into its vault is a problem', () => {
+    const auto: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'auto', vpis: [] };
+    const old = evaluate(ctx(terrain(false)), auto);
+    expect(old.railCrossings?.length).toBe(1);
+    const r = evaluate(ctx(terrain(true)), auto);
+    expect(r.railCrossings ?? []).toEqual([]);
+    expect(r.violations.filter(v => v.title === RAIL_TUNNEL_TOO_NEAR)).toEqual([]);
+    expect(r.cost.total).toBeLessThan(old.cost.total);
+    // a grade held 4 m over the rails at the hill's top: in the vault
+    const low: Design = { ...auto, profileMode: 'manual', vpis: [{ s: 0, z: 100, r: null }, { s: 750, z: 104, r: null }, { s: 1500, z: 100, r: null }] };
+    const v = evaluate(ctx(terrain(true)), low).violations.filter(x => x.title === RAIL_TUNNEL_TOO_NEAR);
+    expect(v).toHaveLength(1);
+    expect(v[0].s0).toBeCloseTo(750, 0);
+    // (the crest's curve a little under the 104 m held)
+    expect(v[0].fix).toMatch(/^Raise the road here by 4\.\d m \(or lower it by 14\.\d m to pass under it in a tunnel\)$/);
+  });
+});

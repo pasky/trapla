@@ -1,5 +1,6 @@
 // Existing road network (OSM) as a segment grid, and the crossings of a route with it.
 
+import type { RailStructureData } from './rail-tunnels';
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { Segment2 } from './footprint-geometry';
 
@@ -12,7 +13,8 @@ export interface RoadJunction { x: number; y: number; connections: RoadConnectio
  * out of `ways`; they become ways `ways.length …` (after the net's own, so a saved choice keeps its way). */
 export interface RoadNetData { cls: string[]; ways: number[][]; structures?: StructureData }
 /** A pack's `structures.json`: ways in the net's format (class index into its own `cls`), what each is. */
-export interface StructureData { version: 1; cls: string[]; ways: number[][]; kind: StructureKind[]; osm?: string[]; /** the transport graph's fingerprint it was built from */ transport?: string }
+export interface StructureData { version: 1; cls: string[]; ways: number[][]; kind: StructureKind[]; osm?: string[]; /** the transport graph's fingerprint it was built from */ transport?: string;
+  /** the mapped railway tunnels (terrain.ts, rail-tunnels.ts) */ rail?: RailStructureData }
 export type StructureKind = 'bridge' | 'tunnel' | 'covered';
 /** A mapped bridge or tunnel way: what it is, and its polyline as mapped (x0, y0, x1, y1, …). */
 export interface MappedStructure { kind: StructureKind; xy: readonly number[]; /** its OSM way id (a saved choice's binding) */ osm?: string }

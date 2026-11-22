@@ -12,6 +12,11 @@ metres like the net, so they meet the ways either side at the same points). The 
 ways (src/core/roadnet.ts) and works out each one's level from the ground at its ends (src/core/mapped-
 structures.ts). It is additive like protected.json: overlays.json and its object-data identity are not touched;
 a complete (requireComplete) pack's manifest and ready marker are rewritten last.
+
+It also carries the mapped railway tunnels (`rail`: polylines in local metres, 1 m simplified, with their OSM ids;
+consecutive tunnel ways joined at a shared end node into one tunnel, portal to portal). The overlays' railway raster
+draws every `railway=rail`, tunnels too; the game takes a tunnel's cells out of it where the tunnel runs deep
+(src/core/rail-tunnels.ts), so a road over one is not a railway crossing at the ground.
 """
 from __future__ import annotations
 
@@ -80,7 +85,51 @@ def structures(out: Path, meta: dict) -> dict:
         kinds.append(kind)
         osm.append(s["osmWayId"])
     fingerprint = json.loads((out / "transport-meta.json").read_text())["fingerprint"]
-    return {"version": 1, "transport": fingerprint, "cls": NET_CLASSES, "ways": ways, "kind": kinds, "osm": osm}
+    return {"version": 1, "transport": fingerprint, "cls": NET_CLASSES, "ways": ways, "kind": kinds, "osm": osm,
+            "rail": rail_tunnels(graph, w, h)}
+
+
+def rail_tunnels(graph: dict, w: float, h: float) -> dict:
+    """The railway tunnels, portal to portal: tunnel ways meeting end to end at a node no other tunnel way ends at are
+    one tunnel (OSM splits some), so each polyline's ends are its portals."""
+    parts = [s for s in graph["sources"] if s["kind"] == "railway" and s.get("tunnel") and s["tags"].get("railway") == "rail"]
+    ends: dict[str, list[int]] = {}
+    for k, s in enumerate(parts):
+        for node in (s["nodes"][0], s["nodes"][-1]):
+            ends.setdefault(node, []).append(k)
+    used = [False] * len(parts)
+
+    def points(s: dict, forward: bool) -> list[tuple[float, float]]:
+        xy = s["xy"]
+        p = [(xy[i], xy[i + 1]) for i in range(0, len(xy), 2)]
+        return p if forward else p[::-1]
+
+    ways, osm = [], []
+    for k, s in enumerate(parts):
+        if used[k]:
+            continue
+        used[k] = True
+        chain, ids = points(s, True), [s["osmWayId"]]
+        for at_start in (False, True):
+            node = s["nodes"][0] if at_start else s["nodes"][-1]
+            while True:
+                nxt = [j for j in ends.get(node, []) if not used[j]]
+                if len(ends.get(node, [])) != 2 or len(nxt) != 1:
+                    break
+                j = nxt[0]
+                used[j] = True
+                t = parts[j]
+                forward = t["nodes"][0] == node
+                more = points(t, forward)  # from `node` outwards
+                chain = list(reversed(more[1:])) + chain if at_start else chain + more[1:]
+                ids.append(t["osmWayId"])
+                node = t["nodes"][-1] if forward else t["nodes"][0]
+        xs, ys = [p[0] for p in chain], [p[1] for p in chain]
+        if len(chain) < 2 or max(xs) < 0 or min(xs) > w or max(ys) < 0 or min(ys) > h:
+            continue
+        ways.append([int(round(v)) for p in simplify(chain) for v in p])
+        osm.append(ids)
+    return {"ways": ways, "kind": ["tunnel"] * len(ways), "osm": osm}
 
 
 def publish(sid: str) -> None:
@@ -100,7 +149,8 @@ def publish(sid: str) -> None:
         if complete:
             generation.publish(out, scenario, manifest["inputs"])
     count = {k: data["kind"].count(k) for k in sorted(set(data["kind"]))}
-    print(f"{sid}: {len(data['ways'])} mapped road structures {count} -> {out / FILE}, {(out / FILE).stat().st_size / 1e3:.0f} kB")
+    print(f"{sid}: {len(data['ways'])} mapped road structures {count}, {len(data['rail']['ways'])} railway tunnels"
+          f" -> {out / FILE}, {(out / FILE).stat().st_size / 1e3:.0f} kB")
 
 
 def main() -> None:
