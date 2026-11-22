@@ -47,6 +47,8 @@ export interface RingArm { x: number; y: number; path?: { x: number; y: number }
   way?: number }
 /** A roundabout's ring as drawn: its centre, outer radius and its arms. */
 export interface RingMark { x: number; y: number; r: number; arms: RingArm[] }
+/** cos 35°: an arm's line goes on along the next way within 35° of it (a literal: core keeps off engine-dependent Math.cos) */
+const COS_35 = 0.8191520442889918;
 /** how far out an arm's line is followed, m */
 const ARM_REACH = ROUNDABOUT_RING.outerDiameter / 2 + SPLITTER_ISLAND.length + 10;
 /** The ring of a roundabout at our road `r`'s end `end` on the joined road (`roads`, its ways meeting there) or on a
@@ -79,7 +81,7 @@ export function ringMark(r: Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 's'>, e
         if (left <= 0.5) break;
         const e = piece[piece.length - 1], q = piece[piece.length - 2], L = Math.hypot(e.x - q.x, e.y - q.y) || 1;
         const next = roads.connections(e, JOIN_TOLERANCE).filter(n => n.way !== way)
-          .map(n => ({ n, cos: (n.dx * (e.x - q.x) + n.dy * (e.y - q.y)) / L })).filter(n => n.cos > Math.cos(35 * Math.PI / 180))
+          .map(n => ({ n, cos: (n.dx * (e.x - q.x) + n.dy * (e.y - q.y)) / L })).filter(n => n.cos > COS_35)
           .sort((p, q) => q.cos - p.cos)[0]?.n;
         if (!next) break;
         way = next.way; d0 = roads.wayStation(way, e.x, e.y); dir = next.d > d0 ? 1 : -1;
