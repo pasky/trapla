@@ -33,4 +33,8 @@ export function loadTwistState(scenarioId: string, presetId: string, offer: read
 export function saveTwistState(scenarioId: string, presetId: string, s: TwistState) {
   try { localStorage.setItem(key(scenarioId, presetId), JSON.stringify(s)); } catch { /* private mode: twists for this visit only */ }
 }
-
+/** An older save's From scratch mark (`TwistState.scratch`), without the mission's twist setup (before the project opens). */
+export function oldScratchMark(scenarioId: string, presetId: string): boolean {
+  try { return (JSON.parse(localStorage.getItem(key(scenarioId, presetId)) ?? 'null') as Partial<TwistState> | null)?.scratch === true; }
+  catch { return false; }
+}

@@ -2566,8 +2566,8 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   roundabouts (the sight lines along it are short). The south-west entry: Nudvojovická runs nearly towards its gore, so
   Build leaves it square and turns towards the gore 92 m out, through the village's southern streets; its bend dragged to
   the village's edge (before, Build's line ran along Nudvojovická and crossed it); the north-east exit's square bend,
-  too close to its end, removed on its card. 5.9445 bn valid (+315 M); the north-east exit crosses the local road on our
-  road's new link of it (an overbridge), not its old line. On the old engine: "two roads change the same old road".
+  too close to its end, removed on its card. 5.9445 bn valid (+315 M) when built (4.8727 bn, +325 M, under cost model
+  66); the north-east exit crosses the local road on our road's new link of it (an overbridge), not its old line. On the old engine: "two roads change the same old road".
   `tests/fixtures/interchange/i35-nudvojovicka-diamond.json`, `tests/slip-roads.test.ts`.
 - **Not done: the noise barrier along a lane.** The motorway's noise (its walls, their height, the houses bought out) is
   solved in its own evaluation, before its slip roads exist; the lanes come from the slip roads, built against the finished
@@ -2631,7 +2631,8 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     castles, churches, chapels, monuments and viewpoints (`build_landmarks.py`, removed), mostly far from any line.
   - *From scratch*: the design begins on the straight line A–B (a Start over while it is on goes there too; turned on
     mid-game, the card offers to start from the straight line). The mark is the design's own (`ProjectDesign.began`): an
-    Undo of that start or a loaded best has it as the design brought back has it. Its reference is the starter itself: a
+    Undo of that start or a loaded best has it as the design brought back has it (an older save's mark, kept in the
+    twists' state, is put on its design as it loads, until a Start over or a loaded best replaces it). Its reference is the starter itself: a
     line the straight one can be bent into.
   - *By hand*: our road's heights as height pins; Auto still builds every crossing, culvert, wall and the structures along
     the line. A fresh start puts the pins on the ground every 500 m (the ends at their tie-in heights): no Auto heights.
@@ -3328,7 +3329,8 @@ should be plenty of view."
   (`View.drawnSurface`: the road bodies and crossings' ground where the terrain is masked out under them, else the ground,
   the highest within 0.5 m), over both roads. In each two-way arm a kerbed splitter island (TP 135 §1.7.1, §3.2.2: 15 m
   long, 2.6 m wide at the ring from the lanes' 5° deflection; research/29 addendum; `core/tie-in.ts SPLITTER_ISLAND`) along
-  the arm's own line, its mouth widened as much each side; none in a one-way slip road's arm. Display only: the ring's price
+  the arm's own line (on across the ways it continues by, no further than the road goes: none where it ends sooner), its
+  mouth widened as much each side; none in a one-way arm (a slip road, a mapped one-way street). Display only: the ring's price
   and land are as before. Screenshot 790: the Nudvojovická roundabout on ground falling ≈ 4.7 m across it, laid on it.
 - **Sight fields (cost model 65):** the check was the far sight line alone against the 5 m ground model, with a 0.25 m margin,
   the eye at the station nearest its point: along gently convex roads and their verges it failed at most junctions (a sweep of

@@ -145,9 +145,9 @@ describe('a slip road meets the motorway level and the road square', () => {
     // askew, the road's normal leading back to the motorway: the bend stays at least halfway out to the end
     const askew = squareBend({ x: 450, y: -130 }, { x: 1, y: 2 }, first, g);
     if (askew) expect(-askew.y).toBeGreaterThanOrEqual((21.5 + 130) / 2 - 1e-9);
-    // a road running straight towards the gore: it leaves it square (away from the motorway), far enough out for the
-    // turn towards the gore at the slip road's tightest radius
-    const along = { x: -300, y: 108.5 }, towards = squareBend({ x: 450, y: -130 }, along, first, g)!;
+    // a road running nearly towards the gore, the leaving bend just off it away from the motorway: it leaves it square
+    // on that side, far enough out for the turn towards the gore at the slip road's tightest radius
+    const along = { x: -300, y: 115 }, towards = squareBend({ x: 450, y: -130 }, along, first, g)!;
     const leg = { x: towards.x - 450, y: towards.y + 130 }, d = Math.hypot(leg.x, leg.y), q = { x: first.x - towards.x, y: first.y - towards.y };
     expect((leg.x * along.x + leg.y * along.y) / d / Math.hypot(along.x, along.y)).toBeCloseTo(0, 9);
     expect(towards.y).toBeLessThan(-130);

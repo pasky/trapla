@@ -42,7 +42,9 @@ export const SPLITTER_ISLAND = {
 } as const;
 /** An arm of a roundabout: the unit vector it leaves the centre along; `path`: its line from the centre out (at least past
  * the splitter island), `half`: its carriageway's half width, `island`: a two-way public road's arm (a splitter island) */
-export interface RingArm { x: number; y: number; path?: { x: number; y: number }[]; half?: number; island?: boolean }
+export interface RingArm { x: number; y: number; path?: { x: number; y: number }[]; half?: number; island?: boolean;
+  /** a mapped road's arm: its legacy way at the ring (the main thread knows its tags: a one-way street has no island) */
+  way?: number }
 /** A roundabout's ring as drawn: its centre, outer radius and its arms. */
 export interface RingMark { x: number; y: number; r: number; arms: RingArm[] }
 /** how far out an arm's line is followed, m */
@@ -62,17 +64,35 @@ export function ringMark(r: Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 's'>, e
   const ours: RingArm = { ...(end === 'a' ? { x: r.tx[0], y: r.ty[0] } : { x: -r.tx[i], y: -r.ty[i] }), path: walk(r, i, end === 'a' ? 1 : -1), half: own.half, island: !own.oneWay };
   let others: RingArm[];
   if ('roads' in joined) {
-    others = joined.roads.connections({ x, y }, JOIN_TOLERANCE).map(c => {
-      const d0 = joined.roads.wayStation(c.way, x, y), out = c.d > d0;
-      const path = joined.roads.wayPath(c.way, out ? d0 : d0 - ARM_REACH, out ? d0 + ARM_REACH : d0).map(p => ({ x: p.x, y: p.y }));
-      if (!out) path.reverse();
-      if (path.length) path[0] = { x, y };
-      return { x: c.dx, y: c.dy, path, half: (ROAD_CLASSES[c.cls]?.width ?? 6.5) / 2, island: ROUNDABOUT_HOSTS.includes(c.cls) };
-    });
+    const roads = joined.roads;
+    // (a mapped road's line from the centre out: on along the way it leaves by, then on the way that goes on straightest
+    // where that one ends, within 35°; no further than the road goes)
+    const follow = (c: { way: number; d: number }, from: { x: number; y: number }) => {
+      const out = [{ x, y }];
+      let way = c.way, d0 = roads.wayStation(way, from.x, from.y), dir = c.d > d0 ? 1 : -1, left = ARM_REACH;
+      for (let hop = 0; hop < 4 && left > 0.5; hop++) {
+        const piece = roads.wayPath(way, dir > 0 ? d0 : d0 - left, dir > 0 ? d0 + left : d0);
+        if (dir < 0) piece.reverse();
+        if (piece.length < 2) break;
+        for (let m = 1; m < piece.length; m++) out.push({ x: piece[m].x, y: piece[m].y });
+        left -= Math.abs(piece[piece.length - 1].d - piece[0].d);
+        if (left <= 0.5) break;
+        const e = piece[piece.length - 1], q = piece[piece.length - 2], L = Math.hypot(e.x - q.x, e.y - q.y) || 1;
+        const next = roads.connections(e, JOIN_TOLERANCE).filter(n => n.way !== way)
+          .map(n => ({ n, cos: (n.dx * (e.x - q.x) + n.dy * (e.y - q.y)) / L })).filter(n => n.cos > Math.cos(35 * Math.PI / 180))
+          .sort((p, q) => q.cos - p.cos)[0]?.n;
+        if (!next) break;
+        way = next.way; d0 = roads.wayStation(way, e.x, e.y); dir = next.d > d0 ? 1 : -1;
+      }
+      return out;
+    };
+    others = roads.connections({ x, y }, JOIN_TOLERANCE).map(c => ({ x: c.dx, y: c.dy, path: follow(c, { x, y }), way: c.way,
+      half: (ROAD_CLASSES[c.cls]?.width ?? 6.5) / 2, island: ROUNDABOUT_HOSTS.includes(c.cls) }));
   } else {
+    // (a designed road joined at its end: no arm beyond it)
     const h = joined.host, k = joined.k;
     others = [{ x: h.tx[k], y: h.ty[k], path: walk(h, k, 1), half: joined.half, island: true },
-      { x: -h.tx[k], y: -h.ty[k], path: walk(h, k, -1), half: joined.half, island: true }];
+      { x: -h.tx[k], y: -h.ty[k], path: walk(h, k, -1), half: joined.half, island: true }].filter(a => a.path.length >= 2);
   }
   return { x, y, r: ROUNDABOUT_RING.outerDiameter / 2, arms: [ours, ...others] };
 }

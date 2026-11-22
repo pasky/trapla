@@ -507,8 +507,8 @@ export function squareBend(t: { x: number; y: number }, along: { x: number; y: n
     if (!(d >= 30) || reach - d < 60 || towards && (d < curve(d) + 10 || Math.hypot(fx - nx * d, fy - ny * d) < curve(d) + 60)) return null;
     return { x: t.x + nx * d, y: t.y + ny * d, r: null };
   };
-  // (the leaving bend on the road's line, within ≈ 6°: either side crosses it alike)
-  return on(nx, ny) ?? (off < 0.1 ? on(-nx, -ny) : null);
+  // (only on the leaving bend's side: from the other, the slip road would cross the road it joins)
+  return on(nx, ny);
 }
 
 const nearestStation = nearestOn;

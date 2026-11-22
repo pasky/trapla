@@ -8,6 +8,7 @@ import type { Element, Vec2 } from './horizontal';
 import type { TransportRenderInterval, TransportSurfaceQuery } from './project-transport';
 import type { Terrain } from './terrain';
 import type { BuildingIndex } from './buildings';
+import type { RingMark } from './tie-in';
 
 export const PROJECT_SCHEMA_VERSION = 1 as const;
 /** Independent from schema and price-table versions: changes when project accounting changes. */
@@ -243,8 +244,8 @@ export interface SharedWork extends WorkProposal { accepted: boolean;
   label?: string; at?: { x: number; y: number; s: number };
   /** buildings it takes (a roundabout's ring), bought out with it */
   removes?: number[];
-  /** a roundabout's ring it builds (centre, outer radius, its arms' directions), drawn */
-  ring?: { x: number; y: number; r: number; arms: { x: number; y: number }[] };
+  /** a roundabout's ring it builds (centre, outer radius, its arms: directions, lines, splitter islands), drawn */
+  ring?: RingMark;
   /** ground it digs off (a junction's sight field), squares of `size` m about each cell (`depth` dug there, m), drawn */
   dug?: { cells: { x: number; y: number; depth: number }[]; size: number } }
 export interface SharedWorkLedger { items: SharedWork[] }

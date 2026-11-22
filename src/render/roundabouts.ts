@@ -65,13 +65,14 @@ export function ringTriangles(ring: RingMark, heightAt: (x: number, y: number) =
   return { pos, col };
 }
 
-/** The point at `s` m from the ring's centre along an arm's line (straight on past its path's end) and the line's unit
- * direction there; null where the arm's path does not leave the ring (a designed road's end at the roundabout). */
+/** The point at `s` m from the ring's centre along an arm's line and the line's unit direction there; null where the
+ * arm's road ends before its splitter island would (nothing drawn past where the road goes). */
 function armLine(ring: RingMark, arm: RingArm) {
-  const path = arm.path && arm.path.length >= 2 ? arm.path : [{ x: ring.x, y: ring.y }, { x: ring.x + arm.x * 1e3, y: ring.y + arm.y * 1e3 }];
+  const path = arm.path;
+  if (!path || path.length < 2) return null;
   const cum = [0];
   for (let k = 1; k < path.length; k++) cum.push(cum[k - 1] + Math.hypot(path[k].x - path[k - 1].x, path[k].y - path[k - 1].y));
-  if (!(cum[cum.length - 1] > ring.r)) return null;
+  if (!(cum[cum.length - 1] >= ring.r + SPLITTER_ISLAND.length)) return null;
   return (s: number) => {
     let k = 1;
     while (k < path.length - 1 && cum[k] < s) k++;

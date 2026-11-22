@@ -15,6 +15,8 @@ export interface ProjectLoadOptions {
   legacy?: { key: string; context: LegacyProjectContext;
     /** Explicit certification by bootstrap that this preset retains old mission/evaluation semantics. */
     compatibleSemantics: boolean };
+  /** an older save's From scratch mark (kept in the twists' state before the design had its own): put on the design */
+  began?: 'straight';
 }
 export const projectMissionKey = (design: Pick<ProjectDesign, 'mission'>) => projectValueKey(design.mission);
 export function compatibleProjectBest(best: ProjectBest, options: ProjectLoadOptions): boolean {
@@ -83,6 +85,7 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
       if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Save namespace mismatch');
       let originalProject: string | undefined;
       if (settleTraffic(save.design)) originalProject = raw;
+      if (options.began && !save.design.began) save.design.began = options.began;
       // Whatever the loader drops or rewrites (malformed/stale/newer best, repaired bindings) keeps the
       // exact original envelope in project recovery before the slot is ever written again.
       if (save.best) {

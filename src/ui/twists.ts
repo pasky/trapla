@@ -64,8 +64,8 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   const goal = (1 - GOAL_SHARE) * setup.mission.startBill;
   let last: { result: ProjectResult; checks: TwistCheck[] } | null = null;
   let changing = false;
-  /** this design began on the straight line (its own mark; `state.scratch`: an older save's, until the design is replaced) */
-  const scratch = () => app.design().began === 'straight' || state.scratch;
+  /** this design began on the straight line (its own mark; an older save's was put on it as it loaded, app.ts) */
+  const scratch = () => app.design().began === 'straight';
   const marks = new TwistMarks(app.view, app.overlay, (x, y) => app.pack.terrain.heightAt(x, y));
   marks.onClick = (id) => { app.revealHud(); highlight(id); };
 
@@ -295,7 +295,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     get state() { return state; },
     /** Start over while From scratch is on goes back to the straight line */
     get scratchOn() { return state.on.includes('scratch'); },
-    /** a save from before the mark was the design's: its mark no longer holds once the design is replaced */
+    /** a save from before the mark was the design's (put on it at each load): no longer once the design is replaced */
     retireOldScratch() { if (state.scratch) { state.scratch = false; save(); } },
     syncAutoButton,
   };

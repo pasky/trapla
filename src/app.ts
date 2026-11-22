@@ -69,6 +69,7 @@ import { installProfileBar } from './ui/profile-bar';
 import { installShortcuts } from './ui/shortcuts';
 import { installAutomation } from './automation';
 import { Intro } from './ui/intro';
+import { oldScratchMark } from './ui/twist-state';
 import { createTwists } from './ui/twists';
 import type { TwistId } from './core/twists';
 import type { ProjectDesign, ProjectResult } from './core/project';
@@ -124,7 +125,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   /** a From scratch start under way (before the twists are made, too) */
   let wantStraight = false;
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, initial: initialProject, mission,
+    objectData, transportData, pricingData, initial: initialProject, mission, ...(oldScratchMark(scenario.id, presetId) ? { began: 'straight' as const } : {}),
     // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
     ...(scenario.mode === 'motorway' || scenario.mode === 'railway' ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });

@@ -291,7 +291,10 @@ export function createResultDisplay(app: ResultDisplayContext) {
         ? { points: q.points, dashed: false, width: 0, paving: q.points.map(p => p.halfWidth) }
         : { points: q.points, dashed: k === 0, width: k === 0 ? SLIP_ROAD.marking.width : 2 * (q.points[0]?.halfWidth ?? SLIP_ROAD.marking.width / 2) })));
       // roundabouts' rings (on what is drawn there), and the ground dug off junctions' sight fields
-      app.view.setJunctionMarks(result.works.items.flatMap(w => w.ring ? [w.ring] : []),
+      // (a mapped one-way street's arm has no splitter island: nothing to separate; the road links know its tags)
+      const oneWay = oneWays(app.links.graph);
+      app.view.setJunctionMarks(result.works.items.flatMap(w => w.ring ? [{ ...w.ring,
+        arms: w.ring.arms.map(a => a.island && a.way !== undefined && oneWay.has(a.way) ? { ...a, island: false } : a) }] : []),
         result.works.items.flatMap(w => w.dug ? [w.dug] : []));
       syncDecorations(result);
       app.session.displayedProject = result; heavy = null;
@@ -345,4 +348,16 @@ export function createResultDisplay(app: ResultDisplayContext) {
     /** the last full result's sliced 3D rebuild (drag-perf probe); who waits for the idle scene (automation) */
     get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
   };
+}
+
+/** The legacy ways of mapped one-way roads (OSM oneway=yes / 1 / -1), once per road links graph. */
+const oneWaysOf = new WeakMap<object, Set<number>>();
+function oneWays(graph: { sources: readonly { legacyNetIndex?: number; tags: { oneway?: string } }[] } | null | undefined): ReadonlySet<number> {
+  if (!graph) return new Set();
+  let set = oneWaysOf.get(graph);
+  if (!set) {
+    set = new Set(graph.sources.flatMap(q => q.legacyNetIndex !== undefined && ['yes', '1', '-1', 'true'].includes(q.tags.oneway ?? '') ? [q.legacyNetIndex] : []));
+    oneWaysOf.set(graph, set);
+  }
+  return set;
 }
