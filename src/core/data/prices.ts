@@ -332,8 +332,16 @@
  * the same); the whole D3 along its official line −1.9 M (its crossing of that tunnel at km 11.32).
  * Model 68 (PLAN.md "Slip roads see our road's crossings"): a slip road's crossing choice on a way our road cuts is the
  * player's on what is left of it beyond the cut and on its new pieces too (it was dropped there: a saved design with such a
- * choice is now evaluated with it). Every frozen bill, starter and fixture unchanged (none has a choice there). */
-export const COST_MODEL_VERSION = 68;
+ * choice is now evaluated with it). Every frozen bill, starter and fixture unchanged (none has a choice there).
+ * Model 69 (PLAN.md "Neighbouring minor roads share one crossing"): reroutes led to one crossing are built the more
+ * important ways first, and a way's new piece joins the new road of one as important or more led there (same side, clear
+ * of our earthworks) where that is nearer than the crossed road: one new road along the strip, not two side by side
+ * (crossing-geometry.ts crossingReroutes, `ledLinks`). Every starter and saved design stays VALID and gets cheaper: I/35
+ * Jičín −8.8 M (the track at km 2.71 joins the class I road's new road: 6.9 → 0.1 M), D3 starter −38.9 M (km 2.08's class
+ * III road joins km 2.05's, the track at km 1.77 too), I/35 Rovensko −7.9 M, whole I/35 −15.1 M, D3 0304 −8.5 M, whole D3
+ * −8.5 M, D3 0305 −2.7 M, Šternberk −2.8 M, its reference −4.7 M, D11 demo −4.4 M, D11 straight −6.0 M (km 4.55's track
+ * joins km 4.10's). */
+export const COST_MODEL_VERSION = 69;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
