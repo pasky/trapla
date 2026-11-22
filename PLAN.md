@@ -2568,8 +2568,9 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   interchange numbers them alike; worked out once per evaluated motorway); each such stretch is a zone where the slip
   road's changes of that road are one design with ours (`ScreenRoute.sharedWays`). What is left of such a way beyond the cut,
   and its new pieces, are ways of their own in the slip road's network; a crossing choice on one of them is the player's on
-  that way: stored on it, applied to each piece of it and shown there (`project-roadnet.ts EditedNetwork.pieces`,
-  `Result.pieceOf`, `withPieces` / `foldPieces`). A slip road's end on a stretch our road
+  that way: stored on it, applied to each piece of it and shown there (cost model 68: a saved choice there was dropped;
+  `project-roadnet.ts EditedNetwork.pieces`, `Result.pieceOf`, `withPieces` / `foldPieces`; a reroute's shape on the one
+  piece nearest it). A slip road's end on a stretch our road
   takes out is a problem ("It joins a stretch of road the four-lane road takes out"). Every frozen bill, starter and saved
   design identical; D3 0303 and 0304 identical; the I/35 Turnov diamond 6.2054996382 bn (+0.00009 CZK: its north-east
   exit's network no longer has the service way our road closes at km 1.18).
