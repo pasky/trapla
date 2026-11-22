@@ -1363,8 +1363,14 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
   const keptEnd = (c: CrossingResult, g: CrossingGeometry, a: CrossingPoint, length = KEPT_END): CrossingPoint[] => {
     const path = getPath(c.roadId, c.x, c.y, g);
     if (path.length < 2 || !g.removed || a.d === undefined) return [a];
-    const out = a.d < (g.removed[0] + g.removed[1]) / 2 ? -1 : 1, d = Math.max(path[0].d, Math.min(path[path.length - 1].d, a.d + out * length));
-    return d === a.d ? [{ ...a }] : [{ ...a }, terrainPoint(along(path, d))];
+    const out = a.d < (g.removed[0] + g.removed[1]) / 2 ? -1 : 1;
+    let d = Math.max(path[0].d, Math.min(path[path.length - 1].d, a.d + out * length));
+    // (the old road as it lies: up to a mapped bridge it runs onto, never a ramp up to its deck)
+    for (let e = a.d + out * 0.5; out * (d - e) > -0.5; e += out * 0.5) {
+      const at = out * (d - e) < 0 ? d : e;
+      if (terrainPoint(along(path, at)).surface === 'deck') { d = e - out * 0.5; break; }
+    }
+    return out * (d - a.d) <= 0 ? [{ ...a }] : [{ ...a }, terrainPoint(along(path, d))];
   };
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
   // and beyond the footprint plus half the incoming road width and a physical setback.

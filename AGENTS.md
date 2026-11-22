@@ -209,8 +209,10 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   road's network).
 - One works-clash screen for every earthwork body (cost model 64, PLAN.md "One screen for every earthwork"):
   `src/core/works-clash.ts` after a full evaluation; leftovers on the player's roads or crossings are problems with a fix,
-  Auto's own are the full gate `scripts/works-clash-audit.ts --edits --gate` (known open: `scripts/works-clash/known.json`,
-  3 keys). Our body is one reading for engine and screen (`src/core/our-body.ts`); a reroute's new piece is screened like
+  Auto's own are the full gate `scripts/works-clash-audit.ts --edits --gate` (`scripts/works-clash/known.json` is
+  empty: any clash of Auto's fails it; a way our footprint takes up is no longer there for it). Our body is one reading for engine and screen (`src/core/our-body.ts`); a reroute's new piece is screened like
   a crossing's stretch; a rebuilt stretch meets a junction at ≤ 6 % and is raised with ties and a cone where its deck needs
-  it (`src/core/junction-raise.ts`). A structure others are led to is weighed against one of them built instead (the pairing the other way round); a link meets a way it crosses at a junction (`crossAt`). Open: three known clashes, a link laid along an existing track (Šternberk km 1.70).
+  it (`src/core/junction-raise.ts`). A structure others are led to is weighed against one of them built instead (the pairing the other way round); a link meets a way it crosses at a junction (`crossAt`). Open: the crossing works read no slope at a deck's end
+  (what the footprint moves aside is not fed back to them); a cut-off piece is led only from its cut end to its crossing's own
+  road, never joined to a nearer track reaching that crossing (Šternberk km 1.70; PLAN.md, ≈ 1 day).
 - See PLAN.md "Next steps" and each section's "Known issues".

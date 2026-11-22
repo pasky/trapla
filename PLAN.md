@@ -3275,10 +3275,23 @@ a junction's mouth, our own body), each blind to what the others build.
   whole all news this round). Evaluate time on the saved D11 designs about the same as main, except direct-90 (≈ +45 %:
   its first solve now finds a reroute through a home, buildable with the link's junction, and the model-33 retry raises
   our line for a box instead; −32 M).
-- **Open**: Auto's own clashes still in `scripts/works-clash/known.json`: D3 0304 overbridge 2212 over track 2214,
-  D3 0305 diversion 879 over track 894, Šternberk diversion 1201 over track 1216 (the engine's 1:1.5 depth there reads
-  0.2 m below the drawn surface's: the link's sections as refined differ from those drawn). A link laid along an
-  existing track (Šternberk km 1.70).
+- **No clash of Auto's left on the starters** (2026-11-22; `scripts/works-clash/known.json` is empty, bills unchanged): a
+  stretch of a way our footprint takes up (moved aside or ended: its `sourceIntervals`, `takenUp`) is no longer there, and
+  the screen does not read it as buried under a crossing's works (D3 0304: track 2214, moved aside, under overbridge 2212's
+  abutment fill); a closed way's kept end runs up to a mapped bridge it meets, not onto its deck (crossing-geometry.ts
+  `keptEnd`: D3 0305 track 879's end was drawn as a 5 m ramp 4.6 m up its bridge, over track 894).
+  Šternberk 1201 over 1216 had gone with models 65–66.
+- **Open**: the crossing works read no slope at a deck's end, where the drawing ends the embankment behind it
+  (crossing-works.ts `besideRoads` takes ramp points only). Reading it there makes D3 0304's overbridge 2212 unbuildable:
+  the works run before our footprint and take track 2214, which the footprint then moves aside, for a road buried, and
+  Auto lowers the line into a tunnel 560 m longer (+2.4 bn). The fix: what the footprint takes up fed back to the crossing
+  works (a second works pass). The screen checks what is drawn meanwhile.
+- **Open**: a cut-off piece is led only from its cut end, and only to its target crossing's own road (or that road's
+  nearest point). Šternberk km 1.70: track 204's east piece comes within 34 m of track 210, which reaches track 209's
+  overbridge; model 63 led it 340 m from its cut end to 209, 3–4 m beside 210 (burying its edge: now screened), so Auto
+  carries 204 over us instead (20.3 M against 5.6 M). A designer joins the piece to 210 where they come nearest and uses
+  210 as it is: a link from any point of a cut-off piece to any way on its side reaching a crossing (the way-pieces.ts
+  graph), billed for the new piece only, the card naming the way it joins (≈ 1 day with the gates).
 
 ## Slip roads: lane markings, roundabouts, sight fields (owner report, cost model 65, 2026-11-21)
 

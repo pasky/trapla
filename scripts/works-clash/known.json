@@ -1,8 +1,4 @@
 {
  "note": "Auto's own clashes on the starters (open; PLAN.md \"One screen for every earthwork\"). Regenerate with --write-known only for a reviewed change.",
- "clashes": {
-  "d3-0304-motorway tertiary:2212 overbridge road:2214": 1,
-  "d3-0305-motorway track:879 diversion road:894": 1,
-  "i46-sternberk-road track:1201 diversion road:1216": 1
- }
+ "clashes": {}
 }

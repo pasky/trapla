@@ -112,6 +112,10 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
       }
     });
   }
+  // (the stretches of ways our footprint takes up, to move them aside or end them: the old road is no longer there)
+  const takenUp = new Map<number, [number, number][]>();
+  for (const f of r.footprintConflicts) if (f.feature === 'road')
+    for (const iv of [...f.sourceIntervals ?? [], ...f.takenUp?.intervals ?? []]) (takenUp.get(iv.way) ?? takenUp.set(iv.way, []).get(iv.way)!).push([iv.a, iv.b]);
   /** where each other way crosses a crossing's links, by way (memo per crossing) */
   const crossedBy = new Map<object, Map<number, { x: number; y: number }[]>>();
   const linkCrossings = (c: Result['crossings'][number]) => {
@@ -212,7 +216,8 @@ export function worksClashes(r: Result, ctx: Pick<EvalContext, 'terrain' | 'buil
           const nodes = [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }].filter(p => paths.some(path => onPath(path, p.x, p.y, 2)));
           nodes.push(...crossed.get(s.way) ?? []);
           for (let k = 0; k <= count; k++) {
-            const px = s.ax + (s.bx - s.ax) * k / count, py = s.ay + (s.by - s.ay) * k / count;
+            const px = s.ax + (s.bx - s.ax) * k / count, py = s.ay + (s.by - s.ay) * k / count, d = s.d + s.length * k / count;
+            if (takenUp.get(s.way)?.some(([lo, hi]) => d >= lo - 0.5 && d <= hi + 0.5)) continue;
             const u = ((px - a.p.x) * tx + (py - a.p.y) * ty) / len;
             // (on the path itself: another way of its line, raised with it)
             if (u < 0 || u > 1 || paths.some(path => onPath(path, px, py, 1))) continue;
