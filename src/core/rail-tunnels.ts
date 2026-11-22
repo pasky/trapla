@@ -7,6 +7,9 @@
 // tunnel is underground: its cells leave the raster (`clearUnderground`, once as the pack loads), and our road meets it
 // only as a level to keep clear of (`crossings`: above it by RAIL_TUNNEL_OVER, or under it by `RAIL_TUNNEL_UNDER`).
 // Nearer its portals it stays the railway at the ground it was.
+// Limits: a surface railway drawn within 1.5 cells of a tunnel's deep stretch (crossing over it) would be cleared with it
+// (none in the packs); our road running along over a tunnel without crossing its line is not held off it; a stream over
+// it within the same station is one band with it for the grade search (over both or under both).
 
 import { RAIL_TUNNEL, RAIL_TUNNEL_OVER } from './data/railway';
 import { TUNNEL_RULES } from './data/prices';
@@ -70,9 +73,10 @@ export class RailTunnels {
   }
 
   /** Take the underground stretches out of the railway raster: every cell drawn as railway (its class or its crossing
-   * bit) within 1.5 cells of a tunnel where the ground is at least RAIL_TUNNEL_OVER above its rails. Such a cell's class
-   * becomes the commonest other class around it (what the railway was drawn over). Idempotent (a second pass finds no
-   * railway cells left there), so the evaluation workers may apply it to the cells they are handed. */
+   * bit) within 1.5 cells of a tunnel where the ground is at least RAIL_TUNNEL_OVER above its rails loses its crossing
+   * bit; one of the railway's class takes the commonest other class around it (what the railway was drawn over), any
+   * other class is kept. Idempotent (a second pass finds no railway cells left there), so the evaluation workers may
+   * apply it to the cells they are handed. */
   clearUnderground(lc: Uint8Array, g: { nx: number; ny: number; cell: number; height: number; heightAt(x: number, y: number): number },
     bits: { classMask: number; rail: number; railBit: number }): number {
     const { nx, ny, cell } = g, reach = 1.5 * cell, isRail = (v: number) => (v & bits.railBit) !== 0 || (v & bits.classMask) === bits.rail;
@@ -91,14 +95,15 @@ export class RailTunnels {
     const out = new Map<number, number>();
     for (const i of cleared) {
       const r = Math.floor(i / nx), c = i % nx, count = new Array<number>(bits.classMask + 1).fill(0);
+      if (out.has(i)) continue; // (near two tunnels)
       for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
         const rr = r + dr, cc = c + dc;
         if (rr < 0 || cc < 0 || rr >= ny || cc >= nx) continue;
         const v = lc[rr * nx + cc];
         if (!isRail(v)) count[v & bits.classMask]++;
       }
-      let cls = 0;
-      for (let k = 1; k < count.length; k++) if (count[k] > count[cls]) cls = k;
+      let cls = lc[i] & bits.classMask;
+      if (cls === bits.rail) { cls = 0; for (let k = 1; k < count.length; k++) if (count[k] > count[cls]) cls = k; }
       out.set(i, (lc[i] & ~bits.classMask & ~bits.railBit) | cls);
     }
     for (const [i, v] of out) lc[i] = v;
@@ -123,7 +128,8 @@ export class RailTunnels {
           const den = qx * ey - qy * ex;
           if (den === 0) continue;
           const u = ((ax - px) * ey - (ay - py) * ex) / den, v = ((ax - px) * qy - (ay - py) * qx) / den;
-          if (u < 0 || u >= 1 || v < 0 || v > 1) continue;
+          // (a point where two of either's segments meet belongs to the later one; our line's end to its last)
+          if (u < 0 || (u >= 1 && i + 2 < n) || u > 1 || v < 0 || (v >= 1 && j + 4 < t.xy.length) || v > 1) continue;
           const at = t.d[j / 2] + v * (t.d[j / 2 + 1] - t.d[j / 2]);
           out.push({ s: s[i] + u * (s[i + 1] - s[i]), x: px + u * qx, y: py + u * qy, level: this.level(t, at) });
         }

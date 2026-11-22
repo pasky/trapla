@@ -2,6 +2,7 @@
 
 Usage (from repo root):
     uv run python pipeline/build_structures.py [scenario-id ...]   # default: every scenario with a built pack
+    uv run python pipeline/build_structures.py --root /path/to/checkout [scenario-id ...]   # another checkout's packs
 
 The crossing network (`overlays.json` `net`, build_pack.py road_network) leaves out every way tagged bridge,
 tunnel or covered, so a road of ours crossing one met a 30–100 m gap in that road: no crossing, nothing built
@@ -29,7 +30,7 @@ from pathlib import Path
 
 import generation
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(sys.argv[sys.argv.index("--root") + 1]).resolve() if "--root" in sys.argv else Path(__file__).resolve().parent.parent
 CACHE = ROOT / "pipeline" / "cache"
 FILE = "structures.json"
 # build_pack.py NET_CLASSES (the order of the net's class list)
@@ -91,7 +92,8 @@ def structures(out: Path, meta: dict) -> dict:
 
 def rail_tunnels(graph: dict, w: float, h: float) -> dict:
     """The railway tunnels, portal to portal: tunnel ways meeting end to end at a node no other tunnel way ends at are
-    one tunnel (OSM splits some), so each polyline's ends are its portals."""
+    one tunnel (OSM splits some), so each polyline's ends are its portals. A tunnel whose end meets two other tunnel ways
+    (an underground junction) or itself (a loop) has no portal there: left out, it stays in the raster as it was."""
     parts = [s for s in graph["sources"] if s["kind"] == "railway" and s.get("tunnel") and s["tags"].get("railway") == "rail"]
     ends: dict[str, list[int]] = {}
     for k, s in enumerate(parts):
@@ -109,7 +111,7 @@ def rail_tunnels(graph: dict, w: float, h: float) -> dict:
         if used[k]:
             continue
         used[k] = True
-        chain, ids = points(s, True), [s["osmWayId"]]
+        chain, ids, portals = points(s, True), [s["osmWayId"]], True
         for at_start in (False, True):
             node = s["nodes"][0] if at_start else s["nodes"][-1]
             while True:
@@ -124,8 +126,9 @@ def rail_tunnels(graph: dict, w: float, h: float) -> dict:
                 chain = list(reversed(more[1:])) + chain if at_start else chain + more[1:]
                 ids.append(t["osmWayId"])
                 node = t["nodes"][-1] if forward else t["nodes"][0]
+            portals = portals and len(ends[node]) == 1
         xs, ys = [p[0] for p in chain], [p[1] for p in chain]
-        if len(chain) < 2 or max(xs) < 0 or min(xs) > w or max(ys) < 0 or min(ys) > h:
+        if not portals or len(chain) < 2 or max(xs) < 0 or min(xs) > w or max(ys) < 0 or min(ys) > h:
             continue
         ways.append([int(round(v)) for p in simplify(chain) for v in p])
         osm.append(ids)
@@ -154,7 +157,8 @@ def publish(sid: str) -> None:
 
 
 def main() -> None:
-    ids = [a for a in sys.argv[1:] if not a.startswith("-")] or sorted(
+    args = [a for i, a in enumerate(sys.argv[1:]) if sys.argv[i] != "--root"]
+    ids = [a for a in args if not a.startswith("-")] or sorted(
         p.stem for p in (ROOT / "pipeline" / "scenarios").glob("*.json")
         if (ROOT / "public" / "scenarios" / p.stem / "meta.json").exists())
     for sid in ids:

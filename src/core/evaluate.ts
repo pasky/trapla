@@ -902,11 +902,14 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
     mustBridge.push({ s: c.s, g, need, what: 'watercourse' });
   }
   // A mapped railway tunnel under our line where it runs underground (rail-tunnels.ts: its cells are out of the railway
-  // raster there): our road over its vault or in a tunnel under its floor, the grade search's either-or as a stream's.
-  // (Where the railway raster is still there, near a portal, it is the railway at the ground as ever.)
+  // raster there): our road over its vault or in a mined tunnel under its floor, the grade search's either-or as a
+  // stream's (`tunnelWater`: a tunnel where the grade is under it). Where the crossing's own cell is still the railway and
+  // the ground there is not that far over the rails (near a portal) it is the railway at the ground as ever.
+  const railTunnelX: { s: number; level: number }[] = [];
   for (const h of terrain.railTunnels?.crossings(traced.n, traced.s, traced.x, traced.y) ?? []) {
     if (oldAt(h.s) || tieIn(h.s)) continue;
-    if ([-1, 0, 1].some(a => [-1, 0, 1].some(b => terrain.crossing(h.x + a * terrain.cell, h.y + b * terrain.cell) === 2))) continue;
+    if (terrain.crossing(h.x, h.y) === 2 && terrain.heightAt(h.x, h.y) - h.level < RAIL_TUNNEL_OVER) continue;
+    railTunnelX.push(h);
     const i0 = Math.max(0, Math.min(n - 2, Math.floor(h.s / ds)));
     for (const j of [i0, Math.min(n - 1, i0 + 1)]) {
       waterMin[j] = Math.max(Number.isNaN(waterMin[j]) ? -Infinity : waterMin[j], h.level + RAIL_TUNNEL_OVER - ground[j]);
@@ -1018,6 +1021,12 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
       if (c.s < ss[0] - step / 2 || c.s > ss[ss.length - 1] + step / 2) continue;
       const i = Math.min(ss.length - 1, Math.round((c.s - ss[0]) / step));
       if (z[i] <= waterGround.get(c)! - STRUCTURE_RULES.portalDepth) mask[i] = 1;
+    }
+    // (under a railway tunnel: never an open cut through it)
+    for (const c of railTunnelX) {
+      if (c.s < ss[0] - step / 2 || c.s > ss[ss.length - 1] + step / 2) continue;
+      const i = Math.min(ss.length - 1, Math.round((c.s - ss[0]) / step));
+      if (z[i] <= c.level - RAIL_TUNNEL_UNDER) mask[i] = 1;
     }
     return mask;
   };
@@ -3026,7 +3035,11 @@ function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
       }
       if (under) return;
       if (c.what === RAIL_TUNNEL_WHAT) {
-        if (above < c.need - 1e-6 && above > -c.below! + 1e-6 && c.s - (last.get(c.what) ?? -Infinity) >= 50) { last.set(c.what, c.s); violations.push(railTunnelViolation(c.s, above, c.need, c.below!)); }
+        // (under it only in a mined tunnel: an open cut or a pit dug from above goes through it)
+        const mined = kind[ic] === KIND.tunnel && !cutCover[ic];
+        if (above < c.need - 1e-6 && (above > -c.below! + 1e-6 || !mined) && c.s - (last.get(c.what) ?? -Infinity) >= 50) {
+          last.set(c.what, c.s); violations.push(railTunnelViolation(c.s, above, c.need, c.below!, above <= -c.below! + 1e-6));
+        }
         return;
       }
       if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6) return;
