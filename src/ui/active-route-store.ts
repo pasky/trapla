@@ -17,7 +17,10 @@ export class ActiveRouteStore {
   /** before an undo / redo (and before loading the best design); what it returns runs after the step */
   onHistory?: () => (() => void) | void;
   private atomic = false;
-  private cached: { project: ProjectDesign; id: RouteId; one: boolean; design: Design | null } | null = null;
+  /** ways of a road's network that are pieces of another, from its last full result (Result.pieceOf): a choice on a
+   * piece is shown and stored as its way's (legacyDesignForRoute) */
+  pieces?: (id: RouteId) => [number, number][] | undefined;
+  private cached: { project: ProjectDesign; id: RouteId; one: boolean; pieces: [number, number][] | undefined; design: Design | null } | null = null;
   constructor(readonly project: ProjectStoreApi, private initialProject: () => ProjectDesign) {
     this.activeRouteId = project.snapshot.design.routes[0]?.id ?? null;
   }
@@ -25,11 +28,11 @@ export class ActiveRouteStore {
   read(): Design | null {
     const project = this.project.snapshot.design, id = this.activeRouteId;
     if (!id) return null;
-    const one = this.directionEdit(id);
-    if (this.cached?.project === project && this.cached.id === id && this.cached.one === one) return this.cached.design;
+    const one = this.directionEdit(id), pieces = this.pieces?.(id);
+    if (this.cached?.project === project && this.cached.id === id && this.cached.one === one && this.cached.pieces === pieces) return this.cached.design;
     let design: Design | null = null;
-    try { design = legacyDesignForRoute(project, id, { oneDirection: one }); } catch { /* A different editor/kernel is required. */ }
-    this.cached = { project, id, one, design };
+    try { design = legacyDesignForRoute(project, id, { oneDirection: one, pieces }); } catch { /* A different editor/kernel is required. */ }
+    this.cached = { project, id, one, pieces, design };
     return design;
   }
   /** the active route as it is in another design of the project (a starting one), with its ends; null: not there */
@@ -90,7 +93,8 @@ export class ActiveRouteStore {
     this.atomic = committed;
     try {
       const one = this.directionEdit(id);
-      this.project.update(draft => Object.assign(draft, replaceRouteFromLegacy(draft, id, design, { oneDirection: one })));
+      const pieces = this.pieces?.(id);
+      this.project.update(draft => Object.assign(draft, replaceRouteFromLegacy(draft, id, design, { oneDirection: one, pieces })));
       if (committed) this.project.commit();
     } catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }

@@ -74,7 +74,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (route.endpoints.a.tangent || route.endpoints.b.tangent) return { status: 'incomplete', reason: 'unimplemented-tangent' };
   // Every road is checked against the network as the player edited it: rebuilt stretches gone, the
   // designed roads it crosses present (project-roadnet.ts). A rebuilt stretch needs the sidecar's link.
-  let roads = ctx.roads, pieces: OldPiece[] | undefined;
+  let roads = ctx.roads, pieces: OldPiece[] | undefined, wayPieces: [number, number][] | undefined;
   if (route.source) {
     // (its old road: one way, or several in a row, core/stretch-chain.ts)
     pieces = ctx.roads ? oldPieces(ctx.roads, route, project.connections, options.sourceWays) : undefined;
@@ -83,7 +83,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (ctx.roads) {
     const edited = editedNetwork(ctx.roads, project, [route], options.sourceWays, options.endsOf, options.oldOf, options.moved);
     if (!edited) return { status: 'incomplete', reason: 'source-needs-network' };
-    roads = edited.roads;
+    roads = edited.roads; wayPieces = edited.pieces;
   }
   if (route.alignment.kind !== 'pi' || !['auto', 'manual'].includes(route.alignment.vertical.kind)) return { status: 'incomplete', reason: 'unsupported-alignment' };
   const mission = route.role === 'mission';
@@ -104,7 +104,8 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     if (c.target.kind !== 'legacy-way' && c.target.kind !== 'route') return { status: 'incomplete', reason: 'unsupported-crossing' };
     if (c.target.kind === 'legacy-way' && c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
   }
-  const design = legacyDesignForRoute(project, routeId);
+  // (a choice on a way is one on each piece of it another road's cut left: EditedNetwork.pieces)
+  const design = legacyDesignForRoute(project, routeId, { pieces: wayPieces });
   // On its bridge over a higher-ranking road this road is that bridge (the player's own structures win).
   const decks = (options.holds ?? []).flatMap(h => h.bridge ? [{ s0: h.bridge[0], s1: h.bridge[1], kind: KIND.bridge }] : []);
   if (decks.length) design.structureOverrides = [...decks, ...design.structureOverrides ?? []];
@@ -219,6 +220,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
       ring: ringMark(result, t.end, { roads: roads! }, { half: CATEGORIES[design.category].crownWidth / 2, oneWay: !!CATEGORIES[design.category].ramp }),
       label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} bought out` : ''}` };
   });
+  if (wayPieces) result.pieceOf = wayPieces;
   return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
     ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(sightWorks.length ? { sightWorks } : {}), ...(sightChecks.length ? { sightChecks } : {}), ...(keptWork ? { keptWork } : {}) };
 }

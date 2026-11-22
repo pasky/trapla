@@ -272,8 +272,9 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
     if (!intervals.length) continue;
     // (a stretch closed rather than moved: taken out with nothing in its place)
     const paths = (f.geometry?.links ?? [f.geometry?.road ?? []]).filter(p => p.length > 1);
+    const cut = out.cuts.length;
     for (const i of intervals) out.cuts.push({ way: i.way, d0: Math.min(i.a, i.b), d1: Math.max(i.a, i.b) });
-    for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]) });
+    for (const p of paths) out.ways.push({ cls: f.cls, xy: p.flatMap(q => [q.x, q.y]), cut });
     // (its reach: the moved piece, and the junction mouths where it meets what is left; a dead end taken up: the piece
     // taken up, which the slip road's ending of what is left of it continues)
     const r = reachOf(Math.max(f.length, f.takenUp?.length ?? 0, ...paths.flat().map(q => Math.hypot(q.x - f.x, q.y - f.y))));
@@ -282,7 +283,8 @@ function movedByMotorway(design: ProjectDesign, route: RouteDesign, legacyOf: (i
   if (roads) {
     const changes = crossingChanges(host, roads, design, sourceWays);
     for (const c of changes) {
-      out.cuts.push(...c.cuts); out.ways.push(...c.ways);
+      const cut = out.cuts.length;
+      out.cuts.push(...c.cuts); out.ways.push(...c.ways.map(w => ({ ...w, cut })));
       for (const way of new Set(c.cuts.map(i => i.way))) out.zones.push({ way, x: c.x, y: c.y, r: reachOf(c.reach) });
     }
     // (an end on a stretch it takes out: joined to a road that is not there)

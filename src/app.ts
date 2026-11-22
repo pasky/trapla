@@ -148,6 +148,7 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   /** what is on screen: the results shown, the selection and the ends of the line being edited (session.ts) */
   const session = newSession(store.route ? { a: store.route.endpoints.a.position, b: store.route.endpoints.b.position } : { a: A, b: B });
   const ends = session.ends;
+  store.pieces = id => session.projectFull?.routes[id]?.legacy?.pieceOf;
   // full evaluations and drag previews, each in its own worker (eval-workers.ts)
   const { worker, previewWorker } = startEvalWorkers(pack, scenario, ends.a, ends.b,
     { objectData, transportData, pricingData, waterData, terrainData, terrainClass: scenario.terrainClass });

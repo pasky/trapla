@@ -15,6 +15,7 @@ import { ROUNDABOUT_RING } from '../src/core/tie-in';
 import type { Result } from '../src/core/evaluate';
 import type { ProjectDesign } from '../src/core/project';
 import { evaluateProject } from '../src/core/project-evaluate';
+import { legacyDesignForRoute, replaceRouteFromLegacy } from '../src/core/project-legacy';
 
 /** a straight motorway line along +x, 2 km, stations every 10 m; `bridge`: stations on a bridge */
 const line = (bridge: [number, number] = [0, -1]) => {
@@ -218,6 +219,30 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const slip = r.routes[design.routes.find(q => q.name === 'Slip road 3')!.id].legacy!;
     expect(slip.crossings.filter(c => moved.has(c.roadId) && Math.hypot(c.x - 3603, c.y - 7754) < 30)).toEqual([]);
   }, 120_000);
+  // (Slip road 3 crosses what is left of a track beyond the stretch the motorway's crossing of it takes out: a way of its
+  // own in the slip road's network, which no saved choice could name)
+  it('a choice on a slip road\'s crossing of what is left of a track the motorway cuts is kept, stored on that track (review: it was lost)', () => {
+    const ctx = projectContext(design).ctx, run = (d: ProjectDesign) => evaluateProject(ctx, { epoch: 'e', revision: 1, design: d });
+    const slip = design.routes.find(q => q.name === 'Slip road 3')!, r = run(design), roads = ctx.legacy.roads!;
+    const left = r.routes[slip.id].legacy!.crossings.find(c => c.roadId! >= roads.wayCount && c.cls === 'track' && Math.hypot(c.x - 3594, c.y - 7738) < 30)!;
+    expect(left.type).not.toBe('junction');
+    const track = roads.nearestWay(left.x, left.y, 1)!, pieces = r.routes[slip.id].legacy!.pieceOf;
+    expect(pieces).toContainEqual([left.roadId, track]);
+    // the player picks a level crossing on its card (the store shows the track's choices on its pieces, and folds them back)
+    const d = legacyDesignForRoute(design, slip.id, { pieces });
+    d.crossingOverrides = [...d.crossingOverrides ?? [], { roadId: left.roadId!, type: 'junction' }];
+    const next = replaceRouteFromLegacy(design, slip.id, d, { pieces });
+    const stored = next.routes.find(q => q.id === slip.id)!.alignment;
+    expect(stored.kind === 'pi' && stored.controls.crossings?.map(c => c.target.kind === 'legacy-way' && c.target.roadId)).toEqual([track]);
+    const there = run(next).routes[slip.id].legacy!.crossings.find(c => c.roadId === left.roadId)!;
+    expect(there.type).toBe('junction');
+    // shown on its piece, and taken back there (Back to Auto)
+    const shown = legacyDesignForRoute(next, slip.id, { pieces });
+    expect(shown.crossingOverrides?.find(o => o.roadId === left.roadId)?.type).toBe('junction');
+    shown.crossingOverrides = shown.crossingOverrides!.filter(o => o.roadId !== left.roadId);
+    const back = replaceRouteFromLegacy(next, slip.id, shown, { pieces }).routes.find(q => q.id === slip.id)!.alignment;
+    expect(back.kind === 'pi' && (back.controls.crossings ?? [])).toEqual([]);
+  }, 240_000);
 });
 
 describe('a slip road is drawn with its own markings', () => {
@@ -302,7 +327,15 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     };
     const onLink = slips[2].filter(c => c.cls === led.cls).map(c => (led.geometry!.links ?? []).some(l => l.slice(1).some((q, k) => seg(c, l[k], q) < 3)));
     expect(onLink).toEqual([true]);
-  }, 120_000);
+    // a choice saved on that local road is the player's on its new link too
+    const exit = design.routes.find(q => q.name === 'Slip road 3')!, link = slips[2].find(c => c.cls === led.cls)!;
+    expect(link.type).not.toBe('junction');
+    expect(r.routes[exit.id].legacy!.pieceOf).toContainEqual([link.roadId, led.roadId]);
+    const d = legacyDesignForRoute(design, exit.id);
+    d.crossingOverrides = [{ roadId: led.roadId!, type: 'junction' }];
+    const chosen = run(replaceRouteFromLegacy(design, exit.id, d)).routes[exit.id].legacy!.crossings.find(c => c.roadId === link.roadId)!;
+    expect(chosen.type).toBe('junction');
+  }, 240_000);
   it('at a roundabout end no noise wall of a slip road reaches into its ring: drawn, billed and heard alike (owner: the wall ran into it)', () => {
     const r = run(design), R = ROUNDABOUT_RING.outerDiameter / 2;
     let walled = 0;

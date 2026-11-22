@@ -1,5 +1,5 @@
 // Lossless geometry/control migration to the project envelope; no evaluation or storage side effects.
-import { crossingOverridesOf, crossingTargetsOf } from './project-roadnet';
+import { crossingOverridesOf, crossingTargetsOf, foldPieces, withPieces } from './project-roadnet';
 import type { Design, EvalContext } from './evaluate';
 import { NOISE } from './data/urban';
 import { CATEGORIES, ROAD_CROSS_SECTIONS } from './data/categories';
@@ -62,7 +62,9 @@ export function projectFromLegacyDesign(value: unknown, context: LegacyProjectCo
 
 /** Active-route legacy widget/kernel adapter. It refuses any representation that would need fitting,
  * foreign-source remapping or mode physics. Building choices have exactly one project owner. */
-export function legacyDesignForRoute(project: ProjectDesign, routeId: string, options: { oneDirection?: boolean } = {}): Design {
+/** `pieces`: ways of the road's network that are pieces of another (its last result's `pieceOf`): a choice stored on a way
+ * is shown on each piece of it too, and one edited on a piece is stored on its way (replaceRouteFromLegacy). */
+export function legacyDesignForRoute(project: ProjectDesign, routeId: string, options: { oneDirection?: boolean; pieces?: [number, number][] } = {}): Design {
   const r = project.routes.find(r => r.id === routeId);
   // A paired motorway direction edits the corridor's common spine (both directions move together), or
   // with `oneDirection` that direction alone (its own line where it has separate stretches).
@@ -77,7 +79,7 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string, op
   if (!r || r.kind !== 'road' || r.specification.policy !== 'legacy-road' || r.specification.crossSection === 'existing'
     || r.alignment.kind !== 'pi' || !['auto', 'manual'].includes(r.alignment.vertical.kind)) throw new Error('Route needs a non-legacy kernel');
   const a = r.alignment, v = a.vertical;
-  const crossings = a.controls.crossings && crossingOverridesOf(project, a.controls.crossings);
+  const crossings = a.controls.crossings && withPieces(crossingOverridesOf(project, a.controls.crossings), options.pieces);
   const { crossings: _crossings, ...controls } = a.controls;
   if (v.kind !== 'auto' && v.kind !== 'manual') throw new Error('Unsupported vertical authority');
   return copy({ ...controls, category: r.specification.crossSection, speed: r.specification.designSpeed,
@@ -87,7 +89,7 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string, op
 }
 
 /** Apply legacy editing without replacing route identity/endpoints/operations or another route's controls. */
-export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, design: Design, options: { oneDirection?: boolean } = {}): ProjectDesign {
+export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, design: Design, options: { oneDirection?: boolean; pieces?: [number, number][] } = {}): ProjectDesign {
   const old = project.routes.find(r => r.id === routeId);
   if (old?.kind === 'motorway' && old.alignment.kind === 'corridor') {
     const corridor = corridorOfRoute(project, routeId);
@@ -109,7 +111,7 @@ export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, 
   if (!old || old.kind !== 'road') throw new Error('Unknown road');
   if (design.objectData && design.objectData !== project.objectData) throw new Error('Foreign object binding needs repair');
   // Refuse silent flattening of imported paths/corridor children before editing through old widgets.
-  legacyDesignForRoute(project, routeId);
+  const before = legacyDesignForRoute(project, routeId, { pieces: options.pieces });
   // Validate editable fields in isolation without pretending external endpoint anchors disappeared.
   // Their real anchors are preserved below and checked against the complete project.
   const isolatedEndpoints: EndpointPair = { a: { ...old.endpoints.a, anchor: { kind: 'free' } },
@@ -119,7 +121,9 @@ export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, 
   const next = copy(project), replacement = adapted.routes[0];
   if (replacement.kind !== 'road') throw new Error('Legacy adapter mode mismatch');
   // a choice on a crossing with another designed road belongs to that road, not to its way number
-  if (design.crossingOverrides && replacement.alignment.kind === 'pi') replacement.alignment.controls.crossings = crossingTargetsOf(project, design.crossingOverrides);
+  // (a choice on a piece of a way is that way's, legacyDesignForRoute)
+  if (design.crossingOverrides && replacement.alignment.kind === 'pi')
+    replacement.alignment.controls.crossings = crossingTargetsOf(project, foldPieces(before.crossingOverrides ?? [], design.crossingOverrides, options.pieces));
   replacement.specification.operations = copy(old.specification.operations);
   // The legal class is the road's, not its width's: keep it while the cross-section suits it.
   if (CATEGORIES[design.category].legalClasses?.includes(old.specification.legalClass)) replacement.specification.legalClass = old.specification.legalClass;

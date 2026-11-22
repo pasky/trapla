@@ -229,6 +229,9 @@ export interface Result {
   timing: Record<string, number>;
   /** Ways merged into another way's crossing (mergeCrossings: within 30 m of it along our road). */
   mergedWays?: number[];
+  /** Never set by the kernel (project-road.ts): ways of its network that are pieces of another, [piece, way]; a crossing
+   * choice is stored on the way (project-roadnet.ts EditedNetwork.pieces). */
+  pieceOf?: [number, number][];
   /** A fast drag preview (see EvalOptions.preview): approximate, never a score. */
   preview?: boolean;
   /** A trial pass (EvalOptions.trial, inside evaluate only): the same pass with its noise. */

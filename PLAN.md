@@ -2566,7 +2566,10 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   the slip road's network (measured as on our road's network: from a dead end's new start where the player cut it back) and
   its new pieces (the links, the moved or squared line) are ground ways of it, in our road's order (every slip road of the
   interchange numbers them alike; worked out once per evaluated motorway); each such stretch is a zone where the slip
-  road's changes of that road are one design with ours (`ScreenRoute.sharedWays`). A slip road's end on a stretch our road
+  road's changes of that road are one design with ours (`ScreenRoute.sharedWays`). What is left of such a way beyond the cut,
+  and its new pieces, are ways of their own in the slip road's network; a crossing choice on one of them is the player's on
+  that way: stored on it, applied to each piece of it and shown there (`project-roadnet.ts EditedNetwork.pieces`,
+  `Result.pieceOf`, `withPieces` / `foldPieces`). A slip road's end on a stretch our road
   takes out is a problem ("It joins a stretch of road the four-lane road takes out"). Every frozen bill, starter and saved
   design identical; D3 0303 and 0304 identical; the I/35 Turnov diamond 6.2054996382 bn (+0.00009 CZK: its north-east
   exit's network no longer has the service way our road closes at km 1.18).
@@ -2583,9 +2586,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   motorway. Moving the barrier out with the lane means re-solving the motorway's noise after its slip roads (or the lanes
   before them): not small. Drawn, the wall stands beyond the lane (2.5 m further out on S 21.5, 0.5 m on D 27.5); billed and
   heard at the crown edge.
-- **Known gaps:** a cut road's remnant beyond the cut is a new way of the slip road's network (as a relocation's is), so a
-  choice on a slip road's crossing of it is not kept, and a choice saved on that way before is no longer applied there; a
-  crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road); a road only raised
+- **Known gaps:** a crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road); a road only raised
   over our road or lowered under it near a slip road is still two changes of one road (the slip road sees its ground line,
   not our ramp); Build gives no square bend where the road runs nearly towards the gore (the player drags one). Tried
   (2026-11-22): a square leg long enough for the turn at R 85 lands 92 m out at Nudvojovická, across the village's streets,

@@ -207,8 +207,8 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   billed with the lane: cost model 62). Open: along a speed-change lane the noise wall is DRAWN moved out with the
   widened formation but BILLED and
   HEARD at the old crown edge (the motorway's noise is solved before its slip roads exist; moving it means re-solving the
-  motorway's noise after them); a crossing choice on what is left of a way our road cuts is not kept (a new way in the slip
-  road's network).
+  motorway's noise after them). A crossing choice on what is left of a way our road cuts (a way of its own in the slip road's
+  network) is stored on that way and shown on each piece of it (`EditedNetwork.pieces`).
 - One works-clash screen for every earthwork body (cost model 64, PLAN.md "One screen for every earthwork"):
   `src/core/works-clash.ts` after a full evaluation; leftovers on the player's roads or crossings are problems with a fix,
   Auto's own are the full gate `scripts/works-clash-audit.ts --edits --gate` (`scripts/works-clash/known.json` is
