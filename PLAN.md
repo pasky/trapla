@@ -2477,10 +2477,7 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
      road …"), their works there one design (`sharedJunctions`); a T and a roundabout at one point are a problem.
   3. *Shape*: Build → Slip road adds a second bend before a road end that meets the road square (on the road's
      normal, a quarter of the way to the leaving bend, 40–90 m; where the road crosses askew, kept at least halfway
-     out from the motorway, at most 20 m beyond the end on the obtuse side; where the road runs nearly towards the gore,
-     the leaving bend within ≈ 20° of its line, the last leg leaves it square on the leaving bend's side, as long as the
-     turn towards the gore at R 85 needs plus a 10 m mouth, away from the motorway as far as that takes; `road-edit.ts
-     squareBend`, PROVISIONAL).
+     out from the motorway, at most 20 m beyond the end on the obtuse side; `road-edit.ts squareBend`, PROVISIONAL).
   4. *Grade by the gore*: the merge holds were ±0.25 m, narrower than the grade search's 1 m height grid can hold,
      and a road under 400 m was solved as one straight (its holds ignored): slip roads now get knots every 60 m
      (`RAMP_KNOTS`), are held within a grade pin's tolerance (0.5 m) while the crowns are within 4 m, then within a
@@ -2563,9 +2560,8 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
 - **Result:** the Nudvojovická diamond, built with the mouse (`scripts/interchange-scene.mjs --only nudvojovicka`,
   screenshots 727–731): gores 430 m before the bridge on both sides, 450 m after it on the forward side, the north-east exit
   200 m after it, just past the local road; crossroads on Nudvojovická 290 m south-west and 185 m north of the bridge as
-  roundabouts (the sight lines along it are short). The south-west entry: Nudvojovická runs nearly towards its gore, so
-  Build leaves it square and turns towards the gore 92 m out, through the village's southern streets; its bend dragged to
-  the village's edge (before, Build's line ran along Nudvojovická and crossed it); the north-east exit's square bend,
+  roundabouts (the sight lines along it are short). The south-west entry, which Build runs along Nudvojovická (the road
+  runs nearly towards its gore, so Build gives no square bend), dragged off it square; the north-east exit's square bend,
   too close to its end, removed on its card. 5.9445 bn valid (+315 M) when built (4.8727 bn, +325 M, under cost model
   66); the north-east exit crosses the local road on our road's new link of it (an overbridge), not its old line. On the old engine: "two roads change the same old road".
   `tests/fixtures/interchange/i35-nudvojovicka-diamond.json`, `tests/slip-roads.test.ts`.
@@ -2578,7 +2574,11 @@ D 26.0/130 to MÚK Střítež then D 21.5/110, two twin-tube tunnels, 23 bridges
   choice on a slip road's crossing of it is not kept, and a choice saved on that way before is no longer applied there; a
   crossing's change seen on the ground's height only (a link on a fill is a ground way to the slip road); a road only raised
   over our road or lowered under it near a slip road is still two changes of one road (the slip road sees its ground line,
-  not our ramp).
+  not our ramp); Build gives no square bend where the road runs nearly towards the gore (the player drags one). Tried
+  (2026-11-22): a square leg long enough for the turn at R 85 lands 92 m out at Nudvojovická, across the village's streets,
+  and is invalid (a regraded side road's earthworks cover a street); knowing which leg is valid takes a full evaluation
+  per candidate (≈ 3–4 s on this pack; the drag preview and a line-vs-roads screen both judge it wrong), so Build would
+  need an async worker search: not built.
 
 ## Twists and curveballs (owner request, no model version, 2026-11-20)
 

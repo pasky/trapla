@@ -355,28 +355,22 @@ try {
     const near = (c, line) => line.slice(1).some((q, k) => seg(c, line[k], q) < 3);
     return r.routes[s3.id].legacy.crossings.filter(c => c.cls === led.cls).map(c => ({ type: c.type, link: (led.geometry.links ?? []).some(l => near(c, l)) })); });
   ok(onLink.length > 0 && onLink.every(c => c.link), `the north-east exit crosses the local road on our road's new link of it (${onLink.map(c => `${c.type}${c.link ? ' on the link' : ' elsewhere'}`).join(', ')})`);
-  // the south-west entry: Nudvojovická runs nearly towards its gore, so Build leaves it square and turns towards the gore
-  // (its bend ≈ 90 m out, through the village's southern streets); the bend dragged to the village's edge, as a designer would
+  // the south-west entry: Nudvojovická runs nearly towards its gore, so Build's line runs along it and crosses it;
+  // dragged off it square, as a designer would
   const second = await page.evaluate(() => window.trapla.getProject().routes.find(r => r.name === 'Slip road 2').id);
   await page.evaluate((id) => window.trapla.setActiveRoute(id), second); await game.idle();
-  const built = await page.evaluate(() => { const t = window.trapla, d = t.getDesign(), r = t.projectResult().routes[t.activeRoute()].legacy, a = t.routeEndpoints().a.position;
-    return { pis: d.pis, crosses: r.crossings.some(c => c.cls === 'tertiary'), a }; });
-  const sideLeg = built.pis.length === 2 && Math.hypot(built.pis[0].x - built.a.x, built.pis[0].y - built.a.y);
-  ok(built.pis.length === 2 && !built.crosses && sideLeg >= 80, `Build leaves Nudvojovická square, ${sideLeg?.toFixed(0)} m out to its bend, and crosses it no more (${built.pis.length} bends)`);
-  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 520, 0, 89), [2730, 3230]); await game.idle(); await game.still();
-  await page.evaluate(() => window.trapla.selectPi(0)); await game.idle();
-  {
-    const p = { ...built.pis[0], z: (await groundAt(built.pis[0].x, built.pis[0].y)).z }, to = await groundAt(2740, 3235);
-    const marker = await page.locator('.pi[data-i="0"]').filter({ visible: true }).first().boundingBox();
-    const from = await at(p), dest = await at(to), grab = { x: marker.x + marker.width / 2, y: marker.y + marker.height / 2 };
-    await page.mouse.move(grab.x, grab.y, { steps: 4 }); await page.waitForTimeout(200); await page.mouse.down();
-    await page.mouse.move(dest.x + grab.x - from.x, dest.y + grab.y - from.y, { steps: 12 }); await page.waitForTimeout(400);
-    await game.frames(3); await page.screenshot({ path: `${out}/727-nudvojovicka-entry-bend-dragged-to-the-village-edge.png` }); // (no park: the button is down)
-    await page.mouse.up(); await game.idle();
-    await page.evaluate(() => window.trapla.selectPi(null)); await game.idle();
-  }
+  await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 520, 0, 89), [2760, 3250]); await game.idle(); await game.still();
+  const crossedOwn = await page.evaluate(() => { const t = window.trapla; return t.projectResult().routes[t.activeRoute()].legacy.crossings.some(c => c.cls === 'tertiary'); });
+  ok(crossedOwn, 'Build\'s line of the south-west entry runs along Nudvojovická and crosses it');
+  const onLine = await page.evaluate(() => { const t = window.trapla, r = t.projectResult().routes[t.activeRoute()].legacy; let best = null;
+    for (let i = 0; i < r.n; i++) { const d = Math.hypot(r.x[i] - 2745, r.y[i] - 3266); if (!best || d < best.d) best = { d, x: r.x[i], y: r.y[i], z: r.grade[i] }; } return best; });
+  const p0 = await at(onLine), p1 = await at(await groundAt(2740, 3235));
+  await page.mouse.move(p0.x, p0.y, { steps: 4 }); await page.waitForTimeout(200); await page.mouse.down();
+  await page.mouse.move(p1.x, p1.y, { steps: 12 }); await page.waitForTimeout(400);
+  await game.frames(3); await page.screenshot({ path: `${out}/727-nudvojovicka-entry-dragged-off-the-road.png` }); // (no park: the button is down)
+  await page.mouse.up(); await game.idle();
   const dragged = await page.evaluate(() => { const t = window.trapla, r = t.projectResult().routes[t.activeRoute()].legacy; return { pis: t.getDesign().pis.length, crosses: r.crossings.some(c => c.cls === 'tertiary') }; });
-  ok(dragged.pis === 2 && !dragged.crosses, `dragged, it leaves Nudvojovická at the village's edge and crosses it no more (${dragged.pis} bends)`);
+  ok(dragged.pis === 2 && !dragged.crosses, `dragged, it leaves Nudvojovická square and crosses it no more (${dragged.pis} bends)`);
   // the north-east exit, short: Build's square bend comes too close to its end; removed on its card (the exit meets
   // Nudvojovická askew enough without it)
   const third = await page.evaluate(() => window.trapla.getProject().routes.find(r => r.name === 'Slip road 3').id);

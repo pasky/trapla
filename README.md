@@ -447,7 +447,7 @@ Přepeřská](docs/screenshots/718-i35-north-east-slip-roads.png).
 Where our road cuts a road and leads it elsewhere, its slip roads cross that road as our road leaves it (on its new link,
 not its old line), one design with ours: [a diamond at Nudvojovická](docs/screenshots/729-nudvojovicka-diamond-valid-overview.png)
 (I/35 km 1.67, `i35-nudvojovicka-diamond.json`), [its exit over the local road's new link](docs/screenshots/731-nudvojovicka-exit-over-the-local-road-s-new-link.png),
-[its entry's square bend dragged to the village's edge](docs/screenshots/727-nudvojovicka-entry-bend-dragged-to-the-village-edge.png).
+[its entry dragged off Nudvojovická](docs/screenshots/727-nudvojovicka-entry-dragged-off-the-road.png).
 
 A speed-change lane is marked as TP 133 draws it: the dashed line from where its taper starts, solid for the last 30 m, the
 gore hatched with chevrons; a road's end set to Roundabout draws its ring and a splitter island in each two-way arm
