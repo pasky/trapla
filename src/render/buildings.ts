@@ -233,13 +233,12 @@ export class Buildings {
     for (const c of dirty) (this.chunks[c].mesh.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
 
-  /** building i's footprint's corners and its middle (map x, y) */
-  outline(i: number): { x: number; y: number }[] {
-    const b = this.b, v0 = b.starts[i], n = b.starts[i + 1] - v0, out: { x: number; y: number }[] = [];
+  /** each corner of building i's footprint and its middle (map x, y) */
+  eachCorner(i: number, visit: (x: number, y: number) => void) {
+    const b = this.b, v0 = b.starts[i], n = b.starts[i + 1] - v0;
     let x = 0, y = 0;
-    for (let k = 0; k < n; k++) { out.push({ x: b.verts[2 * (v0 + k)], y: b.verts[2 * (v0 + k) + 1] }); x += out[k].x; y += out[k].y; }
-    if (n > 0) out.push({ x: x / n, y: y / n });
-    return out;
+    for (let k = 0; k < n; k++) { const px = b.verts[2 * (v0 + k)], py = b.verts[2 * (v0 + k) + 1]; visit(px, py); x += px; y += py; }
+    if (n > 0) visit(x / n, y / n);
   }
 
   /** render building i is not drawn (taken down: setMarked's `gone`) */

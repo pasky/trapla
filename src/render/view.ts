@@ -246,46 +246,54 @@ export class View {
   private maskSources: readonly RouteMaskInput[] = [];
   /** the terrain mask's triangles as last drawn (View.local x, 0, z per vertex): where the ground is not drawn */
   private maskTriangles: readonly number[] = [];
-  /** our works' own footprint (routeMask's `works`) and its triangles (their first index there) by 50 m cell of the
-   * view's local x, z (built when asked) */
+  /** our works' own footprint (routeMask's `works`: x, 0, z per vertex in the view's local metres) */
   private worksTriangles: readonly number[] = [];
-  private worksIndex: Map<number, number[]> | null = null;
   /** the houses the project takes (render index → colour) and roundabouts' rings (map x, y, radius) as last drawn */
   private bought = new Map<number, number>();
   private ringDisks: { x: number; y: number; r: number }[] = [];
 
-  /** (map x, y) is under our works as drawn: inside a road body's or a crossing's footprint or a roundabout's ring */
-  private underWorks(x: number, y: number): boolean {
-    if (this.ringDisks.some(q => Math.hypot(x - q.x, y - q.y) < q.r)) return true;
-    const M = this.worksTriangles, G = 50;
-    if (!this.worksIndex) {
-      const index = this.worksIndex = new Map<number, number[]>();
-      for (let t = 0; t + 8 < M.length; t += 9) {
-        const x0 = Math.floor(Math.min(M[t], M[t + 3], M[t + 6]) / G), x1 = Math.floor(Math.max(M[t], M[t + 3], M[t + 6]) / G);
-        const z0 = Math.floor(Math.min(M[t + 2], M[t + 5], M[t + 8]) / G), z1 = Math.floor(Math.max(M[t + 2], M[t + 5], M[t + 8]) / G);
-        for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) { const k = i * 65536 + j; let a = index.get(k); if (!a) index.set(k, a = []); a.push(t); }
-      }
-    }
-    const px = x - this.cx, pz = this.cy - y;
-    for (const t of this.worksIndex.get(Math.floor(px / G) * 65536 + Math.floor(pz / G)) ?? []) {
-      const ax = M[t], az = M[t + 2], bx = M[t + 3], bz = M[t + 5], qx = M[t + 6], qz = M[t + 8];
-      const det = (bz - qz) * (ax - qx) + (qx - bx) * (az - qz);
-      if (Math.abs(det) < 1e-9) continue;
-      const l1 = ((bz - qz) * (px - qx) + (qx - bx) * (pz - qz)) / det, l2 = ((qz - az) * (px - qx) + (ax - qx) * (pz - qz)) / det;
-      if (l1 >= 0 && l2 >= 0 && 1 - l1 - l2 >= 0) return true;
-    }
-    return false;
+  /** The houses the project takes: standing in its colour, but taken down where any of one (a corner, its middle) is
+   * under our works as drawn (a road body's or a crossing's footprint, a roundabout's ring): its plot, marked on the map,
+   * is left. (One pass over the works' triangles, the houses' points by 50 m cell.) */
+  private takenPending = false;
+  /** markTaken in a task of its own, once for what is committed in this one (the scene's commit is long enough) */
+  private markTakenSoon() {
+    if (this.takenPending) return;
+    this.takenPending = true;
+    setTimeout(() => { this.takenPending = false; this.markTaken(); this.dirty = true; }, 0);
   }
-
-  /** The houses the project takes: standing in its colour, but taken down where any of one is under our works as drawn
-   * (its plot, marked on the map, beside them). */
   private markTaken() {
     const B = this.buildings;
     if (!B) return;
-    const gone = new Set<number>();
-    for (const k of this.bought.keys()) if (B.outline(k).some(p => this.underWorks(p.x, p.y))) gone.add(k);
+    const gone = new Set<number>(), G = 50, cells = new Map<number, number[]>(), px: number[] = [], pz: number[] = [], pk: number[] = [];
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const k of this.bought.keys()) B.eachCorner(k, (mx, my) => {
+      if (gone.has(k)) return;
+      if (this.ringDisks.some(q => Math.hypot(mx - q.x, my - q.y) < q.r)) { gone.add(k); return; }
+      const x = mx - this.cx, z = this.cy - my, key = Math.floor(x / G) * 65536 + Math.floor(z / G), list = cells.get(key);
+      if (list) list.push(px.length); else cells.set(key, [px.length]);
+      px.push(x); pz.push(z); pk.push(k);
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z;
+    });
+    const M = this.worksTriangles;
+    if (px.length) for (let t = 0; t + 8 < M.length; t += 9) {
+      const ax = M[t], az = M[t + 2], bx = M[t + 3], bz = M[t + 5], qx = M[t + 6], qz = M[t + 8];
+      const lx = Math.min(ax, bx, qx), hx = Math.max(ax, bx, qx), lz = Math.min(az, bz, qz), hz = Math.max(az, bz, qz);
+      if (hx < x0 || lx > x1 || hz < z0 || lz > z1) continue;
+      const det = (bz - qz) * (ax - qx) + (qx - bx) * (az - qz);
+      if (Math.abs(det) < 1e-9) continue;
+      for (let i = Math.floor(lx / G); i <= Math.floor(hx / G); i++) for (let j = Math.floor(lz / G); j <= Math.floor(hz / G); j++) {
+        const list = cells.get(i * 65536 + j);
+        if (list) for (const p of list) {
+          if (gone.has(pk[p])) continue;
+          const l1 = ((bz - qz) * (px[p] - qx) + (qx - bx) * (pz[p] - qz)) / det, l2 = ((qz - az) * (px[p] - qx) + (ax - qx) * (pz[p] - qz)) / det;
+          if (l1 >= 0 && l2 >= 0 && 1 - l1 - l2 >= 0) gone.add(pk[p]);
+        }
+      }
+    }
     B.setMarked(this.bought, gone);
   }
+
   private maskMat: THREE.ShaderMaterial | null = null;
   private retired: THREE.Material[] = [];
   /** one material per shader program that would otherwise lose its last user (see release) */
@@ -573,7 +581,7 @@ export class View {
     return { commit() {}, dispose() {} };
   }
   /** true while land-cover textures for the current camera are still being drawn or fetched */
-  get busy() { return this.lcPending || !!this.landcover?.loadingPhotos; }
+  get busy() { return this.lcPending || this.takenPending || !!this.landcover?.loadingPhotos; }
   private lcPending = false;
 
   /** per-frame upkeep of the terrain surface: land-cover clip levels, contour interval, building LOD */
@@ -873,7 +881,7 @@ export class View {
     const pos: number[] = [], col: number[] = [], pull: number[] = [], v = new THREE.Vector3();
     // (a house taken for our works is not drawn standing in a ring)
     this.ringDisks = rings.map(q => ({ x: q.x, y: q.y, r: q.r }));
-    this.markTaken();
+    this.markTakenSoon();
     for (const ring of rings) {
       const t = ringTriangles(ring, this.drawnSurface(ring.x, ring.y, ring.r + SPLITTER_ISLAND.length + 3), 0.2);
       for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); pull.push(k / 3 < t.pulled ? t.pull : 0); }
@@ -1688,7 +1696,7 @@ export class View {
     const bought = new Map<number, number>();
     for (const j of taken) { const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR); }
     this.bought = bought;
-    this.markTaken();
+    this.markTakenSoon();
     this.setTakenMarkers(taken);
     this.dirty = true;
   }
@@ -1721,7 +1729,7 @@ export class View {
 
   private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {
     const { terrain: pos, original, cuts, works, box: bounds } = prepared ?? routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
-    this.maskTriangles = pos; this.worksTriangles = works; this.worksIndex = null;
+    this.maskTriangles = pos; this.worksTriangles = works;
     if (!bounds) {
       this.maskUniforms.maskOn.value = this.originalMask.maskOn.value = this.crossingCut.maskOn.value = 0;
       return;
