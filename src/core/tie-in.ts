@@ -26,16 +26,55 @@ export const ROUNDABOUT_RING = { outerDiameter: 40,
   /** drawn: its ring's carriageway and the paved apron round its island at that diameter, m (TP 135 (2017) tab. 2, a
    * rural single-lane roundabout of D = 40 m: 5.10 m and 1.20 m, the island's unpaved part 27.4 m across; research/29 §4) */
   carriageway: 5.1, apron: 1.2 } as const;
-/** A roundabout's ring as drawn: its centre, outer radius and the directions its arms leave it (unit vectors). */
-export interface RingMark { x: number; y: number; r: number; arms: { x: number; y: number }[] }
+/** A splitter island in each two-way arm of a roundabout, between its entry and exit (TP 135 (2017) §3.2.2: "Vjezdy a
+ * výjezdy na stejném paprsku křižovatky mají být odděleny dělicím ostrůvkem"; research/29 addendum). Drawn only. */
+export const SPLITTER_ISLAND = {
+  /** from the ring's outer edge out, m: TP 135 §1.7.1 gives 5–25 m; the middle (PROVISIONAL game scale) */
+  length: 15,
+  /** the entry and exit lanes deflected from the arm's axis where they meet the ring, rad: TP 135 §3.2.2 5–15°, the
+   * least; over the island's length that opens it 2 · 15 m · tan 5° ≈ 2.6 m wide at the ring (≈ 20 m², over the 5 m² of
+   * §1.7.1), the carriageway beside it widened as much */
+  deflection: 5 * Math.PI / 180,
+  /** its rounded nose's width, m (PROVISIONAL) */
+  nose: 0.5,
+  /** the kerb round it, m (PROVISIONAL: a 0.15–0.25 m kerb as drawn from above) */
+  kerb: 0.2,
+} as const;
+/** An arm of a roundabout: the unit vector it leaves the centre along; `path`: its line from the centre out (at least past
+ * the splitter island), `half`: its carriageway's half width, `island`: a two-way public road's arm (a splitter island) */
+export interface RingArm { x: number; y: number; path?: { x: number; y: number }[]; half?: number; island?: boolean }
+/** A roundabout's ring as drawn: its centre, outer radius and its arms. */
+export interface RingMark { x: number; y: number; r: number; arms: RingArm[] }
+/** how far out an arm's line is followed, m */
+const ARM_REACH = ROUNDABOUT_RING.outerDiameter / 2 + SPLITTER_ISLAND.length + 10;
 /** The ring of a roundabout at our road `r`'s end `end` on the joined road (`roads`, its ways meeting there) or on a
- * designed road along `host` (unit vector of its line there). */
-export function ringMark(r: Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty'>, end: 'a' | 'b', joined: { roads: RoadNet } | { host: { x: number; y: number } }): RingMark {
+ * designed road (`host`, its line at station index `k`, `half` its crown's half width); `own`: our road's crown half
+ * width, one-way (a slip road: no splitter island). */
+export function ringMark(r: Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 's'>, end: 'a' | 'b',
+  joined: { roads: RoadNet } | { host: Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 's'>; k: number; half: number }, own: { half: number; oneWay: boolean }): RingMark {
   const i = end === 'a' ? 0 : r.n - 1, x = r.x[i], y = r.y[i];
-  const own = end === 'a' ? { x: r.tx[0], y: r.ty[0] } : { x: -r.tx[i], y: -r.ty[i] };
-  const others = 'roads' in joined ? joined.roads.connections({ x, y }, JOIN_TOLERANCE).map(c => ({ x: c.dx, y: c.dy }))
-    : [joined.host, { x: -joined.host.x, y: -joined.host.y }];
-  return { x, y, r: ROUNDABOUT_RING.outerDiameter / 2, arms: [own, ...others] };
+  // (a line's stations from index `k` on in direction `dir`, from the centre out to ARM_REACH)
+  const walk = (q: Pick<Result, 'n' | 'x' | 'y' | 's'>, k: number, dir: 1 | -1) => {
+    const out = [{ x, y }];
+    for (let m = k + dir; m >= 0 && m < q.n; m += dir) { out.push({ x: q.x[m], y: q.y[m] }); if (Math.abs(q.s[m] - q.s[k]) >= ARM_REACH) break; }
+    return out;
+  };
+  const ours: RingArm = { ...(end === 'a' ? { x: r.tx[0], y: r.ty[0] } : { x: -r.tx[i], y: -r.ty[i] }), path: walk(r, i, end === 'a' ? 1 : -1), half: own.half, island: !own.oneWay };
+  let others: RingArm[];
+  if ('roads' in joined) {
+    others = joined.roads.connections({ x, y }, JOIN_TOLERANCE).map(c => {
+      const d0 = joined.roads.wayStation(c.way, x, y), out = c.d > d0;
+      const path = joined.roads.wayPath(c.way, out ? d0 : d0 - ARM_REACH, out ? d0 + ARM_REACH : d0).map(p => ({ x: p.x, y: p.y }));
+      if (!out) path.reverse();
+      if (path.length) path[0] = { x, y };
+      return { x: c.dx, y: c.dy, path, half: (ROAD_CLASSES[c.cls]?.width ?? 6.5) / 2, island: ROUNDABOUT_HOSTS.includes(c.cls) };
+    });
+  } else {
+    const h = joined.host, k = joined.k;
+    others = [{ x: h.tx[k], y: h.ty[k], path: walk(h, k, 1), half: joined.half, island: true },
+      { x: -h.tx[k], y: -h.ty[k], path: walk(h, k, -1), half: joined.half, island: true }];
+  }
+  return { x, y, r: ROUNDABOUT_RING.outerDiameter / 2, arms: [ours, ...others] };
 }
 /** The ring's own works around (x, y): land beyond the joined road's pavement at the local land price,
  * and the houses on it removed (not those a road already removes). */

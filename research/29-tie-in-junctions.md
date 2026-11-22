@@ -150,3 +150,12 @@ The opened [VL 3 (2010) PDF](https://pjpk.rsd.cz/data/USR_001_2_10_VL/VL_3_2010_
 - **Roundabout widths** (TP 135 (2017) tab. 2, "Doporučené šířkové uspořádání JOK v extravilánu", read from
   [the PDF](https://pjpk.rsd.cz/data/USR_001_2_8_TP/TP_135_2017.pdf) p. 23): D 40 m: ring 5.10 m, apron (prstenec) 1.20 m,
   unpaved island 27.4 m (D 30: 6.00 / 1.80 / 14.4; D 50: 4.70 / 1.00 / 38.6). The game draws its 40 m ring so (high).
+- **Splitter islands** (same PDF, opened 2026-11-22): §1.7.1 "Dělicí ostrůvek … se umísťuje mezi protisměrnými jízdními
+  pruhy/pásy v délce 5–25 m a tvoří zpomalovací prvek před vjezdem do křižovatky … Plocha ostrůvků má být nejméně
+  5,0 m2"; §3.2.2 "Vjezdy a výjezdy na stejném paprsku křižovatky mají být odděleny dělicím ostrůvkem" and "je doporučeno
+  provést mírné vychýlení jízdních pruhů na vjezdu i výjezdu (5–15° směrem od osy paprsku)"; §3.2.3 entry at least 3.5 m
+  between kerbs (as the approach), exit 4.0–5.0 m (high: the TP itself). No island width is tabled. The game draws one
+  in each two-way arm (`core/tie-in.ts SPLITTER_ISLAND`, display only): 15 m long (the middle of 5–25 m, PROVISIONAL), as
+  wide at the ring as the lanes' least deflection (5° each side) opens it over that length, 2 · 15 · tan 5° ≈ 2.6 m
+  (≈ 20 m²), its nose 0.5 m and kerb 0.2 m PROVISIONAL; the arm's mouth widened as much each side. None in a one-way
+  arm (a slip road): nothing to separate.

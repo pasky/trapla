@@ -3,7 +3,7 @@
 // that makes no sense across open fields"): Build → Slip road from the carriageway towards Opatovec 300 m before the
 // crossing to road II/368; VALID on Auto (model 64 said "No clear view … 145 m to the right" there); its exit lane drawn
 // as TP 133 draws it (the dashed line from the taper's start, the gore hatched); its end set to Roundabout on its card,
-// the ring drawn; set back to Auto, a T junction with a clear view.
+// the ring drawn, a splitter island in each of road II/368's arms; set back to Auto, a T junction with a clear view.
 // node scripts/slip-road-marks-scene.mjs [--gpu] [--docs]   (--docs: docs/screenshots/786–789)
 import { mkdirSync } from 'node:fs';
 import { checker, startGame } from './lib/browser.mjs';
@@ -54,6 +54,8 @@ try {
   ok(ring.valid, `set to Roundabout on its card: VALID (${ring.list.join('; ') || 'no problems'})`);
   ok(await page.evaluate(() => window.trapla.projectResult().works.items.some(w => w.ring)), 'the ring is one of its works');
   ok(await meshCount('junction-marks') > 1000, 'the ring is drawn');
+  const arms = await page.evaluate(() => window.trapla.projectResult().works.items.find(w => w.ring).ring.arms.map(a => !!a.island));
+  ok(arms.length === 3 && !arms[0] && arms[1] && arms[2], `a splitter island in each arm of road II/368, none in the one-way slip road's (${arms.join(', ')})`);
   await look(b, 110, 0, 89); await shot('788-slip-road-roundabout');
   await page.keyboard.press('o'); await page.waitForTimeout(500);
   await look(b, 120, 40, 45); await shot('789-slip-road-roundabout-photo');

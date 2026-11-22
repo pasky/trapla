@@ -37,7 +37,7 @@ import { FRAME_PIER } from '../core/data/bridges';
 import { CATEGORIES, pairedCategoryOf } from '../core/data/categories';
 import { natureLayers } from './nature';
 import { digTriangles, ringTriangles } from './roundabouts';
-import type { RingMark } from '../core/tie-in';
+import { SPLITTER_ISLAND, type RingMark } from '../core/tie-in';
 
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
@@ -832,7 +832,7 @@ export class View {
     if (this.rings) { this.world.remove(this.rings); this.rings.geometry.dispose(); (this.rings.material as THREE.Material).dispose(); this.rings = null; }
     const pos: number[] = [], col: number[] = [], v = new THREE.Vector3();
     for (const ring of rings) {
-      const t = ringTriangles(ring, this.drawnSurface(ring.x, ring.y, ring.r + 2), 0.2);
+      const t = ringTriangles(ring, this.drawnSurface(ring.x, ring.y, ring.r + SPLITTER_ISLAND.length + 3), 0.2);
       for (let k = 0; k < t.pos.length; k += 3) { this.local(t.pos[k], t.pos[k + 1], t.pos[k + 2], v); pos.push(v.x, v.y, v.z); }
       col.push(...t.col);
     }

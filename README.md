@@ -450,8 +450,9 @@ not its old line), one design with ours: [a diamond at Nudvojovická](docs/scree
 [its entry's square bend dragged to the village's edge](docs/screenshots/727-nudvojovicka-entry-bend-dragged-to-the-village-edge.png).
 
 A speed-change lane is marked as TP 133 draws it: the dashed line from where its taper starts, solid for the last 30 m, the
-gore hatched with chevrons; a road's end set to Roundabout draws its ring; a new junction's view along the road it joins
-is checked over its whole sight triangle, the ground a little in the way dug off (billed). Real-mouse check:
+gore hatched with chevrons; a road's end set to Roundabout draws its ring and a splitter island in each two-way arm
+([on a slope](docs/screenshots/790-nudvojovicka-roundabout-on-the-slope.png)); a new junction's view along the road it
+joins is checked over its whole sight triangle, the ground a little in the way dug off (billed). Real-mouse check:
 `node scripts/slip-road-marks-scene.mjs [--docs]` (D35, a slip road to road II/368).
 
 | The exit lane's gore | Its end a roundabout |

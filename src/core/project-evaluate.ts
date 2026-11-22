@@ -834,7 +834,7 @@ function projectWorks(ctx: ProjectEvalContext, start: ReturnType<typeof projectS
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
     if (t.sight) list.push(sightReplacementWork(legacy, t.sight));
     if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),
-      ring: ringMark(legacy, end, { host: { x: host.tx[k], y: host.ty[k] } }),
+      ring: ringMark(legacy, end, { host, k, half: crown / 2 }, { half: routeCrownWidth(route) / 2, oneWay: isSlipRoad(route) }),
       label: `Roundabout's ring: ${Math.round(t.ring.area)} m² of land${t.ring.removed.length ? `, ${t.ring.removed.length} building${t.ring.removed.length > 1 ? 's' : ''} bought out` : ''}` });
     // The side road's first metres lie inside the joined road's own earthworks: built (and bought) once.
     const inside = host.cell.width[k] / 2;
@@ -1617,7 +1617,7 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
     kind: w.kind === 'removal' || w.kind === 'kept' ? 'formation' : w.kind === 'land' ? 'land' : w.kind === 'noise-wall' ? 'noise' : w.kind === 'buyout' ? 'property' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' || w.kind === 'kept' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
     cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s }, ...(w.removes ? { removes: [...w.removes] } : {}),
-    ...(w.ring ? { ring: { ...w.ring, arms: w.ring.arms.map(a => ({ ...a })) } } : {}),
+    ...(w.ring ? { ring: { ...w.ring, arms: w.ring.arms.map(a => ({ ...a, ...(a.path ? { path: a.path.map(p => ({ ...p })) } : {}) })) } } : {}),
     ...(w.dug ? { dug: { cells: w.dug.cells.map(c => ({ ...c })), size: w.dug.size } } : {}),
     ...(w.lines ? { surfaces: w.lines.map(l => ({ routeId: route.id, revision: route.revision, points: l.map(p => ({ ...p, s: 0, halfWidth: p.halfWidth ?? SLIP_ROAD.marking.width / 2, structure: 'ground' as const })) })) } : {}) };
 }

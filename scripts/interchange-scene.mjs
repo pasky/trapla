@@ -16,7 +16,7 @@
 //     the same old road"; the north-east exit, just past it, over its new link); the south-west entry dragged off
 //     Nudvojovická, a bend too close to the north-east exit's end removed, the crossroads roundabouts on the cards: VALID.
 // node scripts/interchange-scene.mjs [--gpu] [--docs] [--only i35|nudvojovicka] [--save-i35 <file>] [--save-nudvojovicka <file>]
-//   (--docs: docs/screenshots/620–633, 710–719 and 727–731; --save-i35 / --save-nudvojovicka: a diamond's project, tests/fixtures/interchange)
+//   (--docs: docs/screenshots/620–633, 710–719, 727–731 and 790; --save-i35 / --save-nudvojovicka: a diamond's project, tests/fixtures/interchange)
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { checker, startGame } from './lib/browser.mjs';
 
@@ -404,6 +404,10 @@ try {
   await game.idle(); await game.still(); await shot('730-nudvojovicka-diamond-oblique');
   await page.evaluate(([x, y]) => window.trapla.lookAt(x + 60, y - 10, 380, 200, 50), [nud.led.x, nud.led.y]);
   await game.idle(); await game.still(); await shot('731-nudvojovicka-exit-over-the-local-road-s-new-link');
+  // (the south-west crossroads' roundabout, on ground falling ≈ 4.7 m across its 40 m: laid on what is drawn there, its
+  // splitter islands in Nudvojovická's arms)
+  await page.evaluate(() => window.trapla.lookAt(2645, 3260, 55, 270, 40));
+  await game.idle(); await game.still(); await shot('790-nudvojovicka-roundabout-on-the-slope');
   }
   ok(game.pageErrors.length === 0, `no page errors (${game.pageErrors.join('; ')})`);
 } finally { await game.close(); }
