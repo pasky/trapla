@@ -330,7 +330,7 @@ export const BRIDGE_STYLE_TEXT: readonly ['short' | 'long' | 'arch', string, str
  * `fix`: 'move' (the player's road: moved away from it), 'auto' (a crossing the player chose: set back to Auto). */
 export function worksClashText(c: Pick<WorksClash, 'what' | 'wayCls' | 'path' | 'cls'>, fix: 'move' | 'auto'): { title: string; fix: string } {
   const own = c.path === 'body' || c.path === 'cone', label = (cls?: string) => ROAD_CLASSES[cls ?? '']?.label ?? 'road';
-  const whose = own ? 'This road’s earthworks' : c.path === 'tie' ? 'A regraded side road' : `The ${label(c.cls)}’s earthworks`;
+  const whose = own ? 'This road’s earthworks' : c.path === 'tie' ? 'A regraded side road’s earthworks' : `The ${label(c.cls)}’s earthworks`;
   const what = c.what === 'road' ? `cover a ${label(c.wayCls)}` : c.what === 'house' ? 'come too close to a house'
     : c.what === 'railway' ? 'cover a railway' : c.what === 'pier' ? 'stand on a pier of our bridge' : c.what === 'deck' ? 'reach up into our bridge'
     : 'run into our road’s earthworks';
