@@ -318,7 +318,10 @@ What exists (details and commands in `README.md`):
   25 m; D3 km 7.94: a 117 m box → 50 m, and the strict retry's extra 150 m of motorway bridge is gone).
 - Neighbouring minor roads share one crossing (research/45): a consolidation pass leads tracks' and service roads'
   own structures and reroutes to neighbours that carry traffic, wherever cheaper; reroutes join the target's road
-  where it comes nearest. A reroute's earth slopes take the houses they reach. A dead-end stub our earthworks take
+  where it comes nearest, or (cost model 69) the new road of a way as important or more led to the same crossing, on
+  the same side, where that comes nearer: one new road along the strip beside our earthworks, billed once, not two
+  laid side by side (I/35 Jičín km 2.71: the track's cut ends join the class I road's new road 4 m away, 6.9 → 0.1 M,
+  its two culverts gone; D3 starter km 2.08: a class III road joins its neighbour's at km 2.05, 22.4 → 1.7 M). A reroute's earth slopes take the houses they reach. A dead-end stub our earthworks take
   (almost) whole is removed. An automatic crossing with nothing buildable under a ≥ 6 m embankment lengthens our
   bridge over it.
 - Against model 27 all published designs stay VALID and get cheaper (straight −17 M, best −40 M, demo −37 M,
@@ -1451,9 +1454,7 @@ houses, mapped railways, our piers and our own body, and each cut way's detour o
   a designer would measure the bands from the real toe up or end the face on a toe wall (`sections.ts` sideSection: every
   fill on sloping ground, a model change; on today's starters a toe band over 30 m long on 0–17 stations a mission, most
   on the Šternberk bypass km 3.14–3.30 and Nová Paka km 1.18–1.27);
-  two projects' crossings changing one junction are reported as such (the QA's new railway across Královec);
-  two reroutes led to the same road along one strip are laid ≈ 2 m apart, both built and billed (I/35 Jičín starter:
-  the track at km 2.71 and the class I road at km 3.01, two culverts each at the same streams).
+  two projects' crossings changing one junction are reported as such (the QA's new railway across Královec).
 
 ### Next steps
 - Editing aid (future, not planned now): a drag on a long straight puts in one bend, so the whole line turns

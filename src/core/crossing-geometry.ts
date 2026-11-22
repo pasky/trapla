@@ -214,6 +214,8 @@ const JOIN_ROUNDS = 3;
 /** A reroute joins its target's road away from the crossing only where that line is at most this share
  * of the straight line to the crossing (search economy; the cheaper buildable one is kept). */
 const JOIN_SHORTER = 0.8;
+/** The road classes, most important first (data/urban.ts ROAD_CLASSES' order). */
+const CLASS_RANK = Object.keys(ROAD_CLASSES);
 const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
@@ -1603,8 +1605,15 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     homesOf(c);
     if (built.steepest) c.linkGrade = built.steepest; else delete c.linkGrade;
   }
+  // The new roads of the ways led to one crossing, as built (on each side of our road), the more important ways'
+  // first: a lesser way's new piece joins one of theirs where it comes nearer than the crossed road (a designer leads a
+  // cut track onto the class I road's new road beside it, not a second road along the same strip).
+  const rank = (cls: string) => { const k = CLASS_RANK.indexOf(cls); return k < 0 ? CLASS_RANK.length : k; };
+  const ledLinks = new Map<CrossingResult, { c: CrossingResult; links: readonly (readonly CrossingPoint[])[] }[]>();
+  const reroutes = crossings.filter(c => !c.moved && (c.type === 'reconnection' || c.type === 'diversion'))
+    .map((c, k) => ({ c, k })).sort((p, q) => rank(p.c.cls) - rank(q.c.cls) || p.k - q.k).map(e => e.c);
   // (one with no crossing to lead to: Auto's closure candidate, which builds only where every piece left needs none)
-  for (const c of crossings) if (!c.moved && (c.type === 'reconnection' || c.type === 'diversion')) {
+  for (const c of reroutes) {
     const g = c.geometry!;
     const target = c.targetS === undefined ? undefined : crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId && !t.issues?.length && !ROAD_CLASSES[t.cls].noAtGrade);
     // (a crossing moved beside our earthworks carries nothing across our road)
@@ -1640,6 +1649,12 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
           const p = project(q);
           if (side * p.lateral <= 0 || margin(q, width / 2 + SETBACK) < 0) continue;
           best = gap; joined[k] = 'surface' in q ? q : terrainPoint(q);
+        }
+        // (or the new road of a way as important or more led there, on this side, clear of our earthworks)
+        for (const o of ledLinks.get(target) ?? []) if (rank(o.c.cls) <= rank(c.cls)) for (const q of o.links[k] ?? []) {
+          const gap = Math.hypot(q.x - a.x, q.y - a.y);
+          if (gap >= best || side * project(q).lateral <= 0 || margin(q, g.width / 2) < 0) continue;
+          best = gap; joined[k] = terrainPoint(q);
         }
       }
       finish = joined;
@@ -1793,6 +1808,7 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
     // (led under our bridge: the two new pieces meet across under the deck)
     if (c.under !== undefined && links[0].length && links[1].length) links[0] = [...links[0], { ...links[1][links[1].length - 1] }];
     g.links = links as [CrossingPoint[], CrossingPoint[]];
+    if (target && !g.diagnostics?.length) { const list = ledLinks.get(target) ?? []; list.push({ c, links }); ledLinks.set(target, list); }
     if (placed.length) g.culverts = placed; else delete g.culverts;
     if (kept.length) g.keptEnds = kept; else delete g.keptEnds;
     // (closed with the buildings it served bought out: billed with it, as houses a reroute runs through)
