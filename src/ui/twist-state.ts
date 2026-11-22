@@ -15,7 +15,7 @@ export interface TwistState {
   firstValid: boolean;
   /** the reveal was shown; what it showed */
   revealed?: { cost: number; on: TwistId[]; playMs?: number };
-  /** this design began from the straight line (From scratch) */
+  /** an older save's From scratch mark (the design's own `began` is the mark now): cleared once the design is replaced */
   scratch: boolean;
 }
 const key = (scenarioId: string, presetId: string) => `trapla.twists.v1.${scenarioId}.${presetId}`;

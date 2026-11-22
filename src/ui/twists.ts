@@ -64,6 +64,8 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   const goal = (1 - GOAL_SHARE) * setup.mission.startBill;
   let last: { result: ProjectResult; checks: TwistCheck[] } | null = null;
   let changing = false;
+  /** this design began on the straight line (its own mark; `state.scratch`: an older save's, until the design is replaced) */
+  const scratch = () => app.design().began === 'straight' || state.scratch;
   const marks = new TwistMarks(app.view, app.overlay, (x, y) => app.pack.terrain.heightAt(x, y));
   marks.onClick = (id) => { app.revealHud(); highlight(id); };
 
@@ -87,7 +89,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
   if (choice) {
     const was = new Set(state.on);
     state.on = choice.on.filter(t => offer.includes(t)); state.chosen = true; save();
-    if (choice.started && state.on.includes('scratch') && !(was.has('scratch') && state.scratch)) { state.scratch = true; save(); app.startFromScratch(); }
+    if (choice.started && state.on.includes('scratch') && !(was.has('scratch') && scratch())) app.startFromScratch();
     if (choice.started && state.on.includes('byHand')) app.setByHand(true, true);
   }
 
@@ -104,7 +106,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     const home = (j: number) => (app.pack.overlays.binfo?.[j]?.[2] ?? 0) <= 1;
     const at = (j: number) => ({ x: app.pack.overlays.buildings[j][0], y: app.pack.overlays.buildings[j][1] });
     return checkTwists(state.on, twistFacts(result, ours(d), home, at), setup!.terms, {
-      manual: legacy?.profileMode === 'manual', scratch: state.scratch, curveballs: fired(), startBill: setup!.mission.startBill,
+      manual: legacy?.profileMode === 'manual', scratch: scratch(), curveballs: fired(), startBill: setup!.mission.startBill,
       deckHalf: legacy ? CATEGORIES[legacy.category].crownWidth / 2 : 7 });
   }
 
@@ -164,7 +166,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     else if (b.dataset.news) { const c = setup!.curveballs.find(x => x.id === b.dataset.news); if (c) newsCard(c, false); }
     else if (b.dataset.act === 'change') { changing = !changing; render(); }
     else if (b.dataset.act === 'reveal') reveal(true);
-    else if (b.dataset.act === 'scratch') { state.scratch = true; save(); app.startFromScratch(); }
+    else if (b.dataset.act === 'scratch') app.startFromScratch();
   });
   app.card.addEventListener('change', (e) => {
     const input = e.target as HTMLInputElement, t = input.dataset.t as TwistId | undefined;
@@ -172,7 +174,7 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     state.on = TWIST_ORDER.filter(x => x === t ? input.checked : state.on.includes(x));
     state.chosen = true; save();
     if (t === 'byHand') app.setByHand(input.checked, false);
-    if (t === 'scratch' && input.checked) toast('From scratch counts from a design that begins at the straight line.', 'Start from it', () => { state.scratch = true; save(); app.startFromScratch(); });
+    if (t === 'scratch' && input.checked) toast('From scratch counts from a design that begins at the straight line.', 'Start from it', () => app.startFromScratch());
     syncAutoButton();
     // (what is met now may already be news-worthy or a win)
     if (last) api.afterFull(last.result); else { drawMarks(); render(); }
@@ -293,7 +295,8 @@ export function createTwists(app: TwistsContext, choice: { on: TwistId[]; starte
     get state() { return state; },
     /** Start over while From scratch is on goes back to the straight line */
     get scratchOn() { return state.on.includes('scratch'); },
-    noteScratch(fromStraight: boolean) { state.scratch = fromStraight; save(); },
+    /** a save from before the mark was the design's: its mark no longer holds once the design is replaced */
+    retireOldScratch() { if (state.scratch) { state.scratch = false; save(); } },
     syncAutoButton,
   };
   return api;

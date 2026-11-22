@@ -2626,8 +2626,9 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
     zone"); monuments as rings, named close up (`src/render/twist-marks.ts`). Until round 3: rings round 479 named OSM
     castles, churches, chapels, monuments and viewpoints (`build_landmarks.py`, removed), mostly far from any line.
   - *From scratch*: the design begins on the straight line A–B (a Start over while it is on goes there too; turned on
-    mid-game, the card offers to start from the straight line). Its reference is the starter itself: a line the straight
-    one can be bent into.
+    mid-game, the card offers to start from the straight line). The mark is the design's own (`ProjectDesign.began`): an
+    Undo of that start or a loaded best has it as the design brought back has it. Its reference is the starter itself: a
+    line the straight one can be bent into.
   - *By hand*: our road's heights as height pins; Auto still builds every crossing, culvert, wall and the structures along
     the line. A fresh start puts the pins on the ground every 500 m (the ends at their tie-in heights): no Auto heights.
     Turned on mid-game it takes the current heights as pins (as the Road card's By hand does). Auto heights are off while it
@@ -2758,8 +2759,7 @@ evaluation (`createResultDisplay` `afterFull`, after the drag-perf timings), nev
   it (the zone in plum); the Turnov church's ring the planned line passes; the D11's memorial ring.
 - **Known issues** (review of the branch): a tunnel counts as dug from the surface by its depth alone (under the 14 m a
   mined tube needs), not by the evaluator's cut-and-cover mask and pit width; a motorway with a separately edited stretch
-  counts the shared body once per direction in Earth balance; the "From scratch" mark survives an Undo of the restart and a
-  loaded best; places are tested at the stations (every ≈ 10 m), so a place smaller than that could
+  counts the shared body once per direction in Earth balance; places are tested at the stations (every ≈ 10 m), so a place smaller than that could
   slip between two. Round 3: LOW counts a road at the ground's level (an embankment of 0.2 m) as an embankment, so a village's cutting
   must be a cutting all the way along its stretch; the game events' places are the game's (research/95 says how each was
   placed), their circles' sizes game scales; the money caps were set at what the reference with every news reaches (85–89 %);

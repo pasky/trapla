@@ -228,6 +228,7 @@ export function assertProjectDesign(value: unknown, allowStaleBindings = false):
       if (pieces.has(id)) fail('taken-up piece'); pieces.add(id);
     }
   }
+  if (p.began !== undefined && p.began !== 'straight') fail('start');
   const buildings = new Set<number>();
   for (const b of p.buildingOverrides as unknown[]) {
     if (!object(b) || !integer(b.j) || buildings.has(b.j) || !choice(b.action, ['buy', 'keep'])) fail('building decision');

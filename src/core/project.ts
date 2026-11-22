@@ -181,6 +181,9 @@ export interface ProjectDesign {
   mission: MissionRequirements;
   /** Dead ends of mapped roads the player cut back (core/taken-up.ts): each piece taken up. */
   takenUp?: TakenUpPiece[];
+  /** The design began on the straight line A–B (the From scratch twist): set by that start, so Undo and a loaded best
+   * carry it with the design they bring back. */
+  began?: 'straight';
 }
 /** A mapped road's dead end cut back: its piece from `at` (the road's new end, at the interval's inner station) to its
  * old dead end (`end`: which end of the source that is) is taken up: gone from the network, its pavement removed and

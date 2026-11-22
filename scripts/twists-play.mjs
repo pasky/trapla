@@ -107,6 +107,13 @@ try {
   await game.idle(800);
   ok(await page.evaluate(() => window.trapla.getDesign().pis.length) === 0, 'From scratch: the design starts again on the straight line');
   await page.getByRole('button', { name: 'Done' }).click();
+  // (the mark is the design's: an Undo of the start takes it back, a Redo brings it again)
+  const scratchMet = async () => { await game.idle(800); return page.locator('#twists li[data-id="scratch"]').getAttribute('class'); };
+  ok(await scratchMet() === 'ok', 'From scratch met on the straight line');
+  await page.evaluate(() => document.activeElement?.blur()); await page.keyboard.press('Control+z');
+  ok(await scratchMet() === 'bad', 'an Undo of the start: From scratch no longer met');
+  await page.keyboard.press('Control+y');
+  ok(await scratchMet() === 'ok', 'a Redo: met again');
   await game.park(); await shot('from-scratch');
   // ---- another mission's news: a real register's place, then a game event (D3 Voračice → Nová Hospoda) ----
   // a section of a corridor's card: its chip, then Start

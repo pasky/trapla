@@ -71,7 +71,7 @@ import { installAutomation } from './automation';
 import { Intro } from './ui/intro';
 import { createTwists } from './ui/twists';
 import type { TwistId } from './core/twists';
-import type { ProjectResult } from './core/project';
+import type { ProjectDesign, ProjectResult } from './core/project';
 import { normalizeVpis, type Result } from './core/evaluate';
 import { KIND, type Run } from './core/structures';
 import { toast } from './ui/toast';
@@ -116,7 +116,9 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   // One scenario factory for first start AND Start over (core/project-mission.ts, shared with the Node scripts).
   const { initial: initialProject, mission } = missionProject(scenario, legacyContext);
   // From scratch (a twist): the mission's road on the straight line from A to B, no starting bends
-  const { initial: straightProject } = missionProject({ ...scenario, initial: scenario.initial && { ...scenario.initial, pis: [] } }, legacyContext);
+  // (marked as begun there: the mark goes with the design through Undo and a loaded best)
+  const { initial: straightStart } = missionProject({ ...scenario, initial: scenario.initial && { ...scenario.initial, pis: [] } }, legacyContext);
+  const straightProject = (): ProjectDesign => ({ ...straightStart(), began: 'straight' });
   /** the twists (ui/twists.ts), made once the map and the HUD are up */
   let twists: ReturnType<typeof createTwists> = null;
   /** a From scratch start under way (before the twists are made, too) */
@@ -479,7 +481,8 @@ export async function startApp({ picked, storage, loading, twists: twistChoice =
   }, twistChoice);
   // Start over: to the straight line while From scratch is on (else the design began from the starter); By hand on: its
   // heights on the ground again
-  { const reset = store.reset.bind(store); store.reset = () => { reset(); twists?.noteScratch(!!twists?.scratchOn); if (twists?.state.on.includes('byHand')) byHandWanted = true; }; }
+  { const reset = store.reset.bind(store); store.reset = () => { reset(); twists?.retireOldScratch(); if (twists?.state.on.includes('byHand')) byHandWanted = true; }; }
+  { const loadBest = store.loadBest.bind(store); store.loadBest = () => { loadBest(); twists?.retireOldScratch(); }; }
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }
